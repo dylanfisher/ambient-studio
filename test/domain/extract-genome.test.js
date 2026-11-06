@@ -24,6 +24,15 @@ describe("extractGenome finds the answer", () => {
     });
   });
 
+  test("a stray unclosed brace in the prose before the answer doesn't swallow it", () => {
+    const result = extractGenome(`Open with a { and then:\n${json}`);
+    expect(result).toMatchObject({ ok: true, intent: answer.intent, genome: droneGenome });
+  });
+
+  test("a list in the prose that holds no object is ignored", () => {
+    expect(extractGenome(`Voices [1, 2] and [see below]:\n${json}`)).toMatchObject({ ok: true });
+  });
+
   test("braces and quotes inside strings don't end the object", () => {
     const tricky = { intent: 'a "}" drone {', genome: droneGenome };
     const result = extractGenome(`x ${JSON.stringify(tricky)} y`);
@@ -45,6 +54,14 @@ describe("extractGenome says why it refuses", () => {
       ok: false,
       reason: REJECT_REASON.severalObjects,
       message: "the response holds 2 JSON objects; answer with one",
+    });
+  });
+
+  test("an answer wrapped in a JSON array", () => {
+    expect(extractGenome(`[${json}]`)).toEqual({
+      ok: false,
+      reason: REJECT_REASON.invalidJson,
+      message: "the response's JSON is a list holding an object; answer with the object alone",
     });
   });
 

@@ -25,17 +25,21 @@ export const ANSWER_KEY = Object.freeze({ intent: "intent", genome: "genome" });
  * }} Extracted
  */
 
+const OPENERS = "{[";
+const CLOSERS = "}]";
+
 /**
- * Each top-level `{…}` span, by brace depth outside JSON strings; `end` is null for one that
- * never closes.
+ * Each top-level `{…}` or `[…]` span, by bracket depth outside JSON strings; `end` is null for
+ * one that never closes. A span that never closes is scanned again from its next character, so
+ * a stray `{` in prose doesn't hide the answer after it.
  * @param {string} text
  * @returns {{ start: number, end: number | null }[]}
  */
-function objectSpans(text) {
-  const spans = [];
+function spans(text) {
+  const found = [];
   let i = 0;
   while (i < text.length) {
-    if (text[i] !== "{") {
+    if (!OPENERS.includes(text.charAt(i))) {
       i++;
       continue;
     }
@@ -45,17 +49,18 @@ function objectSpans(text) {
     /** @type {number | null} */
     let end = null;
     for (; i < text.length && end === null; i++) {
-      const char = text[i];
+      const char = text.charAt(i);
       if (inString) {
         if (char === "\\") i++;
         else if (char === '"') inString = false;
       } else if (char === '"') inString = true;
-      else if (char === "{") depth++;
-      else if (char === "}" && --depth === 0) end = i;
+      else if (OPENERS.includes(char)) depth++;
+      else if (CLOSERS.includes(char) && --depth === 0) end = i;
     }
-    spans.push({ start, end });
+    found.push({ start, end });
+    if (end === null) i = start + 1;
   }
-  return spans;
+  return found;
 }
 
 /**
@@ -95,54 +100,69 @@ function shapeErrors(answer) {
  * @returns {Extracted}
  */
 export function extractGenome(text) {
-  const spans = objectSpans(text);
-  if (spans.length === 0) {
+  /** @type {Record<string, unknown>[]} */
+  const parsed = [];
+  /** Objects inside a top-level list, which is refused rather than unwrapped. */
+  let listed = 0;
+  /** The longest object span that doesn't parse, as the likeliest attempt at the answer. */
+  let failure = { length: -1, message: "" };
+  for (const { start, end } of spans(text)) {
+    if (end === null) {
+      const length = text.length - start;
+      if (text.charAt(start) === "{" && length > failure.length) {
+        failure = { length, message: `an object opened at character ${start + 1} never closes` };
+      }
+      continue;
+    }
+    const slice = text.slice(start, end + 1);
+    /** @type {unknown} */
+    let value;
+    try {
+      value = JSON.parse(slice);
+    } catch (error) {
+      // A list in prose, like "[see below]", is not an attempt at the answer.
+      if (slice.includes("{") && slice.length > failure.length) {
+        failure = { length: slice.length, message: /** @type {Error} */ (error).message };
+      }
+      continue;
+    }
+    if (isObject(value)) parsed.push(value);
+    else if (Array.isArray(value)) listed += value.filter(isObject).length;
+  }
+  const [answer, ...others] = parsed;
+  if (others.length > 0 || (answer !== undefined && listed > 0)) {
+    return {
+      ok: false,
+      reason: REJECT_REASON.severalObjects,
+      message: `the response holds ${parsed.length + listed} JSON objects; answer with one`,
+    };
+  }
+  if (answer !== undefined) {
+    return {
+      ok: true,
+      answer,
+      intent: oneLine(answer[ANSWER_KEY.intent]),
+      genome: answer[ANSWER_KEY.genome],
+      errors: shapeErrors(answer),
+    };
+  }
+  if (listed > 0) {
+    return {
+      ok: false,
+      reason: REJECT_REASON.invalidJson,
+      message: "the response's JSON is a list holding an object; answer with the object alone",
+    };
+  }
+  if (failure.length < 0) {
     return {
       ok: false,
       reason: REJECT_REASON.noJson,
       message: "the response holds no JSON object",
     };
   }
-  /** @type {Record<string, unknown>[]} */
-  const parsed = [];
-  /** The longest span that doesn't parse, as the likeliest attempt at the answer. */
-  let failure = { length: -1, message: "" };
-  for (const { start, end } of spans) {
-    const length = (end ?? text.length) - start;
-    let message = `an object opened at character ${start + 1} never closes`;
-    if (end !== null) {
-      try {
-        const value = JSON.parse(text.slice(start, end + 1));
-        if (isObject(value)) {
-          parsed.push(value);
-          continue;
-        }
-      } catch (error) {
-        message = /** @type {Error} */ (error).message;
-      }
-    }
-    if (length > failure.length) failure = { length, message };
-  }
-  const [answer, ...others] = parsed;
-  if (answer === undefined) {
-    return {
-      ok: false,
-      reason: REJECT_REASON.invalidJson,
-      message: `the response's JSON doesn't parse: ${failure.message}`,
-    };
-  }
-  if (others.length > 0) {
-    return {
-      ok: false,
-      reason: REJECT_REASON.severalObjects,
-      message: `the response holds ${parsed.length} JSON objects; answer with one`,
-    };
-  }
   return {
-    ok: true,
-    answer,
-    intent: oneLine(answer[ANSWER_KEY.intent]),
-    genome: answer[ANSWER_KEY.genome],
-    errors: shapeErrors(answer),
+    ok: false,
+    reason: REJECT_REASON.invalidJson,
+    message: `the response's JSON doesn't parse: ${failure.message}`,
   };
 }
