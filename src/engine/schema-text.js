@@ -5,12 +5,14 @@ import { allowsTrajectory, valueText } from "./descriptor.js";
 import {
   GLOBAL_PARAMS,
   MACROS,
+  MAX_VOICES,
   SCHEMA_VERSION,
   VOICE_ID,
   VOICE_KEYS,
   VOICE_PARAMS,
 } from "./genome-schema.js";
 import { TRAJECTORY_TEXT } from "./trajectory.js";
+import { isAbsolute } from "./tuning.js";
 import { getTuning, tuningIds } from "./tuning-registry.js";
 import { findVoiceType, voiceTypeIds } from "./voice-registry.js";
 
@@ -28,30 +30,36 @@ function line(name, d) {
 /** @param {DescriptorTable} table @param {string} indent */
 const lines = (table, indent) => Object.entries(table).map(([name, d]) => indent + line(name, d));
 
-/** Each tuning's scales, with tunings that share a scale list on one line. */
-function scaleLines() {
-  /** @type {Map<string, string[]>} scale list → tunings */
+/** Each tuning's key range and scales, with tunings that share both on one line. */
+function pitchLines() {
+  /** @type {Map<string, string[]>} key range and scale list → tunings */
   const groups = new Map();
   for (const id of tuningIds()) {
-    const scales = Object.keys(getTuning(id).scales).join("|");
-    groups.set(scales, [...(groups.get(scales) ?? []), id]);
+    const tuning = getTuning(id);
+    const key = isAbsolute(tuning) ? "no key" : `key 0..${tuning.degrees.length - 1}`;
+    const text = `${key}; scale ${Object.keys(tuning.scales).join("|")}`;
+    groups.set(text, [...(groups.get(text) ?? []), id]);
   }
-  return [...groups].map(([scales, ids]) => `  ${ids.join(",")}: ${scales}`);
+  return [...groups].map(([text, ids]) => `  ${ids.join(",")}: ${text}`);
 }
 
 /** @returns {string} */
 export function schemaText() {
-  // The scale's allowed values depend on the tuning, so it lists them per tuning.
-  const globalLines = Object.entries(GLOBAL_PARAMS).flatMap(([name, d]) =>
-    d === GLOBAL_PARAMS.scale
-      ? [`${name} =${d.default} ${d.description}:`, ...scaleLines()]
-      : [line(name, d)],
-  );
+  // A scale's values and a key's range depend on the tuning, so they're listed per tuning.
+  const { scale, key } = GLOBAL_PARAMS;
+  const globalLines = Object.entries(GLOBAL_PARAMS).flatMap(([name, d]) => {
+    if (d === scale) return [`${name} =${d.default} ${d.description}, per tuning below`];
+    if (d === key) {
+      const when = `; only ${key.when.text}`;
+      return [`${name} int =${d.default} ${d.description}${when}, per tuning:`, ...pitchLines()];
+    }
+    return [line(name, d)];
+  });
   const voiceLines = voiceTypeIds().flatMap((type) => {
     const voice = /** @type {NonNullable<ReturnType<typeof findVoiceType>>} */ (
       findVoiceType(type)
     );
-    return [` type "${type}": ${voice.description}`, ...lines(voice.params, "  ")];
+    return [` type ${JSON.stringify(type)}: ${voice.description}`, ...lines(voice.params, "  ")];
   });
   return [
     "Genome JSON. Omitted keys take their =default; unknown keys are errors.",
@@ -60,8 +68,8 @@ export function schemaText() {
     ...globalLines,
     // Every macro shares one descriptor, so one line covers them.
     line(`macros.{${Object.keys(MACROS).join(",")}}`, MACROS.brightness),
-    `voices: list of {${VOICE_KEYS.map((key) => `"${key}"`).join(",")},...}; id matches ${VOICE_ID.source}, unique`,
-    " every voice:",
+    `voices: up to ${MAX_VOICES} {${VOICE_KEYS.map((key) => `"${key}"`).join(",")},...}; id matches ${VOICE_ID.source}, unique`,
+    " every voice, start and end in timeline seconds:",
     ...lines(VOICE_PARAMS, "  "),
     ...voiceLines,
   ].join("\n");

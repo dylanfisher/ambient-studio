@@ -1,7 +1,7 @@
 // Every voice type the engine knows. A voice module is added with one import line here and its
 // name in `builtIn`; the schema, the macro table and `randomGenome` read voices from this module
-// only. Tests register a fixture voice through `registerVoice` from test/support/, so this file
-// never imports test code (decision 0005).
+// only. Tests register the fixture voice from test/support/ in `beforeAll` and unregister it in
+// `afterAll`, so this file never imports test code (decision 0005).
 /** @import { DescriptorTable } from "./descriptor.js" */
 import { VOICE_KEYS, VOICE_PARAMS } from "./genome-schema.js";
 
@@ -34,6 +34,14 @@ export function registerVoice(voice) {
   }
   voices.set(voice.type, voice);
   return voice;
+}
+
+/**
+ * Removes a voice type, so a test's fixture doesn't outlive the file that registered it.
+ * @param {string} type
+ */
+export function unregisterVoice(type) {
+  if (!voices.delete(type)) throw new Error(`voice type "${type}" is not registered`);
 }
 
 for (const voice of builtIn) registerVoice(voice);

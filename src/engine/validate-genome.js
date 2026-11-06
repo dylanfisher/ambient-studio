@@ -7,6 +7,7 @@ import { checkValue } from "./descriptor.js";
 import {
   GLOBAL_PARAMS,
   MACROS,
+  MAX_VOICES,
   SCHEMA_VERSION,
   VOICE_ID,
   VOICE_KEYS,
@@ -176,7 +177,9 @@ export function validateGenome(value) {
 
   /** @type {unknown[]} */
   let checkedVoices = [];
-  if (Array.isArray(voices)) {
+  if (Array.isArray(voices) && voices.length > MAX_VOICES) {
+    errors.push({ path: "$.voices", message: `must hold at most ${MAX_VOICES} voices` });
+  } else if (Array.isArray(voices)) {
     /** @type {Map<string, string>} */
     const ids = new Map();
     checkedVoices = voices.map((voice, i) => checkVoice(voice, `$.voices[${i}]`, ids, errors));

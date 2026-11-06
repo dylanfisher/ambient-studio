@@ -93,7 +93,8 @@ If `tsc` can't express that, the builder of step 1c records what it did instead.
     to the end of the timeline by default), `level` (−60 to 0 dB, default −12, may be a
     trajectory) and `detune` (0–12 cents, default 3). With an unknown `type`, only these are
     checked, because the voice's own parameters can't be told from unknown keys.
-  - **Pitch.** Defaults are 12-tet, `aeolian`, key 9 (A minor). A scale must be one of the
+  - **Pitch.** Defaults are 12-tet (`DEFAULT_TUNING` in the tuning registry), `aeolian`, key 9
+    (A minor). A scale must be one of the
     chosen tuning's own; the default scale with a tuning that lacks it is an error naming the
     tuning's scales, not a silent switch. A descriptor may carry `when`, a condition on the other
     values of its object: `key` exists only with a relative tuning (an error if given with an
@@ -114,11 +115,16 @@ If `tsc` can't express that, the builder of step 1c records what it did instead.
   - **Vector view.** `encode` and `decode` are functions in `descriptor.js` that take a
     descriptor, not methods on it, so descriptors stay plain frozen data. `decode` clamps to
     the range and rounds an int.
-  - **Fixture voice.** The registry exports `registerVoice`. Production voices are imported and
-    listed in `voice-registry.js`; `test/support/fixture-voice.js` registers itself when a test
-    imports it, so `src/engine` never imports test code. Vitest isolates modules per test file,
-    so the fixture is registered only in files that import it, and the schema-text length test
-    reads only the production voices.
+  - **Fixture voice.** The registry exports `registerVoice` and `unregisterVoice`. Production
+    voices are imported and listed in `voice-registry.js`. `test/support/fixture-voice.js`
+    exports the voice object only; a test file registers it in `beforeAll` and unregisters it
+    in `afterAll`, so `src/engine` never imports test code and the fixture never reaches
+    another file's registry, even with Vitest's isolation off. The schema-text length test
+    checks that the fixture is absent.
+  - **Caps.** A genome holds at most 16 voices, and a trajectory at most 64 points. A cap added
+    after genomes are stored would invalidate some of them, so they're set now: 16 is twice the
+    five phase 1 voice types with room for layering, and 64 points at the 20 s minimum gap 1d
+    draws covers a 900 s timeline with room to spare.
   - **Types.** `tsc` expresses the derived type: `ValuesOf<table>` maps each descriptor to its
     value type (enum values as a literal union, `boolean`, `number`, or `number | Trajectory`),
     and a parameter with `when` becomes optional. `Genome` is built from the global, macro and
@@ -128,5 +134,7 @@ If `tsc` can't express that, the builder of step 1c records what it did instead.
     gives the same text as its normalized form, and it throws on an invalid genome. Voices sort
     by id in UTF-16 code-unit order; other arrays keep their order.
   - **Schema text** is one line per parameter, `name~ range unit =default description`, with
-    `~` marking a possible trajectory. The global part is 1,375 characters, which leaves about
-    1,600 for the phase 1 voices, about 320 each across five.
+    `~` marking a possible trajectory. Scales and the key range are listed per tuning, and
+    trajectory times and voice `start` and `end` are named as timeline seconds. The global
+    part is 1,519 characters, which leaves about 1,480 for the phase 1 voices, about 290 each
+    across five.

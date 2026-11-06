@@ -9,9 +9,12 @@ import bohlenPierce from "./tunings/bohlen-pierce.js";
 import colundi from "./tunings/colundi.js";
 import just5Limit from "./tunings/just-5-limit.js";
 
+/** The tuning a genome gets when it names none. */
+export const DEFAULT_TUNING = "12-tet";
+
 /** @type {Record<string, unknown>} file name without `.js` → the file's contents */
 const files = {
-  "12-tet": tet12,
+  [DEFAULT_TUNING]: tet12,
   "19-edo": edo19,
   "bohlen-pierce": bohlenPierce,
   colundi,

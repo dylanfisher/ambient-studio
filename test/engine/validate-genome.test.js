@@ -1,6 +1,10 @@
-import { describe, expect, test } from "vitest";
+import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { validateGenome } from "../../src/engine/validate-genome.js";
-import "../support/fixture-voice.js";
+import { registerVoice, unregisterVoice } from "../../src/engine/voice-registry.js";
+import { fixtureVoice } from "../support/fixture-voice.js";
+
+beforeAll(() => registerVoice(fixtureVoice));
+afterAll(() => unregisterVoice(fixtureVoice.type));
 
 /** @param {unknown} value */
 function valid(value) {
@@ -192,7 +196,38 @@ describe("validateGenome", () => {
     ["another schema version", { schemaVersion: 2 }, "$.schemaVersion", /must be 1/],
     ["an unknown tuning", { tuning: "pythagorean" }, "$.tuning", /one of .*12-tet/],
     ["a genome that isn't an object", /** @type {any} */ ([]), "$", /must be an object/],
+    [
+      "a bpm given with pulse none",
+      { pulse: "none", bpm: 80 },
+      "$.bpm",
+      /only when pulse isn't "none"/,
+    ],
+    [
+      "an unknown key inside a trajectory",
+      { reverbLevel: { points: [[0, -12]], curve: "exp" } },
+      "$.reverbLevel.curve",
+      /unknown key/,
+    ],
+    [
+      "more trajectory points than the cap",
+      { reverbLevel: { points: Array.from({ length: 65 }, (_, i) => [i, -12]) } },
+      "$.reverbLevel.points",
+      /at most 64/,
+    ],
+    [
+      "more voices than the cap",
+      { voices: Array.from({ length: 17 }, (_, i) => ({ id: `v${i}`, type: "fixture" })) },
+      "$.voices",
+      /at most 16/,
+    ],
   ];
+
+  test("the caps themselves are allowed", () => {
+    const points = Array.from({ length: 64 }, (_, i) => [i, -12]);
+    const voices = Array.from({ length: 16 }, (_, i) => ({ id: `v${i}`, type: "fixture" }));
+    const genome = valid({ reverbLevel: { points }, voices });
+    expect(genome.voices).toHaveLength(16);
+  });
 
   test.each(rules)("%s fails at its path", (_, genome, path, message) => {
     const errors = errorsOf(genome);

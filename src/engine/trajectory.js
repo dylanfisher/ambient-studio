@@ -8,8 +8,11 @@ import { checkKeys, show } from "./validation-error.js";
  * @typedef {{ points: [number, number][] }} Trajectory
  */
 
+/** Most breakpoints a trajectory may hold; a cap added later would invalidate stored genomes. */
+const MAX_POINTS = 64;
+
 /** One line for the LLM's schema text. */
-export const TRAJECTORY_TEXT = '{"points":[[seconds,value],...]}, seconds rising';
+export const TRAJECTORY_TEXT = `{"points":[[seconds,value],...]}, up to ${MAX_POINTS}, timeline seconds rising`;
 
 /**
  * Checks a trajectory and returns a copy of it, pushing an error for each problem.
@@ -29,6 +32,10 @@ export function checkTrajectory(value, path, checkPoint, errors) {
       path: `${path}.points`,
       message: "must be a list of at least one [seconds, value]",
     });
+    return undefined;
+  }
+  if (points.length > MAX_POINTS) {
+    errors.push({ path: `${path}.points`, message: `must hold at most ${MAX_POINTS} points` });
     return undefined;
   }
   /** @type {[number, number][]} */

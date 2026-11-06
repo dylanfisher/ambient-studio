@@ -1,6 +1,10 @@
-import { describe, expect, test } from "vitest";
+import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { canonicalGenome } from "../../src/engine/canonical-genome.js";
-import "../support/fixture-voice.js";
+import { registerVoice, unregisterVoice } from "../../src/engine/voice-registry.js";
+import { fixtureVoice } from "../support/fixture-voice.js";
+
+beforeAll(() => registerVoice(fixtureVoice));
+afterAll(() => unregisterVoice(fixtureVoice.type));
 
 const a = { id: "a", type: "fixture", cutoff: 250.5 };
 const b = { id: "b", type: "fixture", level: -20 };

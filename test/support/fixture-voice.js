@@ -1,9 +1,9 @@
 // A voice type with one parameter of each descriptor kind, for tests of the schema, macros and
-// vector view. Importing this file registers it; the production registry never imports it.
+// vector view. A test file registers it in `beforeAll` and unregisters it in `afterAll`, so it
+// never leaks into another file's registry, isolated or not.
 import { choice, flag, int, number } from "../../src/engine/descriptor.js";
-import { registerVoice } from "../../src/engine/voice-registry.js";
 
-export const fixtureVoice = registerVoice({
+export const fixtureVoice = {
   type: "fixture",
   description: "test voice",
   params: {
@@ -20,4 +20,4 @@ export const fixtureVoice = registerVoice({
     wave: choice({ values: ["sine", "triangle"], default: "sine", description: "waveform" }),
     snap: flag({ default: false, description: "snap partials to the tuning" }),
   },
-});
+};

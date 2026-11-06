@@ -6,7 +6,7 @@
 /** @import { VoiceType } from "./voice-registry.js" */
 import { choice, int, number } from "./descriptor.js";
 import { isAbsolute } from "./tuning.js";
-import { getTuning, tuningIds } from "./tuning-registry.js";
+import { DEFAULT_TUNING, getTuning, tuningIds } from "./tuning-registry.js";
 
 /** Bumped, with a migration from the previous version, whenever the genome's shape changes. */
 export const SCHEMA_VERSION = 1;
@@ -16,6 +16,9 @@ export const VOICE_ID = /^[a-z][a-z0-9-]{0,15}$/;
 
 /** The keys every voice has besides its parameters. */
 export const VOICE_KEYS = Object.freeze(["id", "type"]);
+
+/** Most voices a genome may hold; a cap added later would invalidate stored genomes. */
+export const MAX_VOICES = 16;
 
 /** Longest timeline a genome can describe, in seconds; voices' start and end share it. */
 const MAX_DURATION = 900;
@@ -38,7 +41,7 @@ export const GLOBAL_PARAMS = Object.freeze({
     unit: "s",
     description: "timeline length",
   }),
-  tuning: choice({ values: tuningIds(), default: "12-tet", description: "tuning" }),
+  tuning: choice({ values: tuningIds(), default: DEFAULT_TUNING, description: "tuning" }),
   scale: choice({ values: allScales, default: "aeolian", description: "scale of the tuning" }),
   key: int({
     min: 0,
