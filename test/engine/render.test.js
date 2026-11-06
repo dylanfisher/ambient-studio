@@ -1,7 +1,7 @@
 // Renders are short (2–6 s) to keep the gate light on a machine that also serves omlx.
 /** @import { Genome } from "../../src/engine/genome-schema.js" */
 /** @import { RenderResult } from "../../src/engine/render-plan.js" */
-import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 import { ENGINE_VERSION } from "../../src/engine/engine-version.js";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
 import { randomGenome } from "../../src/engine/random-genome.js";
@@ -101,6 +101,62 @@ describe("render", () => {
   test("an excerpt has exactly the requested length", async () => {
     const result = await renderOffline(golden, { seed: 1, duration: 1.2345, offset: 7.77 });
     expect(result.channels.map((c) => c.length)).toEqual([59256, 59256]);
+  });
+
+  test("retries when the library refuses a suspend after rendering started", async () => {
+    const expected = await renderOffline(golden, { seed: 1, duration: 3 });
+    let failures = 2;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      const retried = await renderOffline(golden, { seed: 1, duration: 3 }, (ctx) => {
+        const start = ctx.startRendering.bind(ctx);
+        ctx.startRendering = async () => {
+          if (failures-- > 0)
+            throw new DOMException("Error in async function", "InvalidStateError");
+          return start();
+        };
+      });
+      expect(retried.channels).toEqual(expected.channels);
+      expect(warn).toHaveBeenCalledTimes(2);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("gives up with the library's error after three attempts, and retries nothing else", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      let attempts = 0;
+      await expect(
+        renderOffline(golden, { seed: 1, duration: 1 }, (ctx) => {
+          ctx.startRendering = async () => {
+            attempts++;
+            throw new DOMException("Error in async function", "InvalidStateError");
+          };
+        }),
+      ).rejects.toThrow("Error in async function");
+      expect(attempts).toBe(3);
+      attempts = 0;
+      await expect(
+        renderOffline(golden, { seed: 1, duration: 1 }, (ctx) => {
+          ctx.startRendering = async () => {
+            attempts++;
+            throw new Error("something else");
+          };
+        }),
+      ).rejects.toThrow("something else");
+      expect(attempts).toBe(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("renders with many windows in parallel, as the suite does under load", async () => {
+    const reference = await renderOffline(golden, { seed: 1, duration: 20 });
+    const results = await Promise.all(
+      Array.from({ length: 6 }, () => renderOffline(golden, { seed: 1, duration: 20 })),
+    );
+    for (const result of results) expect(result.channels).toEqual(reference.channels);
   });
 
   test("scheduling in suspend windows renders the same samples as scheduling up front", async () => {

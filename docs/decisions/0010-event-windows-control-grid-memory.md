@@ -216,3 +216,14 @@ to 2.
 - 2026-11-06: step 1g adds the cost unit, its weights and the budget of 560, calibrated on 1a's
   probes and 1f's drone measurement, and the cost cap on `randomGenome`. Provisional: owner to
   confirm.
+- 2026-11-06: under a full test run, about half the runs failed with `InvalidStateError: Error
+  in async function` from `OfflineAudioContext.suspend`. The crate registers a suspend when its
+  future is first polled and refuses it once `start_rendering` has taken the renderer, and the
+  binding polls the two on a runtime, so `startRendering()` can win although `render()` called
+  `suspend()` first ([0002](0002-pin-node-web-audio-api.md)). Awaiting a macrotask between them
+  did not remove it (4 of 8 full runs still failed, against 3 of 4 before). The offline
+  sequence therefore retries on exactly that error, on a fresh context, at most 3 attempts,
+  reporting each retry and throwing the original error after the last. A failed attempt never
+  yields samples, so a retry renders the same bytes and `ENGINE_VERSION` stays 1. The sequence
+  is `renderOffline` in `test/support/render-offline.js`; step 1l's export must use the same
+  retry. Provisional: owner to confirm.

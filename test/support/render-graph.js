@@ -3,6 +3,7 @@
 // SHA-256, so the test can compare renders from separate processes.
 import { createHash } from "node:crypto";
 import { OfflineAudioContext } from "node-web-audio-api";
+import { retryOnSuspendRace } from "./render-offline.js";
 
 export const SAMPLE_RATE = 48000;
 export const FRAMES = SAMPLE_RATE;
@@ -52,7 +53,12 @@ function startLateSource(ctx, destination) {
  *   suspend callback instead of up front
  * @returns {Promise<Float32Array[]>} one array per channel
  */
-export async function renderEveryNode({ suspend }) {
+export function renderEveryNode({ suspend }) {
+  return retryOnSuspendRace(() => renderEveryNodeOnce({ suspend }));
+}
+
+/** @param {{ suspend: boolean }} options */
+async function renderEveryNodeOnce({ suspend }) {
   const ctx = new OfflineAudioContext({
     numberOfChannels: 2,
     length: FRAMES,
@@ -112,8 +118,10 @@ export async function renderEveryNode({ suspend }) {
   source.start(0.25, 0.01);
   source.stop(0.9);
 
+  /** @type {Promise<void> | undefined} */
+  let suspended;
   if (suspend) {
-    ctx.suspend(SUSPEND_FRAME / SAMPLE_RATE).then(() => {
+    suspended = ctx.suspend(SUSPEND_FRAME / SAMPLE_RATE).then(() => {
       startLateSource(ctx, sum);
       return ctx.resume();
     });
@@ -122,7 +130,8 @@ export async function renderEveryNode({ suspend }) {
   }
 
   osc.start(0);
-  const rendered = await ctx.startRendering();
+  // Awaited together, so a refused suspend rejects here instead of silently dropping the source.
+  const [rendered] = await Promise.all([ctx.startRendering(), suspended]);
   return [0, 1].map((c) => {
     const data = new Float32Array(rendered.length);
     rendered.copyFromChannel(data, c);

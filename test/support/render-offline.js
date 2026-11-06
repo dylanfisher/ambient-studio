@@ -7,24 +7,62 @@ import { OfflineAudioContext } from "node-web-audio-api";
 import { render } from "../../src/engine/render.js";
 import { renderPlan, trimToResult } from "../../src/engine/render-plan.js";
 
+const MAX_ATTEMPTS = 3;
+
+/**
+ * The library registers a `suspend` when its future is first polled, on another thread, and
+ * fails it with this error once `startRendering()` has taken the renderer (decision 0002). Under
+ * load the two race, so yielding to the event loop between them does not prevent it.
+ * @param {unknown} error
+ * @returns {boolean}
+ */
+function isSuspendRace(error) {
+  return (
+    error instanceof Error &&
+    error.name === "InvalidStateError" &&
+    error.message === "Error in async function"
+  );
+}
+
+/**
+ * Runs `attemptRender`, which builds a fresh context each time, again when it fails with the
+ * suspend race: a failed attempt never yields samples, so a retry renders the same bytes. Any
+ * other error, and the race on the last attempt, is thrown as it came. Each retry is reported.
+ * @template T
+ * @param {() => Promise<T>} attemptRender
+ * @returns {Promise<T>}
+ */
+export async function retryOnSuspendRace(attemptRender) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await attemptRender();
+    } catch (error) {
+      if (!isSuspendRace(error) || attempt === MAX_ATTEMPTS) throw error;
+      console.warn(`suspend race, attempt ${attempt} of ${MAX_ATTEMPTS}: ${error}`);
+    }
+  }
+}
+
 /**
  * @param {Genome} genome
  * @param {{ seed: number; duration: number; offset?: number; voices?: string[] }} options
  * @param {(ctx: OfflineAudioContext) => void} [prepare] changes the context before `render()`
  * @returns {Promise<RenderResult>}
  */
-export async function renderOffline(genome, options, prepare) {
+export function renderOffline(genome, options, prepare) {
   const { duration, offset = 0 } = options;
   const plan = renderPlan(genome, { duration, offset });
-  const ctx = new OfflineAudioContext({
-    numberOfChannels: plan.channels,
-    length: plan.length,
-    sampleRate: plan.sampleRate,
+  return retryOnSuspendRace(async () => {
+    const ctx = new OfflineAudioContext({
+      numberOfChannels: plan.channels,
+      length: plan.length,
+      sampleRate: plan.sampleRate,
+    });
+    prepare?.(ctx);
+    // `render()` registers its suspends before rendering starts. The two are awaited together,
+    // so a window that throws rejects here instead of going unhandled.
+    const scheduled = render(genome, ctx, options);
+    const [buffer] = await Promise.all([ctx.startRendering(), scheduled]);
+    return trimToResult(buffer, plan);
   });
-  prepare?.(ctx);
-  // `render()` registers its suspends before rendering starts. The two are awaited together,
-  // so a window that throws rejects here instead of going unhandled.
-  const scheduled = render(genome, ctx, options);
-  const [buffer] = await Promise.all([ctx.startRendering(), scheduled]);
-  return trimToResult(buffer, plan);
 }

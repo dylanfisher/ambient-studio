@@ -86,3 +86,12 @@ Upgrading it is a step of its own: re-run the golden-render test
     It misses phase 1's 10x target. Over 60 s, the same graph without the Convolver ran at 7.9x
     and with it at 6.1x, so the 480 oscillators cost most of the time. A voice budget for
     additive notes belongs in 0010's cost unit.
+- 2026-11-06: **`suspend` can race `startRendering`.** In web-audio-api-rs 1.7.0 a suspend's
+  quantum is registered when its async future is first polled, and `start_rendering` takes the
+  renderer, after which a suspend fails with "cannot suspend when rendering has already
+  started". The binding runs both on a runtime, so under load `startRendering()` can be polled
+  first although `suspend()` was called first in the same tick, and the suspend rejects with
+  `InvalidStateError: Error in async function`. Yielding a macrotask between them does not
+  prevent it. Callers retry the whole render on a fresh context (decision 0010's amendment); a
+  suspend whose rejection is not awaited drops its window silently, so await it with
+  `startRendering()`.
