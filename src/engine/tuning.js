@@ -1,5 +1,6 @@
 // Loads and validates tuning files (decision 0004). Two kinds: a relative tuning repeats its
 // degrees every period and needs a key; an absolute tuning is a fixed list of frequencies in Hz.
+import { isObject } from "./is-object.js";
 
 /**
  * @typedef {object} Reference the frequency of one degree in one period, which fixes every
@@ -122,7 +123,7 @@ function positive(id, what, value) {
  * @param {(name: string, values: unknown[]) => number[]} toDegrees
  */
 function loadScales(id, scales, size, toDegrees) {
-  if (typeof scales !== "object" || scales === null || Array.isArray(scales)) {
+  if (!isObject(scales)) {
     throw new Error(`${id}: "scales" must be an object of named scales`);
   }
   /** @type {Record<string, readonly number[]>} */
@@ -180,8 +181,7 @@ function loadRelative(id, file) {
 
   const reference = /** @type {Partial<Reference> | undefined} */ (file.reference);
   if (
-    typeof reference !== "object" ||
-    reference === null ||
+    !isObject(reference) ||
     Object.keys(reference).sort().join() !== "degree,hz,octave" ||
     !Number.isInteger(reference.degree) ||
     (reference.degree ?? -1) < 0 ||
@@ -279,7 +279,7 @@ export const isAbsolute = (tuning) => tuning.kind === "absolute";
  * @returns {Tuning}
  */
 export function loadTuning(id, file) {
-  if (typeof file !== "object" || file === null || Array.isArray(file)) {
+  if (!isObject(file)) {
     throw new Error(`${id}: a tuning file must hold an object`);
   }
   const fields = /** @type {Record<string, unknown>} */ (file);
