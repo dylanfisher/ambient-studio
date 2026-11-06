@@ -13,7 +13,8 @@ const MAX_DATA_BYTES = 2 ** 32 - 1 - (HEADER_BYTES - 8) - 1;
 
 /**
  * Writes a 24-bit PCM WAV: a plain 44-byte header (format tag 1, not WAVE_FORMAT_EXTENSIBLE)
- * followed by the PCM, plus a pad byte when the data size is odd.
+ * followed by the PCM, plus a pad byte when the data size is odd. Throws rather than overwrite
+ * an existing file.
  * @param {string} path
  * @param {Uint8Array} pcm interleaved 24-bit PCM from `encodePcm24`
  * @param {WavFormat} format
@@ -40,7 +41,7 @@ export async function writeWav(path, pcm, { channelCount, sampleRate }) {
   header.writeUInt16LE(PCM24_BYTES * 8, 34);
   header.write("data", 36, "latin1");
   header.writeUInt32LE(pcm.length, 40);
-  const file = await open(path, "w");
+  const file = await open(path, "wx");
   try {
     await file.writev(pad ? [header, pcm, new Uint8Array(1)] : [header, pcm]);
   } finally {
