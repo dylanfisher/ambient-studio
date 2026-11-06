@@ -14,6 +14,7 @@ import { mkdir, mkdtemp, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { EXCERPT_SECONDS } from "../domain/excerpt-seconds.js";
 import { extractFeatures } from "../domain/extract-features.js";
+import { lintResult } from "../domain/lint-result.js";
 import { normalize } from "../domain/normalize.js";
 import { NEAR_SILENCE, renderChecks } from "../domain/render-checks.js";
 import { excerptOffset } from "../engine/excerpt-offset.js";
@@ -60,22 +61,29 @@ function cacheFile({ genomeId, seed, target, duration }) {
   return `${genomeId}-seed${seed}-${duration}s-${target}LUFS-${producer}.wav`;
 }
 
+/** The rule of the finding a render gets when normalize throws on it and near-silence passed. */
+export const NORMALIZE_FAILED = "normalize";
+
 /**
- * The audio the owner hears, or null when normalize can't lift the render: on silence, or past
- * its gain cap. Both happen only under the near-silence check's floor (0023), so that check has
- * already failed; any other throw is a fault and is rethrown.
+ * The audio the owner hears, or null when normalize throws on the render, with the checks that
+ * say why. On silence and past its gain cap the near-silence check has already failed (0023);
+ * any other throw, such as a limiter that can't reach the target, adds a finding with
+ * normalize's message. Either way it is one candidate's problem, not the job's.
  * @param {RenderResult} raw
  * @param {Genome} genome
  * @param {number} target
  * @param {LintResult} checks
- * @returns {Normalized | null}
+ * @returns {{ heard: Normalized | null, checks: LintResult }}
  */
 function heardAudio(raw, genome, target, checks) {
   try {
-    return normalize(raw.channels, raw.sampleRate, { target, ceiling: genome.ceiling });
+    const heard = normalize(raw.channels, raw.sampleRate, { target, ceiling: genome.ceiling });
+    return { heard, checks };
   } catch (error) {
-    if (checks.findings.some(({ rule }) => rule === NEAR_SILENCE)) return null;
-    throw error;
+    if (checks.findings.some(({ rule }) => rule === NEAR_SILENCE)) return { heard: null, checks };
+    const message = error instanceof Error ? error.message : String(error);
+    const finding = { path: "$", rule: NORMALIZE_FAILED, message };
+    return { heard: null, checks: lintResult([...checks.findings, finding]) };
   }
 }
 
@@ -103,8 +111,8 @@ async function writeCached(folder, file, channels, sampleRate) {
 /**
  * The excerpt of `genomeId` at `seed`, `EXCERPT_SECONDS` long, from the cache when a row for it
  * was made under this target and producer and its file is there, else rendered and cached. A
- * render normalize can't lift is cached as rendered, with no gain, and its near-silence check
- * fails; the call itself throws only on a fault.
+ * render normalize throws on is cached as rendered, with no gain, and a failed check says why;
+ * the call itself throws only on a fault outside normalize.
  * @param {Store} store
  * @param {string} folder the render-cache folder
  * @param {ExcerptRequest} request
@@ -122,8 +130,7 @@ export async function renderExcerpt(store, folder, { genomeId, seed, target }) {
 
   const raw = await renderOffline(genome, { seed, duration, offset });
   requireFinite(raw.channels);
-  const checks = renderChecks(raw, genome);
-  const heard = heardAudio(raw, genome, target, checks);
+  const { heard, checks } = heardAudio(raw, genome, target, renderChecks(raw, genome));
   const features = extractFeatures(raw, heard);
   const file = cacheFile({ genomeId, seed, target, duration });
   await writeCached(folder, file, (heard ?? raw).channels, raw.sampleRate);

@@ -11,11 +11,17 @@ import { integratedLoudness } from "../../src/domain/integrated-loudness.js";
 import { NEAR_SILENCE } from "../../src/domain/render-checks.js";
 import { excerptOffset } from "../../src/engine/excerpt-offset.js";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
+import noiseBedGenome from "../../src/engine/genomes/noise-bed.json" with { type: "json" };
 import { requireGenome } from "../../src/engine/validate-genome.js";
 import { putGenome } from "../../src/server/generation-store.js";
 import { createJobRunner } from "../../src/server/job-runner.js";
 import { PRODUCER } from "../../src/server/producer.js";
-import { renderExcerpt, renderExcerpts, vibeLoudness } from "../../src/server/render-excerpt.js";
+import {
+  NORMALIZE_FAILED,
+  renderExcerpt,
+  renderExcerpts,
+  vibeLoudness,
+} from "../../src/server/render-excerpt.js";
 import { putRender } from "../../src/server/render-store.js";
 import { createVibe } from "../../src/server/vibe-store.js";
 import { decodeWav } from "../support/golden.js";
@@ -46,7 +52,14 @@ async function setup() {
   const vibe = createVibe(store, { name: "v", brief: "b", constraints: {}, softTargets: {} });
   const drone = putGenome(store, vibe.id, droneGenome);
   const silent = putGenome(store, vibe.id, silentGenome);
-  return { ...made, cache: made.paths.renderCache, drone: drone.id, silent: silent.id };
+  const noise = putGenome(store, vibe.id, noiseBedGenome);
+  return {
+    ...made,
+    cache: made.paths.renderCache,
+    drone: drone.id,
+    silent: silent.id,
+    noise: noise.id,
+  };
 }
 
 /** @param {string} folder */
@@ -169,6 +182,46 @@ describe("renderExcerpts as a job", () => {
     });
     expect(quiet?.render.features).toMatchObject({ raw: { loudness: null }, heard: null });
     expect(existsSync(join(cache, quiet?.render.file ?? ""))).toBe(true);
+    expect(loud?.render.checks).toMatchObject({ ok: true });
+  });
+
+  test("normalize failing with near-silence passing is a failed check, and the job goes on", async () => {
+    // The noise-bed golden at seed 1 reads -41.6 LUFS, above the near-silence floor, and its
+    // limiter stops 2.3 LU short of -10 LUFS (measured on mbp2021 when this test was written).
+    const { store, cache, drone, noise } = await setup();
+    const runner = createJobRunner({ now: () => 0 });
+    const job = runner.add("excerpts", (context) =>
+      renderExcerpts(
+        store,
+        cache,
+        [
+          { genomeId: noise, seed: 1, target: -10 },
+          { genomeId: drone, seed: SEED, target: -10 },
+        ],
+        context,
+      ),
+    );
+    await runner.idle();
+    const status = runner.get(job.id);
+    expect(status).toMatchObject({ state: "done", progress: { done: 2, total: 2 } });
+    const [peaky, loud] = /** @type {import("../../src/server/render-excerpt.js").Excerpt[]} */ (
+      status.result
+    );
+    expect(peaky?.render.checks).toEqual({
+      ok: false,
+      findings: [
+        {
+          path: "$",
+          rule: NORMALIZE_FAILED,
+          message: expect.stringMatching(/can't reach -10 LUFS/),
+        },
+      ],
+    });
+    expect(peaky?.render.features).toMatchObject({
+      raw: { loudness: expect.any(Number) },
+      heard: null,
+    });
+    expect(existsSync(join(cache, peaky?.render.file ?? ""))).toBe(true);
     expect(loud?.render.checks).toMatchObject({ ok: true });
   });
 
