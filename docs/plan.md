@@ -26,7 +26,7 @@ unneeded stays unused rather than being given to another step.
 |---|---|---|---|
 | 0002 | node-web-audio-api, pinned at 2.2.0 | 1a | [written](decisions/0002-pin-node-web-audio-api.md) |
 | 0003 | Seeded randomness: the counter-based PRNG and thinning | 1b | reserved |
-| 0004 | Pitch: scales, modes and tunings | 1b | reserved |
+| 0004 | Pitch: tunings (relative and absolute-frequency), scales, Scala import | 1b | reserved |
 | 0005 | Genome schema as one descriptor table | 1c | [written](decisions/0005-genome-schema-table.md) |
 | 0006 | Macros as bounded offsets | 1d | [written](decisions/0006-macros-bounded-offsets.md) |
 | 0007 | Trajectories, the render time base and excerpts | 1d | reserved |
@@ -105,7 +105,30 @@ their numbers are written in Result; the pending owner checks below are logged.
   differs from what the plan assumes, the builder amends 0002 and reports it; the orchestrator
   changes 1f, 1j and 1k before briefing them. If renders are not identical across processes, the
   run stops here: golden hashes (0009) can't work, and the owner decides what replaces them.
-- **Parallel:** none. Every later step depends on it.
+- **Parallel:** with 1r only. Every other later step depends on it.
+
+#### 1r — Reference review
+
+- **Builds:** nothing in git. A review of two local sources, which are the first examples of what
+  the generator should be able to make:
+  - The reference recordings in `~/Downloads/ambiance-inspiration/` (four folders of FLAC and
+    M4A files). Measure each track with ffmpeg: integrated loudness and true peak, duration,
+    stereo width, spectral peaks over time, how often new notes start, and how long tails ring.
+    Then describe what the tracks share: which voices they would need, how dense and how slow
+    they are, and what timbres they use.
+  - The tuning research in `tmp/research/`: `colundi.md`, the interviews in `interviews/`, and
+    the Scala files in `data/`. The recordings use the Colundi sequence, a microtonal tuning of
+    128 absolute frequencies with no octave and no root. Check the recordings' spectral peaks
+    against the 128 values to confirm it, and note which subsets the tracks seem to use.
+- **Writes:** `tmp/research/review.md` (untracked): the measured numbers per track, the shared
+  qualities, and a list of what phase 1 must change, step by step. The orchestrator folds that
+  list into 1b–1m before it briefs them, written as engine requirements in plain technical
+  terms.
+- **Tests first:** none; it ships no code.
+- **Records:** none. What it finds lands in the records of the steps it changes, 0004 first.
+- **Pending owner check:** read `review.md` against your own listening and correct anything it
+  got wrong before 1b starts.
+- **Parallel:** with 1a. It must finish before 1b is briefed.
 
 #### 1b — Seeded randomness and pitch
 
@@ -116,23 +139,44 @@ their numbers are written in Result; the pending owner checks below are logged.
   optimizers (phase 5) and morphing (phase 6) depend on. Probabilistic triggers use thinning:
   one draw per candidate slot, compared with the density at that time. `Math.random` and
   `Date.now` are banned in `src/engine` by a lint rule or an `arch.js` check, planted in its
-  self-test. Pitch helpers: scales and modes as degree lists, tunings (12-TET, just intonation
-  ratio tables, custom cents per degree), and `frequency(key, mode, tuning, degree, octave)`.
+  self-test. Pitch, built so a new tuning or scale is a data file rather than code:
+  - Two kinds of tuning. A **relative** tuning has a period (an octave or any other interval,
+    so non-octave tunings work) and degrees given as cents or ratios: 12-TET and any other equal
+    division, just intonation ratio tables, custom cents per degree. An **absolute** tuning is a
+    sorted list of frequencies in Hz with no period and no root, so key and transposition don't
+    apply to it.
+  - A scale is a subset of a tuning's degrees. Modes are named scales of a relative tuning.
+  - Tunings live as files in `src/engine/tunings/`, one per tuning, read through one loader. The
+    loader also reads Scala `.scl` files (cents and ratio lines, comments, any period), the
+    format most published tunings come in, so trying a new tuning is dropping in a file.
+  - The Colundi sequence ships as an absolute tuning file with all 128 frequencies, from
+    10.8 Hz to 12 kHz, along with the 38-value subset as a named scale of it.
+  - `frequency(pitch, degree, octave)` takes a resolved pitch setting (tuning, scale, and key for
+    relative tunings). Octave wraps for relative tunings; an absolute tuning has no octave and
+    an out-of-range degree throws.
+  - `tuningFrequencies(pitch, loHz, hiHz)` lists every frequency the scale allows in a band, so
+    voices can draw partials from the same set as their notes (1j).
 - **Tiers:** engine.
 - **Tests first:** the PRNG gives fixed values for fixed keys (literals in the test); draws for
   different voice ids don't share values; a draw doesn't depend on which other draws were made
   first; with thinning, raising density by 10% keeps every original event and adds new ones;
   the ban catches a planted `Math.random`. Pitch: A4 = 440 Hz in 12-TET; D dorian's degrees; a
   just fifth is exactly 3/2; custom cents shift by the stated amount; out-of-range degrees wrap
-  octaves.
-- **Records:** writes 0003 (the hash, the key layout and thinning) and 0004 (pitch, tuning and
-  reference pitch). Both change renders if they change later, under
+  octaves. Tunings: every Colundi degree returns its listed Hz exactly, and a scale picked from it
+  returns only member frequencies; key or octave on an absolute tuning throws; a 19-EDO tuning
+  and a non-octave equal division (13 steps over 3/1) give the expected frequencies; a `.scl`
+  file with cents lines, ratio lines and comments loads to the same tuning as the equivalent
+  JSON file; every file in `src/engine/tunings/` loads and validates; `tuningFrequencies` returns
+  only scale members inside the band.
+- **Records:** writes 0003 (the hash, the key layout and thinning) and 0004 (the two tuning
+  kinds, the file format and Scala import, scales as subsets, and reference pitch). Both change renders if they change later, under
   [0009](decisions/0009-engine-version-golden-hashes.md).
 - **Parallel:** with 1c or 1e.
 
 #### 1c — Genome schema and validator
 
-- **Builds:** the descriptor mechanism and the global section of the schema (key, mode, tuning,
+- **Builds:** the descriptor mechanism and the global section of the schema (tuning, scale, key
+  only for relative tunings,
   pulse or none, master reverb and delay, stereo width, loudness target, voice list, macro
   values), the assembly of voice descriptors, voice ids and each voice's `start`, `end` and
   `level`, `validateGenome()` returning the normalized genome or every error with its path, the
@@ -144,7 +188,8 @@ their numbers are written in Result; the pending owner checks below are logged.
 - **Tests first:** a valid genome passes and comes back with every default written out; each
   descriptor rule has a fixture that fails with a path-specific message; unknown keys fail;
   every error is listed, not just the first; validating a normalized genome returns it
-  unchanged; `canonicalGenome` ignores key order and voice order; `schemaText()` stays under 3,000
+  unchanged; a genome naming a key with an absolute tuning fails, as does a scale not defined in
+  its tuning; `canonicalGenome` ignores key order and voice order; `schemaText()` stays under 3,000
   characters for the full phase 1 schema (the test reads the assembled schema, so later voices
   are held to it too).
 - **Records:** governed by [0005](decisions/0005-genome-schema-table.md).
@@ -276,11 +321,14 @@ their numbers are written in Result; the pending owner checks below are logged.
 #### 1j — Pad/swell and bell/pluck voices
 
 - **Builds:** the pad/swell voice (ADSR on Gain, chords from the mode via 1b's pitch helpers) and
-  the bell/pluck voice (FM from oscillator pairs, and Karplus-Strong; probabilistic triggers by
-  thinning), each with its descriptors, macro mappings and a golden genome that uses a
-  trajectory and a non-neutral macro.
+  the bell/pluck voice (FM from oscillator pairs, Karplus-Strong, and additive sines whose
+  partials can be drawn from the tuning through `tuningFrequencies`, for struck-object timbres
+  that fit non-octave tunings; probabilistic triggers by thinning), each with its descriptors,
+  macro mappings and a golden genome that uses a trajectory and a non-neutral macro. The
+  bell/pluck golden genome uses the Colundi tuning with tuning-drawn partials.
 - **Tiers:** engine.
-- **Tests first:** a golden hash for each voice; chord notes are all in the genome's mode; the
+- **Tests first:** a golden hash for each voice; chord notes are all in the genome's scale;
+  tuning-drawn partials are all members of the scale's frequency set; the
   trigger count over a fixed duration matches the seed exactly and its density parameter on
   average; envelopes ramp rather than jump (no sample-to-sample step above a stated size at note
   edges); `cost()` stays in budget at the voice's maximum density.
@@ -339,7 +387,8 @@ their numbers are written in Result; the pending owner checks below are logged.
 - **Builds:** `./scripts/render` and its CLI module, `./scripts/bench` (speed and peak memory), a
   manual loudness-oracle script that compares our meter with ffmpeg's on an export, and
   `src/engine/genomes/example.json`: a few minutes of drone, pad, noise bed and sparse bells in
-  D dorian at −20 LUFS. The CLI module joins `knip.json`'s entries.
+  D dorian at −20 LUFS, and `src/engine/genomes/colundi.json`, the same voices in a Colundi
+  scale chosen from 1r's review. The CLI module joins `knip.json`'s entries.
 - **Tiers:** server; scripts/.
 - **Tests first:** the CLI's argument parser rejects a missing `--out`, a non-numeric seed and an
   unknown flag, each with a message; a CLI run on a 3 s golden genome into a temp folder writes
@@ -594,3 +643,6 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   for provenance; a `producer` cache key on derived rows, for the owner to confirm against
   AGENTS.md; an explicit loudness `target`; rated audio in backups; the evaluation as a server job;
   20 random seeds in the gate.
+- 2026-11-06: the owner added step 1r, a review of reference recordings and tuning research
+  before 1b. 1b now covers absolute-frequency tunings, non-octave tunings, tuning files and
+  Scala import, with the Colundi sequence shipped as a tuning; 1c, 1j and 1m follow from it.

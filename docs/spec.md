@@ -64,8 +64,11 @@ feedback.
   - sparse bells / plucks (FM or Karplus-Strong, probabilistic triggers)
   - noise beds (wind, rain, surf, filtered noise)
   - optional sample layer from a local folder of my field recordings
-- Global settings: key, scale or mode, tuning (12-TET, just intonation, custom cents), pulse (often
-  none), master reverb and delay, stereo width, loudness target.
+- Global settings: tuning, scale or mode, key (for tunings with a root), pulse (often none),
+  master reverb and delay, stereo width, loudness target. Tunings are data files: relative ones
+  (12-TET or any equal division, just intonation, custom cents, any period, octave or not) and
+  absolute ones (a fixed set of frequencies in Hz with no root, such as the Colundi sequence).
+  Scala `.scl` files load directly.
 - **Macro controls:** a small set of high-level knobs mapped onto many parameters: brightness,
   density, motion, depth/space, warmth, tension. The vibe, track automation and optimizers work mostly
   on these macros, which keeps the search space small.
