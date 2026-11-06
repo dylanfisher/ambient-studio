@@ -3,6 +3,9 @@ import { once } from "node:events";
 import { createReadStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
 
+/** The flac CLI, found on PATH (0012). */
+export const FLAC = "flac";
+
 /**
  * Encodes a WAV file to FLAC with the `flac` CLI found on PATH (0012). The WAV is streamed to
  * flac's stdin, so a long render isn't held in memory a second time.
@@ -10,7 +13,7 @@ import { pipeline } from "node:stream/promises";
  * @param {string} flacPath
  */
 export async function writeFlac(wavPath, flacPath) {
-  const child = spawn("flac", ["--best", "--silent", "-o", flacPath, "-"], {
+  const child = spawn(FLAC, ["--best", "--silent", "-o", flacPath, "-"], {
     stdio: ["pipe", "ignore", "pipe"],
   });
   let stderr = "";

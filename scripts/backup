@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Back up the database and the rated audio into a dated folder under the backups folder, then
+# check the copy's rated audio against its rows (decision 0021). Reads the same config as the
+# server.
+set -euo pipefail
+
+exec node "$(dirname "$0")/../src/server/backup-cli.js" "$@"
