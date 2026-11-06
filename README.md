@@ -17,7 +17,8 @@ used from other machines on the LAN.
 
 - macOS, with Node 26.12.1 (`.nvmrc`), pnpm and uv (`brew install pnpm uv`)
 - An OpenAI-compatible LLM server. The URL and model id are set in
-  `~/.config/ambient-studio/config.json`
+  `~/.config/ambient-studio/config.json`: copy `src/config/example.json` there and edit it
+  ([0019](docs/decisions/0019-config-file-and-paths.md) lists the keys)
 
 ## Use it
 

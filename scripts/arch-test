@@ -19,7 +19,11 @@ export const voice = seed;
 JS
 write "$good/src/engine/seed.js" <<<'export const seed = 1;'
 write "$good/src/domain/lint.js" <<<'import { voice } from "../engine/voice.js";'
-write "$good/src/config/config.js" <<<'import { readFileSync } from "node:fs";'
+write "$good/src/config/config.js" <<'JS'
+import { readFileSync } from "node:fs";
+import { env } from "node:process";
+export const file = process.env.AMBIENT_STUDIO_CONFIG ?? process["env"].HOME;
+JS
 write "$good/src/server/main.js" <<'JS'
 import { createServer } from "node:http";
 import { lint } from "../domain/lint.js";
@@ -48,6 +52,12 @@ const seed = 1;
 export const noise = () => Math.random() * seed;
 JS
 write "$bad/src/engine/clock.js" <<<'export const now = Date.now();'
+write "$bad/src/server/port.js" <<'JS'
+const fallback = 1;
+export const port = Number(process.env.PORT);
+JS
+write "$bad/src/server/home.js" <<<'export const home = process["env"].HOME;'
+write "$bad/src/server/env.js" <<<'import { argv, env } from "node:process";'
 
 out=$(node scripts/arch.js --root "$bad" 2>&1)
 status=$?
@@ -65,7 +75,10 @@ for want in \
   'src/config/config.js: config may not import engine ("../engine/seed.js")' \
   'src/stray/thing.js: not inside a tier' \
   'src/engine/noise.js:2: uses Math.random; the engine draws only from its seeded PRNG' \
-  'src/engine/clock.js:1: uses Date.now; the engine draws only from its seeded PRNG'; do
+  'src/engine/clock.js:1: uses Date.now; the engine draws only from its seeded PRNG' \
+  'src/server/port.js:2: reads process.env; only src/config reads the environment' \
+  'src/server/home.js:1: reads process.env; only src/config reads the environment' \
+  'src/server/env.js:1: reads process.env; only src/config reads the environment'; do
   if ! grep -qF -- "$want" <<<"$out"; then
     printf 'arch-test: no finding\n  %s\nin:\n%s\n' "$want" "$out" >&2
     problems=$((problems + 1))
