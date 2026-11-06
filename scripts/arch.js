@@ -31,7 +31,7 @@ const allowed = {
 const browserTiers = new Set(["engine", "domain", "web"]);
 const unseeded = /\b(Math\.random|Date\.now)\b/g;
 const envRead =
-  /\bprocess\s*(?:\.\s*env\b|\[\s*["'`]env["'`]\s*\])|import\s*\{[^}]*\benv\b[^}]*\}\s*from\s*["'](?:node:)?process["']/;
+  /\bprocess\s*(?:\??\.\s*env\b|\?\.\s*\[\s*["'`]env["'`]\s*\]|\[\s*["'`]env["'`]\s*\])|\{[^}]*\benv\b[^}]*\}\s*=\s*process\b|import\s*\{[^}]*\benv\b[^}]*\}\s*from\s*["'](?:node:)?process["']/;
 
 const importPattern =
   /(?:^|[\s;])(?:import|export)\s(?:[^'"`;]*?\sfrom\s)?\s*["']([^"']+)["']|import\(\s*["']([^"']+)["']\s*\)/g;

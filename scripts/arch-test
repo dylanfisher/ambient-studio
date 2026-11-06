@@ -57,6 +57,8 @@ const fallback = 1;
 export const port = Number(process.env.PORT);
 JS
 write "$bad/src/server/home.js" <<<'export const home = process["env"].HOME;'
+write "$bad/src/server/destructured.js" <<<'const { env } = process;'
+write "$bad/src/server/optional.js" <<<'export const home = process?.env.HOME;'
 write "$bad/src/server/env.js" <<<'import { argv, env } from "node:process";'
 
 out=$(node scripts/arch.js --root "$bad" 2>&1)
@@ -78,6 +80,8 @@ for want in \
   'src/engine/clock.js:1: uses Date.now; the engine draws only from its seeded PRNG' \
   'src/server/port.js:2: reads process.env; only src/config reads the environment' \
   'src/server/home.js:1: reads process.env; only src/config reads the environment' \
+  'src/server/destructured.js:1: reads process.env; only src/config reads the environment' \
+  'src/server/optional.js:1: reads process.env; only src/config reads the environment' \
   'src/server/env.js:1: reads process.env; only src/config reads the environment'; do
   if ! grep -qF -- "$want" <<<"$out"; then
     printf 'arch-test: no finding\n  %s\nin:\n%s\n' "$want" "$out" >&2
