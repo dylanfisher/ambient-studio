@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { OfflineAudioContext } from "node-web-audio-api";
 import { describe, expect, test } from "vitest";
+import { retryOnSuspendRace } from "../../src/server/render-offline.js";
 import {
   FRAMES,
   hashChannels,
@@ -93,14 +94,19 @@ describe("OfflineAudioContext at 48 kHz stereo", () => {
   });
 
   test("starts a node created in a suspend callback on its exact frame", async () => {
-    const ctx = stereoContext(8192);
-    ctx.suspend(SUSPEND_FRAME / SAMPLE_RATE).then(() => {
-      const source = impulse(ctx);
-      source.connect(ctx.destination);
-      source.start(LATE_START_FRAME / SAMPLE_RATE);
-      return ctx.resume();
+    const rendered = await retryOnSuspendRace(async () => {
+      const ctx = stereoContext(8192);
+      const suspended = ctx.suspend(SUSPEND_FRAME / SAMPLE_RATE).then(() => {
+        const source = impulse(ctx);
+        source.connect(ctx.destination);
+        source.start(LATE_START_FRAME / SAMPLE_RATE);
+        return ctx.resume();
+      });
+      // Awaited together, so a refused suspend rejects instead of dropping the impulse.
+      const [buffer] = await Promise.all([ctx.startRendering(), suspended]);
+      return buffer;
     });
-    expect(nonzeroFrames(await ctx.startRendering())).toEqual([LATE_START_FRAME]);
+    expect(nonzeroFrames(rendered)).toEqual([LATE_START_FRAME]);
   });
 });
 
