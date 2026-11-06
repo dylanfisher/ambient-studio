@@ -1,0 +1,22 @@
+{
+  "omlx": {
+    "baseUrl": "http://127.0.0.1:8000",
+    "model": "replace-with-the-model-id-omlx-serves"
+  },
+  "queue": {
+    "requestTimeoutMs": 120000,
+    "firstTokenThresholdMs": 15000,
+    "minGapMs": 2000,
+    "backoffBaseMs": 2000,
+    "maxWaitMs": 120000,
+    "maxTokens": 4096,
+    "contextBudgetTokens": 8192,
+    "sendResponseFormat": false
+  },
+  "dataRoot": "~/Library/Application Support/Ambient Studio/",
+  "fieldRecordings": null,
+  "server": {
+    "host": "0.0.0.0",
+    "port": 4180
+  }
+}

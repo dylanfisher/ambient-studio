@@ -3,7 +3,8 @@
 // Fails on an import edge the table forbids, on a src/ file outside every tier, and on any
 // non-relative import from a tier the browser loads as-is: the web UI has no build step, so a
 // `node:` module or a bare package name there breaks in the browser and nowhere else. Also fails
-// on `Math.random` or `Date.now` in the engine, which must render the same audio from a seed.
+// on `Math.random` or `Date.now` in the engine, which must render the same audio from a seed, and
+// on a `process.env` read outside src/config, the one module that reads the environment (0019).
 // `--root <dir>` checks another tree instead of this repo; scripts/arch-test uses it.
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
@@ -29,6 +30,8 @@ const allowed = {
 };
 const browserTiers = new Set(["engine", "domain", "web"]);
 const unseeded = /\b(Math\.random|Date\.now)\b/g;
+const envRead =
+  /\bprocess\s*(?:\.\s*env\b|\[\s*["'`]env["'`]\s*\])|import\s*\{[^}]*\benv\b[^}]*\}\s*from\s*["'](?:node:)?process["']/;
 
 const importPattern =
   /(?:^|[\s;])(?:import|export)\s(?:[^'"`;]*?\sfrom\s)?\s*["']([^"']+)["']|import\(\s*["']([^"']+)["']\s*\)/g;
@@ -59,6 +62,15 @@ for (const file of walk(src)) {
       for (const match of line.matchAll(unseeded)) {
         problems.push(
           `${shown}:${index + 1}: uses ${match[1]}; the engine draws only from its seeded PRNG`,
+        );
+      }
+    });
+  }
+  if (tier !== "config") {
+    text.split("\n").forEach((line, index) => {
+      if (envRead.test(line)) {
+        problems.push(
+          `${shown}:${index + 1}: reads process.env; only src/config reads the environment`,
         );
       }
     });
