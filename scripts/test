@@ -36,7 +36,9 @@ done
 prefix=() vitest_extra=()
 if [ "$low" = 1 ]; then
   if command -v taskpolicy >/dev/null; then prefix=(taskpolicy -b); else prefix=(nice -n 10); fi
-  vitest_extra=(--maxWorkers=2)
+  # Background priority stretches render tests 4-10x past Vitest's 5 s default; the gate runs at
+  # normal priority with the default.
+  vitest_extra=(--maxWorkers=2 --testTimeout=30000)
 fi
 
 vitest() { ${prefix[@]+"${prefix[@]}"} node_modules/.bin/vitest run ${vitest_extra[@]+"${vitest_extra[@]}"} "$@"; }

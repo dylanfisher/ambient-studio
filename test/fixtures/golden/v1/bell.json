@@ -1,0 +1,37 @@
+{
+  "genome": "bell",
+  "engineVersion": 1,
+  "hashes": {
+    "raw": {
+      "darwin-arm64": {
+        "cpu": "Apple M1 Max",
+        "node": "v26.12.1",
+        "nodeWebAudioApi": "2.2.0",
+        "renders": {
+          "start": {
+            "seed": 1,
+            "offset": 0,
+            "duration": 2,
+            "sha256": "2a22a5ed392e52254c36a42d1b4f206bcdc24ef9a88344afd94f91120005536b",
+            "summary": {
+              "peak": -16.46,
+              "rms": -33.14,
+              "bands": [-83.51, -82.3, -59.42, -33.8, -42.66, -93.24, -104.84, -113.7]
+            }
+          },
+          "end": {
+            "seed": 1,
+            "offset": 58,
+            "duration": 2,
+            "sha256": "59f99fb927c5552a61ff0da5d9c3a614254cb14cc5ed199d78136521ac65355b",
+            "summary": {
+              "peak": -57.22,
+              "rms": -75.46,
+              "bands": [-126.74, -115.99, -76.37, -87.76, -109.46, -162.35, -175.39, -184.36]
+            }
+          }
+        }
+      }
+    }
+  }
+}

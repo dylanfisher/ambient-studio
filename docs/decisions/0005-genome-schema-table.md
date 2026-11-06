@@ -163,3 +163,13 @@ If `tsc` can't express that, the builder of step 1c records what it did instead.
   - **Safe ranges.** A number or int descriptor may carry `safe: [lo, hi]`, the part of its range
     `randomGenome` draws from: stable, and dark and bass-heavy where the parameter sets tone. For
     now `delayFeedback` is 0–0.6 and voice `level` −36 to −6 dB; 1f, 1j and 1k mark their own.
+- 2026-11-06: from step 1j, as built. Each item is provisional: owner to confirm.
+  - **Safe ranges** for the pad and bell are in [0013](0013-pad-and-bell-voices.md): pad notes
+    3–5, attack 4–20 s, release 8–30 s, tone 8–12 dB, swing 6–12 dB; bell density 0.5–8 a
+    minute, decay 2–10 s, partials 4–6, fall 4.5–6 dB.
+  - **Schema text** is 2,462 characters with the pad (247) and the bell (268).
+  - **Registry loading.** `voice-registry.js` adds its built-in voices on first use, from a
+    function that lists them, not from a list built while the module loads. A voice that reads
+    `effectiveParams` imports `effective-params.js`, which imports the registry back; when that
+    voice's module is the first one loaded, a list built at load time would hold it before it
+    exists.

@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "duration": 60,
+  "tuning": "12-tet",
+  "scale": "aeolian",
+  "key": 9,
+  "fadeIn": 1,
+  "fadeOut": 15,
+  "width": -3,
+  "reverbDecay": 3,
+  "reverbLevel": -14,
+  "delayTime": 0.6,
+  "delayFeedback": 0.3,
+  "delayLevel": -26,
+  "macros": { "brightness": 0.3 },
+  "voices": [
+    {
+      "id": "pad",
+      "type": "pad",
+      "level": -10,
+      "detune": 5,
+      "notes": 5,
+      "hold": 20,
+      "attack": 2,
+      "release": 6,
+      "tone": { "points": [[0, 10], [40, 5, "smooth"]] },
+      "swell": 30,
+      "swing": 8
+    }
+  ]
+}

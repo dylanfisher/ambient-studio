@@ -150,3 +150,8 @@ rounded; `renderPlan` (1f) converts it to frames.
   - **Fades** are sampled on the control grid like every other parameter: the fade-in rises
     from 0 at timeline 0, the fade-out falls to 0 at the last grid time before `duration`, both
     along the `smooth` curve, so a render ends in exact zeros.
+- 2026-11-06: from step 1j, provisional: owner to confirm. The pad adds no pre-roll: chords
+  sounding at a render's start start there with their phase and gain from timeline time, as the
+  drone's oscillators do. The bell adds its `decay`, the length of its notes
+  ([0013](0013-pad-and-bell-voices.md)). Excerpts of both match their windows of full renders
+  within the tolerance above.

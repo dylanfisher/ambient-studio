@@ -8,6 +8,14 @@ import { GLOBAL_PARAMS, MACROS } from "./genome-schema.js";
 /** @typedef {keyof typeof MACROS} MacroName */
 
 /**
+ * Each macro's name, so a voice type's rows name a macro through the one table that defines it.
+ * @type {{ readonly [K in MacroName]: K }}
+ */
+export const MACRO = /** @type {any} */ (
+  Object.freeze(Object.fromEntries(Object.keys(MACROS).map((name) => [name, name])))
+);
+
+/**
  * @typedef {object} MacroRow
  * @property {MacroName} macro
  * @property {string} param a parameter of the table the row belongs to

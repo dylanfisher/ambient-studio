@@ -1,23 +1,26 @@
 // Renders are short (2–6 s) to keep the gate light on a machine that also serves omlx.
 /** @import { Genome } from "../../src/engine/genome-schema.js" */
-/** @import { RenderResult } from "../../src/engine/render-plan.js" */
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
+import { bellNotes } from "../../src/engine/bell.js";
 import { ENGINE_VERSION } from "../../src/engine/engine-version.js";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
 import { randomGenome } from "../../src/engine/random-genome.js";
 import { requireGenome } from "../../src/engine/validate-genome.js";
 import { registerVoice, unregisterVoice } from "../../src/engine/voice-registry.js";
+import {
+  difference,
+  expectExcerptMatches,
+  renderUpFront,
+  rms,
+} from "../support/compare-renders.js";
 import { PULSE_EVERY, pulseVoice } from "../support/pulse-voice.js";
 import { renderOffline } from "../support/render-offline.js";
 
 const RATE = 48000;
-// The stated tolerances, from renders measured on mbp2021: stems summed differ from the mix by
-// float rounding only (decision 0010), and an excerpt from its window of a full render by at
-// most a peak of 1e-5 with the difference at least 100 dB under the signal (decision 0007).
+// The stated tolerance, from renders measured on mbp2021: stems summed differ from the mix by
+// float rounding only (decision 0010).
 const STEM_PEAK = 1e-6;
 const STEM_BELOW_DB = 120;
-const EXCERPT_PEAK = 1e-5;
-const EXCERPT_BELOW_DB = 100;
 const golden = requireGenome(droneGenome, "the drone golden genome");
 
 /** The golden drone plus a second drone higher up. */
@@ -31,56 +34,6 @@ const pair = requireGenome(
   },
   "a two-drone genome",
 );
-
-/**
- * Largest absolute difference between two renders, and the difference's RMS in dB below the
- * reference's RMS.
- * @param {RenderResult} result
- * @param {RenderResult} reference
- */
-function difference(result, reference) {
-  let peak = 0;
-  let diff = 0;
-  let signal = 0;
-  reference.channels.forEach((ref, c) => {
-    const data = /** @type {Float32Array} */ (result.channels[c]);
-    expect(data.length).toBe(ref.length);
-    for (let i = 0; i < ref.length; i++) {
-      const d = (data[i] ?? 0) - (ref[i] ?? 0);
-      peak = Math.max(peak, Math.abs(d));
-      diff += d * d;
-      signal += (ref[i] ?? 0) ** 2;
-    }
-  });
-  return { peak, belowDb: 10 * Math.log10(signal / diff) };
-}
-
-/**
- * Renders `full` seconds from 0 and an excerpt of `length` seconds at `offset`, and checks the
- * excerpt against the same window of the full render within 0007's tolerance.
- * @param {Genome} genome
- * @param {{ seed: number; full: number; offset: number; length: number }} times
- */
-async function expectExcerptMatches(genome, { seed, full, offset, length }) {
-  const whole = await renderOffline(genome, { seed, duration: full });
-  const excerpt = await renderOffline(genome, { seed, duration: length, offset });
-  const from = Math.round(offset * RATE);
-  const window = {
-    ...whole,
-    channels: whole.channels.map((c) => c.slice(from, from + Math.round(length * RATE))),
-  };
-  const { peak, belowDb } = difference(excerpt, window);
-  expect(peak).toBeLessThan(EXCERPT_PEAK);
-  expect(belowDb).toBeGreaterThan(EXCERPT_BELOW_DB);
-  return { excerpt, window };
-}
-
-/** @param {RenderResult} result */
-const rms = (result) =>
-  Math.sqrt(
-    result.channels.reduce((sum, c) => sum + c.reduce((s, x) => s + x * x, 0), 0) /
-      result.channels.reduce((n, c) => n + c.length, 0),
-  );
 
 describe("render", () => {
   test("gives identical samples for the same inputs, with the engine version", async () => {
@@ -161,10 +114,7 @@ describe("render", () => {
 
   test("scheduling in suspend windows renders the same samples as scheduling up front", async () => {
     const windowed = await renderOffline(golden, { seed: 1, duration: 5 });
-    // Without `suspend`, render() treats the context as live and creates every window now.
-    const upFront = await renderOffline(golden, { seed: 1, duration: 5 }, (ctx) =>
-      Object.defineProperty(ctx, "suspend", { value: undefined }),
-    );
+    const upFront = await renderUpFront(golden, { seed: 1, duration: 5 });
     expect(upFront.channels).toEqual(windowed.channels);
   });
 
@@ -293,9 +243,15 @@ describe("render", () => {
       for (const channel of result.channels) {
         expect(channel.every(Number.isFinite), `seed ${seed}`).toBe(true);
       }
+      // A bell plays only the notes its seed fires, so a genome of bells alone may play none
+      // in 2 s.
+      const silent = genome.voices.every(
+        (v) => v.type === "bell" && bellNotes(genome, v, seed, RATE, 0, 2).length === 0,
+      );
+      expect(rms(result) > 0, `seed ${seed}`).toBe(!silent);
       if (rms(result) > 0) sounding++;
     }
-    expect(sounding).toBe(20);
+    expect(sounding).toBeGreaterThan(15);
     // About 1.5 s alone; more when the suite runs at background priority beside other files.
   }, 30_000);
 });
@@ -335,9 +291,7 @@ describe("render, with a voice that creates events window by window", () => {
 
   test("scheduling in suspend windows renders the same samples as scheduling up front", async () => {
     const windowed = await renderOffline(pulses(), { seed: 1, duration: 7 });
-    const upFront = await renderOffline(pulses(), { seed: 1, duration: 7 }, (ctx) =>
-      Object.defineProperty(ctx, "suspend", { value: undefined }),
-    );
+    const upFront = await renderUpFront(pulses(), { seed: 1, duration: 7 });
     expect(upFront.channels).toEqual(windowed.channels);
   });
 
