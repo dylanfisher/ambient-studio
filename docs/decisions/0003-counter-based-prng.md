@@ -61,3 +61,10 @@ pure function of its key, and `fires(seed, voiceId, eventIndex, density)` for tr
   take. The empty string is the natural one; step 1c's voice-id rule should forbid it for voices.
 - Changing the hash, the initial state or the key layout changes renders and bumps the engine
   version (0009).
+
+## Amendments
+
+- 2026-11-06: from step 1d, provisional: owner to confirm. Draws under voice id "" take their
+  slot from `GENOME_SLOT` in `prng.js` (`excerpt` 1, `randomGenome` 2), one list so two uses
+  never share a key. `randomGenome` numbers its draws in order, as event indices 0, 1, 2…; it
+  isn't a render, so a draw moving when the registry gains a voice type doesn't matter.

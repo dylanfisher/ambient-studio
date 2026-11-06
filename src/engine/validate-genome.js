@@ -5,6 +5,7 @@
 /** @import { ValidationError } from "./validation-error.js" */
 import { checkValue } from "./descriptor.js";
 import {
+  GENOME_KEY,
   GLOBAL_PARAMS,
   MACROS,
   MAX_VOICES,
@@ -23,7 +24,7 @@ import { findVoiceType, voiceTypeIds } from "./voice-registry.js";
 
 /** @typedef {Record<string, unknown>} Fields */
 
-const GENOME_KEYS = ["schemaVersion", "macros", "voices"];
+const GENOME_KEYS = Object.values(GENOME_KEY);
 
 /**
  * Checks `input` against a table and returns its values with defaults written out. A parameter
@@ -190,4 +191,18 @@ export function validateGenome(value) {
   if (errors.length > 0) return { ok: false, errors };
   const genome = { schemaVersion, ...globals, macros: checkedMacros, voices: checkedVoices };
   return { ok: true, genome: /** @type {Genome} */ (genome) };
+}
+
+/**
+ * The normalized genome, for callers that hold a genome they expect to be valid. Throws with
+ * every error listed after `context`.
+ * @param {unknown} value
+ * @param {string} context what the caller was doing, put before the error list
+ * @returns {Genome}
+ */
+export function requireGenome(value, context) {
+  const result = validateGenome(value);
+  if (result.ok) return result.genome;
+  const list = result.errors.map((e) => `${e.path}: ${e.message}`).join("; ");
+  throw new Error(`${context}: ${list}`);
 }

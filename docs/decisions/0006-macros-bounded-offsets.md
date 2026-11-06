@@ -40,3 +40,17 @@ parameter's range. At 0.5 for every macro, effective values equal raw values exa
   never effective values. Where offsets push a parameter against its clamp, the effective value
   stops changing, and optimizers see a flat region there; that is accepted as the cost of
   keeping raw and macro values separate.
+- 2026-11-06: from step 1d, as built. Each item is provisional: owner to confirm.
+  - **Depth** is in units of the parameter's whole range along its scale: a macro at 1 moves a
+    row's parameter by `depth × (max − min)` on a linear scale, or by that share of its octaves
+    on a log one. Depths are from −1 to 1 and not 0. A zero total shift returns the raw value
+    itself, so neutral macros don't even change the last bit. An int is rounded after the shift.
+  - **Rows name only parameters that may be trajectories.** Any macro may be a trajectory, so a
+    moved parameter changes over time, and the engine holds the others fixed for a render.
+    `reverbDecay` sets the impulse response, so `space` moves `reverbLevel` (depth 0.25) and
+    `delayLevel` (0.2) instead of the decay step 1r suggested.
+  - **Where rows live.** `src/engine/macro-table.js` holds the global rows and `checkMacroRows`.
+    Each voice type lists its rows in `macros` (its own parameters or the common ones, such as
+    `level`); `registerVoice` checks them and throws on an unknown macro or parameter, a
+    parameter that can't be a trajectory, a bad depth, or a macro and parameter listed twice.
+    `effectiveParams(genome, t)` in `effective-params.js` is the one reader of both.

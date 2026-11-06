@@ -102,7 +102,8 @@ If `tsc` can't express that, the builder of step 1c records what it did instead.
     degree count.
   - **Pulse.** `pulse` is `none` (default) or `beat`; `bpm` (40–140, default 60) exists only
     with `beat`.
-  - **Master bus.** Delay time 0.1–2 s on a log scale, default 0.75; feedback 0–0.9, default
+  - **Master bus.** Delay time 0.1–2 s on a log scale, default 0.75; feedback 0–0.75 (0.9 until
+    step 1d; see below), default
     0.35; level −40 to −6 dB, default −24. `fadeIn + fadeOut` must not exceed `duration`. Among
     the parameters 1c defines, only `reverbLevel`, `delayFeedback`, `delayLevel`, the macros and
     voice `level` may be trajectories; the rest are fixed per genome.
@@ -138,3 +139,27 @@ If `tsc` can't express that, the builder of step 1c records what it did instead.
     trajectory times and voice `start` and `end` are named as timeline seconds. The global
     part is 1,519 characters, which leaves about 1,480 for the phase 1 voices, about 290 each
     across five.
+- 2026-11-06: from step 1d, as built. Each item is provisional: owner to confirm.
+  - **Trajectories** take the shape in [0007](0007-trajectories-time-base-excerpts.md): points
+    `[seconds, value]` then `[seconds, value, curve]`, times from 0 to 900 s (`MAX_DURATION`,
+    now in `timeline.js`), every curve written out in the stored form.
+  - **Vector paths** are dotted strings: `width`, `macros.space`, `voices.<id>.cutoff`, and
+    `.start` or `.end` after a trajectory's name. A bare path to a trajectory, `.start` on a
+    number, an absent parameter (`key` with an absolute tuning) and an enum or bool path throw,
+    naming the path. A one-point trajectory has `.start` only. `vectorPaths(genome)` lists every
+    number and int path: globals, then macros, then voices by id, each in table order, so
+    reordering voices doesn't change it.
+  - **`fromVector`** collects a trajectory's start and end and maps its interior once. When the
+    old start and end were equal, the affine map is undefined, so each interior point moves by
+    the start's and end's moves blended by its time between the first and last point. A position
+    equal to the encoding of the current value leaves the value untouched, so
+    `fromVector(g, p, toVector(g, p))` returns `g` exactly. The result is validated, and an
+    invalid one (fades longer than the timeline, a voice ending before it starts) throws.
+    When start and end are near-equal but not equal, or interior points lie outside
+    [start, end], the map scales the interior steeply and clamps it to the range: the result is
+    valid, but the shape isn't kept.
+  - **Delay feedback** is capped at 0.75, down from 0.9, so an excerpt's pre-roll stays under
+    about 68 s ([0007](0007-trajectories-time-base-excerpts.md)). No genome is stored yet.
+  - **Safe ranges.** A number or int descriptor may carry `safe: [lo, hi]`, the part of its range
+    `randomGenome` draws from: stable, and dark and bass-heavy where the parameter sets tone. For
+    now `delayFeedback` is 0–0.6 and voice `level` −36 to −6 dB; 1f, 1j and 1k mark their own.

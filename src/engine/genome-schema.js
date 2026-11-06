@@ -5,6 +5,7 @@
 /** @import { Trajectory } from "./trajectory.js" */
 /** @import { VoiceType } from "./voice-registry.js" */
 import { choice, int, number } from "./descriptor.js";
+import { MAX_DURATION } from "./timeline.js";
 import { isAbsolute } from "./tuning.js";
 import { DEFAULT_TUNING, getTuning, tuningIds } from "./tuning-registry.js";
 
@@ -14,14 +15,18 @@ export const SCHEMA_VERSION = 1;
 /** Voice ids are part of every PRNG key, and draws not tied to a voice use "" (decision 0003). */
 export const VOICE_ID = /^[a-z][a-z0-9-]{0,15}$/;
 
+/** The genome's keys besides its global parameters; vector paths use the last two as prefixes. */
+export const GENOME_KEY = Object.freeze({
+  schemaVersion: "schemaVersion",
+  macros: "macros",
+  voices: "voices",
+});
+
 /** The keys every voice has besides its parameters. */
 export const VOICE_KEYS = Object.freeze(["id", "type"]);
 
 /** Most voices a genome may hold; a cap added later would invalidate stored genomes. */
 export const MAX_VOICES = 16;
-
-/** Longest timeline a genome can describe, in seconds; voices' start and end share it. */
-const MAX_DURATION = 900;
 
 const allScales = [
   ...new Set(tuningIds().flatMap((id) => Object.keys(getTuning(id).scales))),
@@ -127,10 +132,11 @@ export const GLOBAL_PARAMS = Object.freeze({
   }),
   delayFeedback: number({
     min: 0,
-    max: 0.9,
+    max: 0.75,
     default: 0.35,
     unit: "",
     trajectory: true,
+    safe: [0, 0.6],
     description: "echo feedback",
   }),
   delayLevel: number({
@@ -184,6 +190,7 @@ export const VOICE_PARAMS = Object.freeze({
     default: -12,
     unit: "dB",
     trajectory: true,
+    safe: [-36, -6],
     description: "voice level",
   }),
   detune: number({

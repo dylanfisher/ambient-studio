@@ -1,6 +1,6 @@
 // The one text form of a genome, which src/server hashes to find duplicates (decision 0005).
 import { isObject } from "./is-object.js";
-import { validateGenome } from "./validate-genome.js";
+import { requireGenome } from "./validate-genome.js";
 
 /**
  * JSON with object keys sorted at every level; arrays keep their order. JSON.stringify already
@@ -26,11 +26,7 @@ function sortedJson(value) {
  * @param {unknown} genome
  */
 export function canonicalGenome(genome) {
-  const result = validateGenome(genome);
-  if (!result.ok) {
-    const list = result.errors.map((e) => `${e.path}: ${e.message}`).join("; ");
-    throw new Error(`can't canonicalize an invalid genome: ${list}`);
-  }
-  const voices = [...result.genome.voices].sort((a, b) => (a.id < b.id ? -1 : 1));
-  return sortedJson({ ...result.genome, voices });
+  const normalized = requireGenome(genome, "can't canonicalize an invalid genome");
+  const voices = [...normalized.voices].sort((a, b) => (a.id < b.id ? -1 : 1));
+  return sortedJson({ ...normalized, voices });
 }
