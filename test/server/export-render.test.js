@@ -53,7 +53,7 @@ describe("exportRender", () => {
   test("writes a WAV, a FLAC and a sidecar JSON that names the other two", async () => {
     const { paths, sidecar } = first;
     expect((await readdir(firstDir)).sort()).toEqual(
-      [paths.flac, paths.json, paths.wav].map((path) => path.slice(firstDir.length + 1)).sort(),
+      [paths.flac, paths.json, paths.wav].map((path) => path?.slice(firstDir.length + 1)).sort(),
     );
     const written = JSON.parse(await readFile(paths.json, "utf8"));
     expect(written).toEqual(sidecar);

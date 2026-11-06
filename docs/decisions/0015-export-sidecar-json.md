@@ -85,3 +85,10 @@ the three files.
   300 s) took 7.6 s, of which the render alone was 4.5 s; `rerender` took 7.5 s; peak RSS
   701 MiB. It read −16.05 LUFS and −1.40 dBTP against a −16 target.
 - Stems wait for phase 6.
+
+## Amendments
+
+- 2026-11-06: step 1m adds `flac` to the options, true when omitted, for the CLI's `--no-flac`
+  ([0017](0017-phase-1-cli.md)). With `flac: false` no FLAC is written, and `files` and the
+  returned paths have no `flac`; only the WAV and the JSON are staged and linked. `rerender`
+  always writes the FLAC.
