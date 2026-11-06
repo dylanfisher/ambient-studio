@@ -10,6 +10,7 @@ import { createServer } from "node:http";
 import { networkInterfaces } from "node:os";
 import { loadConfig } from "../config/config.js";
 import { paths } from "../config/paths.js";
+import { allowedHost } from "./allowed-host.js";
 import { ROUTES } from "./routes.js";
 import { HttpError, matchRoute, parseTarget, readJson, sendJson } from "./routing.js";
 import { serveStatic } from "./serve-static.js";
@@ -42,6 +43,12 @@ async function answer(routes, app, request, response) {
   const method = request.method ?? "";
   const url = request.url ?? "";
   try {
+    if (!allowedHost(request.headers.host)) {
+      throw new HttpError(
+        421,
+        `this server doesn't answer for Host ${request.headers.host ?? "(none)"}`,
+      );
+    }
     const target = parseTarget(url);
     if (!target) throw new HttpError(404, `nothing is served at ${url}`);
     const match = matchRoute(routes, method, target.segments);
@@ -68,6 +75,7 @@ async function answer(routes, app, request, response) {
   } catch (error) {
     const known = error instanceof HttpError;
     if (!known) app.log(`${method} ${url}: ${/** @type {Error} */ (error).stack}`);
+    // A 500's message can hold a server path or a value from the store; it goes to the log only.
     if (response.headersSent) {
       response.destroy();
       return;
@@ -75,7 +83,7 @@ async function answer(routes, app, request, response) {
     // A body over the limit is left unread; closing the connection discards the rest.
     if (known && error.status === 413) response.setHeader("connection", "close");
     sendJson(response, known ? error.status : 500, {
-      error: /** @type {Error} */ (error).message,
+      error: known ? error.message : "internal error",
     });
   }
 }
@@ -117,7 +125,8 @@ export async function startServer(config, { routes = ROUTES, log = console.error
   const app = { config, paths: dataPaths, store, log };
   /** @type {Set<Promise<void>>} */
   const inFlight = new Set();
-  const server = createServer((request, response) => {
+  // A request without Host reaches `answer`, which refuses it like a foreign one.
+  const server = createServer({ requireHostHeader: false }, (request, response) => {
     const answered = answer(routes, app, request, response).finally(() =>
       inFlight.delete(answered),
     );

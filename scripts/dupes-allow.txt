@@ -37,3 +37,4 @@ literal "content-type" | files src/server/omlx-queue.js src/server/routing.js sr
 literal "content-length" | files src/server/omlx-queue.js src/server/routing.js src/server/serve-audio.js src/server/serve-static.js | the HTTP header name, on the queue's request to omlx and on what each server module sends
 literal "application/json" | files src/server/omlx-queue.js src/server/routing.js src/server/serve-static.js | the JSON media type: of the queue's request to omlx, of a request body the server reads, of a served .json file
 literal "ERR_STREAM_PREMATURE_CLOSE" | files src/server/serve-audio.js src/server/write-flac.js | Node's code for a stream closed early: a listener dropping a WAV in serve-audio, flac's stdin in write-flac
+literal "IPv6" | files src/server/allowed-host.js src/server/main.js | the address family Node reports: an interface's in allowed-host, the bound socket's in main; each brackets an IPv6 address for a URL or Host

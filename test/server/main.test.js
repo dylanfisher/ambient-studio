@@ -2,6 +2,7 @@
 // src/web, src/engine and src/domain, and a stop that leaves no open handles.
 /** @import { Route } from "../../src/server/routing.js" */
 import { readFile } from "node:fs/promises";
+import { hostname, networkInterfaces } from "node:os";
 import { setImmediate as tick } from "node:timers/promises";
 import { afterEach, expect, test } from "vitest";
 import { ROUTES } from "../../src/server/routes.js";
@@ -100,11 +101,11 @@ test("a body at the limit is read", async () => {
   expect(reply.json().body.t.length).toBe(text.length);
 });
 
-test("a handler that throws is a 500 whose stack is logged", async () => {
+test("a handler that throws is a 500 that says only that, and its stack is logged", async () => {
   const { request, logged } = await setup(TEST_ROUTES);
   const reply = await request("GET", "/api/broken");
   expect(reply.status).toBe(500);
-  expect(reply.json().error).toBe("the handler broke");
+  expect(reply.json()).toEqual({ error: "internal error" });
   expect(logged.join("\n")).toMatch(/Error: the handler broke\n\s+at /);
 });
 
@@ -186,6 +187,57 @@ test.each([
   const reply = await request("GET", path);
   expect(reply.status).toBe(404);
   expect(reply.json().error).toEqual(expect.any(String));
+});
+
+test("a static name too long for the file system is a 404 that names no server path", async () => {
+  const { request, logged } = await setup();
+  const reply = await request("GET", `/engine/${"x".repeat(300)}.js`);
+  expect(reply.status).toBe(404);
+  expect(reply.body.toString()).not.toMatch(/\/Users\/|\/private\/|\/var\//);
+  expect(logged).toEqual([]);
+});
+
+test.each([
+  "localhost",
+  "localhost:4180",
+  "127.0.0.1:1",
+  "[::1]:4180",
+  hostname(),
+  `${hostname().replace(/\.local$/, "")}.local:4180`,
+  "LOCALHOST",
+])("Host %s is answered", async (host) => {
+  const { request } = await setup();
+  expect((await request("GET", "/", { headers: { host } })).status).toBe(200);
+});
+
+test("Host set to each of this machine's interface addresses is answered", async () => {
+  const { request } = await setup();
+  const addresses = Object.values(networkInterfaces())
+    .flat()
+    .map((net) => (net?.family === "IPv6" ? `[${net.address}]` : `${net?.address}`));
+  expect(addresses.length).toBeGreaterThan(0);
+  for (const address of addresses) {
+    const reply = await request("GET", "/", { headers: { host: `${address}:4180` } });
+    expect(reply.status, address).toBe(200);
+  }
+});
+
+test.each(["evil.example", "evil.example:4180", `${hostname()}.evil.example`, "127.0.0.2"])(
+  "Host %j is a 421, before any route or file",
+  async (host) => {
+    const { request } = await setup();
+    for (const path of ["/", "/audio/1", "/api/nothing"]) {
+      const reply = await request("GET", path, { headers: { host } });
+      expect(reply.status, path).toBe(421);
+      expect(reply.json().error).toMatch(/Host/);
+    }
+  },
+);
+
+test("a request with no Host is a 421", async () => {
+  const { request } = await setup();
+  const reply = await request("GET", "/", { setHost: false });
+  expect(reply.status).toBe(421);
 });
 
 test("POST to a static path is a 404", async () => {

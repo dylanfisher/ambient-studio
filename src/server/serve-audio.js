@@ -3,9 +3,8 @@
 // them.
 /** @import { RouteContext } from "./routing.js" */
 import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
 import { pipeline } from "node:stream/promises";
-import { realPathInside } from "./real-path-inside.js";
+import { fileInside } from "./file-inside.js";
 import { getRender } from "./render-store.js";
 import { HttpError } from "./routing.js";
 
@@ -16,6 +15,16 @@ import { HttpError } from "./routing.js";
 
 const WHOLE = /** @type {const} */ ({ kind: "whole" });
 const UNSATISFIABLE = /** @type {const} */ ({ kind: "unsatisfiable" });
+
+/**
+ * What a stream into a response the listener has already closed fails with: closed partway,
+ * or closed before the stream began.
+ */
+const LISTENER_GONE = new Set([
+  "ERR_STREAM_PREMATURE_CLOSE",
+  "ERR_STREAM_UNABLE_TO_PIPE",
+  "ERR_STREAM_CANNOT_PIPE",
+]);
 
 /**
  * Reads a Range header for a file of `size` bytes. A header in another unit or that doesn't
@@ -49,12 +58,9 @@ export async function serveAudio({ request, response, params, app }) {
   const id = params.renderId ?? "";
   const render = /^[1-9]\d{0,15}$/.test(id) ? getRender(app.store, Number(id)) : undefined;
   if (!render) throw new HttpError(404, `no render ${id}`);
-  const file = await realPathInside(app.paths.renderCache, [render.file]);
-  const info = file === undefined ? undefined : await stat(file);
-  if (file === undefined || !info?.isFile()) {
-    throw new HttpError(404, `render ${id} has no file in the render cache`);
-  }
-  const size = info.size;
+  const file = await fileInside(app.paths.renderCache, [render.file]);
+  if (!file) throw new HttpError(404, `render ${id} has no file in the render cache`);
+  const { size } = file;
   // Without validators (ETag, Last-Modified) the server can't tell whether If-Range matches,
   // so it sends the whole file, as RFC 9110 §13.1.5 requires when it doesn't.
   const range =
@@ -76,11 +82,13 @@ export async function serveAudio({ request, response, params, app }) {
     return undefined;
   }
   try {
-    await pipeline(createReadStream(file, { start: first, end: last }), response);
+    await pipeline(createReadStream(file.path, { start: first, end: last }), response);
   } catch (error) {
-    // <audio> drops a range request when it seeks or has buffered enough; that is not a fault.
-    const code = /** @type {NodeJS.ErrnoException} */ (error).code;
-    if (code !== "ERR_STREAM_PREMATURE_CLOSE" || !response.destroyed) throw error;
+    // <audio> drops a range request when it seeks or has buffered enough, and a client that
+    // sent an unread body with Connection: close can be gone before the stream starts; neither
+    // is a fault.
+    const code = /** @type {NodeJS.ErrnoException} */ (error).code ?? "";
+    if (!LISTENER_GONE.has(code) || !response.destroyed) throw error;
   }
   return undefined;
 }

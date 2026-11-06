@@ -38,9 +38,10 @@ chunked body that passes it, is a 413 and the connection is closed. A body not l
 `application/json` is a 415, and one that doesn't parse is a 400 whose message gives the parse
 error.
 
-**Errors.** Every error the dispatcher sends is a JSON body `{error: message}`. `HttpError(status, message)` is a 4xx
-and is not logged. Anything else is a 500 with its message, and its stack goes to `log` with the
-method and path. A failure after the headers went out destroys the connection.
+**Errors.** Every error the dispatcher sends is a JSON body `{error: message}`.
+`HttpError(status, message)` is a 4xx with its message and is not logged. Anything else is a 500
+whose body is only `"internal error"`, because a message can hold a server path; its stack goes
+to `log` with the method and path. A failure after the headers went out destroys the connection.
 
 **Static files.** After the routes, GET and HEAD serve `src/web/` at `/` (`/` is
 `index.html`), `src/engine/` at `/engine/` and `src/domain/` at `/domain/`, so a web module's
@@ -48,7 +49,9 @@ method and path. A failure after the headers went out destroys the connection.
 from every folder, plus `.html`, `.css` and `.svg` from `src/web/`. `.js` is
 `text/javascript; charset=utf-8`, since Safari refuses a module served as anything else. A
 directory is a 404, never a listing. A file's real path, symlinks followed, must be inside its
-folder. Responses carry `nosniff` and `Cache-Control: no-cache`, so a reload while
+folder. A name that is too long, a symlink loop, an unreadable file, a NUL in the name, or a
+file removed between the check and the read is a 404, not a 500 (`file-inside.js`). Responses
+carry `nosniff` and `Cache-Control: no-cache`, so a reload while
 `./scripts/dev` restarts picks up edits.
 
 **Audio.** `GET /audio/:renderId` serves the renders row with that id. The id must be a decimal
@@ -67,18 +70,39 @@ symlink that leads out is a 404, and so is a missing row or file. Responses are 
 | several ranges | 200, the whole file |
 | any, with `If-Range` | 200, the whole file |
 
-A listener that drops the stream (a seek, or enough buffered) is not logged.
+A listener that drops the stream (a seek, or enough buffered), or is gone before it starts, is
+not logged.
 
 **Binding and no auth.** The example config binds `0.0.0.0:4180`, every interface, because the
 owner listens from two other machines on the home LAN. There is no login: the app holds no
-secrets (AGENTS.md), and anyone who can reach the port is on the owner's network. The 415 rule
-keeps a page from another site in the owner's browser from posting to the API: a cross-origin
-`application/json` POST needs a CORS preflight, and the server sends no CORS headers.
+secrets (AGENTS.md), and anyone who can reach the port is on the owner's network.
+
+**Cross-site requests and DNS rebinding.** No login means the browser itself is the risk: a page
+on another site, open in the owner's browser, can send requests to the studio's LAN address.
+Two rules close that:
+
+- **JSON-only bodies.** A body not labeled `application/json` is a 415. A cross-origin
+  `application/json` request needs a CORS preflight, and the server sends no CORS headers, so
+  the browser never sends the request a page on another site asks for. A form post or a
+  `text/plain` fetch, which skip the preflight, are refused.
+- **A Host allowlist.** A rebinding page points its own DNS name at this machine, so its requests
+  are same-origin and skip CORS, but they carry its name as `Host`. Before any route or file,
+  every request's `Host` must name this machine: `localhost`, `127.0.0.1`, `[::1]`, its host
+  name with or without `.local`, or an address of one of its interfaces right now, read from
+  `os.networkInterfaces()` per request because the LAN address can change. Any port is allowed.
+  Anything else, a missing `Host` included, is a **421 Misdirected Request**: the RFC 9110 status
+  for a request this server isn't configured to answer for that host, which a 403 would misstate
+  as a permission problem. Opening the studio by its LAN IP, from mbp2015 or mbp2026, sends that
+  IP as `Host` and is answered.
+
+So no route may accept a body in another content type, and no route may send CORS headers;
+either one reopens the hole. A name the owner adds (a DNS alias for the studio) has to be added
+to `allowed-host.js` first.
 
 ## Alternatives considered
 
 - **A framework (Express, Fastify)** — rejected: a new dependency (AGENTS.md 7) for a table of a
-  dozen routes, and 0001 chose none.
+  dozen routes, and 0001 chose `node:http`.
 - **One route file per area, registered by each module** — rejected for now: one array in
   `routes.js` is the whole table in one place; split it when it is long enough to need it.
 - **Normalizing the path with `new URL()`** — rejected: it resolves `%2e%2e` to `..` and drops
@@ -89,6 +113,10 @@ keeps a page from another site in the owner's browser from posting to the API: a
 - **ETag and Last-Modified with If-Range** — rejected: rows are keyed by an id SQLite can reuse
   after a render is replaced, so a validator would have to hash or stat the file; without one,
   If-Range gets the whole file as the RFC requires.
+- **A 403 for a foreign Host** — rejected: 421 says the server doesn't answer for that name,
+  which is the actual reason; 403 reads as "you may not".
+- **The Host allowlist from config** — rejected: the LAN address is assigned by the router and
+  changes, and a config key for it would go stale; the interfaces are the current truth.
 - **Binding 127.0.0.1 behind a proxy, or a shared token** — rejected: the spec has the owner on
   other machines, and a token protects nothing when the app has no secrets.
 - **Streaming static files** — rejected: the served modules are a few kB each; read and send

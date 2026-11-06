@@ -25,6 +25,7 @@ import { tempRoot } from "./temp-root.js";
  * @typedef {object} RequestOptions
  * @property {OutgoingHttpHeaders} [headers]
  * @property {string | Buffer} [body]
+ * @property {boolean} [setHost] false sends no Host header; true when omitted
  */
 
 /**
@@ -60,10 +61,10 @@ export async function startTestServer(options = {}) {
   let running = true;
 
   /** @type {TestServer["request"]} */
-  const request = (method, path, { headers = {}, body } = {}) =>
+  const request = (method, path, { headers = {}, body, setHost = true } = {}) =>
     new Promise((resolve, reject) => {
       const outgoing = httpRequest(
-        { hostname: address.hostname, port: address.port, method, path, headers, agent },
+        { hostname: address.hostname, port: address.port, method, path, headers, agent, setHost },
         (incoming) => {
           /** @type {Buffer[]} */
           const chunks = [];

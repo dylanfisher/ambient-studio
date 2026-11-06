@@ -2,9 +2,9 @@
 // `/domain/`, so a web module's `../engine/x.js` import resolves. Files only, by extension, and
 // never a path whose real location is outside its folder.
 /** @import { IncomingMessage, ServerResponse } from "node:http" */
-import { readFile, stat } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { extname, join } from "node:path";
-import { realPathInside } from "./real-path-inside.js";
+import { fileInside, isMissing } from "./file-inside.js";
 
 const SRC = join(import.meta.dirname, "..");
 
@@ -52,9 +52,16 @@ export async function serveStatic(request, response, segments) {
   const rest = tier ? segments.slice(1) : segments.length === 0 ? [INDEX] : segments;
   const type = types[extname(rest.at(-1) ?? "")];
   if (rest.length === 0 || type === undefined) return false;
-  const file = await realPathInside(folder, rest);
-  if (file === undefined || !(await stat(file)).isFile()) return false;
-  const body = await readFile(file);
+  const file = await fileInside(folder, rest);
+  if (!file) return false;
+  /** @type {Buffer} */
+  let body;
+  try {
+    body = await readFile(file.path);
+  } catch (error) {
+    if (isMissing(error)) return false; // removed or made unreadable since fileInside looked
+    throw error;
+  }
   response.writeHead(200, {
     "content-type": type,
     "content-length": body.length,

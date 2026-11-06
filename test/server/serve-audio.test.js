@@ -178,6 +178,33 @@ test("a symlink that stays inside the render-cache folder is served", async () =
   expect(reply.body.equals(WAV)).toBe(true);
 });
 
+test("a symlink loop in the render-cache folder is a 404 that names no server path", async () => {
+  const { request, addRender, paths, logged } = await setup();
+  await symlink("loop.wav", join(paths.renderCache, "loop.wav"));
+  const reply = await request("GET", `/audio/${addRender("loop.wav")}`);
+  expect(reply.status).toBe(404);
+  expect(reply.body.toString()).not.toContain(paths.renderCache);
+  expect(logged).toEqual([]);
+});
+
+test("a row whose file has a NUL in it is a 404", async () => {
+  const { request, addRender, logged } = await setup();
+  expect((await request("GET", `/audio/${addRender("r.wav\0x")}`)).status).toBe(404);
+  expect(logged).toEqual([]);
+});
+
+test("a GET with an unread body and Connection: close gets the WAV and logs nothing", async () => {
+  const { request, addRender, paths, logged, stop } = await setup();
+  await writeFile(join(paths.renderCache, "big.wav"), Buffer.alloc(4 << 20));
+  const reply = await request("GET", `/audio/${addRender("big.wav")}`, {
+    headers: { connection: "close", "content-length": 6 },
+    body: "unread",
+  });
+  expect(reply.status).toBe(200);
+  await stop();
+  expect(logged).toEqual([]);
+});
+
 test("a directory in the render-cache folder is a 404", async () => {
   const { request, addRender, paths } = await setup();
   await mkdir(join(paths.renderCache, "folder.wav"));
