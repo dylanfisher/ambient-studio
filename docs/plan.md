@@ -752,3 +752,23 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   relative and absolute tunings as JS data modules through one registry; Scala text with an
   optional base frequency; Colundi with `subset38`, `core36`, `core18`; shared diatonic modes;
   `Math.random` and `Date.now` banned in src/engine by arch.js. 0003 and 0004 are provisional.
+- 2026-11-06: retrospective after 1r, 1a, 1e, 1i, 1b (orchestrator rule 11).
+
+  | Step | Model | Tokens | Tool calls | Wall time |
+  |---|---|---|---|---|
+  | 1r | Sonnet | 130k | 31 | 12.6 min |
+  | 1a | Opus | 96k | 66 | 44.6 min |
+  | 1e | Opus | 116k | 57 | 9.1 min |
+  | 1i | Opus | 81k | 30 | 4.4 min |
+  | 1b | Opus | 154k, then a 1.2 min fix round | 80 | 13.4 min |
+  | 1b review | Sonnet | 72k | 12 | 2.6 min |
+
+  Where it went: 1a's time was a probe with no cap (37 of 45 min); 1r's was decoding and
+  analyzing 32 long files. Tokens track how much a step reads before writing (1b read the most:
+  five records, the Scala spec, the arch and dupes scripts). One reviewer on the largest diff cost
+  less than half a build and found the two places 1b bent its data around a checker; sending the
+  fixes back to the same builder took 70 s. The LSP plugin loads in worktrees but serves no `.js`,
+  so builders fall back to `rg` and `tsc`. Changes: builders cap hand-run measurements at five
+  minutes, and never shape data to dodge a checker (agent-rules Builders 9 and 10); briefs say the
+  LSP tool doesn't serve `.js` in worktrees. The gate's tools still skip `tmp/`,
+  `.claude/worktrees/`, `node_modules/` and `.venv/` with two worktrees live.

@@ -48,6 +48,12 @@ and write down why when a rule comes from something that went wrong.
 8. When you meet a choice the plan and the records don't settle, pick one, write it up in an
    accepted decision record (the number you were given), and list it in your report so the owner
    can overrule it. Don't stop to ask.
+9. Give any measurement that runs by hand (a probe, a bench) a wall-clock cap of five minutes. If
+   it hits the cap, stop it, measure a shorter version, and report the trend. One uncapped probe
+   in step 1a took 37 of the step's 45 minutes and still didn't finish.
+10. Never shape data or code to get past a checker. When `dupes.js` flags the same text with two
+    meanings, add an entry to `scripts/dupes-allow.txt`; when it flags one fact written twice,
+    import it from one place.
 
 ## Reviewers
 
