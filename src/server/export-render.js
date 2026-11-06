@@ -1,9 +1,9 @@
 // Export: render offline, normalize, and write a WAV, a FLAC and the sidecar JSON that
 // re-renders them (decisions 0009, 0011, 0012, 0015).
 /** @import { Genome } from "../engine/genome-schema.js" */
-import { existsSync } from "node:fs";
-import { mkdir, readFile, rm, rmdir, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { lstatSync } from "node:fs";
+import { link, mkdir, mkdtemp, readFile, rm, rmdir, unlink, writeFile } from "node:fs/promises";
+import { basename, dirname, join, resolve } from "node:path";
 import { normalize } from "../domain/normalize.js";
 import { ENGINE_VERSION } from "../engine/engine-version.js";
 import { SCHEMA_VERSION } from "../engine/genome-schema.js";
@@ -86,7 +86,10 @@ function outputPaths(outDir, name) {
   };
   for (const path of Object.values(paths)) {
     if (dirname(path) !== dir) throw new Error(`export file ${path} would land outside ${dir}`);
-    if (existsSync(path)) throw new Error(`${path} already exists; an export never overwrites`);
+    // lstat, not exists: a dangling link is taken too, and a write would follow it.
+    if (lstatSync(path, { throwIfNoEntry: false })) {
+      throw new Error(`${path} already exists; an export never overwrites`);
+    }
   }
   return paths;
 }
@@ -156,7 +159,11 @@ async function prepareExport(genome, { seed, duration, offset = 0, target, outDi
 }
 
 /**
- * Writes the WAV, then the FLAC from it, then the sidecar. Each refuses to overwrite.
+ * Writes the WAV, the FLAC from it, and the sidecar into a new temp folder inside the output
+ * folder, then hard-links each to its name there. `link` fails rather than replace any entry,
+ * a link included, so a name taken during the render is never overwritten or followed. On a
+ * failure, removes the names this call linked, the temp folder and any folders it made, and
+ * rethrows.
  * @param {PreparedExport} prepared
  * @returns {Promise<Export>}
  */
@@ -165,30 +172,32 @@ async function writeExport({ sidecar, paths, pcm, channelCount }) {
   // The outermost folder mkdir made, if any; it and the folders inside it down to `dir` are
   // this call's.
   const madeDir = await mkdir(dir, { recursive: true });
-  /** @type {[string, () => Promise<void>][]} */
-  const steps = [
-    [paths.wav, () => writeWav(paths.wav, pcm, { channelCount, sampleRate: sidecar.sampleRate })],
-    [paths.flac, () => writeFlac(paths.wav, paths.flac)],
-    [
-      paths.json,
-      () => writeFile(paths.json, `${JSON.stringify(sidecar, null, 2)}\n`, { flag: "wx" }),
-    ],
-  ];
+  const temp = await mkdtemp(join(dir, ".export-"));
+  /** @param {string} path */
+  const staged = (path) => join(temp, basename(path));
   /** @type {string[]} */
-  const created = [];
+  const linked = [];
   try {
-    for (const [path, write] of steps) {
-      // outputPaths checked each path is free, so whatever is there after the step is this
-      // call's, even when the step fails partway.
+    await writeWav(staged(paths.wav), pcm, { channelCount, sampleRate: sidecar.sampleRate });
+    await writeFlac(staged(paths.wav), staged(paths.flac));
+    const text = `${JSON.stringify(sidecar, null, 2)}\n`;
+    await writeFile(staged(paths.json), text, { flag: "wx" });
+    for (const path of [paths.wav, paths.flac, paths.json]) {
       try {
-        await write();
-      } finally {
-        if (existsSync(path)) created.push(path);
+        await link(staged(path), path);
+      } catch (error) {
+        if (/** @type {NodeJS.ErrnoException} */ (error).code !== "EEXIST") throw error;
+        throw new Error(`${path} appeared during the export; an export never overwrites`, {
+          cause: error,
+        });
       }
+      linked.push(path);
     }
+    await rm(temp, { recursive: true });
   } catch (error) {
     try {
-      await Promise.all(created.map((path) => rm(path)));
+      await Promise.all(linked.map((path) => unlink(path)));
+      await rm(temp, { recursive: true, force: true });
       // rmdir, not rm: it refuses a folder something else has written into since.
       for (let at = dir; madeDir && at.startsWith(madeDir); at = dirname(at)) await rmdir(at);
     } catch (cleanup) {
@@ -263,7 +272,15 @@ function rendererDifferences(recorded) {
  * @returns {Promise<Export>}
  */
 export async function rerender(sidecarPath, outDir) {
-  const recorded = requireSidecar(JSON.parse(await readFile(sidecarPath, "utf8")), sidecarPath);
+  const text = await readFile(sidecarPath, "utf8");
+  /** @type {unknown} */
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (error) {
+    throw new Error(`${sidecarPath} isn't a sidecar: it isn't valid JSON`, { cause: error });
+  }
+  const recorded = requireSidecar(parsed, sidecarPath);
   if (recorded.engineVersion !== ENGINE_VERSION) {
     const others = rendererDifferences(recorded).map((line) => `; ${line}`);
     throw new Error(
@@ -273,7 +290,7 @@ export async function rerender(sidecarPath, outDir) {
   const actualHash = genomeHash(recorded.genome);
   if (actualHash !== recorded.genomeHash) {
     throw new Error(
-      `${sidecarPath}: its genome hash ${recorded.genomeHash} doesn't match its genome's, ${actualHash}; the file was changed after export`,
+      `${sidecarPath}: its genome hash ${recorded.genomeHash} doesn't match its genome's, ${actualHash}. Either the file was changed after export, or the schema's defaults changed since, which a migration should have written into the sidecar's genome`,
     );
   }
   const { seed, duration, offset, loudness } = recorded;

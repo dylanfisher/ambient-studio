@@ -2,7 +2,7 @@
 // that only read it, to keep the gate light.
 /** @import { Export } from "../../src/server/export-render.js" */
 import { createHash } from "node:crypto";
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from "vitest";
@@ -106,6 +106,18 @@ describe("exportRender", () => {
     expect(after).toEqual(before);
   });
 
+  test("refuses a name taken by a dangling link, and writes nothing through it", async () => {
+    const outDir = await freshDir("link");
+    const outside = join(root, "outside.flac");
+    const name = `${genomeHash(droneGenome).slice(0, 12)}-seed1-0s-1s.flac`;
+    await symlink(outside, join(outDir, name));
+    await expect(exportRender(droneGenome, { ...options, duration: 1, outDir })).rejects.toThrow(
+      /already exists/,
+    );
+    await expect(lstat(outside)).rejects.toThrow(/ENOENT/);
+    expect(await readdir(outDir)).toEqual([name]);
+  });
+
   test("throws without a loudness target", async () => {
     const outDir = await freshDir("no-target");
     await expect(
@@ -182,7 +194,50 @@ describe("exportRender when writing fails", () => {
   });
 });
 
+describe("exportRender when a name is taken during the render", () => {
+  afterEach(() => {
+    vi.doUnmock("../../src/server/render-offline.js");
+    vi.resetModules();
+  });
+
+  test.for(["wav", "flac", "json"])(
+    "leaves another process's .%s in place and names it",
+    async (extension) => {
+      const outDir = await freshDir(`taken-${extension}`);
+      const taken = join(
+        outDir,
+        `${genomeHash(droneGenome).slice(0, 12)}-seed1-0s-1s.${extension}`,
+      );
+      vi.resetModules();
+      // The render stands in for the minutes between the name check and the writes.
+      vi.doMock("../../src/server/render-offline.js", () => ({
+        renderOffline: async () => {
+          await writeFile(taken, "theirs");
+          const tone = Float32Array.from(
+            { length: SAMPLE_RATE },
+            (_, i) => 0.1 * Math.sin((2 * Math.PI * 440 * i) / SAMPLE_RATE),
+          );
+          return { channels: [tone, tone], sampleRate: SAMPLE_RATE, engineVersion: ENGINE_VERSION };
+        },
+      }));
+      const mocked = await import("../../src/server/export-render.js");
+      await expect(
+        mocked.exportRender(droneGenome, { ...options, duration: 1, outDir }),
+      ).rejects.toThrow(`${taken} appeared during the export`);
+      expect(await readdir(outDir)).toEqual([taken.slice(outDir.length + 1)]);
+      expect(await readFile(taken, "utf8")).toBe("theirs");
+    },
+  );
+});
+
 describe("rerender", () => {
+  test("names the sidecar when it isn't valid JSON", async () => {
+    const outDir = await freshDir("malformed");
+    const path = join(outDir, "broken.json");
+    await writeFile(path, "{");
+    await expect(rerender(path, outDir)).rejects.toThrow(`${path} isn't a sidecar`);
+  });
+
   test("reproduces an export's PCM hash from its sidecar", async () => {
     const outDir = await freshDir("again");
     const again = await rerender(first.paths.json, outDir);
@@ -220,7 +275,7 @@ describe("rerender", () => {
   test("fails on a sidecar whose genome hash doesn't match its genome", async () => {
     const outDir = await freshDir("hash");
     const path = await editedSidecar(outDir, { genomeHash: "0".repeat(64) });
-    await expect(rerender(path, outDir)).rejects.toThrow(/genome hash/);
+    await expect(rerender(path, outDir)).rejects.toThrow(/genome hash.*defaults changed/s);
   });
 
   test("refuses a sidecar whose fields aren't the right types, before writing anything", async () => {

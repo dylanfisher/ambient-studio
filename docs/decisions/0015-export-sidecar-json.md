@@ -25,14 +25,18 @@ the three files.
   can't leave `outDir`; the paths are also checked to sit directly in it. 12 hex characters
   (48 bits) tell the owner's genomes apart; the full hash is in the JSON. The loudness target
   isn't in the name, so exporting the same window at two targets needs two folders.
-- **No overwriting.** All three paths are checked before rendering, so a taken name fails before
-  a long render, and each file is then opened exclusively (WAV and JSON with `wx`, FLAC by
-  flac's own refusal). `outDir` is created when missing.
-- **No partial exports.** When writing the WAV, the FLAC or the JSON fails, the call removes the
-  files it created, including a partial one the failing step left, and the folders it created
-  (with `rmdir`, which refuses a folder something else has written into), then rethrows the
-  original error. Files already in `outDir` are left alone. If the removal itself fails, both
-  errors are thrown together in an `AggregateError`.
+- **No overwriting.** All three names are checked with `lstat` before rendering, so a taken
+  name fails before a long render, and a dangling link counts as taken rather than being
+  followed. The files are written into a new temp folder made with `mkdtemp` inside `outDir`
+  (`.export-XXXXXX`), the WAV with `wx` and the FLAC by flac into that fresh folder, then each is
+  hard-linked to its name. `link` fails on any existing entry, a link included, and never
+  follows one, so a name another process takes during the render is left alone and the error
+  names it. The temp folder is removed after the links. `outDir` is created when missing.
+- **No partial exports.** When a write or a link fails, the call removes the names it linked,
+  its temp folder and the folders it created (with `rmdir`, which refuses a folder something
+  else has written into), then rethrows the original error. Only entries this call created are
+  removed. If the removal itself fails, both errors are thrown together in an
+  `AggregateError`.
 - **Sidecar fields**, in this order, camelCase:
   - `files`: `{wav, flac}`, the other two files' names, relative to the sidecar's folder.
   - `genomeHash`: SHA-256 hex of `canonicalGenome()` ([0005](0005-genome-schema-table.md)).
@@ -50,9 +54,11 @@ the three files.
   has the right JSON type. It refuses a sidecar from another engine version before rendering,
   naming both versions and any Node or node-web-audio-api difference, and saying to re-render
   from a worktree at tag `engine-v<N>`. It refuses a sidecar whose `genomeHash` doesn't match its
-  genome. It then renders and normalizes with the recorded values and writes the three files
-  only when the new PCM hash matches; otherwise it throws with both hashes, says both runs share
-  the engine version, and names the Node or library version that differs, or says none does.
+  genome, saying the file was edited or the schema's defaults changed, and one that isn't valid
+  JSON, naming its path. It then renders and normalizes with the recorded values and writes the
+  three files only when the new PCM hash matches; otherwise it throws with both hashes, says both
+  runs share the engine version, and names the Node or library version that differs, or says
+  none does.
   Re-rendering into the export's own folder fails on the taken names, so it takes another folder.
 - **Version lookups.** `rendererVersions()` in `src/server` reads the Node and node-web-audio-api
   versions for the sidecar and for the golden harness, so both record the same strings.
