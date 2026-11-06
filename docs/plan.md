@@ -355,6 +355,9 @@ their numbers are written in Result; the pending owner checks below are logged.
 - **From 1r:** reaches any target from −30 to −9 LUFS at −1.0 dBTP within ±0.5 LU; a test at
   −12 LUFS with a bass-heavy tonal signal (80% of its energy under 100 Hz); the gain cap allows
   at least +35 dB.
+- **From 1e:** `truePeak` reads up to 0.31 dB under the true peak on Tech 3341's cases (within
+  the standard's tolerance), so the limiter keeps that margin under the ceiling, or a −1.0 dBTP
+  reading can sit 0.3 dB over the real ceiling.
 - **Parallel:** with 1f or 1g, after 1e.
 
 #### 1i — WAV and FLAC writers
@@ -735,3 +738,8 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   single-threaded. Probes: (a) 15.8x, 129 MiB; (b) all grains up front over 20 min did not finish,
   windowed 14x at 887 MiB; (d) 480 sines with a 12 s convolver over 720 s, 6.1x at 584 MiB. 1f, 1j
   and 1k changed to match ("From 1a" lines).
+- 2026-11-06: 1e merged as 5cfd550 (Opus: 116k tokens, 57 tool calls, 9.1 min). Every
+  synthesizable Tech 3341 case passes: integrated and windowed loudness within 0.04 LU, true peak
+  within −0.31/+0.03 dB. Cases 6 (5.0 surround), 7 and 8 (programme material) are untested; the
+  ffmpeg comparison stands in for 7 and 8. 300 s stereo costs about 93 ms integrated and 271 ms
+  true peak. The LSP plugin loaded in its worktree but served no `.js` file.
