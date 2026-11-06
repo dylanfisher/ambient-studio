@@ -116,6 +116,25 @@ describe("effectiveParams", () => {
     expect(effectiveParams(g, 100).macros.brightness).toBe(1);
   });
 
+  test("a log-scale trajectory under a non-neutral macro moves by its depth along the scale", () => {
+    const cutoff = fixtureVoice.params.cutoff;
+    const sweep = {
+      points: [
+        [0, 200],
+        [100, 800],
+      ],
+    };
+    const g = genome({ brightness: 1 }, { cutoff: sweep });
+    for (const [time, raw] of /** @type {[number, number][]} */ ([
+      [0, 200],
+      [50, 400],
+      [100, 800],
+    ])) {
+      const value = /** @type {number} */ (effectiveParams(g, time).voices[0]?.cutoff);
+      expect(encode(cutoff, value)).toBeCloseTo(encode(cutoff, raw) + 0.25, 9);
+    }
+  });
+
   test("a time before 0 or not finite throws", () => {
     expect(() => effectiveParams(genome({}), -1)).toThrow(/time/);
     expect(() => effectiveParams(genome({}), Number.NaN)).toThrow(/time/);

@@ -15,6 +15,13 @@ export const SCHEMA_VERSION = 1;
 /** Voice ids are part of every PRNG key, and draws not tied to a voice use "" (decision 0003). */
 export const VOICE_ID = /^[a-z][a-z0-9-]{0,15}$/;
 
+/** The genome's keys besides its global parameters; vector paths use the last two as prefixes. */
+export const GENOME_KEY = Object.freeze({
+  schemaVersion: "schemaVersion",
+  macros: "macros",
+  voices: "voices",
+});
+
 /** The keys every voice has besides its parameters. */
 export const VOICE_KEYS = Object.freeze(["id", "type"]);
 
@@ -125,7 +132,7 @@ export const GLOBAL_PARAMS = Object.freeze({
   }),
   delayFeedback: number({
     min: 0,
-    max: 0.9,
+    max: 0.75,
     default: 0.35,
     unit: "",
     trajectory: true,

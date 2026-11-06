@@ -34,7 +34,10 @@ change made:
 
 The move happens along the parameter's scale: on a `log` parameter `linear` is an even move in
 octaves, `va × (vb / va)^f`, and on a `linear` one it is `va + (vb − va) × f`. The curves are
-polynomials, not `Math.cos`, because only `+ − ×` give the same bits in every JS engine.
+polynomials, not `Math.cos`, so the curve itself needs no library function. A log scale still
+uses `**` and `Math.log`, whose last bit may differ between JS engines, so renders are promised
+bit-identical only on the server's Node ([0002](0002-pin-node-web-audio-api.md),
+[0009](0009-engine-version-golden-hashes.md)); a browser plays values close to them.
 `valueAt(trajectory, time, scale)` returns each breakpoint's value exactly. An `int` parameter's
 value is rounded after evaluation.
 
@@ -92,7 +95,8 @@ rounded; `renderPlan` (1f) converts it to frames.
   clicks; two points close together give a fast move instead.
 - **Trajectories that loop past their last point** — rejected because a render ends at
   `duration` anyway, and a repeat the LLM wants can be written as points.
-- **Easing with `Math.cos`** — rejected because its last bit may differ between JS engines.
+- **Easing with `Math.cos`** — rejected because a polynomial does the same job with plain
+  arithmetic.
 - **Excerpts placed only where voices play** (between the earliest `start` and latest `end`) —
   rejected because `start` and `end` don't say a voice is audible (its level trajectory may be at
   −60 dB); the phase 2 linter is the place to flag silent stretches.
@@ -103,9 +107,10 @@ rounded; `renderPlan` (1f) converts it to frames.
 
 - The vector view moves a trajectory's start and end values only; times and curves stay as the
   LLM or a mutation wrote them ([0005](0005-genome-schema-table.md)).
-- A worst-case pre-roll is long: 20 s of reverb plus 2 s delay at 0.9 feedback (about 131 s)
-  is about 151 s ahead of a 25 s excerpt. 1f's bench says whether that cost needs a lower cap on
-  `delayFeedback` or `delayTime`.
+- `delayFeedback` is capped at 0.75 so the pre-roll stays bounded: at 0.9, a 2 s delay needs
+  about 131 s to fall 60 dB; at 0.75 it needs about 48 s, so the worst case is about 68 s (with
+  20 s of reverb) ahead of a 25 s excerpt. Narrowing the cap after genomes are stored would
+  invalidate some of them, so it is set now.
 - A new curve name can be added later without a migration. Changing what an existing name
   computes changes renders and bumps the engine version
   ([0009](0009-engine-version-golden-hashes.md)).

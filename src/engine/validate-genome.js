@@ -5,6 +5,7 @@
 /** @import { ValidationError } from "./validation-error.js" */
 import { checkValue } from "./descriptor.js";
 import {
+  GENOME_KEY,
   GLOBAL_PARAMS,
   MACROS,
   MAX_VOICES,
@@ -23,7 +24,7 @@ import { findVoiceType, voiceTypeIds } from "./voice-registry.js";
 
 /** @typedef {Record<string, unknown>} Fields */
 
-const GENOME_KEYS = ["schemaVersion", "macros", "voices"];
+const GENOME_KEYS = Object.values(GENOME_KEY);
 
 /**
  * Checks `input` against a table and returns its values with defaults written out. A parameter

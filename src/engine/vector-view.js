@@ -5,7 +5,7 @@
 /** @import { Genome } from "./genome-schema.js" */
 /** @import { Trajectory } from "./trajectory.js" */
 import { decode, encode, isNumeric } from "./descriptor.js";
-import { GLOBAL_PARAMS, MACROS } from "./genome-schema.js";
+import { GENOME_KEY, GLOBAL_PARAMS, MACROS } from "./genome-schema.js";
 import { isObject } from "./is-object.js";
 import { requireGenome } from "./validate-genome.js";
 import { voiceParams } from "./voice-registry.js";
@@ -32,11 +32,11 @@ function locate(genome, path) {
   let table = GLOBAL_PARAMS;
   /** @type {Record<string, unknown>} */
   let holder = genome;
-  if (parts[0] === "macros") {
+  if (parts[0] === GENOME_KEY.macros) {
     table = MACROS;
     holder = genome.macros;
     parts.shift();
-  } else if (parts[0] === "voices") {
+  } else if (parts[0] === GENOME_KEY.voices) {
     const voice = genome.voices.find((v) => v.id === parts[1]);
     if (!voice) throw new Error(`vector path ${path}: no voice "${parts[1]}"`);
     table = voiceParams(voice.type);
