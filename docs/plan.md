@@ -24,7 +24,7 @@ unneeded stays unused rather than being given to another step.
 
 | # | Topic | Step | State |
 |---|---|---|---|
-| 0002 | node-web-audio-api, pinned at 2.2.0 | 1a | [written](decisions/0002-pin-node-web-audio-api.md) |
+| 0002 | node-web-audio-api, pinned at 2.2.0 | 1a | [written](decisions/0002-pin-node-web-audio-api.md), amended by 1a |
 | 0003 | Seeded randomness: the counter-based PRNG and thinning | 1b | reserved |
 | 0004 | Pitch: tunings (relative and absolute-frequency), scales, Scala import | 1b | reserved |
 | 0005 | Genome schema as one descriptor table | 1c | [written](decisions/0005-genome-schema-table.md) |
@@ -307,6 +307,15 @@ their numbers are written in Result; the pending owner checks below are logged.
   30–300 s, Q at most 4. The reverb IR is 1–20 s (default 8) and dark: its 4 kHz decay about half
   the low-frequency decay. The master bus applies the side/mid width and the fades (after the voice
   sum, before normalization, inside the golden hashes). `renderPlan` accepts up to 900 s.
+- **From 1a** ([0002](decisions/0002-pin-node-web-audio-api.md) amendment): renders are
+  identical across processes and offline rendering is single-threaded. Every node is processed on
+  every quantum whether it has started or not, so creating all event nodes up front fails on long
+  renders (36,000 grains over 20 min ran slower than real time); scheduling in `suspend` windows
+  (2 s windows created 1 s ahead) rendered the same 20 min at 14x. 0010 chooses windows. A suspend
+  time rounds up to the next 128-frame boundary, so a window's suspend sits at least one quantum
+  before its first event. Oscillators are the main cost (480 sines with a 12 s convolver ran at
+  6.1x), so the drone puts its partials in one `PeriodicWave` per detuned copy rather than one
+  oscillator per partial.
 - **Parallel:** with 1h or 1i.
 
 #### 1g — Golden hashes and the cost budget
@@ -388,6 +397,11 @@ their numbers are written in Result; the pending owner checks below are logged.
   so notes cluster rather than fall evenly; no steady pulse. At most 8 bell notes sound at once;
   older ones fade at the cap. FM and Karplus-Strong stay as secondary models. The bell golden
   genome uses the Colundi tuning's `core18` scale.
+- **From 1a:** a bell note's partials decay at different rates, which one `PeriodicWave` can't
+  do, and one oscillator plus gain per partial is what made 1a's 480-sine probe miss 10x. So
+  additive bell notes are computed in JS into an `AudioBuffer` from the seed, like Karplus-Strong,
+  and played by one `AudioBufferSource` each, created in 0010's `suspend` windows. The pad keeps
+  oscillators (at most 7 notes) with partials in a `PeriodicWave`.
 - **Parallel:** with 1k, after 1g (both test against `cost()` and its budget). Each adds one
   import line to the registry and writes its own voice file, macro rows and golden hash files,
   so their merges conflict at most on that line and the macro table's rows.
@@ -412,6 +426,8 @@ their numbers are written in Result; the pending owner checks below are logged.
   cloud's grain pitches on a tuned source snap to the scale (nearest tuning member within 30 cents
   in an absolute tuning). Neither is required in the example genomes beyond the noise bed in
   `example.json`.
+- **From 1a:** grains are scheduled in 0010's `suspend` windows, never all up front; 30 grains
+  a second over 20 min rendered at 14x that way.
 - **Parallel:** with 1j, after 1g.
 
 #### 1l — Export pipeline and sidecar JSON
@@ -713,3 +729,9 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   a shifted baseline). Its requirements are folded into 1b–1m as "From 1r" lines, and the default
   loudness target moves to −16 LUFS, provisionally (0018). Pending owner check: read
   1r's untracked review against your own listening.
+- 2026-11-06: 1a merged as 6f51c65 (Opus: 95.6k tokens, 66 tool calls, 44.6 min, most of it
+  probe (b) running 36.7 min before it was stopped). Renders are byte-identical across processes;
+  every node is present; `suspend` is exact; the feedback delay floor is 128 frames; rendering is
+  single-threaded. Probes: (a) 15.8x, 129 MiB; (b) all grains up front over 20 min did not finish,
+  windowed 14x at 887 MiB; (d) 480 sines with a 12 s convolver over 720 s, 6.1x at 584 MiB. 1f, 1j
+  and 1k changed to match ("From 1a" lines).
