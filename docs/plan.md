@@ -1307,3 +1307,14 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   and `node:http2`, `node:net` and `undici` in src/. 660 tests. Pending owner checks: the real
   model id; whether 4,096 tokens of thinking room, 20 tokens a second of output and 100 tokens a
   second of prefill fit the omlx model (2l's percentiles calibrate them).
+- 2026-11-06: 2e merged as 7750632 (Opus: 172k tokens, 105 tool calls, 21.3 min; reviewer
+  Sonnet: 56k tokens, 8 tool calls, 2.7 min, PASS). The FFT moved to `src/domain/fft.js`, then
+  computes each twiddle once per stage (bit-identical, checked by hand at N = 2 to 4096; no gate
+  test pins it). `extractFeatures(raw, heard)` returns raw loudness, short-term maximum, loudness
+  range (Tech 3342) and true peak, and heard gain, centroid mean and spread and onset rate, every
+  value finite or null; `renderChecks` for clipping, near-silence (−50 LUFS), DC (0.01) and cost.
+  `FEATURE_EXTRACTOR` lists 55 files, the whole import closure engine included, checked against
+  a derived closure. The first real run read a drone at 15 onsets a second; 2048-sample frames on
+  log-compressed magnitudes fixed it. Features and checks on 30 s: 0.46 s (65x real time).
+  Pending owner checks: onset rates against your ears (the bell golden reads 4 for its 3 notes),
+  granular grains reading as 0 onsets a second, the −50 LUFS and 0.01 DC thresholds.
