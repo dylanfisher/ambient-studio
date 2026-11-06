@@ -49,3 +49,12 @@ bit for bit.
 - 2026-11-06: from step 1l. `writeWav` opens its file exclusively and throws `EEXIST` rather than
   overwrite, matching flac, so an export never replaces an earlier one
   ([0015](0015-export-sidecar-json.md)).
+- 2026-11-06: **a zero exit from flac is a success even if the pipe closed first** (step 1i,
+  provisional: owner to confirm). flac exits 0 once it has read every sample the WAV header
+  declares, which can be before Node's `pipeline` has seen the writable side finish, so the
+  pipeline rejected with `ERR_STREAM_PREMATURE_CLOSE` or `EPIPE` and `writeFlac` threw for a
+  complete FLAC. It failed once in about ten full gate runs. After a zero exit, those two codes
+  from the input are ignored; any other input error, such as a read error on the WAV, still
+  throws, and a non-zero exit still throws with flac's stderr.
+  The test puts a `flac` stub on PATH that reads one byte and exits 0 against an 8 MB WAV, so
+  the write is always still pending; it failed with EPIPE before the change.
