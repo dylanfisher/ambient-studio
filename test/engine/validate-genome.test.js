@@ -74,7 +74,7 @@ describe("validateGenome", () => {
     const cutoff = {
       points: [
         [0, 200],
-        [120, 1500],
+        [120, 1500, "smooth"],
       ],
     };
     const genome = valid({
@@ -88,6 +88,25 @@ describe("validateGenome", () => {
     expect(genome.bpm).toBe(72);
     expect(genome.macros.warmth).toEqual({ points: [[0, 0.2]] });
     expect(genome.voices[0]).toMatchObject({ cutoff, wave: "triangle", snap: true, partials: 12 });
+  });
+
+  test("a trajectory point without a curve gets the default curve written out", () => {
+    const genome = valid({
+      reverbLevel: {
+        points: [
+          [0, -20],
+          [60, -12],
+          [90, -18, "late"],
+        ],
+      },
+    });
+    expect(genome.reverbLevel).toEqual({
+      points: [
+        [0, -20],
+        [60, -12, "linear"],
+        [90, -18, "late"],
+      ],
+    });
   });
 
   test("validating a normalized genome returns it unchanged, and the input isn't mutated", () => {
@@ -159,6 +178,31 @@ describe("validateGenome", () => {
       },
       "$.reverbLevel.points[1][0]",
       /rise/,
+    ],
+    [
+      "an unknown trajectory curve",
+      {
+        reverbLevel: {
+          points: [
+            [0, -12],
+            [60, -20, "exp"],
+          ],
+        },
+      },
+      "$.reverbLevel.points[1][2]",
+      /one of "linear", "smooth", "early", "late", got "exp"/,
+    ],
+    [
+      "a curve on the first trajectory point",
+      { reverbLevel: { points: [[0, -12, "smooth"]] } },
+      "$.reverbLevel.points[0][2]",
+      /first point has no segment before it/,
+    ],
+    [
+      "a trajectory time past the longest timeline",
+      { reverbLevel: { points: [[901, -12]] } },
+      "$.reverbLevel.points[0][0]",
+      /from 0 to 900/,
     ],
     [
       "an empty trajectory",

@@ -5,6 +5,7 @@
 /** @import { Trajectory } from "./trajectory.js" */
 /** @import { VoiceType } from "./voice-registry.js" */
 import { choice, int, number } from "./descriptor.js";
+import { MAX_DURATION } from "./timeline.js";
 import { isAbsolute } from "./tuning.js";
 import { DEFAULT_TUNING, getTuning, tuningIds } from "./tuning-registry.js";
 
@@ -19,9 +20,6 @@ export const VOICE_KEYS = Object.freeze(["id", "type"]);
 
 /** Most voices a genome may hold; a cap added later would invalidate stored genomes. */
 export const MAX_VOICES = 16;
-
-/** Longest timeline a genome can describe, in seconds; voices' start and end share it. */
-const MAX_DURATION = 900;
 
 const allScales = [
   ...new Set(tuningIds().flatMap((id) => Object.keys(getTuning(id).scales))),
@@ -131,6 +129,7 @@ export const GLOBAL_PARAMS = Object.freeze({
     default: 0.35,
     unit: "",
     trajectory: true,
+    safe: [0, 0.6],
     description: "echo feedback",
   }),
   delayLevel: number({
@@ -184,6 +183,7 @@ export const VOICE_PARAMS = Object.freeze({
     default: -12,
     unit: "dB",
     trajectory: true,
+    safe: [-36, -6],
     description: "voice level",
   }),
   detune: number({

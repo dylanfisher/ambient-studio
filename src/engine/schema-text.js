@@ -14,7 +14,7 @@ import {
 import { TRAJECTORY_TEXT } from "./trajectory.js";
 import { isAbsolute } from "./tuning.js";
 import { getTuning, tuningIds } from "./tuning-registry.js";
-import { findVoiceType, voiceTypeIds } from "./voice-registry.js";
+import { requireVoiceType, voiceTypeIds } from "./voice-registry.js";
 
 /**
  * One line: name, ~ when it may be a trajectory, allowed values, =default, description.
@@ -56,9 +56,7 @@ export function schemaText() {
     return [line(name, d)];
   });
   const voiceLines = voiceTypeIds().flatMap((type) => {
-    const voice = /** @type {NonNullable<ReturnType<typeof findVoiceType>>} */ (
-      findVoiceType(type)
-    );
+    const voice = requireVoiceType(type);
     return [` type ${JSON.stringify(type)}: ${voice.description}`, ...lines(voice.params, "  ")];
   });
   return [

@@ -28,6 +28,13 @@ describe("descriptors", () => {
     ).toThrow(/log scale needs min > 0/);
   });
 
+  test("a safe range outside the range, or empty, throws when the table is built", () => {
+    const spec = { min: 0, max: 1, default: 0.5, unit: "", description: "x" };
+    expect(() => number({ ...spec, safe: [0.2, 1.5] })).toThrow(/safe range 0\.2\.\.1\.5/);
+    expect(() => number({ ...spec, safe: [0.6, 0.4] })).toThrow(/safe range/);
+    expect(number({ ...spec, safe: [0.2, 0.6] }).safe).toEqual([0.2, 0.6]);
+  });
+
   test("encode maps the range to 0..1 along the scale, and decode inverts it", () => {
     expect(encode(linear, -30)).toBe(0);
     expect(encode(linear, -6)).toBe(1);

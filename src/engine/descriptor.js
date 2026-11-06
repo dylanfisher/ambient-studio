@@ -26,6 +26,7 @@ import { show } from "./validation-error.js";
  * @property {string} unit
  * @property {Scale} scale the axis macros and optimizers move along
  * @property {boolean} trajectory whether the value may be a trajectory
+ * @property {readonly [number, number]} [safe] the part of the range `randomGenome` draws from
  * @property {string} description one line for the schema text
  * @property {When} [when]
  */
@@ -78,6 +79,8 @@ import { show } from "./validation-error.js";
  * @property {string} unit
  * @property {Scale} [scale] linear when omitted
  * @property {boolean} [trajectory] false when omitted
+ * @property {readonly [number, number]} [safe] the part of the range `randomGenome` draws from:
+ *   stable, and dark and bass-heavy where the parameter sets tone; the whole range when omitted
  * @property {string} description
  * @property {When} [when]
  */
@@ -95,6 +98,11 @@ function numeric(kind, spec) {
   if (!(spec.default >= min && spec.default <= max)) {
     throw new Error(
       `descriptor "${spec.description}": default ${spec.default} is outside ${min}..${max}`,
+    );
+  }
+  if (spec.safe && !(spec.safe[0] >= min && spec.safe[0] < spec.safe[1] && spec.safe[1] <= max)) {
+    throw new Error(
+      `descriptor "${spec.description}": safe range ${spec.safe.join("..")} is not a part of ${min}..${max}`,
     );
   }
   if (kind === "int" && ![min, max, spec.default].every(Number.isInteger)) {
@@ -139,15 +147,29 @@ export function choice(spec) {
 export const flag = (spec) => Object.freeze({ kind: "bool", ...spec });
 
 /**
+ * Whether a descriptor is a number or an int, the kinds with a range and a scale.
+ * @param {Descriptor} descriptor
+ * @returns {descriptor is NumberDescriptor}
+ */
+export const isNumeric = (descriptor) => descriptor.kind === "number" || descriptor.kind === "int";
+
+/**
+ * The values an enum or a bool allows.
+ * @param {EnumDescriptor | BoolDescriptor} descriptor
+ * @returns {readonly (string | boolean)[]}
+ */
+export const choices = (descriptor) =>
+  descriptor.kind === "enum" ? descriptor.values : [true, false];
+
+/**
  * @param {Descriptor} descriptor
  * @returns {boolean}
  */
-export const allowsTrajectory = (descriptor) =>
-  (descriptor.kind === "number" || descriptor.kind === "int") && descriptor.trajectory;
+export const allowsTrajectory = (descriptor) => isNumeric(descriptor) && descriptor.trajectory;
 
 /** @param {Descriptor} descriptor @returns {NumberDescriptor} */
 function vectorizable(descriptor) {
-  if (descriptor.kind === "enum" || descriptor.kind === "bool") {
+  if (!isNumeric(descriptor)) {
     // An ordinal code for an enum would make an optimizer jump between unrelated values.
     throw new Error(`an ${descriptor.kind} parameter has no vector encoding (decision 0005)`);
   }
@@ -237,8 +259,7 @@ export function checkValue(descriptor, value, path, errors) {
  * @param {Descriptor} descriptor
  */
 export function valueText(descriptor) {
-  if (descriptor.kind === "enum") return descriptor.values.join("|");
-  if (descriptor.kind === "bool") return "true|false";
+  if (!isNumeric(descriptor)) return choices(descriptor).join("|");
   const { kind, min, max, unit } = descriptor;
   return `${min}..${max}${unit ? ` ${unit}` : ""}${kind === "int" ? " int" : ""}`;
 }

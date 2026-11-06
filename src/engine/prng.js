@@ -8,6 +8,12 @@ const INITIAL_STATE = 0x9e3779b9;
 export const TRIGGER_SLOT = 0;
 
 /**
+ * Slots of the draws not tied to a voice, which use voice id "" (decision 0003). One list, so
+ * two uses never share a key.
+ */
+export const GENOME_SLOT = Object.freeze({ excerpt: 1, randomGenome: 2 });
+
+/**
  * The lowbias32 integer finalizer (Chris Wellons): a bijection on 32-bit integers in which each
  * input bit flips each output bit with probability close to 1/2. `Math.imul` and the shifts are
  * exact integer operations, so every JS engine gives the same result.

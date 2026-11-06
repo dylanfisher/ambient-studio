@@ -4,7 +4,10 @@
 # HTTP method, a flag two programs each define. A fact both files share gets one definition
 # and an import instead. The script prints each finding's key, everything before the reason.
 literal "data" | files src/server/write-flac.js src/server/write-wav.js | a stream event name in write-flac, the RIFF chunk id in write-wav
-literal "number" | files src/engine/descriptor.js src/engine/tuning.js src/engine/validate-genome.js src/engine/validation-error.js | the JavaScript typeof tag in each file; descriptor.js also names its number kind with it
-literal "string" | files src/engine/descriptor.js src/engine/tuning.js src/engine/validate-genome.js | the JavaScript typeof tag
+literal "number" | files src/engine/descriptor.js src/engine/trajectory.js src/engine/tuning.js src/engine/validate-genome.js src/engine/validation-error.js | the JavaScript typeof tag in each file; descriptor.js also names its number kind with it
+literal "string" | files src/engine/descriptor.js src/engine/trajectory.js src/engine/tuning.js src/engine/validate-genome.js | the JavaScript typeof tag
 literal "${key}" | files src/engine/schema-text.js src/engine/tuning.js | quotes a voice key in the schema text and an unknown tuning-file key in an error
 literal "${name}" | files src/engine/tuning.js src/engine/voice-registry.js | quotes a scale name in a tuning error and a parameter name in a voice error
+literal "linear" | files src/engine/descriptor.js src/engine/trajectory.js | a parameter scale in descriptor.js, a trajectory segment curve in trajectory.js
+literal "macros" | files src/engine/validate-genome.js src/engine/vector-view.js | a genome key in validate-genome, a prefix of the vector-path notation in vector-view
+literal "voices" | files src/engine/validate-genome.js src/engine/vector-view.js | a genome key in validate-genome, a prefix of the vector-path notation in vector-view
