@@ -1294,3 +1294,16 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   tries up to three times (40 runs alone and 18 under load, no failures). `./scripts/backup`
   writes a UTC-dated folder and keeps it when the rated-audio check fails. 631 tests. 0021 is
   provisional.
+- 2026-11-06: 2d merged (Opus: 137k tokens, 62 tool calls, 15.2 min, then a fix round at 215k,
+  86 calls, 25.3 min; reviewer Sonnet: 62k tokens, 8 tool calls, 1.3 min, PASS with findings
+  taken before merge; fixes read by the orchestrator). `createOmlxQueue` with a required
+  `onRetry`, an injected clock and jitter, one connection per attempt through `node:http` with no
+  keep-alive, and the end of a request stamped only after its socket closes: the first version's
+  pooled `fetch` socket let the 20-request test see 2 in flight. `maxTokens` 10,752 (the longest
+  `{intent, genome}` answer over 100,000 `randomGenome` seeds is about 6,430 tokens, plus 4,096
+  for thinking); a new key `minPrefillTokensPerSecond` (100) adds the prompt's prefill to the
+  first-token threshold (30 s) and the timeout (600 s), so an 8,192-token prompt isn't read as
+  busy. `arch.js` refuses `fetch`, `node:http(s)` clients and dynamic imports outside the queue,
+  and `node:http2`, `node:net` and `undici` in src/. 660 tests. Pending owner checks: the real
+  model id; whether 4,096 tokens of thinking room, 20 tokens a second of output and 100 tokens a
+  second of prefill fit the omlx model (2l's percentiles calibrate them).
