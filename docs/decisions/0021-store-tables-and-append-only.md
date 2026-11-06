@@ -18,7 +18,10 @@ holds; later steps (2f, 2h, 2i, 2l) write them.
 **Open.** `openStore(file, {now})` in `src/server/store.js` opens `node:sqlite`'s `DatabaseSync`
 with `journal_mode = WAL`, `foreign_keys = ON`, `recursive_triggers = ON` and a 5 s busy
 timeout (`BUSY_TIMEOUT_MS`, also on the backup's connection), so a second process waits for a
-write lock instead of failing at once, and applies the migrations the database hasn't had. `now` is the clock for `createdAt`, `removedAt` and the
+write lock instead of failing at once, and applies the migrations the database hasn't had.
+Switching a new file to WAL is the one step SQLite fails at once, without the timeout, when
+another connection is switching it too; `useWal` then takes and releases the write lock, which
+waits for the other connection, and tries again, up to 3 times. `now` is the clock for `createdAt`, `removedAt` and the
 migration log, in milliseconds since the Unix epoch; tests pass a counting clock
 (`test/support/temp-store.js`).
 

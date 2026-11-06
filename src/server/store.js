@@ -240,6 +240,31 @@ function migrate(db, migrations, now) {
   }
 }
 
+/** Times `useWal` waits out another connection switching a new file to WAL. */
+const WAL_ATTEMPTS = 3;
+
+/**
+ * Switches the database to WAL mode, which stays set in the file.
+ * @param {DatabaseSync} db
+ */
+function useWal(db) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const mode = db.prepare("PRAGMA journal_mode = WAL").get()?.journal_mode;
+      if (mode !== "wal") throw new Error(`the database stayed in journal mode ${mode}, not WAL`);
+      return;
+    } catch (error) {
+      // When another connection is switching a new file at the same moment, SQLite fails this
+      // at once instead of using the busy timeout. Taking and releasing the write lock waits,
+      // with the timeout, until the other connection is done.
+      const locked = /database is locked/.test(/** @type {Error} */ (error).message);
+      if (!locked || attempt === WAL_ATTEMPTS) throw error;
+      db.exec("BEGIN IMMEDIATE");
+      db.exec("COMMIT");
+    }
+  }
+}
+
 /**
  * @typedef {object} OpenOptions
  * @property {() => number} now
@@ -257,7 +282,7 @@ function migrate(db, migrations, now) {
 export function openStore(file, { now, migrations = readMigrations() }) {
   const db = new DatabaseSync(file, { timeout: BUSY_TIMEOUT_MS });
   try {
-    db.exec("PRAGMA journal_mode = WAL");
+    useWal(db);
     db.exec("PRAGMA foreign_keys = ON");
     // Without this, INSERT OR REPLACE deletes the row it replaces without firing the delete
     // trigger.

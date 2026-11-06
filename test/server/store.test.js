@@ -204,12 +204,14 @@ describe("migrations", () => {
     expect(applied.map((row) => row.id)).toEqual(readMigrations().map(({ id }) => id));
   });
 
-  test("refuse migration files numbered out of order", () => {
+  test("refuse migration files numbered out of order", async () => {
+    const { paths, now } = await made();
     const [first] = readMigrations();
     if (!first) throw new Error("no migrations");
-    expect(() =>
-      openStore(":memory:", { now: () => 0, migrations: [{ ...first, id: 2 }] }),
-    ).toThrow(/numbered 1, 2, 3/);
+    const migrations = [{ ...first, id: 2 }];
+    expect(() => openStore(`${paths.database}-misnumbered`, { now, migrations })).toThrow(
+      /numbered 1, 2, 3/,
+    );
   });
 });
 
