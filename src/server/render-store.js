@@ -2,7 +2,7 @@
 // `producer` included, and a row for the same window under another target or producer is
 // replaced, never returned.
 /** @import { Store } from "./store.js" */
-import { decode, insertRow, TABLE, transaction } from "./store.js";
+import { decode, insertRow, selectRow, TABLE, transaction } from "./store.js";
 
 /**
  * The excerpt a render is of; one row per window.
@@ -67,6 +67,15 @@ export function getRender(store, id) {
 export function findRender(store, key) {
   const render = renderFor(store, key);
   return render?.target === key.target && render.producer === key.producer ? render : undefined;
+}
+
+/**
+ * @param {Store} store
+ * @param {number} id
+ * @returns {Render | undefined}
+ */
+export function getRender(store, id) {
+  return selectRow(store, TABLE.renders, RENDERS, id);
 }
 
 /**

@@ -2,7 +2,7 @@
 import { afterEach, expect, test } from "vitest";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
 import { putGenome } from "../../src/server/generation-store.js";
-import { findRender, putRender } from "../../src/server/render-store.js";
+import { findRender, getRender, putRender } from "../../src/server/render-store.js";
 import { createVibe } from "../../src/server/vibe-store.js";
 import { tempStore } from "../support/temp-store.js";
 
@@ -62,4 +62,11 @@ test("another window of the same genome is a separate row", async () => {
   putRender(store, { ...draft, offset: 40, file: "r2.wav" });
   expect(findRender(store, key)?.file).toBe("r1.wav");
   expect(findRender(store, { ...key, offset: 40 })?.file).toBe("r2.wav");
+});
+
+test("a render is read by its id, and an unknown id reads as undefined", async () => {
+  const { store, draft } = await setup();
+  const { render } = putRender(store, draft);
+  expect(getRender(store, render.id)).toEqual(render);
+  expect(getRender(store, render.id + 1)).toBeUndefined();
 });

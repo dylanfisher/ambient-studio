@@ -97,8 +97,11 @@ function outputPaths(outDir, name, flac) {
   return paths;
 }
 
-/** @param {Float32Array[]} channels */
-function requireFinite(channels) {
+/**
+ * Throws on the first sample that isn't finite, before anything is normalized or written.
+ * @param {Float32Array[]} channels
+ */
+export function requireFinite(channels) {
   for (const [c, channel] of channels.entries()) {
     const frame = channel.findIndex((x) => !Number.isFinite(x));
     if (frame !== -1) {
