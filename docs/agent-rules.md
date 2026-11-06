@@ -86,5 +86,9 @@ and write down why when a rule comes from something that went wrong.
     and a performance pass when it touches the render path. Give each reviewer numbered
     questions. For anything smaller, read the diff yourself and run the gate if it
     reads what changed.
-11. Log each subagent's tokens, tool calls and wall time in the progress log. Every two or three
-    phases, change the briefs where the most went.
+11. Log each subagent's tokens, tool calls and wall time in the progress log. Every three or four
+    merged steps, and at each phase end, write a retrospective entry in the log: tokens and wall
+    time per step, where they went (reading, test iteration, review rounds, waiting on probes),
+    and what changes in the briefs or these rules because of it. Make the change in the same
+    commit. Each retrospective also confirms that every checker in `./scripts/check` still skips
+    `tmp/`, `.claude/worktrees/`, `node_modules/` and `.venv/`.
