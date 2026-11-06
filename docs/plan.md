@@ -40,7 +40,8 @@ unneeded stays unused rather than being given to another step.
 | 0015 | The export sidecar JSON and re-render check | 1l | reserved |
 | 0016 | Render speed measured by a bench script | 1m | [written](decisions/0016-render-speed-bench.md) |
 | 0017 | Phase 1 exposes rendering as a CLI | 1m | [written](decisions/0017-phase-1-cli.md) |
-| 0018– | Phase 2 records, numbered when phase 2 is expanded | 2 | — |
+| 0018 | Default loudness target −16 LUFS (provisional) | 1r | [written](decisions/0018-default-loudness-target.md) |
+| 0019– | Phase 2 records, numbered when phase 2 is expanded | 2 | — |
 
 ## Phase 1 — Engine, schema and macros
 
@@ -74,8 +75,9 @@ their numbers are written in Result; the pending owner checks below are logged.
   sounds that vanish when the stereo is summed to mono.
 - Play the WAV and the FLAC in the player you use on mbp2015. Both should open and sound the
   same.
-- Play the export next to an ambient track you know, at the same volume setting. At −20 LUFS they
-  should sound about equally loud.
+- Play the export next to an ambient track you know, at the same volume setting. At −16 LUFS they
+  should sound about equally loud. Listen on headphones or a full-range speaker: most of the
+  energy is under 100 Hz, which laptop speakers don't reproduce.
 
 **Result:**
 
@@ -171,6 +173,21 @@ their numbers are written in Result; the pending owner checks below are logged.
 - **Records:** writes 0003 (the hash, the key layout and thinning) and 0004 (the two tuning
   kinds, the file format and Scala import, scales as subsets, and reference pitch). Both change renders if they change later, under
   [0009](decisions/0009-engine-version-golden-hashes.md).
+- **From 1r:**
+  - The Colundi file holds the 128 exact decimal Hz values (10.8 … 12000), not values recomputed
+    from cents.
+  - The `.scl` loader reads a file as an absolute tuning when given a base frequency: each line is
+    cents above the base, the base (1/1) is degree 0 and isn't written in the file, so there are
+    count + 1 degrees. Colundi's Scala files use base 10.8 Hz. Test: a 127-line Colundi `.scl` at
+    base 10.8 gives degree 78 = 440 Hz within 0.001 Hz, and every degree of the 37-line file is a
+    degree of the 127-line one within 0.001 cents.
+  - Named scales of the Colundi tuning: `subset38` (the 38-value list), `core36` (70, 80, 105, 120,
+    126.22, 140.25, 147, 160, 172.06, 183.58, 187.61, 197, 210.42, 211.44, 221.23, 250, 264, 285,
+    293, 320, 345, 360, 384, 396, 402, 420.82, 440, 480, 492.8, 526, 528, 586, 630, 639, 685, 880)
+    and `core18` (105, 126.22, 140.25, 160, 172.06, 197, 221.23, 250, 264, 293, 320, 345, 360, 384,
+    402, 528, 639, 685).
+  - In an absolute tuning a voice picks notes only through `tuningFrequencies` over a register band
+    in Hz: drone 33–135, pad 100–500, bell/pluck 150–1100.
 - **Parallel:** with 1c or 1e.
 
 #### 1c — Genome schema and validator
@@ -193,6 +210,13 @@ their numbers are written in Result; the pending owner checks below are logged.
   characters for the full phase 1 schema (the test reads the assembled schema, so later voices
   are held to it too).
 - **Records:** governed by [0005](decisions/0005-genome-schema-table.md).
+- **From 1r**, global descriptors (min–max, default): loudness target −30 to −9 LUFS, default −16
+  (provisional, record 0018); true-peak ceiling −3.0 to −0.3 dBTP, default −1.0; stereo width as a
+  side/mid energy ratio, −12 to 0 dB, default −3, applied across the whole spectrum; master fade-in
+  0–60 s, default 4, and fade-out 0–90 s, default 20, ending in digital silence; reverb decay
+  (RT60) 1–20 s, default 8, and wet level −30 to −6 dB, default −12; pulse defaults to none; a
+  `duration` for the genome's timeline, 60–900 s, default 300, which fades and `excerptOffset`
+  read. Each voice has a `detune` in cents, 0–12, default 3, drawn per note in ±detune.
 - **Parallel:** with 1b or 1e.
 
 #### 1d — Trajectories, macros, vector view and random genomes
@@ -223,6 +247,11 @@ their numbers are written in Result; the pending owner checks below are logged.
   reverb's decay plus the delay's feedback decay. Filter and reverb state still only converge,
   so an excerpt is close to the same window of a full render, not identical; 0007 says so, and
   1f measures the difference on a golden genome and adds it.
+- **From 1r:** `randomGenome` draws trajectory breakpoint gaps of 20–120 s, never under 10 s, and
+  a dark, bass-heavy sound by default (ranges from 1c, 1f, 1j, 1k). `excerptOffset` places the
+  whole excerpt after the fade-in and before the fade-out, and uses offset 0 only when the fade-in
+  is 0. Macro rows as the voices add them: density moves bell notes per minute within 0.5–40,
+  brightness moves filter cutoffs within 200 Hz–3 kHz, depth/space moves reverb decay and level.
 - **Parallel:** with 1e. After 1c.
 
 #### 1e — Loudness meter
@@ -271,6 +300,13 @@ their numbers are written in Result; the pending owner checks below are logged.
   hold. The scheduling choice must hold for a 20-minute track at a granular cloud's maximum
   density, not only for 300 s. The master bus is linear; normalization and limiting run only
   after voices are summed, so stems sum to the mix within a tolerance before the limiter.
+- **From 1r:** drone fundamentals 33–135 Hz (octaves 1–2 in relative tunings); a sine-only stack
+  of 4–12 partials falling −4 to −8 dB per partial octave (default −6), 2–3 copies per partial
+  detuned 0–12 cents (default 4); in an absolute tuning partials may snap to tuning members within
+  40 cents of n × fundamental; a low-pass sweep with cutoff 100 Hz–2 kHz (default 600), period
+  30–300 s, Q at most 4. The reverb IR is 1–20 s (default 8) and dark: its 4 kHz decay about half
+  the low-frequency decay. The master bus applies the side/mid width and the fades (after the voice
+  sum, before normalization, inside the golden hashes). `renderPlan` accepts up to 900 s.
 - **Parallel:** with 1h or 1i.
 
 #### 1g — Golden hashes and the cost budget
@@ -288,6 +324,8 @@ their numbers are written in Result; the pending owner checks below are logged.
   fails; every `randomGenome` with a cost cap stays under it.
 - **Records:** governed by [0009](decisions/0009-engine-version-golden-hashes.md). Adds the cost
   unit and budget to 0010, calibrated against 1a's probes.
+- **From 1r:** the budget admits the densest bell setting in 1j (40 notes a minute, 10 partials,
+  15 s ring: about 100 sine oscillators alive) over a 900 s render; the cost unit counts partials.
 - **Parallel:** with 1h or 1i. After 1f.
 
 #### 1h — Normalization and true-peak limiter
@@ -305,6 +343,9 @@ their numbers are written in Result; the pending owner checks below are logged.
   signal built so limiting can't reach the target throws naming the final error.
 - **Records:** governed by [0008](decisions/0008-loudness-written-here.md). Writes 0011: the
   limiter's look-ahead, attack and release, the iteration limit, and the gain cap.
+- **From 1r:** reaches any target from −30 to −9 LUFS at −1.0 dBTP within ±0.5 LU; a test at
+  −12 LUFS with a bass-heavy tonal signal (80% of its energy under 100 Hz); the gain cap allows
+  at least +35 dB.
 - **Parallel:** with 1f or 1g, after 1e.
 
 #### 1i — WAV and FLAC writers
@@ -337,6 +378,16 @@ their numbers are written in Result; the pending owner checks below are logged.
   spec holds a `DelayNode` in a cycle to at least one render quantum (128 frames, so a loop
   can't play above about 375 Hz at 48 kHz), and a buffer doesn't depend on how the library
   handles cycles.
+- **From 1r:** pad: 3–7 sine-based notes from the scale in 100–500 Hz (default 5), attack 2–20 s
+  (default 8), release 4–30 s (default 12), a swell cycle of 20–90 s swinging 6–20 dB. Bell:
+  additive is the primary model, fundamentals 150–1100 Hz, 4–10 partials falling 3–6 dB each, none
+  above 3 kHz, drawn from `tuningFrequencies` in an absolute tuning and otherwise from an
+  inharmonic ratio table (bar: 1, 2.76, 5.40, 8.93, 13.34; sparse harmonic: 1, 1.5, 2, 2.5, 3);
+  linear attack 2–10 ms; decay (T60 of the fundamental) 0.3–15 s, default 6, higher partials at
+  0.3–0.7 of it (default 0.5). Density 0.5–40 notes a minute, default 8, with a density trajectory
+  so notes cluster rather than fall evenly; no steady pulse. At most 8 bell notes sound at once;
+  older ones fade at the cap. FM and Karplus-Strong stay as secondary models. The bell golden
+  genome uses the Colundi tuning's `core18` scale.
 - **Parallel:** with 1k, after 1g (both test against `cost()` and its budget). Each adds one
   import line to the registry and writes its own voice file, macro rows and golden hash files,
   so their merges conflict at most on that line and the macro table's rows.
@@ -357,6 +408,10 @@ their numbers are written in Result; the pending owner checks below are logged.
   second and chooses between one `AudioBufferSource` per grain (scheduled in `suspend` windows if
   1a found them exact) and grains mixed in JS into buffers from the seed, using 1a's probes and
   the 0010 budget.
+- **From 1r:** the noise bed's default level is at least 30 dB under the drone's; the granular
+  cloud's grain pitches on a tuned source snap to the scale (nearest tuning member within 30 cents
+  in an absolute tuning). Neither is required in the example genomes beyond the noise bed in
+  `example.json`.
 - **Parallel:** with 1j, after 1g.
 
 #### 1l — Export pipeline and sidecar JSON
@@ -387,8 +442,13 @@ their numbers are written in Result; the pending owner checks below are logged.
 - **Builds:** `./scripts/render` and its CLI module, `./scripts/bench` (speed and peak memory), a
   manual loudness-oracle script that compares our meter with ffmpeg's on an export, and
   `src/engine/genomes/example.json`: a few minutes of drone, pad, noise bed and sparse bells in
-  D dorian at −20 LUFS, and `src/engine/genomes/colundi.json`, the same voices in a Colundi
+  D dorian at −16 LUFS, and `src/engine/genomes/colundi.json`, the same voices in a Colundi
   scale chosen from 1r's review. The CLI module joins `knip.json`'s entries.
+- **From 1r:** `example.json` targets −16 LUFS (record 0018), width −3 dB, fade-in 4 s, fade-out
+  20 s, reverb decay 8 s; the drone at 36–75 Hz is the loudest voice, the noise bed at least 30 dB
+  under it, bells at 8 a minute. `colundi.json` uses `core18` for pad and bell, drone fundamentals
+  from the tuning's 55–120 Hz values, bell partials from all 128. `./scripts/bench` adds a 720 s
+  case beside the 300 s one.
 - **Tiers:** server; scripts/.
 - **Tests first:** the CLI's argument parser rejects a missing `--out`, a non-numeric seed and an
   unknown flag, each with a message; a CLI run on a 3 s golden genome into a temp folder writes
@@ -646,3 +706,10 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
 - 2026-11-06: the owner added step 1r, a review of reference recordings and tuning research
   before 1b. 1b now covers absolute-frequency tunings, non-octave tunings, tuning files and
   Scala import, with the Colundi sequence shipped as a tuning; 1c, 1j and 1m follow from it.
+- 2026-11-06: phase 1 run started; 1a and 1r briefed in parallel. 1r (Sonnet: 130k tokens, 31 tool
+  calls, 12.6 min) measured 32 reference tracks: median −14.7 LUFS, true peak about −1 dBTP,
+  78–99% of energy under 100 Hz, about 7 note starts a minute, fades at both ends; the Colundi
+  tuning confirmed on two of four sets (median 5.6 cents from the nearest value, against 20.5 for
+  a shifted baseline). Its requirements are folded into 1b–1m as "From 1r" lines, and the default
+  loudness target moves to −16 LUFS, provisionally (0018). Pending owner check: read
+  1r's untracked review against your own listening.
