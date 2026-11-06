@@ -1318,3 +1318,39 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   log-compressed magnitudes fixed it. Features and checks on 30 s: 0.46 s (65x real time).
   Pending owner checks: onset rates against your ears (the bell golden reads 4 for its 3 notes),
   granular grains reading as 0 onsets a second, the −50 LUFS and 0.01 DC thresholds.
+- 2026-11-06: 2f merged (Opus: 210k tokens, 86 tool calls, 17.0 min, then a fix round at 283k,
+  52 calls, 12.8 min; reviewer Sonnet: 61k tokens, 8 tool calls, 1.6 min, PASS with findings
+  taken before merge; fixes read by the orchestrator). `buildPrompt` with the constraints, the
+  macro and parameter reference and up to four retrieved examples (3,771 characters, about 1,078
+  tokens, with none; 8,258 with four), `extractGenome` for one `{intent, genome}` answer, and one
+  repair request that sends back the validator's and linter's findings; a truncated answer is not
+  repaired. `generateCandidates` runs N seeds through the queue, and every generation ends in a
+  candidate row, failed requests and a cancel before the repair included. Migration 0002 adds
+  `reasoning`, `requestParams`, `retries` and `error` to generations and `rejectedGenome` to
+  candidates, tested over a database built with 0001 alone; the queue now returns what it sent and
+  rejects with `OmlxRequestError`. A failure in the queue stops the batch after its rows are
+  stored, so a busy omlx isn't sent the rest (0024). 736 tests.
+- 2026-11-06: retrospective after 2a–2f (orchestrator rule 11).
+
+  | Step | Build | Fix rounds | Review |
+  |---|---|---|---|
+  | 2a | 112k, 57 calls, 10.9 min | shared with 2b | 80k, 3.4 min, FAIL (after merge) |
+  | 2b | 209k, 82 calls, 20.6 min | e118675, fae110d | same review |
+  | 2c | 208k, 92 calls, 21.8 min | 242k, 12.0 min | 67k FAIL, then 40k PASS |
+  | 2d | 137k, 62 calls, 15.2 min | 215k, 25.3 min | 62k, 1.3 min, PASS with findings |
+  | 2e | 172k, 105 calls, 21.3 min | — | 56k, 2.7 min, PASS |
+  | 2f | 210k, 86 calls, 17.0 min | 283k, 12.8 min | 61k, 1.6 min, PASS with findings |
+
+  Where it went: fix rounds cost as much as builds in three of six steps, and every one followed a
+  review that found a real fault (a migration editable after it ran, two requests in flight
+  through a pooled socket, an excerpt floor that disagreed with the renderer, failed requests that
+  left no row). Reviews stayed cheap, 1.3 to 3.4 minutes each. Skipping review on 2a and 2b saved
+  nothing: the review ran anyway, after merge, and its fixes landed on main. Two smaller costs:
+  worktrees started from an old commit until briefs named the base sha, and a reviewer's worktree
+  had no `node_modules`. Changes: briefs name the base sha and say to run
+  `pnpm install --frozen-lockfile --offline` first (both already in use since 2c); every step is
+  reviewed before merge, with no exception for small ones; `scripts/dupes-allow.txt` conflicted at
+  every merge and is resolved by keeping both sides' entries. The gate's tools still skip `tmp/`,
+  `.claude/worktrees/`, `node_modules/` and `.venv/`: arch and dupes walk `src/` and
+  `sidecar/src/`, biome reads `.gitignore` (which lists all four), tsc, knip and Vitest name
+  their folders, and ruff skips `.venv`.
