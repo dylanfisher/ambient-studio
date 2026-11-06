@@ -871,3 +871,13 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   folder and hard-links each file into place. 300 s export of the drone: 7.6 s, 701 MiB, −16.05
   LUFS, −1.40 dBTP. The first gate after the merge failed one 1a spike test under load (passed in
   11 reruns); being fixed as the same suspend race in a test that called `suspend` directly.
+- 2026-11-06: 1m merged as fe48056 (Opus: 189k tokens, 100 tool calls, 27.2 min; rebase 3.0 min;
+  read by the orchestrator). `./scripts/render` over a strict `parseArgs` CLI, `./scripts/bench`
+  with a 720 s case, `./scripts/loudness-oracle.js`, and the `example.json` and `colundi.json`
+  genomes as goldens (cost 311 and 320 of 560). By hand: acceptance 1, 2, 3, 4 and 6 pass; 5
+  failed. The renderer isn't deterministic past about a minute: the library drops a node when V8
+  collects its handle and reuses its id, and nodes are summed in id order, so GC timing moved
+  samples by up to 1.8e-7 (first at 60 s, from the bell). Holding every node fixed it but would
+  need about 3.4 GB at the densest bell setting over 900 s. A determinism fix is in progress.
+  Colundi bell partials come from the genome's scale (`core18`), not all 128 values, since the
+  schema has one scale per genome.
