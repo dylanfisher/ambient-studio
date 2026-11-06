@@ -5,7 +5,7 @@
 /** @import { RenderResult } from "../../src/engine/render-plan.js" */
 import { expect } from "vitest";
 import { SAMPLE_RATE } from "../../src/engine/render-plan.js";
-import { renderOffline } from "./render-offline.js";
+import { renderOffline } from "../../src/server/render-offline.js";
 
 // The stated tolerance, from renders measured on mbp2021: an excerpt differs from its window of
 // a full render by at most a peak of 1e-5, with the difference at least 100 dB under the signal

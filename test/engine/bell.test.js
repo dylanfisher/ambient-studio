@@ -12,8 +12,8 @@ import { fires } from "../../src/engine/prng.js";
 import { getTuning } from "../../src/engine/tuning-registry.js";
 import { requireGenome } from "../../src/engine/validate-genome.js";
 import { voiceTypeIds } from "../../src/engine/voice-registry.js";
+import { renderOffline } from "../../src/server/render-offline.js";
 import { expectExcerptMatches, renderUpFront, rms } from "../support/compare-renders.js";
-import { renderOffline } from "../support/render-offline.js";
 
 const RATE = 48000;
 const golden = requireGenome(bellGenome, "the bell golden genome");

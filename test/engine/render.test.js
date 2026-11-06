@@ -7,6 +7,7 @@ import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json
 import { randomGenome } from "../../src/engine/random-genome.js";
 import { requireGenome } from "../../src/engine/validate-genome.js";
 import { registerVoice, unregisterVoice } from "../../src/engine/voice-registry.js";
+import { renderOffline } from "../../src/server/render-offline.js";
 import {
   difference,
   expectExcerptMatches,
@@ -14,7 +15,6 @@ import {
   rms,
 } from "../support/compare-renders.js";
 import { PULSE_EVERY, pulseVoice } from "../support/pulse-voice.js";
-import { renderOffline } from "../support/render-offline.js";
 
 const RATE = 48000;
 // The stated tolerance, from renders measured on mbp2021: stems summed differ from the mix by

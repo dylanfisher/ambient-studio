@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { SAMPLE_RATE } from "../../src/engine/render-plan.js";
 import { requireGenome } from "../../src/engine/validate-genome.js";
 import { encodePcm24 } from "../../src/server/encode-pcm24.js";
-import { renderOffline } from "./render-offline.js";
+import { renderOffline } from "../../src/server/render-offline.js";
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const GENOME_DIR = join(root, "src/engine/genomes");
