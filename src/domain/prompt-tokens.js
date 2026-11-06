@@ -1,7 +1,12 @@
 // The context budget's token estimate (decision 0022). The prompt builder trims to it and the
 // omlx queue refuses a prompt over it, so both read this one estimate.
 
-/** @typedef {{ role: "system" | "user" | "assistant", content: string }} ChatMessage */
+/** Who a chat message is from. */
+export const ROLE = Object.freeze(
+  /** @type {const} */ ({ system: "system", user: "user", assistant: "assistant" }),
+);
+
+/** @typedef {{ role: (typeof ROLE)[keyof typeof ROLE], content: string }} ChatMessage */
 
 /** The context budget's estimate of characters per token, for prompts and answers alike. */
 export const CHARS_PER_TOKEN = 3.5;
