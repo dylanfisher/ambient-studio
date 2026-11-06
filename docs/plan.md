@@ -37,7 +37,7 @@ unneeded stays unused rather than being given to another step.
 | 0012 | WAV written here, FLAC through the CLI | 1i | [written](decisions/0012-flac-via-cli.md) |
 | 0013 | Pad/swell and bell/pluck voice designs | 1j | [written](decisions/0013-pad-and-bell-voices.md), provisional |
 | 0014 | Granular cloud and noise bed voice designs | 1k | [written](decisions/0014-granular-cloud-noise-bed.md), provisional |
-| 0015 | The export sidecar JSON and re-render check | 1l | reserved |
+| 0015 | The export sidecar JSON and re-render check | 1l | [written](decisions/0015-export-sidecar-json.md), provisional |
 | 0016 | Render speed measured by a bench script | 1m | [written](decisions/0016-render-speed-bench.md) |
 | 0017 | Phase 1 exposes rendering as a CLI | 1m | [written](decisions/0017-phase-1-cli.md) |
 | 0018 | Default loudness target −16 LUFS (provisional) | 1r | [written](decisions/0018-default-loudness-target.md) |

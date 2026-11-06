@@ -143,6 +143,45 @@ describe("exportRender on a render that isn't finite", () => {
   });
 });
 
+describe("exportRender when writing fails", () => {
+  afterEach(() => {
+    vi.doUnmock("../../src/server/write-flac.js");
+    vi.resetModules();
+  });
+
+  /** Loads exportRender with a flac step that leaves a partial file and then fails. */
+  async function withFailingFlac() {
+    vi.resetModules();
+    vi.doMock("../../src/server/write-flac.js", () => ({
+      writeFlac: async (/** @type {string} */ _wav, /** @type {string} */ flac) => {
+        await writeFile(flac, "partial");
+        throw new Error("flac exited with code 1");
+      },
+    }));
+    return (await import("../../src/server/export-render.js")).exportRender;
+  }
+
+  test("removes the files and folders it created and rethrows the original error", async () => {
+    const exportWithFailure = await withFailingFlac();
+    const parent = await freshDir("fails-new");
+    const outDir = join(parent, "new", "deeper");
+    await expect(
+      exportWithFailure(droneGenome, { ...options, duration: 1, outDir }),
+    ).rejects.toThrow("flac exited with code 1");
+    expect(await readdir(parent)).toEqual([]);
+  });
+
+  test("leaves files it didn't create in an existing folder", async () => {
+    const exportWithFailure = await withFailingFlac();
+    const outDir = await freshDir("fails-existing");
+    await writeFile(join(outDir, "other.txt"), "kept");
+    await expect(
+      exportWithFailure(droneGenome, { ...options, duration: 1, outDir }),
+    ).rejects.toThrow("flac exited with code 1");
+    expect(await readdir(outDir)).toEqual(["other.txt"]);
+  });
+});
+
 describe("rerender", () => {
   test("reproduces an export's PCM hash from its sidecar", async () => {
     const outDir = await freshDir("again");

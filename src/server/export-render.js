@@ -2,7 +2,7 @@
 // re-renders them (decisions 0009, 0011, 0012, 0015).
 /** @import { Genome } from "../engine/genome-schema.js" */
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, rmdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { normalize } from "../domain/normalize.js";
 import { ENGINE_VERSION } from "../engine/engine-version.js";
@@ -161,10 +161,41 @@ async function prepareExport(genome, { seed, duration, offset = 0, target, outDi
  * @returns {Promise<Export>}
  */
 async function writeExport({ sidecar, paths, pcm, channelCount }) {
-  await mkdir(dirname(paths.wav), { recursive: true });
-  await writeWav(paths.wav, pcm, { channelCount, sampleRate: sidecar.sampleRate });
-  await writeFlac(paths.wav, paths.flac);
-  await writeFile(paths.json, `${JSON.stringify(sidecar, null, 2)}\n`, { flag: "wx" });
+  const dir = dirname(paths.wav);
+  // The outermost folder mkdir made, if any; it and the folders inside it down to `dir` are
+  // this call's.
+  const madeDir = await mkdir(dir, { recursive: true });
+  /** @type {[string, () => Promise<void>][]} */
+  const steps = [
+    [paths.wav, () => writeWav(paths.wav, pcm, { channelCount, sampleRate: sidecar.sampleRate })],
+    [paths.flac, () => writeFlac(paths.wav, paths.flac)],
+    [
+      paths.json,
+      () => writeFile(paths.json, `${JSON.stringify(sidecar, null, 2)}\n`, { flag: "wx" }),
+    ],
+  ];
+  /** @type {string[]} */
+  const created = [];
+  try {
+    for (const [path, write] of steps) {
+      // outputPaths checked each path is free, so whatever is there after the step is this
+      // call's, even when the step fails partway.
+      try {
+        await write();
+      } finally {
+        if (existsSync(path)) created.push(path);
+      }
+    }
+  } catch (error) {
+    try {
+      await Promise.all(created.map((path) => rm(path)));
+      // rmdir, not rm: it refuses a folder something else has written into since.
+      for (let at = dir; madeDir && at.startsWith(madeDir); at = dirname(at)) await rmdir(at);
+    } catch (cleanup) {
+      throw new AggregateError([error, cleanup], "export failed, and so did removing its files");
+    }
+    throw error;
+  }
   return { sidecar, paths };
 }
 

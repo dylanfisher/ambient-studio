@@ -28,6 +28,11 @@ the three files.
 - **No overwriting.** All three paths are checked before rendering, so a taken name fails before
   a long render, and each file is then opened exclusively (WAV and JSON with `wx`, FLAC by
   flac's own refusal). `outDir` is created when missing.
+- **No partial exports.** When writing the WAV, the FLAC or the JSON fails, the call removes the
+  files it created, including a partial one the failing step left, and the folders it created
+  (with `rmdir`, which refuses a folder something else has written into), then rethrows the
+  original error. Files already in `outDir` are left alone. If the removal itself fails, both
+  errors are thrown together in an `AggregateError`.
 - **Sidecar fields**, in this order, camelCase:
   - `files`: `{wav, flac}`, the other two files' names, relative to the sidecar's folder.
   - `genomeHash`: SHA-256 hex of `canonicalGenome()` ([0005](0005-genome-schema-table.md)).
@@ -54,6 +59,8 @@ the three files.
 
 ## Alternatives considered
 
+- **Leaving a failed export's files for the caller to remove** — rejected: a WAV with no JSON
+  beside it looks like a finished export.
 - **Re-render first, compare after writing** — rejected: a failed re-render would leave files
   that look like a good export.
 - **Re-render an older engine's sidecar and compare anyway** — rejected: a version bump means
@@ -68,8 +75,6 @@ the three files.
 
 ## Consequences
 
-- A partial export is possible: if FLAC encoding fails, the WAV stays and no JSON is written.
-  The error is thrown; nothing removes the WAV.
 - Measured on mbp2021 at nice 10: a 300 s export of the drone golden genome (its duration set to
   300 s) took 7.6 s, of which the render alone was 4.5 s; `rerender` took 7.5 s; peak RSS
   701 MiB. It read −16.05 LUFS and −1.40 dBTP against a −16 target.
