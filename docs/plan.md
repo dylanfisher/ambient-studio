@@ -859,3 +859,15 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   owner checks: grain edges and window joins every 2 s; grain pitch on the scale; wind, rain and
   surf read as named, rain drops not clicks; whether 30 dB under the drone is too quiet; zipper
   noise on swept filters; the cloud in mono.
+- 2026-11-06: 1l merged as a14b7ff (Opus: 150k tokens, 66 tool calls, 11.9 min; rebase and
+  follow-ups 15.7 min; fix round 3.5 min; reviewer Sonnet: 63k tokens, 3.5 min, FAIL; second
+  reviewer Sonnet: 48k tokens, 2.4 min, PASS). The offline render sequence moved to src/server;
+  `exportRender` validates, renders, refuses non-finite samples, normalizes to an explicit target,
+  hashes the 24-bit PCM once, writes WAV, FLAC and the sidecar JSON (0015), and never overwrites;
+  `rerender` refuses another engine version up front and fails on a hash mismatch. Normalized
+  goldens cover all six genomes' start windows. The first review failed the step: cleanup after
+  a failed write could delete a file another process created at the output name mid-render, and
+  a dangling symlink let FLAC write outside the output folder. The fix stages into an `mkdtemp`
+  folder and hard-links each file into place. 300 s export of the drone: 7.6 s, 701 MiB, −16.05
+  LUFS, −1.40 dBTP. The first gate after the merge failed one 1a spike test under load (passed in
+  11 reruns); being fixed as the same suspend race in a test that called `suspend` directly.
