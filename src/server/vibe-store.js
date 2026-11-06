@@ -29,8 +29,16 @@ import { insertRow, selectRow, selectRows, TABLE, transaction } from "./store.js
 
 /** @typedef {NoteDraft & Removable & { id: number, createdAt: number }} Note */
 
+/** The fields of a `VibeDraft`, by name; every one is required. */
+export const VIBE_DRAFT_FIELD = Object.freeze({
+  name: "name",
+  brief: "brief",
+  constraints: "constraints",
+  softTargets: "softTargets",
+});
+
 const VIBES = { json: [] };
-const REVISIONS = { json: ["constraints", "softTargets"] };
+const REVISIONS = { json: [VIBE_DRAFT_FIELD.constraints, VIBE_DRAFT_FIELD.softTargets] };
 const NOTES = { json: [] };
 
 /**
@@ -73,6 +81,15 @@ export function listRevisions(store, vibeId) {
   return /** @type {VibeRevision[]} */ (
     selectRows(store, TABLE.vibeRevisions, REVISIONS, { vibeId })
   );
+}
+
+/**
+ * @param {Store} store
+ * @param {number} id
+ * @returns {VibeRevision | undefined}
+ */
+export function getRevision(store, id) {
+  return selectRow(store, TABLE.vibeRevisions, REVISIONS, id);
 }
 
 /**
