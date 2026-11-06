@@ -1,8 +1,13 @@
 {
   "permissions": {
     "allow": [
+      "Bash(./scripts/arch-test)",
+      "Bash(./scripts/arch.js)",
       "Bash(./scripts/check)",
       "Bash(./scripts/dev:*)",
+      "Bash(./scripts/dupes-test)",
+      "Bash(./scripts/dupes.js)",
+      "Bash(./scripts/format)",
       "Bash(./scripts/setup)",
       "Bash(./scripts/test:*)"
     ],
