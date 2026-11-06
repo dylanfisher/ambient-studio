@@ -785,3 +785,10 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   trajectory points. The fix round removed the fixture voice's import side effect, fixed
   `dupes.js` reading a wrapped import's closing line as a literal, and defined the default tuning
   once. 0005's 1c amendment is provisional.
+- 2026-11-06: 1d merged as f1b0a13 (Opus: 214k tokens, 72 tool calls, 17.6 min, then a 1.5 min
+  fix round; reviewer Sonnet: 77k tokens, 11 tool calls, 2.6 min, PASS). Trajectories with a
+  curve per segment in timeline seconds, `effectiveParams` exact at neutral macros, the vector
+  view with exact round trips, `excerptOffset` inside the fades, `randomGenome`. The fix round
+  capped delay feedback at 0.75 so the worst-case pre-roll falls from about 151 s to 68 s, and
+  defined the genome key names once. 0007 and the 1d amendments to 0003, 0005 and 0006 are
+  provisional.
