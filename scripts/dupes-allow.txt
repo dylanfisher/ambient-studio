@@ -3,3 +3,4 @@
 # Add one only when the files mean different things by the same text: a "utf8" encoding, an
 # HTTP method, a flag two programs each define. A fact both files share gets one definition
 # and an import instead. The script prints each finding's key, everything before the reason.
+literal "data" | files src/server/write-flac.js src/server/write-wav.js | a stream event name in write-flac, the RIFF chunk id in write-wav

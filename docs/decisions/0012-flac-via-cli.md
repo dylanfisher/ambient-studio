@@ -30,3 +30,19 @@ bit for bit.
 
 - One more system tool for setup to check. FLAC is lossless, so the flac version never affects
   reproducibility and isn't recorded.
+
+## Amendments
+
+- 2026-11-06: from step 1i. Float maps to 24-bit as `Math.round(x * 2^23)`, clipped to
+  −8388608…8388607: −1.0 is −8388608, +1.0 clips to 8388607, and a value already on the 24-bit
+  grid round-trips exactly. A tie rounds toward +infinity. NaN throws, naming the channel and
+  frame; ±Infinity clips. One function, `encodePcm24` in `src/server`, owns this, and the golden
+  hashes (0009) hash its output. The WAV header is the plain 44-byte PCM form (format tag 1), not
+  WAVE_FORMAT_EXTENSIBLE; `flac` reads it for 24-bit stereo. `writeFlac` streams the written WAV
+  file into flac's stdin rather than taking the samples again, so the FLAC holds exactly the
+  WAV's bytes and a long render isn't held in memory twice. It runs `flac --best --silent` found
+  on PATH, the same lookup `./scripts/setup` checks, with no injected binary path: the failure
+  test points flac at an output folder that doesn't exist, which makes flac itself exit 1 with
+  its message on stderr. A missing binary rejects with Node's spawn error. flac refuses to
+  overwrite an existing output file, and that failure is left loud. On mbp2021, 300 s of stereo
+  encoded to PCM in 0.16 s, wrote as WAV in 0.01 s and as FLAC in 1.3 s.
