@@ -4,7 +4,7 @@
 /** @import { Removable, Store } from "./store.js" */
 import { canonicalGenome } from "../engine/canonical-genome.js";
 import { genomeHash } from "./genome-hash.js";
-import { decode, insertRow, selectRow, TABLE } from "./store.js";
+import { decode, insertRow, selectRow, selectRows, TABLE } from "./store.js";
 
 /**
  * One LLM call, as 2f stores it: Phase 8's fine-tuning needs the exact prompt.
@@ -25,6 +25,13 @@ import { decode, insertRow, selectRow, TABLE } from "./store.js";
  * @property {number | null} firstTokenMs null when no token arrived
  * @property {number | null} promptTokens null when omlx doesn't report it
  * @property {number | null} completionTokens
+ * @property {string | null} reasoning the reasoning text a reasoning model sent; null when none
+ * @property {unknown} requestParams the request body as the queue sent it, without its
+ *   messages: model, max_tokens, sampling, stream and n, and response_format when sent; null
+ *   on rows written before migration 0002
+ * @property {unknown} retries the queue's backoffs before the answer or failure; null before 0002
+ * @property {string | null} error why the request failed in the queue, with `finishReason`
+ *   set to the failed finish reason and an empty response; null when omlx answered
  */
 
 /** @typedef {GenerationDraft & Removable & { id: number, createdAt: number }} Generation */
@@ -54,13 +61,15 @@ import { decode, insertRow, selectRow, TABLE } from "./store.js";
  * @property {string | null} intent the model's one-line intent
  * @property {string | null} rejectReason null for a valid candidate
  * @property {unknown} lint the lint result with every reason; null when nothing was linted
+ * @property {unknown} rejectedGenome the genome as the answer wrote it, for a candidate rejected
+ *   after it parsed; null otherwise, since a valid one has its `genomes` row
  */
 
 /** @typedef {CandidateDraft & Removable & { id: number, createdAt: number }} Candidate */
 
-const GENERATIONS = { json: ["prompt", "exampleIds", "sampling"] };
+const GENERATIONS = { json: ["prompt", "exampleIds", "sampling", "requestParams", "retries"] };
 const GENOMES = { json: ["genome"] };
-const CANDIDATES = { json: ["parentIds", "locks", "operatorParams", "lint"] };
+const CANDIDATES = { json: ["parentIds", "locks", "operatorParams", "lint", "rejectedGenome"] };
 
 /**
  * @param {Store} store
@@ -78,6 +87,19 @@ export function addGeneration(store, draft) {
  */
 export function getGeneration(store, id) {
   return selectRow(store, TABLE.generations, GENERATIONS, id);
+}
+
+/**
+ * The generations of one request, its repairs included, oldest first: a DPO pair's candidates
+ * come from one group (phase 8).
+ * @param {Store} store
+ * @param {string} requestGroup
+ * @returns {Generation[]}
+ */
+export function listRequestGroup(store, requestGroup) {
+  return /** @type {Generation[]} */ (
+    selectRows(store, TABLE.generations, GENERATIONS, { requestGroup })
+  );
 }
 
 /**
@@ -110,6 +132,16 @@ export function putGenome(store, vibeId, genome) {
  */
 export function getGenome(store, id) {
   return selectRow(store, TABLE.genomes, GENOMES, id);
+}
+
+/**
+ * The genomes a vibe has reached and not removed, oldest first.
+ * @param {Store} store
+ * @param {number} vibeId
+ * @returns {GenomeRow[]}
+ */
+export function listGenomes(store, vibeId) {
+  return /** @type {GenomeRow[]} */ (selectRows(store, TABLE.genomes, GENOMES, { vibeId }));
 }
 
 /**

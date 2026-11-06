@@ -157,3 +157,13 @@ offset; the 4 096 of headroom also absorbs the error. The test checks that examp
   `Math.random` as jitter, and logs each `onRetry` event.
 - A new HTTP client anywhere in the server goes through this module or changes this record and
   arch.js together.
+
+## Amendments
+
+- 2026-11-06: `CHARS_PER_TOKEN`, `estimateTokens` and the `ChatMessage` type moved to
+  `src/domain/prompt-tokens.js` (step 2f), so the prompt builder trims to the same estimate the
+  queue enforces ([0024](0024-prompt-parse-repair-generation.md)).
+- 2026-11-06: a `Completion` carries `params`, the request body as sent without its messages,
+  and a request that was queued and failed rejects with `OmlxRequestError`, carrying the same
+  message plus `attempts` sent, `latencyMs` from the last one sent (null when none was), `params`
+  and `retries`, so 2f stores a failed request as it went out (step 2f's review).

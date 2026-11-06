@@ -12,8 +12,10 @@ import {
   getRating,
   getSketch,
   listRatedAudio,
+  listRatedGenomes,
 } from "../../src/server/rating-store.js";
 import { startSession } from "../../src/server/session-store.js";
+import { markRemoved } from "../../src/server/store.js";
 import { addNote, createVibe, listNotes } from "../../src/server/vibe-store.js";
 import { fillStore, heardExcerpt, tempStore } from "../support/temp-store.js";
 
@@ -146,4 +148,84 @@ test("a rating or feedback whose heard identity differs from its rated audio is 
     /feedback .*engineVersion 1.*engineVersion 2/,
   );
   expect(store.db.prepare("SELECT count(*) AS n FROM ratings").get()?.n).toBe(0);
+});
+
+test("listRatedGenomes scores a vibe's genomes by thumbs and A/B wins, newest rating first", async () => {
+  const { store, vibe, common, block } = await setup();
+  /** Rated audio for a variant of the drone genome in `vibeId`, and the side naming it. */
+  const variant = (/** @type {number} */ level, vibeId = vibe.id) => {
+    const voice = { ...droneGenome.voices[0], level };
+    const genome = putGenome(store, vibeId, { ...droneGenome, voices: [voice] });
+    const heard = heardExcerpt(genome.id);
+    const file = `${genome.id}.flac`;
+    const audio = addRatedAudio(store, {
+      ...heard,
+      target: -16,
+      file,
+      pcmSha256: "0".repeat(64),
+      gainDb: 0,
+    });
+    const named = { ...heard, ratedAudioId: audio.id };
+    return { genomeId: genome.id, named, side: { ...named, playedFraction: 1, ...unranked } };
+  };
+  /** @typedef {ReturnType<typeof variant>} Variant */
+  /** @param {Variant} rated @param {"up" | "down"} direction */
+  const thumbs = (rated, direction) =>
+    addFeedback(store, {
+      ...block,
+      ...rated.named,
+      kind: "thumbs",
+      direction,
+      note: null,
+      macro: null,
+      macroValue: null,
+    });
+  /** @param {Variant} a @param {Variant} b @param {"a" | "b" | "tie" | "skip"} outcome */
+  const ab = (a, b, outcome) =>
+    addRating(store, {
+      ...common,
+      a: a.side,
+      b: b.side,
+      leftSide: "a",
+      orderSeed: 1,
+      outcome,
+      timeTakenMs: 1,
+    });
+
+  const liked = variant(-11);
+  const disliked = variant(-12);
+  const even = variant(-13);
+  const removed = variant(-14);
+  const macroOnly = variant(-15);
+  const other = createVibe(store, { name: "w", brief: "b", constraints: {}, softTargets: {} });
+  const elsewhere = variant(-16, other.id);
+
+  thumbs(liked, "up");
+  ab(liked, disliked, "a");
+  thumbs(even, "up");
+  ab(disliked, even, "b");
+  ab(liked, even, "tie");
+  ab(even, liked, "skip");
+  thumbs(disliked, "down");
+  markRemoved(store, "feedback", thumbs(removed, "up").id, "test");
+  addFeedback(store, {
+    ...block,
+    ...macroOnly.named,
+    kind: "macro",
+    direction: "more",
+    note: null,
+    macro: "brightness",
+    macroValue: { min: 0.7, mean: 0.7, max: 0.7 },
+  });
+  thumbs(elsewhere, "up");
+
+  const rated = listRatedGenomes(store, vibe.id);
+  // Ties and skips count as nothing; the newest vote (tie and skip aside) orders the list.
+  expect(rated.map(({ genomeId, score }) => ({ genomeId, score }))).toEqual([
+    { genomeId: disliked.genomeId, score: -3 },
+    { genomeId: even.genomeId, score: 2 },
+    { genomeId: liked.genomeId, score: 2 },
+  ]);
+  const [newest, next] = rated;
+  expect(newest?.lastRatedAt).toBeGreaterThan(next?.lastRatedAt ?? Number.POSITIVE_INFINITY);
 });
