@@ -56,8 +56,12 @@ describe("cost", () => {
   });
 
   // The drone and the bus create every node up front, so the cost a second is their count plus
-  // the impulse response's weight. A short render creates them all.
-  test.each(goldenGenomes())("counts every node a render of $name creates", async ({ genome }) => {
+  // the impulse response's weight. A short render creates them all. Voices with events create
+  // nodes window by window, and their cost is a rate, so their goldens aren't counted here.
+  const upFront = goldenGenomes().filter(({ genome }) =>
+    requireGenome(genome, "a golden genome").voices.every((voice) => voice.type === "drone"),
+  );
+  test.each(upFront)("counts every node a render of $name creates", async ({ genome }) => {
     const normalized = requireGenome(genome, "a golden genome");
     /** @type {{ count: number }} */
     let counter = { count: 0 };

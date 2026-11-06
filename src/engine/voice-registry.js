@@ -6,9 +6,11 @@
 /** @import { Genome, Voice } from "./genome-schema.js" */
 /** @import { MacroRow } from "./macro-table.js" */
 /** @import { VoiceSetup, VoiceWindow } from "./render.js" */
+import { bell } from "./bell.js";
 import { drone } from "./drone.js";
 import { VOICE_KEYS, VOICE_PARAMS } from "./genome-schema.js";
 import { checkMacroRows } from "./macro-table.js";
+import { pad } from "./pad.js";
 
 /**
  * @typedef {object} VoiceType
@@ -30,11 +32,25 @@ import { checkMacroRows } from "./macro-table.js";
  *   connected to `setup.output`, and returns what creates its events window by window
  */
 
-/** @type {VoiceType[]} */
-const builtIn = [drone];
+/**
+ * A function rather than a list: a voice module that reads effective parameters imports this
+ * module back through effective-params.js, and when that voice module is the first one loaded,
+ * a list built while this module loads would hold it before it exists.
+ * @returns {VoiceType[]}
+ */
+const builtIn = () => [bell, drone, pad];
 
-/** @type {Map<string, VoiceType>} */
-const voices = new Map();
+/** @type {Map<string, VoiceType> | undefined} */
+let registered;
+
+/** The registered voice types, the built-in ones added on first use. */
+function voices() {
+  if (!registered) {
+    registered = new Map();
+    for (const voice of builtIn()) registerVoice(voice);
+  }
+  return registered;
+}
 
 /**
  * Adds a voice type, or throws when its type is taken, a parameter shadows a common one, or a
@@ -44,14 +60,16 @@ const voices = new Map();
  * @returns {V}
  */
 export function registerVoice(voice) {
-  if (voices.has(voice.type)) throw new Error(`voice type "${voice.type}" is already registered`);
+  if (voices().has(voice.type)) {
+    throw new Error(`voice type "${voice.type}" is already registered`);
+  }
   for (const name of Object.keys(voice.params)) {
     if (Object.hasOwn(VOICE_PARAMS, name) || VOICE_KEYS.includes(name)) {
       throw new Error(`voice type "${voice.type}": "${name}" is a parameter every voice has`);
     }
   }
   checkMacroRows(voice.macros, { ...VOICE_PARAMS, ...voice.params }, `voice type "${voice.type}"`);
-  voices.set(voice.type, voice);
+  voices().set(voice.type, voice);
   return voice;
 }
 
@@ -60,19 +78,17 @@ export function registerVoice(voice) {
  * @param {string} type
  */
 export function unregisterVoice(type) {
-  if (!voices.delete(type)) throw new Error(`voice type "${type}" is not registered`);
+  if (!voices().delete(type)) throw new Error(`voice type "${type}" is not registered`);
 }
 
-for (const voice of builtIn) registerVoice(voice);
-
 /** @returns {string[]} every registered voice type, sorted */
-export const voiceTypeIds = () => [...voices.keys()].sort();
+export const voiceTypeIds = () => [...voices().keys()].sort();
 
 /**
  * @param {string} type
  * @returns {VoiceType | undefined}
  */
-export const findVoiceType = (type) => voices.get(type);
+export const findVoiceType = (type) => voices().get(type);
 
 /**
  * The voice type for a type the caller already knows is registered, as in a validated genome.
@@ -80,7 +96,7 @@ export const findVoiceType = (type) => voices.get(type);
  * @returns {VoiceType}
  */
 export function requireVoiceType(type) {
-  const voice = voices.get(type);
+  const voice = voices().get(type);
   if (!voice) throw new Error(`voice type "${type}" is not registered`);
   return voice;
 }

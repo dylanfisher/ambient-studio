@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 import { COST_BUDGET, cost } from "../../src/engine/cost.js";
+import { isNumeric } from "../../src/engine/descriptor.js";
 import { isObject } from "../../src/engine/is-object.js";
 import { randomGenome } from "../../src/engine/random-genome.js";
 import { validateGenome } from "../../src/engine/validate-genome.js";
@@ -7,6 +8,7 @@ import {
   registerVoice,
   requireVoiceType,
   unregisterVoice,
+  voiceParams,
   voiceTypeIds,
 } from "../../src/engine/voice-registry.js";
 import { fixtureVoice } from "../support/fixture-voice.js";
@@ -72,23 +74,26 @@ describe("randomGenome", () => {
     expect(count).toBeGreaterThan(100);
   });
 
-  test("draws a parameter from the range its descriptor marks as safe", () => {
-    const [lo, hi] = /** @type {[number, number]} */ (fixtureVoice.params.cutoff.safe);
-    let voices = 0;
+  test("draws every parameter from the range its descriptor marks as safe", () => {
+    let checked = 0;
     for (const seed of SEEDS) {
       for (const voice of randomGenome(seed).voices) {
-        voices++;
-        const { cutoff } = voice;
-        const values = isObject(cutoff)
-          ? /** @type {{ points: [number, number][] }} */ (cutoff).points.map((p) => p[1])
-          : [/** @type {number} */ (cutoff)];
-        for (const value of values) {
-          expect(value).toBeGreaterThanOrEqual(lo - 1e-9);
-          expect(value).toBeLessThanOrEqual(hi + 1e-9);
+        for (const [name, descriptor] of Object.entries(voiceParams(voice.type))) {
+          if (!isNumeric(descriptor) || !descriptor.safe) continue;
+          const [lo, hi] = descriptor.safe;
+          const value = voice[name];
+          const values = isObject(value)
+            ? /** @type {{ points: [number, number][] }} */ (value).points.map((p) => p[1])
+            : [/** @type {number} */ (value)];
+          for (const v of values) {
+            expect(v, `${voice.type}.${name}`).toBeGreaterThanOrEqual(lo - 1e-9);
+            expect(v, `${voice.type}.${name}`).toBeLessThanOrEqual(hi + 1e-9);
+          }
+          checked++;
         }
       }
     }
-    expect(voices).toBeGreaterThan(SEEDS.length);
+    expect(checked).toBeGreaterThan(SEEDS.length);
   });
 
   test("leaves room between the fades for an excerpt", () => {

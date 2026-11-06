@@ -54,3 +54,6 @@ parameter's range. At 0.5 for every macro, effective values equal raw values exa
     `level`); `registerVoice` checks them and throws on an unknown macro or parameter, a
     parameter that can't be a trajectory, a bad depth, or a macro and parameter listed twice.
     `effectiveParams(genome, t)` in `effective-params.js` is the one reader of both.
+- 2026-11-06: from step 1j, provisional: owner to confirm. `MACRO` in `macro-table.js` maps each
+  macro's name to itself, derived from `MACROS`, and voice types name a row's macro through it
+  (`MACRO.brightness`), so the name is written once.

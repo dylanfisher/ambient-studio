@@ -227,3 +227,8 @@ to 2.
   yields samples, so a retry renders the same bytes and `ENGINE_VERSION` stays 1. The sequence
   is `renderOffline` in `test/support/render-offline.js`; step 1l's export must use the same
   retry. Provisional: owner to confirm.
+- 2026-11-06: from step 1j, provisional: owner to confirm. The densest pad and bell together
+  (cost 289) rendered 60 s at 15.7x (FM bells) to 19.7x (plucks) with an 8 s reverb, and 900 s
+  of additive bells at 18.6x with a peak RSS of 923 MiB, under the 1.5 GiB ceiling. Bell notes
+  are computed in JS (9–29 ms per 15 s note), time the cost unit doesn't count
+  ([0013](0013-pad-and-bell-voices.md)).

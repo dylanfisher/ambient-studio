@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "duration": 60,
+  "tuning": "colundi",
+  "scale": "core18",
+  "fadeIn": 1,
+  "fadeOut": 15,
+  "width": -3,
+  "reverbDecay": 4,
+  "reverbLevel": -12,
+  "delayTime": 0.45,
+  "delayFeedback": 0.35,
+  "delayLevel": -22,
+  "macros": { "density": 0.7, "brightness": 0.6 },
+  "voices": [
+    {
+      "id": "bell",
+      "type": "bell",
+      "level": -8,
+      "detune": 2,
+      "model": "additive",
+      "density": { "points": [[0, 30], [20, 6, "smooth"], [50, 24, "late"]] },
+      "decay": 5,
+      "partials": 8,
+      "fall": 4
+    }
+  ]
+}
