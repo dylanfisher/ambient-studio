@@ -934,3 +934,11 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   check, not only short goldens; the orchestrator runs merge gates when no builder is running, or
   runs them twice. The gate's tools still skip `tmp/`, `.claude/worktrees/`, `node_modules/` and
   `.venv/`.
+- 2026-11-06: found while preparing the owner's listening files: the drone golden can't be
+  exported at −9 LUFS, the top of the loudness range (normalize stops at −9.82 after 8 passes;
+  −10 reaches −10.13). The schema accepts −9, so a valid genome can fail to export. Left for the
+  owner: narrow the range's top, or let the limiter work harder on bass-heavy material (0011,
+  0018). Pending owner checks, in order, are in `~/Desktop/ambient-studio-phase-1/LISTEN.txt` on
+  mbp2015: the 1r review, then the drone and master bus, the limited drone, pad, bell, cloud,
+  noise bed, the 300 s WAV against its FLAC, a loudness comparison at −16 LUFS, and the Colundi
+  export.
