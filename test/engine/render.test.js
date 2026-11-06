@@ -303,7 +303,7 @@ describe("render", () => {
     const collected = await renderOffline(genome, options, collectAtEverySuspend);
     // A peak, not toEqual: diffing two million-sample arrays that differ takes minutes.
     expect(difference(collected, kept).peak).toBe(0);
-  }, 30_000);
+  });
 
   test("20 random genomes render 2 s each with every sample finite", async () => {
     let sounding = 0;
@@ -325,8 +325,7 @@ describe("render", () => {
       if (rms(result) > 0) sounding++;
     }
     expect(sounding).toBeGreaterThan(15);
-    // About 1.5 s alone; more when the suite runs at background priority beside other files.
-  }, 30_000);
+  });
 });
 
 describe("render, with a voice that creates events window by window", () => {

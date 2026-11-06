@@ -116,7 +116,6 @@ describe("the noise bed", () => {
         UNDER_DRONE_LU,
       );
     },
-    30_000,
   );
 
   test.each(PRESETS)("%s stays in the budget with the longest reverb", (preset) => {
