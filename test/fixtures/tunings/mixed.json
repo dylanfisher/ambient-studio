@@ -1,0 +1,7 @@
+{
+  "name": "Mixed",
+  "period": "2/1",
+  "degrees": [100, "9/8", 316, "5/4", "4/3", 701.955, "5/3"],
+  "reference": { "degree": 0, "octave": 4, "hz": 264 },
+  "scales": { "odd": [0, 2, 4, 6] }
+}

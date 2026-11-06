@@ -1,0 +1,14 @@
+! mixed.scl
+!
+A test tuning that mixes cents lines, ratio lines and comments
+ 8
+!
+ 100.0
+	9/8   whole tone
+ 316.
+! a comment between pitch lines
+ 5/4
+ 4/3 E\
+ 701.955 cents
+ 5/3
+ 2
