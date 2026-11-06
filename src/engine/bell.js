@@ -15,6 +15,7 @@ import { eventCost } from "./cost-unit.js";
 import { dbToGain } from "./decibels.js";
 import { choice, int, number } from "./descriptor.js";
 import { effectiveParams } from "./effective-params.js";
+import { eventSlots } from "./event-slots.js";
 import { highestValue } from "./highest-value.js";
 import { MACRO } from "./macro-table.js";
 import { resolvePitch, tuningFrequencies } from "./pitch.js";
@@ -302,14 +303,16 @@ export function bellNote(pitch, settings, seed, voiceId, index, rate) {
 
 /**
  * Each note is a buffer source and a gain from its start to its end (decision 0010), at the
- * highest density the voice reaches; the cap only shortens notes, so it isn't counted.
+ * highest density the voice reaches; the cap only shortens notes, so it isn't counted. The
+ * notes play through one slot gain each for the most that sound at once, alive through the
+ * render.
  * @param {Voice} voice
  * @param {Genome} genome
  */
 function cost(voice, genome) {
   const { decay } = /** @type {BellVoice} */ (/** @type {unknown} */ (voice));
   const density = highestValue(genome, voice, "density", PARAMS.density, bell.macros);
-  return eventCost({ rate: density / 60, seconds: decay, nodes: 2 });
+  return MOST_NOTES + eventCost({ rate: density / 60, seconds: decay, nodes: 2 });
 }
 
 /**
@@ -324,6 +327,7 @@ function build({ ctx, output, genome, voice, seed, from, startFrame, at }) {
   /** @param {number} frame a timeline frame */
   const frameTime = (frame) => at(from) + (frame - startFrame) / rate;
   const fade = Math.round(CUT_FADE * rate);
+  const connect = eventSlots(ctx, output, MOST_NOTES);
 
   return (windowFrom, windowTo) => {
     for (const note of notes(windowFrom, windowTo)) {
@@ -348,7 +352,8 @@ function build({ ctx, output, genome, voice, seed, from, startFrame, at }) {
         gain.gain.setValueAtTime(1, frameTime(Math.max(note.frame, note.end - fade)));
         gain.gain.linearRampToValueAtTime(0, frameTime(note.end));
       }
-      source.connect(gain).connect(output);
+      source.connect(gain);
+      connect(gain, note.frame, note.end);
       source.start(frameTime(note.frame));
       source.stop(frameTime(note.end));
     }

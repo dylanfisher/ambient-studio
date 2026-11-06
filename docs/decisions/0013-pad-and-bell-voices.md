@@ -150,3 +150,12 @@ Schema text: pad 247 characters, bell 268; the whole text is 2,462 of 3,000.
 - The voice registry adds its built-in voices on first use, because a voice that reads
   `effectiveParams` imports the registry back; see the amendment to
   [0005](0005-genome-schema-table.md).
+
+## Amendments
+
+- 2026-11-06: from step 1m, provisional: owner to confirm. Bell notes connect through eight
+  long-lived slot gains, and the pad's envelope moves from a gain per note to long-lived gains
+  shared by a chord's notes two at most, so the library's summing order can't depend on garbage
+  collection; the panning, envelope values and costs are in
+  [0010](0010-event-windows-control-grid-memory.md)'s amendment of this date. The densest pad
+  now costs 37.6, 551.6 beside the longest reverb. `ENGINE_VERSION` is 2.

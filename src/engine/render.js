@@ -95,6 +95,34 @@ function gatePoints({ start, end }) {
 }
 
 /**
+ * `ctx` with every node made through it, until `held.done` is set, kept in `held.nodes`.
+ * The library frees a node whose JS object is garbage-collected and gives its id to the next
+ * node created, and orders its graph by id, so a node created before rendering that was freed
+ * mid-render would let later event nodes reorder it, and the sums it feeds, at a time that
+ * depends on V8 (decision 0010). Keeping them referenced keeps every node created before
+ * rendering in one order below every event node's id.
+ * @param {BaseAudioContext} ctx
+ */
+function holdingNodes(ctx) {
+  const held = { done: false, nodes: /** @type {unknown[]} */ ([]) };
+  // The proxy's target is an empty object, not `ctx`: a proxy must return a non-configurable
+  // property of its target unchanged, and tests redefine `create…` methods on `ctx` that way.
+  const tracked = new Proxy(/** @type {BaseAudioContext} */ (/** @type {unknown} */ ({})), {
+    get(_, key) {
+      const value = Reflect.get(ctx, key, ctx);
+      if (typeof value !== "function") return value;
+      if (typeof key !== "string" || !key.startsWith("create")) return value.bind(ctx);
+      return (/** @type {unknown[]} */ ...args) => {
+        const made = value.apply(ctx, args);
+        if (!held.done) held.nodes.push(made);
+        return made;
+      };
+    },
+  });
+  return { tracked, held };
+}
+
+/**
  * The voices to render, sorted by id so voice order never changes the summing order (decision
  * 0005).
  * @param {Genome} genome
@@ -135,6 +163,7 @@ export function render(genome, ctx, { seed, duration, offset = 0, voices }) {
   const from = plan.startFrame / SAMPLE_RATE;
   const to = (plan.startFrame + plan.length) / SAMPLE_RATE;
   const base = ctx.currentTime;
+  const { tracked, held } = holdingNodes(ctx);
   /** @param {number} time */
   const at = (time) => base + (time - from);
 
@@ -142,14 +171,14 @@ export function render(genome, ctx, { seed, duration, offset = 0, voices }) {
   const automations = [];
   /** @type {(param: AudioParam, value: ControlValue) => void} */
   const automate = (param, value) => automations.push({ param, value });
-  const bus = masterBus(ctx, normalized, seed, automate);
+  const bus = masterBus(tracked, normalized, seed, automate);
 
   const players = selectVoices(normalized, voices).map((voice) => {
     const index = normalized.voices.indexOf(voice);
     /** @param {EffectiveParams} params */
     const self = (params) => /** @type {Resolved<Voice>} */ (params.voices[index]);
-    const gate = ctx.createGain();
-    const level = ctx.createGain();
+    const gate = tracked.createGain();
+    const level = tracked.createGain();
     gate.connect(level).connect(bus);
     const points = gatePoints(voice);
     gate.gain.setValueAtTime(pointValue(points, from), at(from));
@@ -158,7 +187,7 @@ export function render(genome, ctx, { seed, duration, offset = 0, voices }) {
     }
     automate(level.gain, (params) => dbToGain(/** @type {number} */ (self(params).level)));
     return requireVoiceType(voice.type).build({
-      ctx,
+      ctx: tracked,
       output: gate,
       genome: normalized,
       voice,
@@ -222,5 +251,10 @@ export function render(genome, ctx, { seed, duration, offset = 0, voices }) {
       );
     }
   }
-  return Promise.all(pending).then(() => undefined);
+  held.done = true;
+  // The callback keeps `held` referenced until the last window is created; no node is created
+  // after it, so the graph's order no longer changes.
+  return Promise.all(pending).then(() => {
+    held.nodes.length = 0;
+  });
 }

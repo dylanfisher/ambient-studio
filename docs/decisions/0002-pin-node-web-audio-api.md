@@ -95,3 +95,15 @@ Upgrading it is a step of its own: re-run the golden-render test
   prevent it. Callers retry the whole render on a fresh context (decision 0010's amendment); a
   suspend whose rejection is not awaited drops its window silently, so await it with
   `startRendering()`.
+- 2026-11-06: **summing order follows garbage collection.** Found by phase 1's acceptance
+  check 5: re-rendering a 300 s export of `example.json` gave a different PCM hash, about 7.4
+  million samples apart by at most 1.8e-7, from 60 s on. In web-audio-api-rs 1.7.0 the render
+  thread frees a node once its processor is done and the binding has dropped its handle, which
+  happens when V8 collects the JS object (`can_free` in `src/render/graph.rs`). The freed id
+  goes back to `AudioNodeIdProvider` (`src/context/concrete_base.rs`) and the next node created
+  takes it. `order_nodes` sorts the graph depth first over the node ids, and each node adds its
+  output into its destinations' inputs in that order. Float addition isn't associative, so when
+  three or more nodes feed one input, the sum depends on which ids were reused, which depends
+  on when V8 collected. Two nonzero inputs commute exactly. How renders keep a fixed order is in
+  [0010](0010-event-windows-control-grid-memory.md)'s amendment of the same date. Provisional:
+  owner to confirm.
