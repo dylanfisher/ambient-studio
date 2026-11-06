@@ -31,6 +31,10 @@ describe("relative tunings", () => {
     expect(frequency(pitch, 4, 4)).toBe(frequency(pitch, 0, 4) * 1.5);
   });
 
+  test("the just table has the same modes as 12-TET", () => {
+    expect(getTuning("just-5-limit").scales).toEqual(tet12.scales);
+  });
+
   test("custom cents shift by the stated amount", () => {
     const custom = loadTuning("custom", {
       name: "Custom",
@@ -79,7 +83,7 @@ describe("relative tunings", () => {
     expect(relativeError(frequency(pitch, 0, 1), 3 * base)).toBeLessThan(1e-12);
   });
 
-  test("tuningFrequencies returns only scale members inside the band", () => {
+  test("tuningFrequencies lists a relative scale across octaves inside the band", () => {
     const pitch = resolvePitch(tet12, "minor-pentatonic", 9);
     const members = [9, 0, 2, 4, 7];
     const hz = tuningFrequencies(pitch, 100, 500);
@@ -137,7 +141,7 @@ describe("absolute tunings", () => {
     expect(() => frequency(pitch, -1)).toThrow(/degree -1/);
   });
 
-  test("tuningFrequencies returns only scale members inside the band", () => {
+  test("tuningFrequencies lists an absolute scale's members inside the band", () => {
     const pitch = resolvePitch(colundi, "core18");
     expect(tuningFrequencies(pitch, 100, 250)).toEqual([
       105, 126.22, 140.25, 160, 172.06, 197, 221.23, 250,

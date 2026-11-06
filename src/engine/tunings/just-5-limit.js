@@ -1,3 +1,5 @@
+import { CHROMATIC_12_MODES } from "../modes.js";
+
 export default {
   name: "5-limit just intonation, 12 notes",
   period: "2/1",
@@ -5,8 +7,5 @@ export default {
   // Degree 0 is C4 as 12-TET at A4 = 440 Hz tunes it. The ratios are fixed to degree 0, so a
   // key other than 0 moves the same table, not a retuned one.
   reference: { degree: 0, octave: 4, hz: 261.6255653005986 },
-  scales: {
-    ionian: [0, 2, 4, 5, 7, 9, 11],
-    aeolian: [0, 2, 3, 5, 7, 8, 10],
-  },
+  scales: { ...CHROMATIC_12_MODES },
 };

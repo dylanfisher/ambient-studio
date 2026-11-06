@@ -1,7 +1,7 @@
 # 0003. Seeded randomness is a hash of each draw's key, and triggers use thinning
 
 - **Date:** 2026-11-06
-- **Status:** accepted
+- **Status:** accepted; provisional: owner to confirm
 
 ## Context
 
@@ -34,6 +34,10 @@ pure function of its key, and `fires(seed, voiceId, eventIndex, density)` for tr
 - **Thinning.** `fires` is `draw(seed, voiceId, eventIndex, TRIGGER_SLOT) < density`, with the
   density taken at the candidate's time. Raising the density keeps every event that fired and
   adds new ones; lowering it removes events and moves none.
+- **Accepted weakness.** A voice's prefix (seed and id) ends in one 32-bit state. If two voices'
+  states differ by a small XOR `d`, then `mix(a ^ e) = mix(b ^ (e ^ d))`, so one voice's draws
+  are a shifted copy of the other's. The chance is about 2^-22 per voice pair, accepted for
+  audio.
 - `Math.random` and `Date.now` are banned in `src/engine` by `scripts/arch.js`, planted in
   `scripts/arch-test`.
 

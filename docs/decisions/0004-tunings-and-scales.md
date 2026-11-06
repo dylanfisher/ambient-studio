@@ -1,7 +1,7 @@
 # 0004. Tunings are data modules of two kinds, with Scala import and scales as subsets
 
 - **Date:** 2026-11-06
-- **Status:** accepted
+- **Status:** accepted; provisional: owner to confirm
 
 ## Context
 
@@ -32,8 +32,10 @@ plain object, written as JSON would be. The file name is the id.
 - A pitch value in `period` or `degrees` is cents when it's a number and a ratio when it's a
   string (`"3/2"`, or `"2"` for 2/1).
 - The kind isn't written: a file with `frequencies` or `baseHz` is absolute, any other is
-  relative. A `kind` field would be the same string in every file, which `scripts/dupes.js`
-  rejects, and the fields already say which it is.
+  relative. The two kinds share no defining field (an absolute tuning can't have a period,
+  degrees or reference, and a relative one can't have frequencies or a base), so the fields
+  decide the kind on their own. A `kind` field would only be a second statement of it, one that
+  could disagree with the fields and would need its own check.
 - Unknown keys throw. So does a missing field: every field is required, including an empty
   `scales: {}`.
 
@@ -55,8 +57,9 @@ the file doesn't write, so a file of N lines gives N + 1 frequencies. Trying a p
 means pasting its text into a new module with a name, a reference or base, and scales.
 
 **Scales** are named subsets of a tuning's degrees. In a relative tuning they're degree indices
-from 0, rising, below the degree count; 0 is the key. Modes are named scales (12-TET has the
-seven diatonic modes and two pentatonics). In an absolute tuning they're written in Hz, for
+from 0, rising, below the degree count; 0 is the key. Modes are named scales. The seven diatonic
+modes and two pentatonics are written once in `src/engine/modes.js`, as degrees of a 12-degree
+chromatic layout, and 12-TET and the 12-note just table both spread them into their scales. In an absolute tuning they're written in Hz, for
 reading, and each value must be one of the tuning's frequencies exactly; they're stored as
 indices. Every tuning also has an `all` scale of every degree, which a file can't redefine.
 
