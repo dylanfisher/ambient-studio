@@ -157,3 +157,9 @@ offset; the 4 096 of headroom also absorbs the error. The test checks that examp
   `Math.random` as jitter, and logs each `onRetry` event.
 - A new HTTP client anywhere in the server goes through this module or changes this record and
   arch.js together.
+
+## Amendments
+
+- 2026-11-06: `CHARS_PER_TOKEN`, `estimateTokens` and the `ChatMessage` type moved to
+  `src/domain/prompt-tokens.js` (step 2f), so the prompt builder trims to the same estimate the
+  queue enforces ([0024](0024-prompt-parse-repair-generation.md)).

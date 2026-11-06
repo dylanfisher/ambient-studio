@@ -209,6 +209,45 @@ export function getFeedback(store, id) {
 }
 
 /**
+ * A genome's net rating in its vibe: +1 for each thumbs up and A/B win, −1 for each thumbs down
+ * and A/B loss.
+ * @typedef {object} RatedGenome
+ * @property {number} genomeId
+ * @property {number} score
+ * @property {number} lastRatedAt when its newest counted vote was made
+ */
+
+/**
+ * Every genome of the vibe that has a thumbs or an A/B win or loss, newest vote first. Ties,
+ * skips, macro feedback and removed rows count for nothing (decision 0024).
+ * @param {Store} store
+ * @param {number} vibeId
+ * @returns {RatedGenome[]}
+ */
+export function listRatedGenomes(store, vibeId) {
+  const rows = store.db
+    .prepare(
+      `WITH votes (genomeId, vote, createdAt) AS (
+         SELECT genomeId, CASE direction WHEN 'up' THEN 1 ELSE -1 END, createdAt
+           FROM ${TABLE.feedback} WHERE kind = 'thumbs' AND removedAt IS NULL
+         UNION ALL
+         SELECT aGenomeId, CASE outcome WHEN 'a' THEN 1 ELSE -1 END, createdAt
+           FROM ${TABLE.ratings} WHERE outcome IN ('a', 'b') AND removedAt IS NULL
+         UNION ALL
+         SELECT bGenomeId, CASE outcome WHEN 'b' THEN 1 ELSE -1 END, createdAt
+           FROM ${TABLE.ratings} WHERE outcome IN ('a', 'b') AND removedAt IS NULL
+       )
+       SELECT g.id AS genomeId, SUM(v.vote) AS score, MAX(v.createdAt) AS lastRatedAt
+         FROM votes v JOIN ${TABLE.genomes} g ON g.id = v.genomeId
+        WHERE g.vibeId = ? AND g.removedAt IS NULL
+        GROUP BY g.id
+        ORDER BY lastRatedAt DESC, g.id DESC`,
+    )
+    .all(vibeId);
+  return /** @type {RatedGenome[]} */ (/** @type {unknown} */ (rows));
+}
+
+/**
  * @param {Store} store
  * @param {SketchDraft} draft
  * @returns {Sketch}

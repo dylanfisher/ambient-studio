@@ -4,9 +4,12 @@ import { canonicalGenome } from "../../src/engine/canonical-genome.js";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
 import {
   addCandidate,
+  addGeneration,
   getCandidate,
   getGeneration,
   getGenome,
+  listGenomes,
+  listRequestGroup,
   putGenome,
 } from "../../src/server/generation-store.js";
 import { genomeHash } from "../../src/server/genome-hash.js";
@@ -93,4 +96,27 @@ test("a rejected candidate is stored with no genome, and rows read back after a 
   expect(getGeneration(reopened, generationId)).toEqual(generation);
   expect(generation?.prompt).toEqual([{ role: "user", content: "a drone" }]);
   expect(getGenome(reopened, genomeId)?.genomeHash).toBe(genomeHash(droneGenome));
+});
+
+test("listRequestGroup lists one group's generations, oldest first", async () => {
+  const { store } = await made();
+  const ids = fillStore(store);
+  const first = getGeneration(store, ids.generations);
+  if (!first) throw new Error("fillStore wrote no generation");
+  const { id, createdAt, removedAt, removedReason, ...draft } = first;
+  const second = addGeneration(store, { ...draft, repairRound: 1, repairsId: first.id });
+  addGeneration(store, { ...draft, requestGroup: "another" });
+  expect(listRequestGroup(store, first.requestGroup)).toEqual([first, second]);
+  expect(listRequestGroup(store, "none")).toEqual([]);
+});
+
+test("listGenomes lists the genomes a vibe has reached, oldest first", async () => {
+  const { store } = await made();
+  const one = createVibe(store, vibeDraft);
+  const two = createVibe(store, vibeDraft);
+  const drone = putGenome(store, one.id, droneGenome);
+  const quieter = { ...droneGenome, voices: [{ ...droneGenome.voices[0], level: -20 }] };
+  const second = putGenome(store, one.id, quieter);
+  putGenome(store, two.id, droneGenome);
+  expect(listGenomes(store, one.id)).toEqual([drone, second]);
 });

@@ -4,7 +4,7 @@
 /** @import { Removable, Store } from "./store.js" */
 import { canonicalGenome } from "../engine/canonical-genome.js";
 import { genomeHash } from "./genome-hash.js";
-import { decode, insertRow, selectRow, TABLE } from "./store.js";
+import { decode, insertRow, selectRow, selectRows, TABLE } from "./store.js";
 
 /**
  * One LLM call, as 2f stores it: Phase 8's fine-tuning needs the exact prompt.
@@ -81,6 +81,19 @@ export function getGeneration(store, id) {
 }
 
 /**
+ * The generations of one request, its repairs included, oldest first: a DPO pair's candidates
+ * come from one group (phase 8).
+ * @param {Store} store
+ * @param {string} requestGroup
+ * @returns {Generation[]}
+ */
+export function listRequestGroup(store, requestGroup) {
+  return /** @type {Generation[]} */ (
+    selectRows(store, TABLE.generations, GENERATIONS, { requestGroup })
+  );
+}
+
+/**
  * The vibe's row for `genome`, written when the vibe hasn't reached it before. Throws on an
  * invalid genome.
  * @param {Store} store
@@ -110,6 +123,16 @@ export function putGenome(store, vibeId, genome) {
  */
 export function getGenome(store, id) {
   return selectRow(store, TABLE.genomes, GENOMES, id);
+}
+
+/**
+ * The genomes a vibe has reached and not removed, oldest first.
+ * @param {Store} store
+ * @param {number} vibeId
+ * @returns {GenomeRow[]}
+ */
+export function listGenomes(store, vibeId) {
+  return /** @type {GenomeRow[]} */ (selectRows(store, TABLE.genomes, GENOMES, { vibeId }));
 }
 
 /**
