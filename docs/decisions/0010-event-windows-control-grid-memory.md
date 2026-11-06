@@ -227,6 +227,24 @@ to 2.
   yields samples, so a retry renders the same bytes and `ENGINE_VERSION` stays 1. The sequence
   is `renderOffline`, in `src/server/render-offline.js` since step 1l, which the export and the
   tests both call. Provisional: owner to confirm.
+- 2026-11-06: the retry above ran out in 1 of 3 gate runs (all 3 attempts refused in the
+  export re-render test), and the retries ran back to back. Step 1g now waits in real time
+  between scheduling a render and starting it: 10 ms on the first attempt, then 50, 200, 500,
+  1000 and 2000 ms, with 6 attempts. The wait gives the library's runtime time to register the
+  queued suspends, and a retry that lands in the same stall as the refusal fails again, so the
+  waits grow. Nothing can stop a refused attempt's render, because the crate has no abort: it
+  renders on to the end. A stress harness of 16 worker threads, each running 4 concurrent
+  10 s renders of `example.json` (64 renders a run), while `vitest run` looped at `nice -n 10`,
+  measured refused attempts and renders that failed. In one process, even 48 concurrent 30 s
+  renders under the same load never refused a suspend (about 4,000 renders), so the race needs
+  many threads. Before: 40 refused attempts in 256 renders, and 2 renders failed after 3
+  attempts. With 20 ms and 50 ms retry waits, the second attempt was refused in about 4 of 5
+  cases after a refused first. After: in 384 renders, 25 refused first attempts, 10 refused
+  second and 4 refused third attempts, and no render failed. A fixed 300 ms wait before every start cut first-attempt refusals to 0 and 3 in 64,
+  but costs 300 ms a render, so the first wait stays short. Refusals do not vanish; the retries
+  absorb them. Residual risk: a machine slower than the harness's load could refuse 6 times in a
+  row, and the original error is then thrown after the last attempt. Samples are unchanged,
+  so `ENGINE_VERSION` stays 1. Provisional: owner to confirm.
 - 2026-11-06: from step 1j, provisional: owner to confirm. The densest pad and bell together
   (cost 289) rendered 60 s at 15.7x (FM bells) to 19.7x (plucks) with an 8 s reverb, and 900 s
   of additive bells at 18.6x with a peak RSS of 923 MiB, under the 1.5 GiB ceiling. Bell notes

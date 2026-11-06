@@ -108,44 +108,75 @@ describe("render", () => {
   test("retries when the library refuses a suspend after rendering started", async () => {
     const expected = await renderOffline(golden, { seed: 1, duration: 3 });
     let failures = 2;
+    /** @type {number[]} */
+    const waits = [];
+    const wait = async (/** @type {number} */ ms) => {
+      waits.push(ms);
+    };
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     try {
-      const retried = await renderOffline(golden, { seed: 1, duration: 3 }, (ctx) => {
-        const start = ctx.startRendering.bind(ctx);
-        ctx.startRendering = async () => {
-          if (failures-- > 0)
-            throw new DOMException("Error in async function", "InvalidStateError");
-          return start();
-        };
-      });
+      const retried = await renderOffline(
+        golden,
+        { seed: 1, duration: 3 },
+        (ctx) => {
+          const start = ctx.startRendering.bind(ctx);
+          ctx.startRendering = async () => {
+            if (failures-- > 0)
+              throw new DOMException("Error in async function", "InvalidStateError");
+            return start();
+          };
+        },
+        wait,
+      );
       expect(retried.channels).toEqual(expected.channels);
       expect(warn).toHaveBeenCalledTimes(2);
+      expect(waits).toHaveLength(3);
+      expect(waits).toEqual([...waits].sort((a, b) => a - b));
+      expect(new Set(waits).size).toBe(3);
     } finally {
       warn.mockRestore();
     }
   });
 
-  test("gives up with the library's error after three attempts, and retries nothing else", async () => {
+  test("gives up with the library's error after six attempts that each wait longer, and retries nothing else", async () => {
+    /** @type {number[]} */
+    const waits = [];
+    const wait = async (/** @type {number} */ ms) => {
+      waits.push(ms);
+    };
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     try {
       let attempts = 0;
       await expect(
-        renderOffline(golden, { seed: 1, duration: 1 }, (ctx) => {
-          ctx.startRendering = async () => {
-            attempts++;
-            throw new DOMException("Error in async function", "InvalidStateError");
-          };
-        }),
+        renderOffline(
+          golden,
+          { seed: 1, duration: 1 },
+          (ctx) => {
+            ctx.startRendering = async () => {
+              attempts++;
+              throw new DOMException("Error in async function", "InvalidStateError");
+            };
+          },
+          wait,
+        ),
       ).rejects.toThrow("Error in async function");
-      expect(attempts).toBe(3);
+      expect(attempts).toBe(6);
+      expect(waits).toHaveLength(6);
+      expect(waits).toEqual([...waits].sort((a, b) => a - b));
+      expect(new Set(waits).size).toBe(6);
       attempts = 0;
       await expect(
-        renderOffline(golden, { seed: 1, duration: 1 }, (ctx) => {
-          ctx.startRendering = async () => {
-            attempts++;
-            throw new Error("something else");
-          };
-        }),
+        renderOffline(
+          golden,
+          { seed: 1, duration: 1 },
+          (ctx) => {
+            ctx.startRendering = async () => {
+              attempts++;
+              throw new Error("something else");
+            };
+          },
+          wait,
+        ),
       ).rejects.toThrow("something else");
       expect(attempts).toBe(1);
     } finally {
