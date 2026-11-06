@@ -16,7 +16,7 @@ import { requireVoiceType } from "./voice-registry.js";
  * every node costs render time on every quantum from its creation, started or not (decision
  * 0002, probe b).
  */
-const WINDOW = 2;
+export const WINDOW = 2;
 /** Seconds before its start a window's nodes are created. */
 const LEAD = 1;
 const WINDOW_SAMPLES = WINDOW * CONTROL_RATE;

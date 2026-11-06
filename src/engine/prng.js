@@ -47,13 +47,27 @@ function checkKey(name, value) {
  * @param {number} slot which of the event's draws this is
  */
 export function draw(seed, voiceId, eventIndex, slot) {
+  return drawer(seed, voiceId)(eventIndex, slot);
+}
+
+/**
+ * `draw` with the seed and the voice id absorbed once, for many draws under one id, such as
+ * noise at every frame: each call returns `draw(seed, voiceId, eventIndex, slot)`.
+ * @param {number} seed
+ * @param {string} voiceId
+ * @returns {(eventIndex: number, slot: number) => number}
+ */
+export function drawer(seed, voiceId) {
   checkKey("seed", seed);
-  checkKey("eventIndex", eventIndex);
-  checkKey("slot", slot);
   // The length goes in first, so "a" and "a\0" absorb different words.
   let state = absorb(absorb(INITIAL_STATE, seed), voiceId.length);
   for (let i = 0; i < voiceId.length; i++) state = absorb(state, voiceId.charCodeAt(i));
-  return absorb(absorb(state, eventIndex), slot) / 2 ** 32;
+  const prefix = state;
+  return (eventIndex, slot) => {
+    checkKey("eventIndex", eventIndex);
+    checkKey("slot", slot);
+    return absorb(absorb(prefix, eventIndex), slot) / 2 ** 32;
+  };
 }
 
 /**

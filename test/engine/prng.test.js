@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { draw, fires, TRIGGER_SLOT } from "../../src/engine/prng.js";
+import { draw, drawer, fires, TRIGGER_SLOT } from "../../src/engine/prng.js";
 
 describe("draw", () => {
   test("gives fixed values for fixed keys", () => {
@@ -14,6 +14,21 @@ describe("draw", () => {
       0.6561638514976948, 0.4737285259179771, 0.6662384073715657, 0.645145726390183,
       0.18250594474375248, 0.46268068882636726,
     ]);
+  });
+
+  test("a drawer for a seed and voice id gives the same values as draw", () => {
+    const next = drawer(7, "bed");
+    for (const [event, slot] of [
+      [0, 0],
+      [1, 1],
+      [96000, 1],
+      [4294967295, 4294967295],
+    ]) {
+      expect(next(/** @type {number} */ (event), /** @type {number} */ (slot))).toBe(
+        draw(7, "bed", /** @type {number} */ (event), /** @type {number} */ (slot)),
+      );
+    }
+    expect(() => next(-1, 0)).toThrow(RangeError);
   });
 
   test("returns values in [0, 1)", () => {
