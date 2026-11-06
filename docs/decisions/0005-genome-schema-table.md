@@ -74,3 +74,9 @@ If `tsc` can't express that, the builder of step 1c records what it did instead.
 - 2026-11-05: from the third plan review. `fromVector` moving a trajectory's start and end maps
   its interior breakpoints affinely from the old span to the new one, so the shape is kept rather
   than collapsing to two points.
+- 2026-11-06: from the fourth plan review. The engine exports `canonicalGenome()`, the canonical
+  JSON string; `genomeHash()` is SHA-256 of it in `src/server` through `node:crypto`. The browser
+  can't hash it: `crypto.subtle` exists only in secure contexts, and the UI is served over plain
+  HTTP on the LAN. Records refer to a genome by its row id, never by its hash; the hash only
+  finds duplicates. A migration that writes new defaults into stored genomes recomputes their
+  hash column in the same migration, and nothing else needs to change.

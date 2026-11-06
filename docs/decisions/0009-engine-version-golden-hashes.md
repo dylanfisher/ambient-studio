@@ -58,3 +58,7 @@ By the owner's choice on 2026-11-05:
 - 2026-11-05: from the third plan review. Hash files also record the CPU model, because the
   library's SIMD paths may differ between Apple chips. Only mbp2021's entries count; another
   machine's mismatch says so rather than failing as a changed render.
+- 2026-11-06: from the fourth plan review. There are two kinds of golden hash: the raw render
+  quantized to 24-bit (step 1g, before the normalizer exists), and the export's PCM after
+  normalization and limiting (step 1l, through `exportRender`). Both are keyed by engine
+  version, and both must match.

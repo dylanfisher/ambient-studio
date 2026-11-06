@@ -17,8 +17,8 @@ owner's approval on 2026-11-05. It is a Rust implementation of Web Audio exposed
 shipped as a prebuilt darwin-arm64 binary. `src/server` creates the `OfflineAudioContext` and
 passes it to `render()`; `src/engine` never imports the package.
 
-Upgrading it is a step of its own: re-run the golden-render test ([0009](0009-engine-version-golden-hashes.md))
-and bump the engine version if the hashes move.
+Upgrading it is a step of its own: re-run the golden-render test
+([0009](0009-engine-version-golden-hashes.md)) and bump the engine version if the hashes move.
 
 ## Alternatives considered
 
