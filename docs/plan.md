@@ -29,10 +29,10 @@ unneeded stays unused rather than being given to another step.
 | 0004 | Pitch: tunings (relative and absolute-frequency), scales, Scala import | 1b | [written](decisions/0004-tunings-and-scales.md) |
 | 0005 | Genome schema as one descriptor table | 1c | [written](decisions/0005-genome-schema-table.md) |
 | 0006 | Macros as bounded offsets | 1d | [written](decisions/0006-macros-bounded-offsets.md) |
-| 0007 | Trajectories, the render time base and excerpts | 1d | reserved |
+| 0007 | Trajectories, the render time base and excerpts | 1d | written, provisional |
 | 0008 | Loudness and true peak written here | 1e | [written](decisions/0008-loudness-written-here.md) |
 | 0009 | Engine version and golden-render hashes | 1g | [written](decisions/0009-engine-version-golden-hashes.md) |
-| 0010 | Event scheduling, memory and the cost budget | 1f (1g adds the cost budget) | reserved |
+| 0010 | Event scheduling, memory and the cost budget | 1f (1g adds the cost budget) | written, provisional |
 | 0011 | Normalization and the true-peak limiter | 1h | [written](decisions/0011-normalize-true-peak-limiter.md), provisional |
 | 0012 | WAV written here, FLAC through the CLI | 1i | [written](decisions/0012-flac-via-cli.md) |
 | 0013 | Pad/swell and bell/pluck voice designs | 1j | reserved |
@@ -792,3 +792,16 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   capped delay feedback at 0.75 so the worst-case pre-roll falls from about 151 s to 68 s, and
   defined the genome key names once. 0007 and the 1d amendments to 0003, 0005 and 0006 are
   provisional.
+- 2026-11-06: 1f merged as 6f43135 (Opus: 247k tokens, 82 tool calls, 23.8 min, then a 17.7 min
+  fix round at 307k; reviewer Sonnet: 86k tokens, 17 tool calls, 5.7 min, PASS). `render`,
+  `renderPlan`, `trimToResult`, the master bus (seeded dark IR, feedback delay, side/mid width,
+  fades ending in exact zeros) and the drone. Events go in 2 s `suspend` windows 1 s ahead;
+  parameters follow a 0.1 s control grid. The drone renders at 28.9x real time over 900 s with an
+  8 s reverb, peak RSS 719–791 MiB. Stems sum to the mix within 2.1e-7; excerpts match a full
+  render within 8.3e-7 (tolerance 1e-5, 100 dB under). The review asked for a test of the window
+  event path; writing it found three bugs, now fixed: oscillators started between frames had the
+  wrong phase, a render ending on a window boundary dropped its last control sample, and the
+  short-reverb start error came from the first. Pending owner checks: the drone golden and a
+  300 s drone for zipper noise on the sweep, clicks and thumps; the three detuned copies in mono;
+  the reverb at 8 s and 20 s for ringing or flutter; the 0.1 s fade with `fadeOut` 0; a Colundi
+  drone for roughness.
