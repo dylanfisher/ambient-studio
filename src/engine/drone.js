@@ -144,21 +144,29 @@ function sweptCutoff(cutoff, sweep, period, time) {
 }
 
 /**
- * When an oscillator of frequency `hz` that sounds from `start` begins in a render that begins
- * at `from`: at its start, or at the first whole cycle after `from`, so its phase comes from
- * timeline time (decision 0007).
- * @param {number} start
- * @param {number} from
- * @param {number} hz
+ * A PeriodicWave's coefficients for sine partials `gains` (index n is harmonic n) whose
+ * fundamental has turned `turns` cycles: sin(n(ωt + φ)) = sin(nωt) cos(nφ) + cos(nωt) sin(nφ).
+ * An oscillator started on a whole frame with this wave plays the phase it would have had,
+ * without relying on how the library starts an oscillator between frames.
+ * @param {Float32Array} gains
+ * @param {number} turns
  */
-const cycleStart = (start, from, hz) =>
-  start >= from ? start : start + Math.ceil((from - start) * hz) / hz;
+function phasedWave(gains, turns) {
+  const phase = 2 * Math.PI * (turns - Math.floor(turns));
+  const real = new Float32Array(gains.length);
+  const imag = new Float32Array(gains.length);
+  gains.forEach((gain, n) => {
+    real[n] = gain * Math.sin(n * phase);
+    imag[n] = gain * Math.cos(n * phase);
+  });
+  return { real, imag };
+}
 
 /**
  * @param {VoiceSetup} setup
  * @returns {VoiceWindow}
  */
-function build({ ctx, output, genome, voice, from, to, at, automate }) {
+function build({ ctx, output, genome, voice, from, to, startFrame, at, automate }) {
   const drone = /** @type {DroneVoice} */ (/** @type {unknown} */ (voice));
   const pitch = resolvePitch(getTuning(genome.tuning), genome.scale, genome.key);
   const fundamental = droneFundamental(pitch, drone.root);
@@ -186,29 +194,35 @@ function build({ ctx, output, genome, voice, from, to, at, automate }) {
   const harmonics = new Float32Array(Math.max(...partials.map((p) => p.harmonic ?? 0)) + 1);
   for (const p of partials) if (p.harmonic !== undefined) harmonics[p.harmonic] = p.gain / total;
   const waves = [
-    { hz: fundamental, imag: harmonics },
+    { hz: fundamental, gains: harmonics },
     ...partials
       .filter((p) => p.harmonic === undefined)
-      .map((p) => ({ hz: p.hz, imag: new Float32Array([0, p.gain / total]) })),
+      .map((p) => ({ hz: p.hz, gains: new Float32Array([0, p.gain / total]) })),
   ];
+  // Oscillators start on whole frames: the voice's first frame, or in an excerpt the render's
+  // first frame, with the phase the voice has reached by then (decision 0007).
+  const rate = ctx.sampleRate;
+  const firstFrame = Math.ceil(drone.start * rate);
+  const beginFrame = Math.max(firstFrame, startFrame);
+  const begin = at(from) + (beginFrame - startFrame) / rate;
+  const elapsed = (beginFrame - firstFrame) / rate;
   for (const { spread, pan } of COPIES) {
     const panner = ctx.createStereoPanner();
     panner.pan.value = pan;
     panner.connect(filter);
     const ratio = centsToRatio(spread * drone.detune);
-    for (const { hz, imag } of waves) {
+    for (const { hz, gains } of waves) {
       // The node holds its frequency as a 32-bit float, so the phase is computed from that.
       const played = Math.fround(hz * ratio);
+      const { real, imag } = phasedWave(gains, elapsed * played);
       const oscillator = ctx.createOscillator();
       // Gains are set above, so the wave isn't rescaled to a peak of 1.
       oscillator.setPeriodicWave(
-        ctx.createPeriodicWave(new Float32Array(imag.length), imag, {
-          disableNormalization: true,
-        }),
+        ctx.createPeriodicWave(real, imag, { disableNormalization: true }),
       );
       oscillator.frequency.value = played;
       oscillator.connect(panner);
-      oscillator.start(at(cycleStart(drone.start, from, played)));
+      oscillator.start(begin);
       oscillator.stop(at(drone.end));
     }
   }

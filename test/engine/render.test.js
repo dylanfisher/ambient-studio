@@ -1,22 +1,23 @@
 // Renders are short (2–6 s) to keep the gate light on a machine that also serves omlx.
 /** @import { Genome } from "../../src/engine/genome-schema.js" */
 /** @import { RenderResult } from "../../src/engine/render-plan.js" */
-import { describe, expect, test } from "vitest";
+import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { ENGINE_VERSION } from "../../src/engine/engine-version.js";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
 import { randomGenome } from "../../src/engine/random-genome.js";
 import { requireGenome } from "../../src/engine/validate-genome.js";
 import { registerVoice, unregisterVoice } from "../../src/engine/voice-registry.js";
+import { PULSE_EVERY, pulseVoice } from "../support/pulse-voice.js";
 import { renderOffline } from "../support/render-offline.js";
 
 const RATE = 48000;
 // The stated tolerances, from renders measured on mbp2021: stems summed differ from the mix by
 // float rounding only (decision 0010), and an excerpt from its window of a full render by at
-// most a peak of 1e-3 with the difference at least 80 dB under the signal (decision 0007).
+// most a peak of 1e-5 with the difference at least 100 dB under the signal (decision 0007).
 const STEM_PEAK = 1e-6;
 const STEM_BELOW_DB = 120;
-const EXCERPT_PEAK = 1e-3;
-const EXCERPT_BELOW_DB = 80;
+const EXCERPT_PEAK = 1e-5;
+const EXCERPT_BELOW_DB = 100;
 const golden = requireGenome(droneGenome, "the drone golden genome");
 
 /** The golden drone plus a second drone higher up. */
@@ -52,6 +53,26 @@ function difference(result, reference) {
     }
   });
   return { peak, belowDb: 10 * Math.log10(signal / diff) };
+}
+
+/**
+ * Renders `full` seconds from 0 and an excerpt of `length` seconds at `offset`, and checks the
+ * excerpt against the same window of the full render within 0007's tolerance.
+ * @param {Genome} genome
+ * @param {{ seed: number; full: number; offset: number; length: number }} times
+ */
+async function expectExcerptMatches(genome, { seed, full, offset, length }) {
+  const whole = await renderOffline(genome, { seed, duration: full });
+  const excerpt = await renderOffline(genome, { seed, duration: length, offset });
+  const from = Math.round(offset * RATE);
+  const window = {
+    ...whole,
+    channels: whole.channels.map((c) => c.slice(from, from + Math.round(length * RATE))),
+  };
+  const { peak, belowDb } = difference(excerpt, window);
+  expect(peak).toBeLessThan(EXCERPT_PEAK);
+  expect(belowDb).toBeGreaterThan(EXCERPT_BELOW_DB);
+  return { excerpt, window };
 }
 
 /** @param {RenderResult} result */
@@ -117,19 +138,52 @@ describe("render", () => {
   });
 
   test("an excerpt matches the same window of a longer render (0007's tolerance)", async () => {
-    const offset = 4.5;
-    const full = await renderOffline(golden, { seed: 3, duration: 7 });
-    const excerpt = await renderOffline(golden, { seed: 3, duration: 2.5, offset });
-    const from = Math.round(offset * RATE);
-    const window = {
-      ...full,
-      channels: full.channels.map((c) =>
-        c.subarray(from, from + (excerpt.channels[0]?.length ?? 0)),
-      ),
-    };
-    const { peak, belowDb } = difference(excerpt, window);
-    expect(peak).toBeLessThan(EXCERPT_PEAK);
-    expect(belowDb).toBeGreaterThan(EXCERPT_BELOW_DB);
+    await expectExcerptMatches(golden, { seed: 3, full: 8, offset: 5.5, length: 2.5 });
+  });
+
+  test("an excerpt matches where voices start and end inside the render", async () => {
+    // From the excerpt's pre-roll start (about 0.7 s): "gone" ended before it, the golden drone
+    // starts in the pre-roll, and "brief" opens and closes inside the excerpt.
+    const genome = requireGenome(
+      {
+        ...droneGenome,
+        voices: [
+          { ...droneGenome.voices[0], start: 3.3 },
+          { id: "gone", type: "drone", root: 80, end: 0.5 },
+          { id: "brief", type: "drone", root: 120, start: 6.2, end: 7.1 },
+        ],
+      },
+      "voices starting and ending inside the render",
+    );
+    await expectExcerptMatches(genome, { seed: 2, full: 8, offset: 5.5, length: 2.5 });
+  });
+
+  test("a Colundi drone plays snapped partials, and its excerpt matches", async () => {
+    const { key: _, ...relative } = droneGenome;
+    const genome = requireGenome(
+      {
+        ...relative,
+        tuning: "colundi",
+        scale: "all",
+        voices: [{ ...droneGenome.voices[0], root: 55, partials: 12 }],
+      },
+      "a Colundi drone",
+    );
+    const { excerpt } = await expectExcerptMatches(genome, {
+      seed: 1,
+      full: 8,
+      offset: 5.5,
+      length: 2.5,
+    });
+    expect(rms(excerpt)).toBeGreaterThan(0.01);
+  });
+
+  test("a render's samples don't depend on where it ends", async () => {
+    // Ending on a window boundary (4 s) while the fade-in still moves the master gain.
+    const fading = requireGenome({ ...droneGenome, fadeIn: 10 }, "a slow fade-in");
+    const short = await renderOffline(fading, { seed: 1, duration: 4 });
+    const long = await renderOffline(fading, { seed: 1, duration: 5 });
+    expect(long.channels.map((c) => c.slice(0, 4 * RATE))).toEqual(short.channels);
   });
 
   test("fades from silence at timeline 0 and ends in digital silence", async () => {
@@ -187,4 +241,50 @@ describe("render", () => {
     expect(sounding).toBe(20);
     // About 1.5 s alone; more when the suite runs at background priority beside other files.
   }, 30_000);
+});
+
+describe("render, with a voice that creates events window by window", () => {
+  beforeAll(() => registerVoice(pulseVoice));
+  afterAll(() => unregisterVoice(pulseVoice.type));
+
+  // Nearly dry, so each burst stands out of the reverb and echo around it.
+  const pulses = () =>
+    requireGenome(
+      {
+        ...droneGenome,
+        reverbLevel: -30,
+        delayLevel: -40,
+        voices: [...droneGenome.voices, { id: "pulse", type: "pulse", level: -6 }],
+      },
+      "a genome with the pulse voice",
+    );
+
+  test("plays an event at every half second, window boundaries included", async () => {
+    const result = await renderOffline(pulses(), { seed: 1, duration: 7, voices: ["pulse"] });
+    const left = /** @type {Float32Array} */ (result.channels[0]);
+    /** @param {number} from @param {number} to */
+    const peak = (from, to) =>
+      left
+        .subarray(Math.round(from * RATE), Math.round(to * RATE))
+        .reduce((max, x) => Math.max(max, Math.abs(x)), 0);
+    // After the 1 s fade-in, up to the last burst that fits.
+    for (let k = 2; (k + 1) * PULSE_EVERY <= 7; k++) {
+      const time = k * PULSE_EVERY;
+      expect(peak(time, time + 0.1), `burst at ${time} s`).toBeGreaterThan(
+        5 * peak(time + 0.2, time + PULSE_EVERY),
+      );
+    }
+  });
+
+  test("scheduling in suspend windows renders the same samples as scheduling up front", async () => {
+    const windowed = await renderOffline(pulses(), { seed: 1, duration: 7 });
+    const upFront = await renderOffline(pulses(), { seed: 1, duration: 7 }, (ctx) =>
+      Object.defineProperty(ctx, "suspend", { value: undefined }),
+    );
+    expect(upFront.channels).toEqual(windowed.channels);
+  });
+
+  test("an excerpt matches the same window of a longer render (0007's tolerance)", async () => {
+    await expectExcerptMatches(pulses(), { seed: 1, full: 8, offset: 5.5, length: 2.5 });
+  });
 });

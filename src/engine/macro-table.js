@@ -22,7 +22,7 @@ import { GLOBAL_PARAMS, MACROS } from "./genome-schema.js";
  * engine holds the other parameters fixed for a whole render.
  * @param {readonly MacroRow[]} rows
  * @param {DescriptorTable} table the parameters the rows may name
- * @param {string} owner for the error message, as `voice type "drone"`
+ * @param {string} owner names the table's owner in error messages: `global`, or the voice type
  * @returns {readonly MacroRow[]} the rows, frozen
  */
 export function checkMacroRows(rows, table, owner) {

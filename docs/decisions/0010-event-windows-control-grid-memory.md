@@ -23,16 +23,19 @@ multiples of 2 s from timeline 0. On an `OfflineAudioContext`, a window's nodes 
 more than one quantum before its first event; windows due at or before the context's start are
 created at once. A context without `startRendering` and `suspend(time)`, a live one, gets every
 window at once, and a test shows that renders the same samples as the windowed path. `render()`
-returns a promise that settles when the last window is created; a window that throws still
-resumes the context, then rejects the promise, so callers await it together with
-`startRendering()`.
+returns a promise that settles when the last window is created; a window created in a
+suspend that throws still resumes the context, then rejects the promise, so callers await it
+together with `startRendering()`. A window created at once throws out of `render()`.
 
 A voice type has `build(setup)`, which creates its long-lived nodes into `setup.output` and
 returns either nothing or a function `render()` calls once per window with the window's `from`
 and `to` in timeline seconds. That function creates nodes only for events that start in
-`[from, to)`, indexed on the voice's own grid from timeline 0
+`[from, to)`, never at or after `to`, indexed on the voice's own grid from timeline 0
 ([0003](0003-counter-based-prng.md)), and skips events before the render's start, which the
-pre-roll covers through the voice type's `longestEvent(voice)`. `render()` applies each voice's
+pre-roll covers through the voice type's `longestEvent(voice)`. A voice calls `automate` only
+inside `build`, since `render()` sets each automated parameter's start value once `build`
+returns. `test/support/pulse-voice.js` is the reference for the window path: a burst every
+0.5 s from timeline 0, window boundaries included, rendered identically windowed and up front. `render()` applies each voice's
 `level` and its `start` and `end` after `setup.output`: `start` and `end` open and close a gate
 with 20 ms linear ramps at their exact times, so neither clicks. Voices connect to the bus
 sorted by id ([0005](0005-genome-schema-table.md)).
@@ -45,7 +48,9 @@ second.
 **Control grid.** `CONTROL_RATE` is 10 samples a second; sample k sits at timeline time
 `k / 10`. Each automated `AudioParam` (the master fade, the reverb and delay sends, the delay
 feedback, each voice's level, the drone's cutoff) gets its value from `effectiveParams` at each
-grid time and a linear ramp between, scheduled a window at a time with the events. An excerpt
+grid time and a linear ramp between, scheduled a window at a time with the events. The last
+window also takes the first grid sample at or after the render's end, so a render's samples
+don't depend on where it ends. An excerpt
 sets each parameter at its first frame to the value on the ramp between the grid samples either
 side, so it plays what a full render plays from there. At 0.1 s, the fastest sweep (a 30 s
 period) gets 300 samples a cycle, a fade or a trajectory segment of a second gets ten, and a
@@ -106,9 +111,12 @@ to 2.
   nearest member. A `PeriodicWave` holds only harmonics, so each snapped partial is a
   single-sine oscillator of its own in each copy: a Colundi drone runs up to 3 × (1 + snapped)
   oscillators.
-- Oscillators start at the voice's `start`, or in an excerpt at the first whole cycle of their
-  32-bit-float frequency after the render's start (0007), and stop at `end`. Their phase comes
-  from timeline time, so `longestEvent` is 0.
+- Oscillators start on a whole frame: the voice's first frame, `⌈start × 48000⌉`, or in an
+  excerpt the render's first frame, with the phase reached by then (from the 32-bit-float
+  frequency the node holds) rotated into the `PeriodicWave`. Starting at a fractional time
+  left the phase to the library and differed by up to 1.8e-3 between an excerpt and a full
+  render (0007). They stop at `end`. Their phase comes from timeline time, so `longestEvent`
+  is 0.
 - Macro rows: brightness moves `cutoff` by 0.25 of its range, motion moves `sweep` by 0.25.
 - Its schema text is 288 characters, about 30 over the 260 each of the five voices has if they
   share the room equally; the whole text is 1,945 of 3,000.

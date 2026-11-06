@@ -35,18 +35,25 @@ const GATE_RAMP = 0.02;
  * @property {Voice} voice the voice as stored, its trajectories unevaluated
  * @property {number} seed
  * @property {number} from timeline seconds at the render's first frame, pre-roll included
+ * @property {number} startFrame the timeline frame at the render's first frame, for a voice that
+ *   places nodes on whole frames
  * @property {number} to timeline seconds at the render's end
  * @property {(time: number) => number} at timeline seconds to context seconds
  * @property {(param: AudioParam, value: (voice: Resolved<Voice>, time: number) => number) => void} automate
  *   makes `param` follow a value of the voice's effective parameters, sampled on the control
- *   grid and ramped between samples
+ *   grid and ramped between samples. Call it inside `build` only: `render` sets every
+ *   automated parameter's start value after `build` returns, and a parameter added later from
+ *   a window would miss it and the ramps of the windows before.
  */
 
 /**
  * What `build` returns for a voice with events: a function `render` calls once per window with
  * the timeline seconds it covers, at least one second before `from`, to create the nodes of the
  * events that start in [from, to). Events are indexed on the voice's own grid from timeline 0
- * (decision 0003), so a window holds the same events in an excerpt as in a full render.
+ * (decision 0003), so a window holds the same events in an excerpt as in a full render. It
+ * must not create an event at or after its `to`: that event belongs to the next window, which
+ * would create it again, and on the last window it lies past the render's end. It skips events
+ * before the setup's `from`, which the pre-roll covers.
  * Undefined for a voice whose nodes all exist from the start.
  * @typedef {((from: number, to: number) => void) | undefined} VoiceWindow
  */
@@ -115,7 +122,9 @@ function selectVoices(genome, ids) {
  * @param {{ seed: number; duration: number; offset?: number; voices?: readonly string[] }} options
  *   `voices` limits the render to the voices with these ids, for stems
  * @returns {Promise<void>} settles once every window is created. On an offline context, await it
- *   together with `startRendering()`: a window that throws rejects it, after resuming the render.
+ *   together with `startRendering()`. A window created in a `suspend` that throws resumes the
+ *   render and then rejects the promise; a window created at once (the first second, or every
+ *   window on a live context) throws out of `render()` itself.
  */
 export function render(genome, ctx, { seed, duration, offset = 0, voices }) {
   const normalized = requireGenome(genome, "render: invalid genome");
@@ -156,6 +165,7 @@ export function render(genome, ctx, { seed, duration, offset = 0, voices }) {
       seed,
       from,
       to,
+      startFrame: plan.startFrame,
       at,
       automate: (param, value) => automate(param, (params, time) => value(self(params), time)),
     });
@@ -180,7 +190,9 @@ export function render(genome, ctx, { seed, duration, offset = 0, voices }) {
   const pending = [];
   for (let window = Math.floor(from / WINDOW); window * WINDOW < to; window++) {
     const firstSample = Math.max(window * WINDOW_SAMPLES, first + 1);
-    const endSample = Math.min((window + 1) * WINDOW_SAMPLES, last + 1);
+    // The last window takes every sample up to the first at or after `to`, which sits in the
+    // next window when `to` falls on a window boundary.
+    const endSample = (window + 1) * WINDOW >= to ? last + 1 : (window + 1) * WINDOW_SAMPLES;
     const create = () => {
       for (let sample = firstSample; sample < endSample; sample++) {
         const time = controlTime(sample);
