@@ -50,6 +50,9 @@ export async function captureRatedAudio(store, { renderCache, ratedAudio }, rend
       await link(staged, join(ratedAudio, file));
     } catch (error) {
       if (/** @type {NodeJS.ErrnoException} */ (error).code !== "EEXIST") throw error;
+      // Another capture of this excerpt, running at the same time, linked first and wrote its row.
+      const written = findRatedAudio(store, heard);
+      if (written) return written;
       throw new Error(
         `${file} is already in ${ratedAudio} with no rated_audio row; move it aside to capture this excerpt`,
         { cause: error },

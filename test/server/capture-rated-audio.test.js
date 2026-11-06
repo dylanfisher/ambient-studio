@@ -69,6 +69,16 @@ test("a second capture of the same excerpt reuses the row and its file", async (
   expect(await readdir(paths.ratedAudio)).toEqual([first.file]);
 });
 
+test("two captures of one excerpt at once both return the one row", async () => {
+  const { store, paths, render } = await setup();
+  const [a, b] = await Promise.all([
+    captureRatedAudio(store, paths, render.id),
+    captureRatedAudio(store, paths, render.id),
+  ]);
+  expect(b).toEqual(a);
+  expect(await readdir(paths.ratedAudio)).toEqual([a.file]);
+});
+
 test("a render made under another producer, or an unknown one, is refused", async () => {
   const { store, paths, render } = await setup();
   const { render: stale } = putRender(store, { ...render, producer: "engine-1 features-old" });
