@@ -82,6 +82,13 @@ import * as http from "node:http";
 export const ask = () => http.request("http://127.0.0.1:8000/v1/models");
 JS
 write "$bad/src/config/probe.js" <<<'export const probe = () => globalThis.fetch("http://127.0.0.1:8000");'
+write "$bad/src/server/later.js" <<'JS'
+const ready = true;
+export const http = await import("node:https");
+JS
+write "$bad/src/server/socket.js" <<<'import { connect } from "node:net";'
+write "$bad/src/server/h2.js" <<<'export const h2 = await import("http2");'
+write "$bad/src/server/omlx-queue.js" <<<'import { request } from "undici";'
 
 out=$(node scripts/arch.js --root "$bad" 2>&1)
 status=$?
@@ -109,7 +116,11 @@ for want in \
   'src/server/get.js:1: imports get from node:http; only src/server/omlx-queue.js sends HTTP requests (0022)' \
   'src/server/send.js:1: imports request from node:http; only src/server/omlx-queue.js sends HTTP requests (0022)' \
   'src/server/raw.js:2: calls http.request; only src/server/omlx-queue.js sends HTTP requests (0022)' \
-  'src/config/probe.js:1: calls fetch; only src/server/omlx-queue.js sends HTTP requests (0022)'; do
+  'src/config/probe.js:1: calls fetch; only src/server/omlx-queue.js sends HTTP requests (0022)' \
+  'src/server/later.js:2: imports node:https dynamically; only src/server/omlx-queue.js sends HTTP requests (0022)' \
+  'src/server/socket.js:1: imports node:net; only src/server/omlx-queue.js sends HTTP requests (0022)' \
+  'src/server/h2.js:1: imports http2; only src/server/omlx-queue.js sends HTTP requests (0022)' \
+  'src/server/omlx-queue.js:1: imports undici; only src/server/omlx-queue.js sends HTTP requests (0022)'; do
   if ! grep -qF -- "$want" <<<"$out"; then
     printf 'arch-test: no finding\n  %s\nin:\n%s\n' "$want" "$out" >&2
     problems=$((problems + 1))
