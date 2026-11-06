@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "duration": 300,
+  "tuning": "12-tet",
+  "scale": "dorian",
+  "key": 2,
+  "loudness": -16,
+  "fadeIn": 4,
+  "fadeOut": 20,
+  "width": -3,
+  "reverbDecay": 8,
+  "reverbLevel": { "points": [[0, -16], [150, -12, "smooth"], [300, -15, "smooth"]] },
+  "delayTime": 0.75,
+  "delayFeedback": 0.3,
+  "delayLevel": -26,
+  "macros": { "brightness": 0.4, "space": 0.6 },
+  "voices": [
+    {
+      "id": "drone",
+      "type": "drone",
+      "level": -8,
+      "detune": 4,
+      "root": 37,
+      "partials": 8,
+      "slope": 6,
+      "cutoff": { "points": [[0, 300], [120, 650, "smooth"], [300, 400, "smooth"]] },
+      "sweep": 0.5,
+      "period": 90,
+      "q": 0.7
+    },
+    {
+      "id": "pad",
+      "type": "pad",
+      "level": -8,
+      "detune": 5,
+      "notes": 5,
+      "hold": 30,
+      "attack": 8,
+      "release": 12,
+      "tone": 9,
+      "swell": 45,
+      "swing": 10
+    },
+    {
+      "id": "air",
+      "type": "noise",
+      "level": -12,
+      "color": "pink",
+      "preset": "wind",
+      "tone": 0,
+      "depth": 0.5,
+      "period": 20
+    },
+    {
+      "id": "bell",
+      "type": "bell",
+      "level": -10,
+      "detune": 2,
+      "model": "additive",
+      "density": { "points": [[0, 6], [90, 11, "smooth"], [180, 6, "smooth"], [270, 9, "smooth"]] },
+      "decay": 6,
+      "partials": 6,
+      "fall": 4.5,
+      "ratios": "bar"
+    }
+  ]
+}

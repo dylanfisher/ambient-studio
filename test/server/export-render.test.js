@@ -53,7 +53,7 @@ describe("exportRender", () => {
   test("writes a WAV, a FLAC and a sidecar JSON that names the other two", async () => {
     const { paths, sidecar } = first;
     expect((await readdir(firstDir)).sort()).toEqual(
-      [paths.flac, paths.json, paths.wav].map((path) => path.slice(firstDir.length + 1)).sort(),
+      [paths.flac, paths.json, paths.wav].map((path) => path?.slice(firstDir.length + 1)).sort(),
     );
     const written = JSON.parse(await readFile(paths.json, "utf8"));
     expect(written).toEqual(sidecar);
@@ -200,10 +200,17 @@ describe("exportRender when a name is taken during the render", () => {
     vi.resetModules();
   });
 
-  test.for(["wav", "flac", "json"])(
-    "leaves another process's .%s in place and names it",
-    async (extension) => {
-      const outDir = await freshDir(`taken-${extension}`);
+  test.for(
+    /** @type {[string, boolean][]} */ ([
+      ["wav", true],
+      ["flac", true],
+      ["json", true],
+      ["json", false],
+    ]),
+  )(
+    "leaves another process's .%s in place and names it (FLAC written: %s)",
+    async ([extension, flac]) => {
+      const outDir = await freshDir(`taken-${extension}-${flac}`);
       const taken = join(
         outDir,
         `${genomeHash(droneGenome).slice(0, 12)}-seed1-0s-1s.${extension}`,
@@ -222,7 +229,7 @@ describe("exportRender when a name is taken during the render", () => {
       }));
       const mocked = await import("../../src/server/export-render.js");
       await expect(
-        mocked.exportRender(droneGenome, { ...options, duration: 1, outDir }),
+        mocked.exportRender(droneGenome, { ...options, duration: 1, outDir, flac }),
       ).rejects.toThrow(`${taken} appeared during the export`);
       expect(await readdir(outDir)).toEqual([taken.slice(outDir.length + 1)]);
       expect(await readFile(taken, "utf8")).toBe("theirs");

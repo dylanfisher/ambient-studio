@@ -28,6 +28,7 @@ const NAME_HASH_CHARS = 12;
  * @property {number} target integrated loudness in LUFS; the caller passes the vibe's or the
  *   genome's, so there is no default
  * @property {string} outDir created when missing
+ * @property {boolean} [flac] writes the FLAC too; true when omitted
  */
 
 /**
@@ -41,7 +42,8 @@ const NAME_HASH_CHARS = 12;
 /**
  * The sidecar JSON, written beside the audio.
  * @typedef {object} Sidecar
- * @property {{ wav: string; flac: string }} files names in the sidecar's own folder
+ * @property {{ wav: string; flac?: string }} files names in the sidecar's own folder; no
+ *   `flac` when the export skipped it
  * @property {string} genomeHash
  * @property {string} pcmSha256 of the interleaved 24-bit PCM in the WAV's data chunk
  * @property {number} seed
@@ -59,7 +61,7 @@ const NAME_HASH_CHARS = 12;
 /**
  * @typedef {object} Export
  * @property {Sidecar} sidecar
- * @property {{ wav: string; flac: string; json: string }} paths absolute
+ * @property {{ wav: string; flac?: string; json: string }} paths absolute
  */
 
 /**
@@ -75,13 +77,14 @@ const NAME_HASH_CHARS = 12;
  * isn't wasted on a name that's taken.
  * @param {string} outDir
  * @param {string} name
+ * @param {boolean} flac
  * @returns {Export["paths"]}
  */
-function outputPaths(outDir, name) {
+function outputPaths(outDir, name, flac) {
   const dir = resolve(outDir);
   const paths = {
     wav: join(dir, `${name}.wav`),
-    flac: join(dir, `${name}.flac`),
+    ...(flac && { flac: join(dir, `${name}.flac`) }),
     json: join(dir, `${name}.json`),
   };
   for (const path of Object.values(paths)) {
@@ -112,7 +115,7 @@ function requireFinite(channels) {
  * @param {ExportOptions} options
  * @returns {Promise<PreparedExport>}
  */
-async function prepareExport(genome, { seed, duration, offset = 0, target, outDir }) {
+async function prepareExport(genome, { seed, duration, offset = 0, target, outDir, flac = true }) {
   const normalized = requireGenome(genome, "exportRender: invalid genome");
   if (typeof seed !== "number") {
     throw new TypeError(`exportRender: seed must be a number, got ${JSON.stringify(seed)}`);
@@ -123,7 +126,7 @@ async function prepareExport(genome, { seed, duration, offset = 0, target, outDi
   }
   const hash = genomeHash(normalized);
   const name = `${hash.slice(0, NAME_HASH_CHARS)}-seed${seed}-${offset}s-${duration}s`;
-  const paths = outputPaths(outDir, name);
+  const paths = outputPaths(outDir, name, flac);
 
   const rendered = await renderOffline(normalized, { seed, duration, offset });
   requireFinite(rendered.channels);
@@ -137,7 +140,7 @@ async function prepareExport(genome, { seed, duration, offset = 0, target, outDi
     pcm,
     channelCount: result.channels.length,
     sidecar: {
-      files: { wav: `${name}.wav`, flac: `${name}.flac` },
+      files: { wav: `${name}.wav`, ...(flac && { flac: `${name}.flac` }) },
       genomeHash: hash,
       pcmSha256: sha256Hex(pcm),
       seed,
@@ -159,8 +162,8 @@ async function prepareExport(genome, { seed, duration, offset = 0, target, outDi
 }
 
 /**
- * Writes the WAV, the FLAC from it, and the sidecar into a new temp folder inside the output
- * folder, then hard-links each to its name there. `link` fails rather than replace any entry,
+ * Writes the WAV, the FLAC from it unless the export skips it, and the sidecar into a new temp
+ * folder inside the output folder, then hard-links each to its name there. `link` fails rather than replace any entry,
  * a link included, so a name taken during the render is never overwritten or followed. On a
  * failure, removes the names this call linked, the temp folder and any folders it made, and
  * rethrows.
@@ -179,10 +182,12 @@ async function writeExport({ sidecar, paths, pcm, channelCount }) {
   const linked = [];
   try {
     await writeWav(staged(paths.wav), pcm, { channelCount, sampleRate: sidecar.sampleRate });
-    await writeFlac(staged(paths.wav), staged(paths.flac));
+    const { flac } = paths;
+    if (flac !== undefined) await writeFlac(staged(paths.wav), staged(flac));
     const text = `${JSON.stringify(sidecar, null, 2)}\n`;
     await writeFile(staged(paths.json), text, { flag: "wx" });
-    for (const path of [paths.wav, paths.flac, paths.json]) {
+    for (const path of [paths.wav, flac, paths.json]) {
+      if (path === undefined) continue;
       try {
         await link(staged(path), path);
       } catch (error) {
@@ -210,8 +215,8 @@ async function writeExport({ sidecar, paths, pcm, channelCount }) {
 
 /**
  * Renders `duration` seconds of `genome` from `offset`, normalizes it to `target` under the
- * genome's true-peak ceiling, and writes `<name>.wav`, `<name>.flac` and `<name>.json` to
- * `outDir`. Throws on a render sample that isn't finite, and on a file that already exists.
+ * genome's true-peak ceiling, and writes `<name>.wav`, `<name>.flac` (unless `flac` is false)
+ * and `<name>.json` to `outDir`. Throws on a render sample that isn't finite, and on a file that already exists.
  * @param {unknown} genome
  * @param {ExportOptions} options
  * @returns {Promise<Export>}
@@ -266,7 +271,8 @@ function rendererDifferences(recorded) {
 /**
  * Re-exports from a sidecar into `outDir` and writes the files only when the new PCM hash
  * matches the recorded one. Throws, writing nothing, on a sidecar from another engine version
- * or when the samples differ, naming which versions differ.
+ * or when the samples differ, naming which versions differ. Writes the FLAC whether or not the
+ * export did.
  * @param {string} sidecarPath
  * @param {string} outDir
  * @returns {Promise<Export>}

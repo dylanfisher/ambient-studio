@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Render a genome to a WAV, a FLAC and a sidecar JSON, or re-render an export from its sidecar
+# (decision 0017). The arguments go to src/server/render-cli.js, which prints the usage.
+set -euo pipefail
+
+exec node "$(dirname "$0")/../src/server/render-cli.js" "$@"
