@@ -9,6 +9,8 @@
 /** @import { VoiceSetup, VoiceWindow } from "./render.js" */
 import { dbToGain } from "./decibels.js";
 import { int, number } from "./descriptor.js";
+import { MACRO } from "./macro-table.js";
+import { phasedOscillator } from "./phased-wave.js";
 import { resolvePitch, tuningFrequencies } from "./pitch.js";
 import { centsToRatio, isAbsolute } from "./tuning.js";
 import { getTuning } from "./tuning-registry.js";
@@ -144,25 +146,6 @@ function sweptCutoff(cutoff, sweep, period, time) {
 }
 
 /**
- * A PeriodicWave's coefficients for sine partials `gains` (index n is harmonic n) whose
- * fundamental has turned `turns` cycles: sin(n(ωt + φ)) = sin(nωt) cos(nφ) + cos(nωt) sin(nφ).
- * An oscillator started on a whole frame with this wave plays the phase it would have had,
- * without relying on how the library starts an oscillator between frames.
- * @param {Float32Array} gains
- * @param {number} turns
- */
-function phasedWave(gains, turns) {
-  const phase = 2 * Math.PI * (turns - Math.floor(turns));
-  const real = new Float32Array(gains.length);
-  const imag = new Float32Array(gains.length);
-  gains.forEach((gain, n) => {
-    real[n] = gain * Math.sin(n * phase);
-    imag[n] = gain * Math.cos(n * phase);
-  });
-  return { real, imag };
-}
-
-/**
  * The fundamental and partials a drone voice plays in the genome's tuning.
  * @param {Genome} genome
  * @param {DroneVoice} drone
@@ -233,15 +216,7 @@ function build({ ctx, output, genome, voice, from, to, startFrame, at, automate 
     panner.connect(filter);
     const ratio = centsToRatio(spread * drone.detune);
     for (const { hz, gains } of waves) {
-      // The node holds its frequency as a 32-bit float, so the phase is computed from that.
-      const played = Math.fround(hz * ratio);
-      const { real, imag } = phasedWave(gains, elapsed * played);
-      const oscillator = ctx.createOscillator();
-      // Gains are set above, so the wave isn't rescaled to a peak of 1.
-      oscillator.setPeriodicWave(
-        ctx.createPeriodicWave(real, imag, { disableNormalization: true }),
-      );
-      oscillator.frequency.value = played;
+      const oscillator = phasedOscillator(ctx, gains, hz * ratio, elapsed);
       oscillator.connect(panner);
       oscillator.start(begin);
       oscillator.stop(at(drone.end));
@@ -255,8 +230,8 @@ export const drone = {
   description: "sine stack ×3 detuned, swept low-pass",
   params: PARAMS,
   macros: /** @type {MacroRow[]} */ ([
-    { macro: "brightness", param: "cutoff", depth: 0.25 },
-    { macro: "motion", param: "sweep", depth: 0.25 },
+    { macro: MACRO.brightness, param: "cutoff", depth: 0.25 },
+    { macro: MACRO.motion, param: "sweep", depth: 0.25 },
   ]),
   /** Its oscillators sound from start to end, their phase from timeline time. */
   longestEvent: () => 0,
