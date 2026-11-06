@@ -74,7 +74,8 @@ Every table name is defined once, in `TABLE` in store.js.
 **Renders.** `findRender(store, key)` returns the row for the window only when its `target` and
 `producer` equal the caller's. `putRender` deletes any row for the window and inserts the new one
 in one transaction, and returns the replaced row so the caller can delete its file. The new row
-gets a new id. The store never parses `producer`.
+can get the replaced row's id back: `renders` has no `AUTOINCREMENT`, and SQLite reuses the
+highest id after a delete. The store never parses `producer`.
 
 **Store functions** take and return plain objects with JSDoc types. One file per table group, each
 named for it: `vibe-store.js` (vibes, revisions, notes), `session-store.js`,
@@ -129,7 +130,8 @@ refused. The read-only connection neither migrates the source nor waits on its w
   can't change inside a transaction; the first migration that needs one adds that to the runner.
 - `source` and `rejectReason` are free text, so 2f and later steps add values without a
   migration. `source`'s JSDoc lists its values; 2f defines the reject reasons.
-- A render's id changes when it is replaced, so an audio URL for a stale render stops resolving.
+- A replaced render can keep its id (see Renders), so an audio URL for a stale render can serve
+  the new one: the same window under the current producer.
 
 ## Amendments
 
@@ -137,3 +139,7 @@ refused. The read-only connection neither migrates the source nor waits on its w
   adds `reasoning`, `requestParams`, `retries` and `error` to `generations` (an error only with
   `finishReason` `error`) and `rejectedGenome` to `candidates`, all null on earlier rows. A test
   in `generation-store.test.js` runs it over a database built with 0001 alone.
+- 2026-11-06: from step 2h ([0026](0026-job-runner-and-excerpt-renders.md)). The Renders
+  paragraph and the last consequence said a replaced render always gets a new id; a test found
+  SQLite giving the id back, and both now say so. `getRender(store, id)` reads a render by id,
+  and `findRatedAudio(store, heard)` finds the rated-audio row for a heard identity and target.
