@@ -1,6 +1,6 @@
 // The golden-render test (decision 0009): each genome in src/engine/genomes/ renders a window at
-// its start and one at its end, quantized to 24-bit, and must hash as the current engine
-// version's entry says. Renders are 2 s each to keep the gate light.
+// its start and one at its end, both raw and through the export, quantized to 24-bit, and must
+// hash as the current engine version's entries say. Renders are 2 s each to keep the gate light.
 /** @import { GoldenEntry, GoldenWindow } from "../support/golden.js" */
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -17,6 +17,7 @@ import {
   goldenPath,
   goldenRenders,
   readGolden,
+  renderNormalized,
   renderRaw,
   writeGoldens,
 } from "../support/golden.js";
@@ -42,6 +43,12 @@ function cachedRaw(genome, window) {
   return channels;
 }
 
+// Normalized windows are the export's PCM (step 1l), so a limiter change fails here too.
+const KINDS = [
+  { kind: "raw", render: cachedRaw },
+  { kind: "normalized", render: renderNormalized },
+];
+
 const drone = /** @type {(typeof goldens)[number]} */ (goldens.find((g) => g.name === "drone"));
 const dronePath = goldenPath(GOLDEN_DIR, ENGINE_VERSION, "drone");
 
@@ -50,17 +57,19 @@ describe("golden renders", () => {
     expect(goldens.map((g) => g.name)).toEqual(expect.arrayContaining(["drone", "master-bus"]));
   });
 
-  test.for(goldens)(
-    `$name matches engine version ${ENGINE_VERSION}'s raw hashes`,
-    async ({ name, genome }, ctx) => {
+  test.for(
+    goldens.flatMap((golden) => KINDS.map(({ kind, render }) => ({ ...golden, kind, render }))),
+  )(
+    `$name matches engine version ${ENGINE_VERSION}'s $kind hashes`,
+    async ({ name, genome, kind, render }, ctx) => {
       const path = goldenPath(GOLDEN_DIR, ENGINE_VERSION, name);
       const verdict = checkGolden({
         name,
         path,
         file: readGolden(path),
-        kind: "raw",
+        kind,
         env,
-        renders: await goldenRenders(genome, cachedRaw),
+        renders: await goldenRenders(genome, render, kind),
       });
       if (verdict.status === "skip") ctx.skip(verdict.message);
       expect(verdict.status, verdict.message).toBe("pass");
@@ -82,7 +91,7 @@ describe("golden renders", () => {
       file: readGolden(dronePath),
       kind: "raw",
       env,
-      renders: await goldenRenders(drone.genome, nudged),
+      renders: await goldenRenders(drone.genome, nudged, "raw"),
     });
     expect(verdict.status).toBe("fail");
     expect(verdict.message).toMatch(/bump ENGINE_VERSION/);
@@ -98,7 +107,7 @@ describe("golden renders", () => {
       file: readGolden(dronePath),
       kind: "raw",
       env: { ...env, platform: "linux-x64" },
-      renders: await goldenRenders(drone.genome, cachedRaw),
+      renders: await goldenRenders(drone.genome, cachedRaw, "raw"),
     });
     expect(verdict.status).toBe("fail");
     expect(verdict.message).toMatch(/linux-x64/);
@@ -113,7 +122,7 @@ describe("golden renders", () => {
       file: readGolden(dronePath),
       kind: "raw",
       env: { ...env, cpu: "Another Chip" },
-      renders: await goldenRenders(drone.genome, silent),
+      renders: await goldenRenders(drone.genome, silent, "raw"),
     });
     expect(verdict.status).toBe("skip");
     expect(verdict.message).toMatch(/Another Chip/);
@@ -129,7 +138,7 @@ describe("golden renders", () => {
       file: readGolden(path),
       kind: "raw",
       env,
-      renders: await goldenRenders(drone.genome, cachedRaw),
+      renders: await goldenRenders(drone.genome, cachedRaw, "raw"),
     });
     expect(verdict.status).toBe("fail");
     expect(verdict.message).toMatch(/scripts\/write-golden\.js/);

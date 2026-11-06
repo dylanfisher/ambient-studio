@@ -3,7 +3,7 @@
 // SHA-256, so the test can compare renders from separate processes.
 import { createHash } from "node:crypto";
 import { OfflineAudioContext } from "node-web-audio-api";
-import { retryOnSuspendRace } from "./render-offline.js";
+import { retryOnSuspendRace } from "../../src/server/render-offline.js";
 
 export const SAMPLE_RATE = 48000;
 export const FRAMES = SAMPLE_RATE;

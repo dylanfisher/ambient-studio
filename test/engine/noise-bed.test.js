@@ -9,9 +9,9 @@ import bedGenome from "../../src/engine/genomes/noise-bed.json" with { type: "js
 import { noiseBed, noiseChunk } from "../../src/engine/noise-bed.js";
 import { requireGenome } from "../../src/engine/validate-genome.js";
 import { voiceTypeIds } from "../../src/engine/voice-registry.js";
+import { renderOffline } from "../../src/server/render-offline.js";
 import { expectExcerptMatches, renderUpFront } from "../support/compare-renders.js";
 import { recordSources } from "../support/record-sources.js";
-import { renderOffline } from "../support/render-offline.js";
 
 const RATE = 48000;
 const PRESETS = noiseBed.params.preset.values;

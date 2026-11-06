@@ -1,11 +1,11 @@
-// Renders a genome the way the server will: an OfflineAudioContext sized by `renderPlan`,
-// `render()` to schedule, then `trimToResult`. src/engine can't import node-web-audio-api, so
-// tests build the context here.
-/** @import { Genome } from "../../src/engine/genome-schema.js" */
-/** @import { RenderResult } from "../../src/engine/render-plan.js" */
+// The one offline render sequence, which the export and the tests share: an
+// OfflineAudioContext sized by `renderPlan`, `render()` to schedule, then `trimToResult`.
+// src/engine can't import node-web-audio-api, so the context is built here.
+/** @import { Genome } from "../engine/genome-schema.js" */
+/** @import { RenderResult } from "../engine/render-plan.js" */
 import { OfflineAudioContext } from "node-web-audio-api";
-import { render } from "../../src/engine/render.js";
-import { renderPlan, trimToResult } from "../../src/engine/render-plan.js";
+import { render } from "../engine/render.js";
+import { renderPlan, trimToResult } from "../engine/render-plan.js";
 
 const MAX_ATTEMPTS = 3;
 
@@ -46,7 +46,8 @@ export async function retryOnSuspendRace(attemptRender) {
 /**
  * @param {Genome} genome
  * @param {{ seed: number; duration: number; offset?: number; voices?: string[] }} options
- * @param {(ctx: OfflineAudioContext) => void} [prepare] changes the context before `render()`
+ * @param {(ctx: OfflineAudioContext) => void} [prepare] changes the context before `render()`;
+ *   tests use it to add nodes or wrap `suspend`
  * @returns {Promise<RenderResult>}
  */
 export function renderOffline(genome, options, prepare) {

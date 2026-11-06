@@ -46,3 +46,6 @@ bit for bit.
   its message on stderr. A missing binary rejects with Node's spawn error. flac refuses to
   overwrite an existing output file, and that failure is left loud. On mbp2021, 300 s of stereo
   encoded to PCM in 0.16 s, wrote as WAV in 0.01 s and as FLAC in 1.3 s.
+- 2026-11-06: from step 1l. `writeWav` opens its file exclusively and throws `EEXIST` rather than
+  overwrite, matching flac, so an export never replaces an earlier one
+  ([0015](0015-export-sidecar-json.md)).

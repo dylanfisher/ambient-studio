@@ -1,6 +1,7 @@
 // 0012: +1.0 maps to 2^23, which is one step past the largest 24-bit value, so it clips to
 // 8388607 while -1.0 lands exactly on -8388608.
-const FULL_SCALE = 2 ** 23;
+/** The 24-bit value of a float sample of 1.0. */
+export const FULL_SCALE = 2 ** 23;
 const MAX = FULL_SCALE - 1;
 const MIN = -FULL_SCALE;
 

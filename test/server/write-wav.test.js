@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
@@ -41,6 +41,15 @@ describe("writeWav", () => {
     expect(file.readUInt32LE(40)).toBe(3);
     expect(file.length).toBe(44 + 4);
     expect(file.readUInt32LE(4)).toBe(file.length - 8);
+  });
+
+  test("refuses to overwrite an existing file", async () => {
+    const path = join(dir, "kept.wav");
+    await writeFile(path, "kept");
+    await expect(
+      writeWav(path, new Uint8Array(6), { channelCount: 2, sampleRate: 48000 }),
+    ).rejects.toThrow(/EEXIST/);
+    expect(await readFile(path, "utf8")).toBe("kept");
   });
 
   test("throws when the PCM isn't a whole number of frames", async () => {

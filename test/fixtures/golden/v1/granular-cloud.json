@@ -32,6 +32,26 @@
           }
         }
       }
+    },
+    "normalized": {
+      "darwin-arm64": {
+        "cpu": "Apple M1 Max",
+        "node": "v26.12.1",
+        "nodeWebAudioApi": "2.2.0",
+        "renders": {
+          "start": {
+            "seed": 1,
+            "offset": 0,
+            "duration": 2,
+            "sha256": "97f8bf7931a9e55dc82e80e98e2e1ce79d6606e8dbb054c232504448f41ff105",
+            "summary": {
+              "peak": -1.41,
+              "rms": -19.07,
+              "bands": [-78.76, -30.85, -24.79, -22.72, -24.88, -30.34, -68.14, -90.19]
+            }
+          }
+        }
+      }
     }
   }
 }

@@ -10,8 +10,8 @@ import { GLOBAL_PARAMS } from "../../src/engine/genome-schema.js";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
 import { masterBusCost } from "../../src/engine/master-bus.js";
 import { requireGenome } from "../../src/engine/validate-genome.js";
+import { renderOffline } from "../../src/server/render-offline.js";
 import { goldenGenomes } from "../support/golden.js";
-import { renderOffline } from "../support/render-offline.js";
 
 /** @param {unknown} genome */
 function expectInBudget(genome) {
