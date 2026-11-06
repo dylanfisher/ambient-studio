@@ -107,6 +107,16 @@ describe("loadConfig", () => {
     expect(config.fieldRecordings).toBe(join(home, "field recordings"));
   });
 
+  test.each(["toString", "__proto__"])(
+    "a %s key is not a config key, though every object inherits it",
+    async (key) => {
+      const { configPath } = await makeRoot((raw) => {
+        Object.defineProperty(raw, key, { value: 1, enumerable: true });
+      });
+      expectRefused(() => loadConfig(configPath), `${key} is not a config key`);
+    },
+  );
+
   test.each(keyPaths(example))(
     "a file without %s throws with the key and the path",
     async (key) => {

@@ -189,13 +189,14 @@ function check(schema, raw, file, prefix) {
     throw new Error(`${file}: ${where} must be an object, got ${JSON.stringify(raw)}`);
   }
   for (const key of Object.keys(raw)) {
-    if (!(key in schema)) throw new Error(`${file}: ${prefix}${key} is not a config key`);
+    if (!Object.hasOwn(schema, key))
+      throw new Error(`${file}: ${prefix}${key} is not a config key`);
   }
   /** @type {Record<string, unknown>} */
   const out = {};
   for (const [key, rule] of Object.entries(schema)) {
     const name = prefix + key;
-    if (!(key in raw)) throw new Error(`${file}: ${name} is missing`);
+    if (!Object.hasOwn(raw, key)) throw new Error(`${file}: ${name} is missing`);
     if (isRecord(rule)) {
       out[key] = check(/** @type {Schema} */ (rule), raw[key], file, `${name}.`);
       continue;
