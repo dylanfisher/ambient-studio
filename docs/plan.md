@@ -33,7 +33,7 @@ unneeded stays unused rather than being given to another step.
 | 0008 | Loudness and true peak written here | 1e | [written](decisions/0008-loudness-written-here.md) |
 | 0009 | Engine version and golden-render hashes | 1g | [written](decisions/0009-engine-version-golden-hashes.md) |
 | 0010 | Event scheduling, memory and the cost budget | 1f (1g adds the cost budget) | reserved |
-| 0011 | Normalization and the true-peak limiter | 1h | reserved |
+| 0011 | Normalization and the true-peak limiter | 1h | [written](decisions/0011-normalize-true-peak-limiter.md), provisional |
 | 0012 | WAV written here, FLAC through the CLI | 1i | [written](decisions/0012-flac-via-cli.md) |
 | 0013 | Pad/swell and bell/pluck voice designs | 1j | reserved |
 | 0014 | Granular cloud and noise bed voice designs | 1k | reserved |
@@ -772,3 +772,9 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   minutes, and never shape data to dodge a checker (agent-rules Builders 9 and 10); briefs say the
   LSP tool doesn't serve `.js` in worktrees. The gate's tools still skip `tmp/`,
   `.claude/worktrees/`, `node_modules/` and `.venv/` with two worktrees live.
+- 2026-11-06: 1h merged (Opus: 126k tokens, 60 tool calls, 12.9 min). `normalize(channels,
+  sampleRate, {target, ceiling})` with `target` required; a linked look-ahead limiter (5 ms
+  attack, 250 ms release in dB) that holds the meter's reading 0.4 dB under the ceiling for its
+  0.31 dB under-read; passes aim for ±0.1 LU, accept ±0.5 only when passes or the +40 dB cap run
+  out. 300 s stereo at −16 LUFS: 1.6 s; 900 s at −9 LUFS: 8.4 s. 0011 is provisional. Pending
+  owner check: a heavily limited −9 LUFS drone, listening for pumping or bass distortion.
