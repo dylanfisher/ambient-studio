@@ -24,8 +24,10 @@ literal "tuning" | files src/domain/constraint-schema.js src/engine/genome-schem
 literal "renders" | files src/config/paths.js src/server/store.js | the render-cache folder's name in paths.js, the renders table's in store.js
 literal "rated_audio" | files src/config/paths.js src/server/store.js | the rated-audio folder's name in paths.js, the rated_audio table's in store.js
 literal "notes" | files src/engine/bell.js src/server/store.js | a description word in the bell's descriptor, the notes table's name in store.js
-literal "params" | files src/engine/genome-schema.js src/server/evaluation-store.js | a voice's parameter table in a type, the evaluations table's JSON column in evaluation-store
+literal "params" | files src/engine/genome-schema.js src/server/evaluation-store.js src/server/omlx-queue.js | a voice's parameter table in a type, the evaluations table's JSON column in evaluation-store; a Completion field left out of a type in omlx-queue
 literal "start" | files src/engine/vector-view.js src/server/session-store.js | which end of a vector in vector-view, a session event's kind in session-store
 literal "--silent" | files src/server/read-flac-pcm.js src/server/write-flac.js | flac's quiet flag, given to its decode command in one file and its encode command in the other
 literal "close" | files src/server/omlx-queue.js src/server/write-flac.js | the event a socket and a request emit in omlx-queue, and a child process in write-flac
 literal "genome" | files src/domain/extract-genome.js src/server/generation-store.js | the answer's key for the genome in extract-genome, the genomes table's JSON column in generation-store
+literal "retries" | files src/server/generation-store.js src/server/omlx-queue.js | the generations table's JSON column in generation-store, a Completion field left out of a type in omlx-queue
+literal "error" | files src/server/generate-candidates.js src/server/omlx-queue.js | the finish reason stored for a failed request in generate-candidates, the event a request emits in omlx-queue

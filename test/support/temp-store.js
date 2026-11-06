@@ -95,6 +95,10 @@ export function fillStore(store) {
     firstTokenMs: 300,
     promptTokens: 900,
     completionTokens: 400,
+    reasoning: "thinking about a drone",
+    requestParams: { model: "test-model", stream: true, n: 1, max_tokens: 10752 },
+    retries: [],
+    error: null,
   });
   const genome = putGenome(store, vibe.id, droneGenome);
   const candidate = addCandidate(store, {
@@ -110,6 +114,7 @@ export function fillStore(store) {
     intent: "a slow cold drone",
     rejectReason: null,
     lint: { ok: true, findings: [] },
+    rejectedGenome: null,
   });
   const heard = heardExcerpt(genome.id);
   const ratedAudio = addRatedAudio(store, {

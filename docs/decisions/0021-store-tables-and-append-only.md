@@ -130,3 +130,10 @@ refused. The read-only connection neither migrates the source nor waits on its w
 - `source` and `rejectReason` are free text, so 2f and later steps add values without a
   migration. `source`'s JSDoc lists its values; 2f defines the reject reasons.
 - A render's id changes when it is replaced, so an audio URL for a stale render stops resolving.
+
+## Amendments
+
+- 2026-11-06: `0002-generation-capture.sql` (step 2f, [0024](0024-prompt-parse-repair-generation.md))
+  adds `reasoning`, `requestParams`, `retries` and `error` to `generations` (an error only with
+  `finishReason` `error`) and `rejectedGenome` to `candidates`, all null on earlier rows. A test
+  in `generation-store.test.js` runs it over a database built with 0001 alone.

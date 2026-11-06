@@ -319,3 +319,125 @@ describe("generateCandidates", () => {
     expect(omlx.requests).toHaveLength(1);
   });
 });
+
+describe("generateCandidates keeps what phase 8 trains on", () => {
+  test("a generation stores the reasoning and the request as sent; a rejected candidate its genome", async () => {
+    const { omlx, config, queue, store, vibe, drive } = await setup();
+    const { generateCandidates } = await load();
+    omlx.script(
+      { reasoning: ["cold, ", "slow"], tokens: [answer(valid)] },
+      says(answer(tooQuiet)),
+      says(answer(tooQuiet)),
+    );
+    const { requestGroup, candidates } = await drive(
+      generateCandidates(vibe.id, 2, store, queue, { config, seed: 4, sessionId: null, locks }),
+    );
+    const generations = listRequestGroup(store, requestGroup);
+    for (const [i, generation] of generations.entries()) {
+      expect(generation.requestParams).toEqual(sentParams(omlx.requests[i]));
+      expect(generation).toMatchObject({ retries: [], error: null });
+    }
+    expect(generations.map((g) => g.reasoning)).toEqual(["cold, slow", null, null]);
+    expect(candidates.map((c) => c.rejectedGenome)).toEqual([null, tooQuiet]);
+  });
+
+  test("a request that fails in the queue is stored with its error and a requestFailed candidate", async () => {
+    const { omlx, config, queue, store, vibe, drive } = await setup();
+    const { generateCandidates } = await load();
+    omlx.script(says(answer(valid)), { status: 500, body: "boom" });
+    const options = { config, seed: 6, sessionId: null, locks };
+    await expect(drive(generateCandidates(vibe.id, 3, store, queue, options))).rejects.toThrow(
+      "omlx answered HTTP 500: boom",
+    );
+    // The batch stops at the failure: two requests, two generations, two candidates.
+    expect(omlx.requests).toHaveLength(2);
+    const generations = listRequestGroup(store, groupOf(vibe.id, 6));
+    expect(generations).toHaveLength(2);
+    expect(generations[1]).toMatchObject({
+      response: "",
+      finishReason: "error",
+      error: "omlx answered HTTP 500: boom",
+      reasoning: null,
+      requestParams: sentParams(omlx.requests[1]),
+    });
+    const failed = candidatesOf(store, generations[1]?.id);
+    expect(failed).toMatchObject({ rejectReason: REJECT_REASON.requestFailed, genomeId: null });
+    expect(failed?.lint).toEqual({
+      ok: false,
+      findings: [
+        { path: "$", rule: REJECT_REASON.requestFailed, message: "omlx answered HTTP 500: boom" },
+      ],
+    });
+  });
+
+  test("a cancel before the repair is sent still writes the first try's candidate", async () => {
+    const { clock, omlx, config, queue, store, vibe } = await setup();
+    const { generateCandidates } = await load();
+    omlx.script(says(answer(tooQuiet)));
+    const options = { config, seed: 8, sessionId: null, locks };
+    const work = generateCandidates(vibe.id, 2, store, queue, options);
+    const settled = work.then(
+      () => undefined,
+      (/** @type {Error} */ error) => error,
+    );
+    // The repair waits out the gap after the first answer; cancel it there.
+    await clock.waitForTimer(config.queue.minGapMs);
+    queue.cancel();
+    expect((await settled)?.message).toBe("omlx request cancelled");
+    expect(omlx.requests).toHaveLength(1);
+    const generations = listRequestGroup(store, groupOf(vibe.id, 8));
+    expect(generations).toHaveLength(1);
+    const candidate = candidatesOf(store, generations[0]?.id);
+    expect(candidate?.rejectReason).toBe(REJECT_REASON.lintErrors);
+    expect(candidate?.rejectedGenome).toEqual(tooQuiet);
+    const { findings } = /** @type {LintResult} */ (candidate?.lint ?? { findings: [] });
+    expect(findings.at(-1)).toEqual({
+      path: "$",
+      rule: "repairNotSent",
+      message: "the repair was not sent: omlx request cancelled",
+    });
+  });
+
+  test("request groups are per vibe, so one stream seed serves several vibes", async () => {
+    const { omlx, config, queue, store, vibe, drive } = await setup();
+    const { generateCandidates } = await load();
+    const other = createVibe(store, { ...revisionDraft, name: "warm tide" });
+    omlx.script(says(answer(valid)), says(answer(valid)));
+    const options = { config, seed: 12, sessionId: null, locks };
+    const one = await drive(generateCandidates(vibe.id, 1, store, queue, options));
+    const two = await drive(generateCandidates(other.id, 1, store, queue, options));
+    expect(one.requestGroup).toBe(groupOf(vibe.id, 12));
+    expect(two.requestGroup).toBe(groupOf(other.id, 12));
+    expect(one.requestGroup).not.toBe(two.requestGroup);
+  });
+});
+
+/**
+ * The request group the stream seed names for a vibe (decision 0024).
+ * @param {number} vibeId
+ * @param {number} seed
+ */
+const groupOf = (vibeId, seed) => `vibe-${vibeId}-stream-${seed}`;
+
+/**
+ * The one candidate naming `generationId`.
+ * @param {import("../../src/server/store.js").Store} store
+ * @param {number | undefined} generationId
+ */
+function candidatesOf(store, generationId) {
+  const row = store.db
+    .prepare("SELECT id FROM candidates WHERE generationId = ?")
+    .get(generationId ?? -1);
+  return getCandidate(store, Number(row?.id));
+}
+
+/**
+ * The request body the fake received, without its messages: what the queue reports as sent.
+ * @param {{ body: Record<string, unknown> } | undefined} received
+ */
+function sentParams(received) {
+  if (!received) throw new Error("the fake received no request");
+  const params = { ...received.body };
+  delete params.messages;
+  return params;
+}

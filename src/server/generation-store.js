@@ -25,6 +25,13 @@ import { decode, insertRow, selectRow, selectRows, TABLE } from "./store.js";
  * @property {number | null} firstTokenMs null when no token arrived
  * @property {number | null} promptTokens null when omlx doesn't report it
  * @property {number | null} completionTokens
+ * @property {string | null} reasoning the reasoning text a reasoning model sent; null when none
+ * @property {unknown} requestParams the request body as the queue sent it, without its
+ *   messages: model, max_tokens, sampling, stream and n, and response_format when sent; null
+ *   on rows written before migration 0002
+ * @property {unknown} retries the queue's backoffs before the answer or failure; null before 0002
+ * @property {string | null} error why the request failed in the queue, with `finishReason`
+ *   set to the failed finish reason and an empty response; null when omlx answered
  */
 
 /** @typedef {GenerationDraft & Removable & { id: number, createdAt: number }} Generation */
@@ -54,13 +61,15 @@ import { decode, insertRow, selectRow, selectRows, TABLE } from "./store.js";
  * @property {string | null} intent the model's one-line intent
  * @property {string | null} rejectReason null for a valid candidate
  * @property {unknown} lint the lint result with every reason; null when nothing was linted
+ * @property {unknown} rejectedGenome the genome as the answer wrote it, for a candidate rejected
+ *   after it parsed; null otherwise, since a valid one has its `genomes` row
  */
 
 /** @typedef {CandidateDraft & Removable & { id: number, createdAt: number }} Candidate */
 
-const GENERATIONS = { json: ["prompt", "exampleIds", "sampling"] };
+const GENERATIONS = { json: ["prompt", "exampleIds", "sampling", "requestParams", "retries"] };
 const GENOMES = { json: ["genome"] };
-const CANDIDATES = { json: ["parentIds", "locks", "operatorParams", "lint"] };
+const CANDIDATES = { json: ["parentIds", "locks", "operatorParams", "lint", "rejectedGenome"] };
 
 /**
  * @param {Store} store

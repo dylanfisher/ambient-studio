@@ -11,6 +11,7 @@
 /** @import { Genome } from "../engine/genome-schema.js" */
 /** @import { Candidate, Generation } from "./generation-store.js" */
 /** @import { Completion, OmlxQueue } from "./omlx-queue.js" */
+
 /** @import { Store } from "./store.js" */
 import { buildPrompt } from "../domain/build-prompt.js";
 import { buildRepairPrompt } from "../domain/build-repair-prompt.js";
@@ -23,6 +24,7 @@ import { validateConstraints } from "../domain/validate-constraints.js";
 import { drawer } from "../engine/prng.js";
 import { validateGenome } from "../engine/validate-genome.js";
 import { addCandidate, addGeneration, listRequestGroup, putGenome } from "./generation-store.js";
+import { OmlxRequestError } from "./omlx-queue.js";
 import { retrieveExamples } from "./retrieve-examples.js";
 import { getVibe, listNotes } from "./vibe-store.js";
 
@@ -44,6 +46,9 @@ const SOURCE = "llm";
 const SCHEMA_RULE = "schema";
 const ANSWER_RULE = "answer";
 const REPAIR_OVER_BUDGET_RULE = "repairOverBudget";
+const REPAIR_NOT_SENT_RULE = "repairNotSent";
+/** The finish reason of a generation whose request failed in the queue (migration 0002). */
+const FAILED_FINISH = "error";
 
 /** The answer's JSON schema, sent as `response_format` when the config asks for it (0022). */
 const RESPONSE_FORMAT = Object.freeze({
@@ -69,6 +74,7 @@ const RESPONSE_FORMAT = Object.freeze({
  * @property {string | null} intent
  * @property {Genome | null} genome the valid genome; null when rejected
  * @property {Record<string, unknown> | null} answer
+ * @property {unknown} written the genome as the answer wrote it; null when none parsed
  */
 
 /**
@@ -110,6 +116,7 @@ const rejected = (reason, findings, rest = {}) => ({
   intent: null,
   genome: null,
   answer: null,
+  written: null,
   ...rest,
 });
 
@@ -140,17 +147,28 @@ function judge(completion, constraints, maxTokens) {
       : []),
   ];
   if (schemaFindings.length > 0 || !validated?.ok) {
-    return rejected(REJECT_REASON.schemaErrors, schemaFindings, { intent, answer });
+    const written = genome ?? null;
+    return rejected(REJECT_REASON.schemaErrors, schemaFindings, { intent, answer, written });
   }
   const lint = lintGenome(validated.genome, constraints);
-  if (!lint.ok) return { reason: REJECT_REASON.lintErrors, lint, intent, genome: null, answer };
-  return { reason: null, lint, intent, genome: validated.genome, answer: null };
+  if (!lint.ok) {
+    return {
+      reason: REJECT_REASON.lintErrors,
+      lint,
+      intent,
+      genome: null,
+      answer,
+      written: genome,
+    };
+  }
+  return { reason: null, lint, intent, genome: validated.genome, answer: null, written: genome };
 }
 
 /**
  * Generates `n` candidates for the vibe's current revision and stores every LLM call and every
- * candidate. Rejects when the queue does (a cancel, a busy omlx past its wait); what was stored
- * before stays.
+ * candidate. When a request fails in the queue (a cancel, a busy omlx past its wait, a timeout,
+ * an error status) the batch stops and rethrows it, after storing the failed request as a
+ * generation, if it was sent, and the candidate it was for, so every generation has a candidate.
  * @param {number} vibeId
  * @param {number} n
  * @param {Store} store
@@ -177,7 +195,7 @@ export async function generateCandidates(
   }
   const { constraints } = checked;
   const draws = samplingStream(seed, n);
-  const requestGroup = `stream-${seed}`;
+  const requestGroup = `vibe-${vibeId}-stream-${seed}`;
   if (listRequestGroup(store, requestGroup).length > 0) {
     throw new Error(`request group ${requestGroup} already exists; draw a new stream seed`);
   }
@@ -194,18 +212,18 @@ export async function generateCandidates(
   );
 
   /**
+   * Sends one request and stores it as a generation. A failure the queue sent at least one
+   * attempt for is stored with its error; one it never sent leaves no generation.
    * @param {ChatMessage[]} prompt
    * @param {Sampling} sampling
    * @param {number | null} repairsId
-   * @returns {Promise<{ generation: Generation, verdict: Verdict }>}
+   * @returns {Promise<
+   *   | { generation: Generation, verdict: Verdict, failure: null }
+   *   | { generation: Generation | null, verdict: null, failure: OmlxRequestError }
+   * >}
    */
   async function ask(prompt, sampling, repairsId) {
-    const completion = await queue.request({
-      messages: prompt,
-      sampling,
-      responseFormat: RESPONSE_FORMAT,
-    });
-    const generation = addGeneration(store, {
+    const base = {
       vibeRevisionId: revision.id,
       sessionId,
       requestGroup,
@@ -214,36 +232,60 @@ export async function generateCandidates(
       retrievalMethod: method,
       model: config.omlx.model,
       sampling,
-      response: completion.text,
-      finishReason: completion.finishReason,
       repairRound: repairsId === null ? 0 : 1,
       repairsId,
+    };
+    /** @type {Completion} */
+    let completion;
+    try {
+      completion = await queue.request({
+        messages: prompt,
+        sampling,
+        responseFormat: RESPONSE_FORMAT,
+      });
+    } catch (error) {
+      if (!(error instanceof OmlxRequestError)) throw error;
+      if (error.latencyMs === null) return { generation: null, verdict: null, failure: error };
+      const generation = addGeneration(store, {
+        ...base,
+        response: "",
+        finishReason: FAILED_FINISH,
+        latencyMs: error.latencyMs,
+        firstTokenMs: null,
+        promptTokens: null,
+        completionTokens: null,
+        reasoning: null,
+        requestParams: error.params,
+        retries: error.retries,
+        error: error.message,
+      });
+      return { generation, verdict: null, failure: error };
+    }
+    const generation = addGeneration(store, {
+      ...base,
+      response: completion.text,
+      finishReason: completion.finishReason,
       latencyMs: completion.latencyMs,
       firstTokenMs: completion.firstTokenMs,
       promptTokens: completion.promptTokens,
       completionTokens: completion.completionTokens,
+      reasoning: completion.reasoning === "" ? null : completion.reasoning,
+      requestParams: completion.params,
+      retries: completion.retries,
+      error: null,
     });
-    return { generation, verdict: judge(completion, constraints, config.queue.maxTokens) };
+    const verdict = judge(completion, constraints, config.queue.maxTokens);
+    return { generation, verdict, failure: null };
   }
 
   /** @type {Candidate[]} */
   const candidates = [];
-  for (const { sampling, candidateSeed } of draws) {
-    let { generation, verdict } = await ask(messages, sampling, null);
-    if (verdict.answer !== null) {
-      const repair = buildRepairPrompt({ messages, answer: verdict.answer }, verdict.lint.findings);
-      const tokens = estimateTokens(promptText(repair));
-      if (tokens > budgetTokens) {
-        const message = `the repair prompt is about ${tokens} tokens, over the ${budgetTokens}-token budget; no repair was sent`;
-        const findings = [
-          ...verdict.lint.findings,
-          { path: "$", rule: REPAIR_OVER_BUDGET_RULE, message },
-        ];
-        verdict = { ...verdict, lint: lintResult(findings) };
-      } else {
-        ({ generation, verdict } = await ask(repair, sampling, generation.id));
-      }
-    }
+  /**
+   * @param {Generation} generation the last generation made for the candidate
+   * @param {Verdict} verdict
+   * @param {number} candidateSeed
+   */
+  const keep = (generation, verdict, candidateSeed) => {
     const genomeId = verdict.genome === null ? null : putGenome(store, vibeId, verdict.genome).id;
     candidates.push(
       addCandidate(store, {
@@ -259,8 +301,63 @@ export async function generateCandidates(
         intent: verdict.intent,
         rejectReason: verdict.reason,
         lint: verdict.lint,
+        rejectedGenome: verdict.reason === null ? null : verdict.written,
       }),
     );
+  };
+  /**
+   * The verdict for a candidate whose last request failed, keeping what an earlier try found.
+   * @param {OmlxRequestError} failure
+   * @param {Verdict | null} earlier
+   * @returns {Verdict}
+   */
+  const failedVerdict = (failure, earlier) => {
+    const finding = { path: "$", rule: REJECT_REASON.requestFailed, message: failure.message };
+    return rejected(REJECT_REASON.requestFailed, [...(earlier?.lint.findings ?? []), finding], {
+      intent: earlier?.intent ?? null,
+      written: earlier?.written ?? null,
+    });
+  };
+  /**
+   * @param {Verdict} verdict
+   * @param {string} rule
+   * @param {string} message
+   * @returns {Verdict}
+   */
+  const noted = (verdict, rule, message) => ({
+    ...verdict,
+    lint: lintResult([...verdict.lint.findings, { path: "$", rule, message }]),
+  });
+
+  for (const { sampling, candidateSeed } of draws) {
+    const first = await ask(messages, sampling, null);
+    if (first.failure !== null) {
+      if (first.generation)
+        keep(first.generation, failedVerdict(first.failure, null), candidateSeed);
+      throw first.failure;
+    }
+    let { generation, verdict } = first;
+    if (verdict.answer !== null) {
+      const repair = buildRepairPrompt({ messages, answer: verdict.answer }, verdict.lint.findings);
+      const tokens = estimateTokens(promptText(repair));
+      if (tokens > budgetTokens) {
+        const message = `the repair prompt is about ${tokens} tokens, over the ${budgetTokens}-token budget; no repair was sent`;
+        verdict = noted(verdict, REPAIR_OVER_BUDGET_RULE, message);
+      } else {
+        const repaired = await ask(repair, sampling, generation.id);
+        if (repaired.failure !== null) {
+          if (repaired.generation) {
+            keep(repaired.generation, failedVerdict(repaired.failure, verdict), candidateSeed);
+          } else {
+            const message = `the repair was not sent: ${repaired.failure.message}`;
+            keep(generation, noted(verdict, REPAIR_NOT_SENT_RULE, message), candidateSeed);
+          }
+          throw repaired.failure;
+        }
+        ({ generation, verdict } = repaired);
+      }
+    }
+    keep(generation, verdict, candidateSeed);
   }
   return { requestGroup, candidates };
 }

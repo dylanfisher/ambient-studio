@@ -11,6 +11,9 @@ export const REJECT_REASON = Object.freeze({
   schemaErrors: "schemaErrors",
   /** The genome is valid and the linter rejects it (decision 0020). */
   lintErrors: "lintErrors",
+  /** The request failed in the queue (timeout, busy past the wait, cancel, an error status): a
+   * failure of the transport, not of the model. */
+  requestFailed: "requestFailed",
 });
 
 /** @typedef {(typeof REJECT_REASON)[keyof typeof REJECT_REASON]} RejectReason */
