@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Measure render speed and peak memory on the example genome (decision 0016). Runs at nice 10, so
+# omlx keeps serving. Arguments go to scripts/bench.js.
+set -euo pipefail
+
+exec nice -n 10 node "$(dirname "$0")/bench.js" "$@"
