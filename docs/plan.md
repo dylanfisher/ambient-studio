@@ -805,3 +805,33 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   300 s drone for zipper noise on the sweep, clicks and thumps; the three detuned copies in mono;
   the reverb at 8 s and 20 s for ringing or flutter; the 0.1 s fade with `fadeOut` 0; a Colundi
   drone for roughness.
+- 2026-11-06: 1g merged as 2ed1509 (Opus: 191k tokens, 83 tool calls, 14.8 min). Golden hash
+  files per genome per engine version with peak, RMS and 8-band summaries, a writer that refuses
+  to overwrite, and every genome in `src/engine/genomes/` a golden. `cost(genome)` in node-seconds
+  per second with a budget of 560, calibrated against 1a's probes and 1f's drone (11.5x at the
+  slowest measured rate); `randomGenome` capped by it. A 30-grain-a-second cloud at three nodes a
+  grain costs about 560 on its own, so 1k mixes grains into buffers. The first full gate after
+  the merge failed intermittently: `suspend` registers on the library's runtime thread and can
+  lose the race with `startRendering`, which rejects the render (never changes its samples). Fixed
+  in 7cc147e (Sonnet: 65k tokens, 22 tool calls, 6.2 min) by a bounded retry on exactly that error,
+  logged and at most three attempts, after reordering alone still failed 4 of 8 runs; 0 of 8
+  failed after. Tagged `engine-v1`.
+- 2026-11-06: retrospective after 1c, 1h, 1d, 1f, 1g (orchestrator rule 11).
+
+  | Step | Build | Fix round | Review |
+  |---|---|---|---|
+  | 1c | 183k, 101 calls, 14.5 min | 3.9 min | 75k, 3.0 min, PASS |
+  | 1h | 126k, 60 calls, 12.9 min | — | read by the orchestrator |
+  | 1d | 214k, 72 calls, 17.6 min | 1.5 min | 77k, 2.6 min, PASS |
+  | 1f | 247k, 82 calls, 23.8 min | 17.7 min (307k) | 86k, 5.7 min, PASS |
+  | 1g | 191k, 83 calls, 14.8 min | race fix 65k, 6.2 min | read by the orchestrator |
+
+  Where it went: build tokens grow with the code each step reads first (126k for a standalone
+  domain step, 247k for the render core). Reviews cost 75–86k and 3–6 min and each found
+  something worth fixing before merge; 1f's led to three render bugs. Fix rounds resume the
+  builder, which is fast but carries its whole context (1f's cost 307k); that is still cheaper
+  than a fresh agent re-reading the render core. The suite-level race cost one gate run and a
+  6-minute fix; it slipped because builders test at two workers. Changes: render-path merges run
+  the suite twice, and tags wait for the gate (orchestrator rule 6); voice briefs carry the
+  render and cost API so builders read less. The gate's tools still skip `tmp/`,
+  `.claude/worktrees/`, `node_modules/` and `.venv/`.

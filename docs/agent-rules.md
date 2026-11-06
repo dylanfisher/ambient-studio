@@ -77,7 +77,9 @@ and write down why when a rule comes from something that went wrong.
    with the same cause, don't send a third patch round: narrow the scope, change the design, or
    ask the owner.
 6. Merge onto the integration branch, then run `./scripts/check` if the merge changed anything
-   it reads. A flaky test that fails a merge
+   it reads. When the merge touches the render path, run the test suite a second time: builders
+   test at two workers, and a race that only shows at full parallelism passed every builder in
+   phase 1 and failed the first full run. Tag (`engine-v<N>`) only after the gate passes. A flaky test that fails a merge
    gets a hunt for its cause, not a rerun.
 7. After a merge, remove the worktree and delete the branch. At the end of each phase and before a
    session ends, run `git worktree list` and remove every worktree no running agent is using, and
