@@ -255,7 +255,7 @@ export function checkValue(descriptor, value, path, errors) {
 }
 
 /**
- * The allowed values in the schema text's notation: `-30..-9 LUFS`, `0..18 int`, `none|beat`.
+ * The allowed values in the schema text's notation: `-30..-10 LUFS`, `0..18 int`, `none|beat`.
  * @param {Descriptor} descriptor
  */
 export function valueText(descriptor) {

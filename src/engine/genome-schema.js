@@ -79,7 +79,7 @@ export const GLOBAL_PARAMS = Object.freeze({
   }),
   loudness: number({
     min: -30,
-    max: -9,
+    max: -10,
     default: -16,
     unit: "LUFS",
     description: "export loudness",
