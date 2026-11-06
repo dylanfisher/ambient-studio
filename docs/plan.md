@@ -1,7 +1,7 @@
 # Build plan
 
-The phases follow the build order in [spec.md](spec.md). Phase 1 is written step by step, phase 2
-is an outline, and phases 3–8 are a few lines each. A phase is expanded into steps when it comes
+The phases follow the build order in [spec.md](spec.md). Phases 1 and 2 are written step by step,
+and phases 3–8 are a few lines each. A phase is expanded into steps when it comes
 up, because what the earlier phases ship will change it. How steps are run, briefed and reviewed
 is in [agent-rules.md](agent-rules.md).
 
@@ -41,7 +41,18 @@ unneeded stays unused rather than being given to another step.
 | 0016 | Render speed measured by a bench script | 1m | [written](decisions/0016-render-speed-bench.md) |
 | 0017 | Phase 1 exposes rendering as a CLI | 1m | [written](decisions/0017-phase-1-cli.md) |
 | 0018 | Default loudness target −16 LUFS (provisional) | 1r | [written](decisions/0018-default-loudness-target.md) |
-| 0019– | Phase 2 records, numbered when phase 2 is expanded | 2 | — |
+| 0019 | Config file, keys and the test guard | 2a | — |
+| 0020 | Vibe constraints and the genome linter | 2b (also amends 0018) | — |
+| 0021 | Store tables, append-only triggers, migrations, `producer` key, backup | 2c | — |
+| 0022 | The omlx queue | 2d | — |
+| 0023 | First features and render checks | 2e | — |
+| 0024 | Prompt, retrieval, repair and reject reasons | 2f | — |
+| 0025 | HTTP server and audio serving | 2g | — |
+| 0026 | Job runner and excerpt renders | 2h | — |
+| 0027 | Session API and ratings | 2i | — |
+| 0028 | Session UI and keys | 2j | — |
+| 0029 | Sample layer | 2k | — |
+| 0030 | Seed vibes and the evaluation report | 2l | — |
 
 ## Phase 1 — Engine, schema and macros
 
@@ -494,104 +505,398 @@ silent, all sparse bell or granular genomes whose thinning fired nothing in 2 s.
 - **Parallel:** none. Then the orchestrator runs the acceptance checks, writes the Result line,
   and logs the pending owner checks.
 
-## Phase 2 — Vibe and session loop (outline)
+## Phase 2 — Vibe and session loop
 
 **Goal:** the owner opens a vibe, asks for candidates, hears them from mbp2015, and rates them.
 
 **Acceptance, as measurable checks:**
 
 1. Over an owner-started evaluation of at least 48 genomes across at least 3 vibes, at least 90%
-   validate after at most one repair round. The run is a server job using the server's omlx queue
-   and reports the rate before and after repair, per vibe, with a 95% Wilson interval (about ±8
-   points at 48), and counts truncated responses as their own reject reason.
+   validate after at most one repair round. "Validate" means the schema and the vibe's linter
+   both pass; the report gives the schema-only rate beside it. The run is a server job using the
+   server's omlx queue and reports the rate before and after repair, per vibe, with a 95% Wilson
+   interval (about ±8 points at 48), and counts truncated responses as their own reject reason.
 2. Every constraint kind in the spec has a linter rule with a passing and a failing fixture.
 3. The candidate grid plays from Safari on mbp2015 (pending owner check).
 4. Thumbs, A/B choices (ties included) and notes are stored, and read back after a server
    restart.
 
 **Gate:** `./scripts/check`; the evaluation run's numbers in Result; omlx reached only through
-the queue, with tests using a fake.
+the queue, with tests using a fake. Generation runs only when the owner starts it, so acceptance 1
+waits on the owner starting the evaluation job (2l); the phase is done when its numbers are in
+Result.
 
-**Outline of steps** (expanded when phase 2 comes up):
+**Pending owner checks** (after 2j, on mbp2015 and mbp2026):
 
-- **Config and paths** — the config module, with the omlx model id, the app-data root and the
-  field-recording folder; tests and agent runs root everything in a temp folder.
-- **Store** — `node:sqlite` in WAL with migrations; `vibes`, `genomes`, `renders`, `ratings`,
-  `sketches` as the spec lists them, append-only for the irreplaceable tables, plus `sessions`,
-  `generations`, `vibe_revisions` and `rated_audio` tables. Irreplaceable rows are marked removed
-  with `removedAt` and `removedReason`, never deleted, and a documented backup command copies the
-  database with `VACUUM INTO`, since copying a WAL database's file alone can miss writes, and
-  copies the `rated_audio` folder with it. What
-  later phases train and evaluate on has to be captured from the first session, because it
-  can't be recovered afterwards:
+- Open the studio by its LAN URL in Safari 17.6 on mbp2015 and in your browser on mbp2026. Create a
+  vibe, ask for 8 candidates, and play every excerpt: each should start within a second of
+  pressing play, seek when you click the scrubber, and not cut out.
+- Rate with the keyboard alone: thumbs, an A/B choice and a tie, a note, a "more like this" on
+  one macro, and keep one candidate as a sketch. Stop and start the server and check every rating
+  is still listed.
+- Play two A/B excerpts back to back: at the vibe's target they should sound equally loud.
+
+**Settled by the owner on 2026-11-06, when phase 2 was expanded:**
+
+- Derived rows carry an opaque `producer` key (engine version plus a hash of the extractor's
+  source). It is a cache key, not a schema version, and AGENTS.md's derived-data rule allows it.
+- The genome's loudness range tops out at −10 LUFS, not −9: the drone golden can't be normalized
+  to −9 (it stops at −9.82), and the loudest reference track in 1r measured −11.9 (2b, amending
+  0018).
+- Phase 2 ships three seed vibes, written by the plan's builder for the owner to edit or replace,
+  and the evaluation runs over them (2l).
+- The sample layer is built in phase 2 and reads WAV, FLAC and AIFF from the configured folder
+  (2k).
+
+**Shared helpers and their owners** (orchestrator rule 4): `test/support/temp-root.js` (a temp
+data root and config, and the guard that refuses the owner's real folders) is 2a's;
+`EXCERPT_SECONDS` and the lint result type are 2b's; `test/support/temp-store.js` and every store
+function signature for vibes, revisions and notes are 2c's, and later steps add their own store
+functions beside them; `test/support/fake-omlx.js` and `test/support/fake-clock.js` are 2d's; the
+FFT, promoted from `test/support/golden.js` to `src/domain`, is 2e's; `src/server/main.js`, the
+route table and `test/support/http-client.js` are 2g's; the `producer` string is composed by 2h
+and the store takes it as an opaque argument; the `samples` plumbing through render, export and
+the prompt's list of recordings is 2k's, and no other step touches it. `scripts/arch.js` and
+`scripts/arch-test` gain rules in 2a (environment) and 2d (network clients), which never run
+side by side.
+
+### Steps
+
+Order: 2a ‖ 2b, then 2c ‖ 2d, then 2e ‖ 2f, then 2g ‖ 2h, then 2i ‖ 2k, then 2j, then 2l.
+
+#### 2a — Config and paths
+
+- **Builds:** `src/config/config.js`, the one module that reads the config file and the
+  environment, and `src/config/paths.js` for the folders under the app-data root (database,
+  render cache, rated audio, backups). The config file is JSON, at `$AMBIENT_STUDIO_CONFIG` when
+  set, else `~/.config/ambient-studio/config.json`. Keys, every one required: the omlx base URL
+  and model id; the queue's numbers (request timeout, first-token threshold, minimum gap, backoff
+  base and maximum wait, `max_tokens`, context budget, whether to send `response_format`); the
+  app-data root; the field-recording folder, `null` until the owner sets one; and the server's
+  host and port. A missing or mistyped key throws with its name and the file path; there are no
+  defaults in code. `src/config/example.json` is the template the owner copies, with the app-data
+  root set to `~/Library/Application Support/Ambient Studio/`. `test/support/temp-root.js` makes a
+  temp root with a config pointing into it, and the config module refuses to load, while Vitest is
+  running, any path under the owner's two real folders.
+- **Tiers:** config; test/support; scripts/arch.js.
+- **Tests first:** a complete file loads and every value reads back; each missing key, each wrong
+  type and an unparseable file throws with the key's name and the file's path;
+  `$AMBIENT_STUDIO_CONFIG` wins over the default path; under Vitest, a config naming
+  `~/.config/ambient-studio/` or `~/Library/Application Support/Ambient Studio/` throws; `paths()`
+  puts every folder under the root; `arch-test` plants a `process.env` read outside src/config.
+- **Records:** writes 0019: the config file's location and keys, why every key is required
+  (principle 5), the example file, the test guard, and that nothing outside src/config reads
+  `process.env` (an `arch.js` rule).
+- **Parallel:** with 2b.
+
+#### 2b — Vibe constraints and the genome linter
+
+- **Builds:** the vibe's hard constraints as a schema in `src/domain` (the descriptor style of
+  0005, with its own validator and `constraintsText()` for the prompt): key or mode, tuning (and
+  scale), pulse or none, duration range, loudness target, voice types allowed and banned, density
+  ceilings (bell notes a minute, grains a second, pad chord rate), brightness range (the
+  `brightness` macro's effective value over the timeline), and the cost budget.
+  `lintGenome(genome, constraints)` returns every violation with its path, the constraint it
+  breaks and a message the repair prompt can quote, plus the spec's floors: no near-silent genome
+  (every voice level at its floor), no lone static drone (one drone and no trajectory or motion),
+  and a duration long enough for the excerpt (`duration − fadeIn − fadeOut ≥ EXCERPT_SECONDS`,
+  since `excerptOffset` throws otherwise). `EXCERPT_SECONDS` (20–30 s, the builder picks) is
+  defined here. Render checks come in 2e and return the same result type, which 2b defines. First
+  commit: the genome's loudness range tops out at −10 LUFS (0018 amended), with the validator and
+  normalize tests updated.
+- **Tiers:** domain; engine (the loudness range only).
+- **Tests first:** for every constraint kind, a fixture genome that passes and one that fails with
+  the expected path and constraint, in one table-driven file so acceptance 2 is one test's
+  coverage; a constraint set that fails its own validator (an unknown voice type, a range with min
+  above max) is refused; `constraintsText()` names every kind and stays under a stated character
+  budget; a genome at −9 LUFS fails validation; a genome too short for the excerpt fails lint.
+- **Records:** governed by 0005, 0006, 0007, 0018. Writes 0020: the constraint kinds and how each
+  maps onto genome fields, which constraints the prompt states as fixed values and which as
+  ranges, that the linter reports and never rewrites a genome (a value the vibe fixes, like the
+  loudness target, is checked, not silently overwritten), and the floors' thresholds. Amends 0018
+  with the −10 cap. The cap changes no existing render, so the engine version stays 2; it does
+  change what `randomGenome` draws for a seed, which no golden covers.
+- **Parallel:** with 2a.
+
+#### 2c — Store
+
+- **Builds:** `src/server/store.js` over `node:sqlite` in WAL mode with foreign keys on, and
+  numbered migrations in `src/server/migrations/` applied in order at open, each in a transaction,
+  recorded in a `migrations` table. Irreplaceable tables are append-only, enforced by triggers:
+  `BEFORE DELETE` raises, and `BEFORE UPDATE` raises unless the only change is setting
+  `removedAt` and `removedReason` once. Derived tables carry the `producer` key, taken as an
+  opaque string, and are deleted and rebuilt on a mismatch. The store's functions take and return
+  plain objects with JSDoc types; SQL lives only in the store and its migrations.
+  `./scripts/backup` writes `VACUUM INTO` a dated file under the backups folder and copies the
+  `rated_audio` folder beside it; `checkRatedAudio()` fails loudly on a missing file or a PCM hash
+  that differs. `test/support/temp-store.js` opens a store in a temp root.
+- **Tables** (review rounds 1–4 and phase 2's review settled what they hold):
+  - **vibes** and **vibe_revisions**: a vibe row, and a revision appended for every edit of its
+    brief, constraints or soft targets. Every generation, lint result and rating names the
+    revision it was made under.
+  - **notes** (irreplaceable): the owner's notes on a vibe, which feed the prompt.
+  - **session_events** (irreplaceable): a session's start and stop as two rows, since an
+    append-only session row can't record its end.
   - **generations** (irreplaceable): every LLM call's exact prompt, the ids of the examples
-    retrieved into it, model id, sampling parameters, raw response, `finish_reason` (so a
-    response cut off by `max_tokens` is told apart from invalid JSON), repair round, latency and
-    token counts, and a `requestGroup` shared by the candidates of one request. SFT and DPO
-    (phase 8) need the exact prompt each completion came from, and DPO pairs are strongest when
-    both sides share one.
-  - **genomes** hold content only: the normalized genome and `genomeHash` (0005), unique per
-    vibe, one row however often it is reached. **candidates** hold provenance, one row per time
-    a genome was produced: the genome id, source, parent ids, the locks in force, the operator
-    and its parameters, and the generation that made it. Two parents reaching one genome, or an
-    LLM call and a later mutation, are two candidates of one genome, and the lineage tree
-    (phase 3) is built from candidates. Candidates the linter rejected are stored too,
-    with the reasons: they are negative examples and the denominator of the valid rate.
-  - **ratings** name what was heard by genome id, seed, excerpt offset and duration, and engine
-    version, never by a `renders` row: renders are derived data that is discarded and rebuilt.
-    Each also stores the left/right order shown, each candidate's rank and score, the model
-    version that ranked them, whether either was a wildcard, how long the owner took, and how
-    much of each excerpt was played. Pairs shown and skipped are stored as skips. Bradley–Terry
-    needs position-bias correction, and evaluating a reranker needs to know what was shown and
-    why.
-  - **rated_audio** (irreplaceable): every excerpt the owner rated is stored as FLAC (about 4 MB)
-    under the app-data root, with a row holding its path, the SHA-256 of its PCM and the gain
-    applied. A store check fails loudly when a rated file is missing or its hash differs. After an
-    engine bump the current engine can't re-render it (0009), and without the file every feature and
-    CLAP embedding of a rated excerpt would be lost when the extractor changes. Ratings also store
-    the gain normalization applied to what was heard.
-  - **vibe_revisions**: editing a vibe's constraints appends a revision, and each generation,
-    lint result and rating names the revision it was made under, because a constraint change
-    alters what an earlier pass or rating meant.
-  - **directional feedback** ("more like this / less like this" on a macro or parameter) and
-    thumbs are typed rows of their own, not encoded as pairs, so phase 4 decides how each enters
-    the model.
-  - **renders** carry features under the derived-data rule: when the extractor changes, rows are
-    discarded and recomputed. Each derived row carries an opaque `producer` key (engine version
-    plus a hash of the extractor's source) so a mismatch can be detected. It is a cache key, not
-    a schema version, and the phase 2 record says so; the owner confirms that reading of
-    AGENTS.md when phase 2 is expanded.
-- **omlx queue** — one in-process FIFO, and only the server calls omlx (the CLI never does). One
-  request in flight, and a minimum gap between requests so the live site's requests interleave; one
-  candidate per request, with one prompt shared by the candidates of a `requestGroup` and varied
-  sampling, so a timeout loses one candidate and DPO pairs share an exact prompt; a timeout per
-  request through `AbortController`; a hard `max_tokens`; a context budget estimated at 3.5
-  characters per token, since Node has no tokenizer here. Busy means HTTP 429 or 503, or time to the
-  first streamed token above a configured threshold (total latency mixes our output length with the
-  other site's load); whether omlx accepts a JSON-schema `response_format` per request is checked,
-  since that is a request parameter, not a setting; the queue backs off exponentially with jitter up
-  to a maximum wait, then fails the request with a message to the owner, never retrying silently.
-  Tests use a fake omlx that records the most requests it ever had in flight (must be 1) and an
-  injected clock for backoff.
-- **Constraints and linter** — the vibe's hard constraints as a schema in `src/domain`, and lint
-  rules over the genome and over render checks (clipping, near-silence, DC offset, cost budget).
-- **Prompt, parse and repair** — the prompt built from brief, constraints, `schemaText()`, notes and
-  locks; examples retrieved by rating and recency until CLAP arrives in phase 4, with the retrieval
-  method's name logged in `generations` so the two policies stay apart in the data; JSON extraction;
-  one repair round fed the validator's errors.
-- **Excerpt renders and audio serving** — 20–30 s excerpts through 1l's functions, at
-  `excerptOffset` (0007), normalized to the vibe's loudness target so an A/B choice isn't won by
-  the louder side, each with a first feature set (integrated and short-term loudness, true peak,
-  spectral centroid, onset rate) as pure functions in `src/domain`, so the first sessions'
-  ratings already have features. Excerpts are served as WAV with HTTP range requests, which
-  Safari needs to play `<audio>`; 30 s is about 8.6 MB on the LAN, and WAV avoids a lossy
-  encoder and a new tool.
-- **Session UI and ratings** — vibe page, candidate grid, thumbs, A/B and notes, keyboard first,
-  checked in Safari 15. A/B sides are randomized from a logged seed.
-- **Evaluation job** — the owner-started run behind acceptance 1, a server job started by a route,
-  so it shares the server's one omlx queue; any script for it is an HTTP client of that route, never
-  a second process calling omlx, with `randomGenome` as a fake-LLM baseline for the pipeline tests.
-- **Sample layer** — the field-recording voice, reading the configured folder.
+    retrieved into it and the retrieval method's name, model id, sampling parameters, raw
+    response, `finish_reason` (so a response cut off by `max_tokens` is told apart from invalid
+    JSON), repair round and the generation it repairs, latency, time to first token and token
+    counts, and a `requestGroup` shared by the candidates of one request. Phase 8's SFT and DPO
+    need the exact prompt each completion came from.
+  - **genomes** hold content only: the canonical genome and `genomeHash` (0005), unique per vibe,
+    one row however often it is reached. **candidates** hold provenance, one row per time a genome
+    was produced: genome id (null when the output never parsed), the seed (drawn from a logged
+    stream when the candidate is made, since renders and `excerptOffset` need it), source, parent
+    ids, the locks in force, the operator and its parameters, the generation that made it, the
+    vibe revision, the model's one-line intent, and the lint result with every reason. Rejected
+    candidates are stored: they are negative examples and the denominator of the valid rate.
+  - **rated_audio** (irreplaceable): one row per heard excerpt, unique on genome, seed, offset,
+    duration, engine version and loudness target, with its FLAC path under the app-data root,
+    the SHA-256 of its PCM and the gain applied.
+  - **ratings** (irreplaceable, A/B): both sides named by genome id, seed, excerpt offset and
+    duration, and engine version, never by a `renders` row, and each side's `rated_audio` id. Each
+    stores the left/right order shown and the seed it came from, the winner, a tie or a skip, how
+    long the owner took, how much of each excerpt was played, and the rank, score, model version
+    and wildcard flag of each side, null in phase 2. Phase 4 writes its rankings as new rows and
+    never updates these.
+  - **feedback** (irreplaceable): thumbs and "more like this / less like this" as typed rows with
+    the same heard-identity and measurement block as a rating (rated-audio id, played fraction,
+    time taken); a macro row adds the macro's name, the direction and the macro's effective value
+    over the heard window.
+  - **sketches** (irreplaceable): a candidate kept as a sketch, with notes and tags.
+  - **renders** (derived): genome, seed, offset, duration, loudness target and `producer` as the
+    cache key, the file path, raw and heard features, and check results.
+  - **evaluations** (irreplaceable): an evaluation job's parameters and report.
+- **Tiers:** server; scripts/.
+- **Tests first:** migrations build an empty database and a second open applies nothing; a
+  `DELETE` on each irreplaceable table and an `UPDATE` of any other column raise; marking a row
+  removed works once and a second time raises; a rating, thumbs, a note and directional feedback
+  written, the store closed and reopened, read back equal (acceptance 4's store half); two
+  candidates reaching one genome share its row; a `renders` row with another `producer` or
+  target is not returned and is replaced; a backup opens as a database with the same rows while
+  a writer holds the WAL; `checkRatedAudio()` fails on a missing file and on a changed byte.
+- **Records:** writes 0021: tables and the append-only triggers, the migration scheme, the
+  `producer` cache key as the owner settled it, and the backup command. Every later shape change
+  to an irreplaceable table ships as a migration with a test that runs it over the previous shape.
+- **Parallel:** with 2d. Review: yes (a new stored data shape).
+
+#### 2d — omlx queue and client
+
+- **Builds:** `src/server/omlx-queue.js`, one in-process FIFO and the only code that calls omlx;
+  the CLI never does. One request in flight, and a minimum gap after each so the live site's
+  requests interleave. Streaming chat completions to `{baseUrl}/v1/chat/completions` with the
+  config's model id, one candidate per request, a hard `max_tokens`, a request timeout through
+  `AbortController`, and a context budget estimated at 3.5 characters per token that refuses an
+  over-budget prompt before sending it. `max_tokens` is set from the largest genome `randomGenome`
+  makes under the cost cap plus headroom for a reasoning model's thinking, stated in the record.
+  Busy is HTTP 429 or 503, or time to the first streamed token above the configured threshold;
+  busy backs off exponentially with jitter up to the maximum wait, then fails the request with a
+  message for the owner, never retrying silently. The queue takes an injected clock (`now`,
+  `setTimeout`, `clearTimeout`) for its gap, backoff and timeout. The result carries the text,
+  `finish_reason`, latency, time to first token and token counts, for 2f to store. Whether omlx
+  accepts a JSON-schema `response_format` is a request parameter, not a setting: the client sends
+  it when the config says to, and a 400 naming it fails loudly with that hint, so the evaluation
+  run (2l) settles it. A cancel function drops queued requests and aborts the one in flight, for a
+  session stop. `test/support/fake-omlx.js` is a `node:http` server that streams scripted
+  responses, can answer 429 or hold a stream open until the test releases it, and records the
+  most requests it ever had in flight; `test/support/fake-clock.js` is the injected clock.
+- **Tiers:** server; test/support; scripts/arch.js.
+- **Tests first:** 20 requests queued at once never put more than 1 in flight at the fake, and
+  successive requests start at least the minimum gap apart on the fake clock; a 429 and a slow
+  first token each back off and retry on the fake clock, and past the maximum wait the request
+  fails with the owner's message; a held stream is aborted when the fake clock passes the
+  timeout; a response cut at `max_tokens` returns `finish_reason: "length"`; an over-budget prompt
+  is refused unsent; cancel rejects queued requests and aborts the one in flight; the model id
+  sent is the config's; `example.json` as a response fits in `max_tokens` with the stated
+  headroom. No test opens a socket to port 8000, and `arch.js` refuses `fetch` and `node:http`
+  clients outside the queue module.
+- **Records:** writes 0022: the queue's terms and numbers, busy detection, the streaming parse,
+  `max_tokens`, and the `response_format` handling.
+- **Parallel:** with 2c. Review: yes (the omlx boundary, concurrency).
+
+#### 2e — First features and render checks
+
+- **Builds:** pure functions in `src/domain` over a `RenderResult`. First commit: promote the
+  radix-2 FFT in `test/support/golden.js` to `src/domain`, with golden.js importing it. Then:
+  integrated loudness, maximum and range of short-term loudness, true peak (1e's), spectral
+  centroid (mean and spread over frames), onset rate (onsets a second from spectral flux with an
+  adaptive threshold), and `extractFeatures` returning them as one object, with
+  `FEATURE_EXTRACTOR` naming its source files for the `producer` hash. Features are measured twice
+  per excerpt: raw (before normalize, so loudness and true peak mean something, with the gain
+  normalize applied) and heard (the normalized audio the owner hears, for centroid and onset
+  rate). Render checks on the raw render: clipping (sample peak at or above 0 dBFS),
+  near-silence (integrated loudness below a floor, or none measurable), DC offset (mean per
+  channel above a threshold), and the cost budget; they return 2b's lint result type.
+  `featuresText()` writes them as one line of text for phase 3's revision prompt.
+- **Tiers:** domain; test/support (the promotion).
+- **Tests first:** a 1 kHz sine's centroid is 1 kHz within a stated tolerance and white noise's
+  is near a quarter of the sample rate; clicks at a known rate give that onset rate within 10%,
+  and a sustained drone gives under 0.1 a second; a DC-shifted signal, a clipped one and a silent
+  one each fail their check and a clean golden passes all four; `extractFeatures` on the same
+  samples twice is identical; every golden still matches after the promotion. Feature cost on a
+  30 s excerpt is measured by `./scripts/bench`, not asserted in a test.
+- **Records:** writes 0023: the features, frame sizes and thresholds, raw against heard, the
+  check thresholds, and how `FEATURE_EXTRACTOR` feeds the `producer` key.
+- **Parallel:** with 2f.
+
+#### 2f — Prompt, parse, repair and generation
+
+- **Builds:** in `src/domain`, `buildPrompt(vibe, revision, {notes, locks, examples})` from the
+  brief, `constraintsText()` (2b), `schemaText()` (0005), notes, locks and retrieved examples, as
+  system and user messages under the context budget, trimming examples first and failing when the
+  rest doesn't fit. The model answers `{intent, genome}`: the genome schema has no description
+  field, and adding one would change `genomeHash`, so the one-line intent lives on the candidate.
+  `extractGenome(text)` finds one such object in a response (fenced or not) and reports why when
+  it can't; `buildRepairPrompt(previous, errors)` quotes the validator's and linter's errors.
+  Examples are retrieved by rating and recency (CLAP arrives in phase 4) and the method's name is
+  logged. In `src/server`, `generateCandidates(vibeId, n, store, queue)`: one `requestGroup`, n
+  requests sharing one prompt with sampling varied per candidate (seeded and logged), each
+  response parsed, validated (0005) and linted (2b), one repair round for any that parsed into
+  something with errors to quote, and every generation and candidate stored, rejected ones with
+  their reasons. Reject reasons are typed: truncated (`finish_reason: "length"`), no JSON,
+  invalid JSON, schema errors, lint errors. A truncated response gets no repair round: there are
+  no errors to quote, only a cut-off text.
+- **Tiers:** domain, server.
+- **Tests first:** the prompt contains the schema text, every constraint and each lock, and stays
+  under the budget with examples trimmed first; `extractGenome` takes fenced, bare and
+  prose-wrapped JSON and refuses two objects or none, each with its reason; against the fake
+  omlx, a script of one valid, one repairable and one truncated response stores 3 generations
+  plus 1 repair, 3 candidates with the right reasons, and genome rows only for the valid two;
+  every request of a group carries the identical prompt; a repaired candidate names the
+  generation it repaired; generation never runs without a call from the owner's route or job (no
+  timer, no start-up hook).
+- **Records:** writes 0024: the prompt layout and budget, the `{intent, genome}` answer, example
+  retrieval before CLAP, sampling per candidate, the repair round, and the reject reasons.
+- **Parallel:** with 2e. Needs 2b, 2c, 2d.
+
+#### 2g — HTTP server and audio serving
+
+- **Builds:** `src/server/main.js` (the `./scripts/dev` entry): a `node:http` server on the
+  configured host and port, a route table with JSON bodies and errors that later steps add
+  routes to, static serving of `src/web/` and of the browser-loadable `src/engine` and
+  `src/domain` modules, and a stop that leaves no open handles. `GET /audio/:renderId` serves a
+  render-cache WAV with HTTP range requests (Safari needs them for `<audio>`) and never a path
+  outside the cache folder. An index page in `src/web`. `test/support/http-client.js` drives the
+  real server on an ephemeral port.
+- **Tiers:** server; web (an index page only); test/support.
+- **Tests first:** a range request returns 206 with the exact bytes and `Content-Range`; an open
+  range, a suffix range and a range past the end behave as RFC 9110 says; an unknown id, a
+  traversal attempt and a static path outside the served folders are 404; a malformed JSON body
+  is a 400 with a message; the server stops with no open handles.
+- **Records:** writes 0025: no framework, the route table, static serving, LAN binding and why
+  there is no auth (a LAN app with no secrets), range handling.
+- **Parallel:** with 2h. Review: yes, with a security pass (it opens the network, parses input
+  and reads files).
+
+#### 2h — Job runner and excerpt renders
+
+- **Builds:** an in-process job runner: one job at a time, a queue with status the UI polls,
+  cancellation, and no job that starts on its own. Because it runs one job at a time, a
+  generation's omlx requests never overlap rendering, so normalize and feature extraction on the
+  event loop can't inflate the queue's time-to-first-token reading. Excerpt renders call
+  `renderOffline` and `normalize` directly (not `exportRender`, which writes export files),
+  exporting the `requireGenome` and `requireFinite` checks from `export-render.js` rather than
+  copying them; at the candidate's seed and `excerptOffset` (0007), `EXCERPT_SECONDS` long,
+  normalized to the vibe's loudness target so an A/B choice isn't won by the louder side; 2e's
+  checks and both feature sets; cached as WAV under the render-cache folder with a `renders` row
+  keyed as 2c says. This step composes the `producer` string (engine version plus a hash of
+  `FEATURE_EXTRACTOR`'s files). `normalize` throws on silence and on gain above its cap; either
+  becomes a failed near-silence check on the candidate, not a failed job.
+  `captureRatedAudio(renderId)` writes the heard excerpt as FLAC into `rated_audio` (one row per
+  heard identity, reused when it exists) with its PCM hash and gain.
+- **Tiers:** server.
+- **Tests first:** two jobs queued run one at a time; a cancelled job stops before its next
+  render; an excerpt's integrated loudness is within ±0.5 LU of the target; a cached excerpt is
+  reused, and one whose `producer` or target differs is rendered again; a silent genome gives a
+  failed near-silence check and the job continues; `captureRatedAudio` writes a FLAC whose
+  decoded PCM matches the stored hash, and a second call for the same excerpt reuses the row; one
+  30 s excerpt rendered twice in one process with forced collection between is identical (with
+  `--expose-gc` set as `test/engine/render.test.js` does).
+- **Records:** writes 0026: the job runner and why one job at a time, excerpt length and
+  normalization, the render-cache layout and key, the `producer` string, and failed renders as
+  checks.
+- **Parallel:** with 2g. Review: yes, with a performance pass (the render path).
+
+#### 2i — Session API and ratings
+
+- **Builds:** routes over 2c–2h: vibes (create, list, read, edit as a revision, notes), session
+  start and stop, "ask for N candidates" (default 8) as a job that runs 2f then 2h's excerpts,
+  job status, candidates with their excerpt URLs, features, lint result and intent; ratings:
+  thumbs with an optional note, A/B (winner, tie or skip) with sides from an exported
+  `abOrder(seed)` that the route uses, "more like this / less like this" on a macro, and keep as
+  sketch. Every rating stores what 2c's rows need and calls `captureRatedAudio`. Stopping a
+  session cancels its job and its queued omlx requests.
+- **Tiers:** server; domain (`abOrder`).
+- **Tests first:** through the HTTP client: a vibe created, a session started, a generation job
+  against the fake omlx producing candidates with playable excerpt URLs; each rating kind posted,
+  the server stopped and started on the same temp root, and every rating read back (acceptance
+  4); the A/B route stores the order `abOrder` gives for its logged seed, and over 200 seeds the
+  left side is first between 40% and 60% of the time; a rating writes one `rated_audio` row whose
+  file exists; stopping a session cancels its job and its queued requests at the fake.
+- **Records:** writes 0027: the routes, A/B randomization, what played fraction and time taken
+  measure, and the job's status shape.
+- **Parallel:** with 2k. Review: yes (a diff across tiers).
+
+#### 2j — Session UI
+
+- **Builds:** pages over 2i's routes: vibe list (with the seed vibes once 2l lands) and vibe
+  page (brief, a constraints form over 2b's schema, notes), the session view's candidate grid (an
+  `<audio>` player per candidate, the features readout, the lint result, the intent, rating
+  controls), the A/B view, and keep as sketch. Keyboard first: every action has a key, listed on
+  the page. The page reports played fraction and time taken. Plain HTML, CSS and ES modules, no
+  build step, written for Safari 17.6 (mbp2015) and the browser on mbp2026.
+- **Tiers:** web.
+- **Tests first:** the keyboard map and the played-fraction tracker are DOM-free modules with
+  tests; web modules import only relative paths (`arch.js`); a page load through the HTTP client
+  returns every module it imports.
+- **Records:** writes 0028: the pages and keys, and the polling interval.
+- **Parallel:** none. Then the orchestrator logs the pending owner checks above.
+
+#### 2k — Sample layer
+
+- **Builds:** a field-recording voice in `src/engine`: one or more recordings looped or excerpted
+  with fades, a level, a filter, playback rate and pan, with trajectories, and a `cost()`. The
+  engine does no I/O: a genome names each recording by the SHA-256 of its file, and the server
+  decodes WAV, FLAC and AIFF through `decodeAudioData` and passes the buffers into `render()` as
+  `samples`, keyed by hash. `render`, `renderOffline`, `exportRender`, `rerender`, the CLI's
+  `--from`, and 2h's excerpt renders all carry `samples`; a missing or changed file fails with the
+  file's name. A server index of the folder (path, hash, duration, channels, sample rate) feeds a
+  list of available recordings into 2f's prompt. `randomGenome` never draws the voice, since it
+  has no recordings to name. Renders of every existing genome are unchanged, so the engine version
+  stays 2 unless the goldens move.
+- **Tiers:** engine, server, domain (the prompt's list).
+- **Tests first:** a genome with the voice renders deterministically from a fixture WAV, FLAC and
+  AIFF in `test/fixtures/`; whether `decodeAudioData` reads AIFF and how it resamples a 44.1 kHz
+  file to 48 kHz, checked deterministic across two decodes; a hash that matches no buffer fails
+  with the file's name; an export with the voice re-renders through `--from`; the index lists a
+  temp folder's files with their hashes; every existing golden still matches; the voice's golden
+  genome joins the goldens.
+- **Records:** governed by 0005, 0009, 0010, 0015. Writes 0029: naming recordings by hash,
+  decoding and resampling, looping and fades, what happens when the folder changes, and that the
+  voice's schema text changes what `randomGenome` and the prompt see but no golden.
+- **Parallel:** with 2i.
+
+#### 2l — Seed vibes and the evaluation job
+
+- **Builds:** three seed vibes as fixtures in `src/domain/vibes/` that the owner can load from
+  the vibe list: a cold, slow D dorian drone and pad vibe; a Colundi bell field; and a warm, tidal
+  noise-bed vibe. Each has a brief, constraints that exercise different kinds, and a −16 LUFS
+  target. The evaluation job: a route taking vibe ids and a count, run by 2h's job runner so it
+  shares the one omlx queue, generating through 2f, and storing its report in `evaluations`,
+  shown on a page: the valid rate (schema and lint) and the schema-only rate, before and after
+  repair, per vibe and overall, with 95% Wilson intervals; reject reasons counted by type with
+  truncation apart; latency and time-to-first-token percentiles; whether `response_format` was
+  accepted. `randomGenome` as a fake-LLM baseline through the same pipeline, for tests.
+- **Tiers:** domain, server, web.
+- **Tests first:** each seed vibe passes 2b's validator; the Wilson interval matches published
+  values (for example 45 of 48); against a fake omlx scripted with 40 valid, 5 repairable and 3
+  truncated responses (repairs scripted valid), the report reads 40/48 before repair, 45/48
+  after, 3 truncated; a `randomGenome` baseline run passes the schema at 100%; the job starts only
+  from its route.
+- **Records:** writes 0030: the seed vibes and why each constraint was chosen, the report's
+  contents, and that an evaluation is started only by the owner.
+- **Parallel:** none. Then the orchestrator stops: the owner starts the evaluation (48 genomes,
+  16 a vibe, on omlx), and its numbers go in Result.
 
 **Result:**
 
@@ -942,3 +1247,13 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   mbp2015: the 1r review, then the drone and master bus, the limited drone, pad, bell, cloud,
   noise bed, the 300 s WAV against its FLAC, a loudness comparison at −16 LUFS, and the Colundi
   export.
+- 2026-11-06: phase 2 expanded into steps 2a–2l. The owner settled the `producer` cache key
+  (allowed), the loudness range's top (−10 LUFS), three seed vibes for the evaluation, and the
+  sample layer in phase 2 reading WAV, FLAC and AIFF. Review (fresh context, Sonnet: 78.9k
+  tokens, 9 tool calls, 126 s). Taken: a seed and the model's intent on each candidate, with the
+  intent answered beside the genome rather than in the schema; `notes`, `session_events` and
+  `evaluations` tables, ratings and feedback pointing at their `rated_audio` row; raw and heard
+  features; the render cache keyed on target; the queue on an injected clock; no repair round
+  for truncated responses; the excerpt-length lint floor and silent renders as failed checks;
+  the FFT promoted from the golden helper; `samples` carried through export and `--from`; 2g and
+  2h split into four steps; owners for `arch.js`, `producer` and the `samples` plumbing.
