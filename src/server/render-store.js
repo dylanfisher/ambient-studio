@@ -48,6 +48,16 @@ function renderFor(store, { genomeId, seed, offset, duration }) {
 }
 
 /**
+ * @param {Store} store
+ * @param {number} id
+ * @returns {Render | undefined}
+ */
+export function getRender(store, id) {
+  const row = store.db.prepare("SELECT * FROM renders WHERE id = ?").get(id);
+  return row && decode(RENDERS, row);
+}
+
+/**
  * The cached render for `key`, or undefined when there is none or the cached one was made under
  * another target or producer.
  * @param {Store} store
