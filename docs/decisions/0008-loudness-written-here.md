@@ -16,7 +16,7 @@ written here as pure functions over per-channel `Float32Array`s in `src/domain`:
 two biquads, 400 ms blocks with 75% overlap, the −70 LUFS absolute gate and the −10 LU relative
 gate, and true peak by 4× oversampling with the standard's interpolation filter. Momentary and
 short-term loudness come from the same block code when phase 3 needs them. The limiter that uses
-the meter is governed by its own record (step 1f).
+the meter is governed by its own record (step 1h).
 
 Tests synthesize the EBU Tech 3341 test signals in code and require each to read within ±0.1 LU,
 and the true-peak cases within the tolerances Tech 3341 gives. A manual script compares our

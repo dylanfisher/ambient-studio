@@ -18,7 +18,7 @@ WAV, FLAC). It also prints the peak resident memory of the render process. It ru
 `nice -n 10`, with omlx serving as usual, and prints the load average next to the numbers. The phase 1 target is a render-only median of at least 10×.
 
 The bench is not part of `./scripts/check`. The gate instead checks a static cost budget computed
-from the genome, which doesn't depend on time (step 1e). The bench is re-run at the end of every
+from the genome, which doesn't depend on time (step 1g). The bench is re-run at the end of every
 phase that touches the engine, and after any node-web-audio-api upgrade, and its numbers go in the
 phase's Result line.
 

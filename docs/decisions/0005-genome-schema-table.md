@@ -71,3 +71,6 @@ If `tsc` can't express that, the builder of step 1c records what it did instead.
   are searched. Every voice has `start`, `end` and a `level` that may be a trajectory, so phase 6
   can fade a voice in or out between two genomes instead of interpolating a voice one of them
   lacks.
+- 2026-11-05: from the third plan review. `fromVector` moving a trajectory's start and end maps
+  its interior breakpoints affinely from the old span to the new one, so the shape is kept rather
+  than collapsing to two points.

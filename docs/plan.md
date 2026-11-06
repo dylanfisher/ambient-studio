@@ -18,28 +18,28 @@ A run logs them and moves on.
 
 ## Decision-record numbers
 
-Numbers are reserved in step order. The ones the owner settled while this plan was written exist
+Numbers are reserved by step. The ones the owner settled while this plan was written exist
 already; the rest are written by the step that holds them. A reserved number that turns out to be
 unneeded stays unused rather than being given to another step.
 
 | # | Topic | Step | State |
 |---|---|---|---|
 | 0002 | node-web-audio-api, pinned at 2.2.0 | 1a | [written](decisions/0002-pin-node-web-audio-api.md) |
-| 0003 | Seeded randomness: the PRNG and per-voice streams | 1b | reserved |
+| 0003 | Seeded randomness: the counter-based PRNG and thinning | 1b | reserved |
 | 0004 | Pitch: scales, modes and tunings | 1b | reserved |
 | 0005 | Genome schema as one descriptor table | 1c | [written](decisions/0005-genome-schema-table.md) |
-| 0006 | Macros as bounded offsets | 1c | [written](decisions/0006-macros-bounded-offsets.md) |
-| 0007 | Trajectories and the render time base | 1c | reserved |
-| 0008 | Loudness and true peak written here | 1d | [written](decisions/0008-loudness-written-here.md) |
-| 0009 | Engine version and golden-render hashes | 1e | [written](decisions/0009-engine-version-golden-hashes.md) |
-| 0010 | Event scheduling and the cost budget | 1e | reserved |
-| 0011 | Normalization and the true-peak limiter | 1f | reserved |
-| 0012 | WAV written here, FLAC through the CLI | 1g | [written](decisions/0012-flac-via-cli.md) |
-| 0013 | Pad/swell and bell/pluck voice designs | 1h | reserved |
-| 0014 | Granular cloud and noise bed voice designs | 1i | reserved |
-| 0015 | The export sidecar JSON and re-render check | 1j | reserved |
-| 0016 | Render speed measured by a bench script | 1k | [written](decisions/0016-render-speed-bench.md) |
-| 0017 | Phase 1 exposes rendering as a CLI | 1k | [written](decisions/0017-phase-1-cli.md) |
+| 0006 | Macros as bounded offsets | 1d | [written](decisions/0006-macros-bounded-offsets.md) |
+| 0007 | Trajectories, the render time base and excerpts | 1d | reserved |
+| 0008 | Loudness and true peak written here | 1e | [written](decisions/0008-loudness-written-here.md) |
+| 0009 | Engine version and golden-render hashes | 1g | [written](decisions/0009-engine-version-golden-hashes.md) |
+| 0010 | Event scheduling, memory and the cost budget | 1f (1g adds the cost budget) | reserved |
+| 0011 | Normalization and the true-peak limiter | 1h | reserved |
+| 0012 | WAV written here, FLAC through the CLI | 1i | [written](decisions/0012-flac-via-cli.md) |
+| 0013 | Pad/swell and bell/pluck voice designs | 1j | reserved |
+| 0014 | Granular cloud and noise bed voice designs | 1k | reserved |
+| 0015 | The export sidecar JSON and re-render check | 1l | reserved |
+| 0016 | Render speed measured by a bench script | 1m | [written](decisions/0016-render-speed-bench.md) |
+| 0017 | Phase 1 exposes rendering as a CLI | 1m | [written](decisions/0017-phase-1-cli.md) |
 | 0018– | Phase 2 records, numbered when phase 2 is expanded | 2 | — |
 
 ## Phase 1 — Engine, schema and macros
@@ -65,7 +65,7 @@ it exactly.
 **Gate:** `./scripts/check` passes on `main` after the last merge; checks 1–6 run on mbp2021 and
 their numbers are written in Result; the pending owner checks below are logged.
 
-**Pending owner checks** (on mbp2015, after 1k):
+**Pending owner checks** (on mbp2015, after 1m):
 
 - Listen to each voice's golden genome rendered for 30 s, and the 300 s example export. Listen
   for clicks where notes start and stop, zipper noise on filter sweeps, a thump at the start or
@@ -84,12 +84,14 @@ their numbers are written in Result; the pending owner checks below are logged.
 
 - **Builds:** `node-web-audio-api@2.2.0` in `dependencies`, exact version. `flac` added to the
   tools `./scripts/setup` checks. A spike, kept as tests, that answers the questions 0002 leaves
-  open: two renders of one graph give identical bytes; `OfflineAudioContext` at 48 kHz stereo
-  offers every node the spec names (oscillator with `PeriodicWave`, BiquadFilter, Gain, Delay,
-  Convolver, StereoPanner, AudioBufferSource, ChannelSplitter/Merger); whether `suspend(t)`
-  works for scheduling ahead; the shortest delay a `DelayNode` allows inside a feedback loop;
-  and a cost probe: a 60 s render with a 6 s stereo Convolver, 40 oscillators and 200 buffer
-  sources, timed once by hand so a 10× problem shows up now rather than at 1k.
+  open: renders of one graph give identical bytes across processes; `OfflineAudioContext` at
+  48 kHz stereo offers every node the spec names (oscillator with `PeriodicWave`, BiquadFilter,
+  Gain, Delay, Convolver, StereoPanner, AudioBufferSource, ChannelSplitter/Merger); whether
+  `suspend(t)` works for scheduling ahead; the shortest delay a `DelayNode` allows inside a
+  feedback loop; and whether offline rendering uses one thread. Two cost probes, timed and
+  measured once by hand so a speed or memory problem shows up now: a 60 s render with a 6 s
+  stereo Convolver, 40 oscillators and 200 buffer sources; and a 20-minute render at 30 grains
+  per second with every grain node created up front, reporting peak resident memory.
 - **Tiers:** none (package.json, scripts/setup, test/).
 - **Tests first:** `test/server/offline-context.test.js`: render a 1 s graph using every node
   type (a `PeriodicWave` oscillator and a buffer source started off a 128-frame boundary
@@ -97,11 +99,11 @@ their numbers are written in Result; the pending owner checks below are logged.
   can match while separate runs differ; render with and without `suspend` scheduling and compare,
   including a node created in a suspend callback that must start on its exact sample; measure the
   feedback-loop delay floor and assert what the spike found, so a library change that moves it
-  fails. The spike also reports whether offline rendering uses one thread.
+  fails.
 - **Records:** governed by [0002](decisions/0002-pin-node-web-audio-api.md). If any answer
   differs from what the plan assumes, the builder amends 0002 and reports it; the orchestrator
-  changes 1e and 1h before briefing them. If renders are not identical across processes, the run
-  stops here: golden hashes (0009) can't work, and the owner decides what replaces them.
+  changes 1f, 1j and 1k before briefing them. If renders are not identical across processes, the
+  run stops here: golden hashes (0009) can't work, and the owner decides what replaces them.
 - **Parallel:** none. Every later step depends on it.
 
 #### 1b — Seeded randomness and pitch
@@ -119,51 +121,61 @@ their numbers are written in Result; the pending owner checks below are logged.
 - **Tests first:** the PRNG gives fixed values for fixed keys (literals in the test); draws for
   different voice ids don't share values; a draw doesn't depend on which other draws were made
   first; with thinning, raising density by 10% keeps every original event and adds new ones;
-  the ban catches a planted `Math.random`. Pitch: A4 = 440 Hz in 12-TET; D dorian's degrees; a just fifth is exactly
-  3/2; custom cents shift by the stated amount; out-of-range degrees wrap octaves.
+  the ban catches a planted `Math.random`. Pitch: A4 = 440 Hz in 12-TET; D dorian's degrees; a
+  just fifth is exactly 3/2; custom cents shift by the stated amount; out-of-range degrees wrap
+  octaves.
 - **Records:** writes 0003 (the hash, the key layout and thinning) and 0004 (pitch, tuning and
   reference pitch). Both change renders if they change later, under
   [0009](decisions/0009-engine-version-golden-hashes.md).
-- **Parallel:** with 1c and 1d.
+- **Parallel:** with 1c or 1e.
 
-#### 1c — Genome schema, validator, trajectories and macros
+#### 1c — Genome schema and validator
 
 - **Builds:** the descriptor mechanism and the global section of the schema (key, mode, tuning,
-  pulse or none, master reverb and delay, stereo width, loudness target, voice list, macros), the
-  assembly of voice descriptors, `validateGenome()` returning the normalized genome or every
-  error with its path, the derived JSDoc genome type, and `schemaText()` for the LLM. Trajectories
-  as breakpoint lists with a curve per segment, and their evaluation at a time. The macro mapping
-  table and `effectiveParams(genome, t)`. Voice ids and each voice's `start`, `end` and `level`,
-  `genomeHash()`, and the vector view
-  (`encode`/`decode` per descriptor, `toVector`/`fromVector`) from 0005's amendment, which
-  phases 4 and 5 search and fit over. `randomGenome(schema, seed)`, a generator of valid genomes
-  that tests use for property checks and phase 2 uses as a stand-in for the LLM. No voices yet;
-  1e adds the first.
+  pulse or none, master reverb and delay, stereo width, loudness target, voice list, macro
+  values), the assembly of voice descriptors, voice ids and each voice's `start`, `end` and
+  `level`, `validateGenome()` returning the normalized genome or every error with its path, the
+  derived JSDoc genome type, `schemaText()` for the LLM, and `genomeHash()`. No voices yet; 1f
+  adds the first.
 - **Tiers:** engine.
 - **Tests first:** a valid genome passes and comes back with every default written out; each
   descriptor rule has a fixture that fails with a path-specific message; unknown keys fail;
-  every error is listed, not just the first; trajectories evaluate exactly at breakpoints and
-  between them for each curve; all macros at 0.5 leave effective values equal to raw values;
-  a macro at 1 moves each mapped parameter by its depth along its scale and clamps at the range;
-  `schemaText()` stays under 3,000 characters for the full phase 1 schema; validating a
-  normalized genome returns it unchanged; `genomeHash` ignores key order and voice order;
-  `fromVector(toVector(g))` round-trips within float precision and `toVector` throws on an enum
-  path; every `randomGenome` output for
-  200 seeds validates.
+  every error is listed, not just the first; validating a normalized genome returns it
+  unchanged; `genomeHash` ignores key order and voice order; `schemaText()` stays under 3,000
+  characters for the full phase 1 schema (the test reads the assembled schema, so later voices
+  are held to it too).
+- **Records:** governed by [0005](decisions/0005-genome-schema-table.md).
+- **Parallel:** with 1b or 1e.
+
+#### 1d — Trajectories, macros, vector view and random genomes
+
+- **Builds:** trajectories as breakpoint lists with a curve per segment, and their evaluation at
+  a time. The macro mapping table and `effectiveParams(genome, t)`. The vector view (`encode` and
+  `decode` per descriptor, `toVector` and `fromVector`) from 0005's amendments, which phases 4
+  and 5 fit and search over. `excerptOffset(genome, seed, length)`, the one place the excerpt
+  rule lives. `randomGenome(seed, {costCap})`, a generator of valid genomes that tests use for
+  property checks and phase 2 uses as a stand-in for the LLM; it takes a cost cap once 1g's
+  `cost()` exists, and until then draws from ranges the descriptors mark as safe.
+- **Tiers:** engine.
+- **Tests first:** trajectories evaluate exactly at breakpoints and between them for each curve;
+  all macros at 0.5 leave effective values equal to raw values; a macro at 1 moves each mapped
+  parameter by its depth along its scale and clamps at the range; `fromVector(toVector(g))`
+  round-trips within float precision, `toVector` throws on an enum path, and moving a
+  trajectory's start and end keeps its interior breakpoints' relative shape; `excerptOffset` is
+  pure and unchanged by voice order; every `randomGenome` output for 200 seeds validates.
 - **Records:** governed by [0005](decisions/0005-genome-schema-table.md) and
   [0006](decisions/0006-macros-bounded-offsets.md). Writes 0007: the trajectory format, whether
   times are seconds or a fraction of a duration, how a genome loops past its last breakpoint,
-  and how `render()` renders an excerpt from an offset (pre-roll so reverb tails are present).
-  An excerpt is a window of the same timeline a full render plays, and its offset is chosen by a
-  stated rule from the genome and seed and stored with it, so ratings on excerpts describe the
-  sound a long render plays rather than every genome's first 25 s. Oscillator and LFO phases are
-  computed from absolute time, not accumulated, and the pre-roll is at least the reverb's decay
-  plus the delay's feedback decay. Filter and reverb state still only converge, so an excerpt is
-  close to the same window of a full render, not identical; 0007 says so and states the
-  measured difference on a golden genome.
-- **Parallel:** with 1b and 1d.
+  and how `render()` renders an excerpt from an offset. An excerpt is a window of the same
+  timeline a full render plays, at the offset `excerptOffset` picks, so ratings on excerpts
+  describe the sound a long render plays rather than every genome's first 25 s. Oscillator and
+  LFO phases are computed from absolute time, not accumulated, and the pre-roll is at least the
+  reverb's decay plus the delay's feedback decay. Filter and reverb state still only converge,
+  so an excerpt is close to the same window of a full render, not identical; 0007 says so, and
+  1f measures the difference on a golden genome and adds it.
+- **Parallel:** with 1e. After 1c.
 
-#### 1d — Loudness meter
+#### 1e — Loudness meter
 
 - **Builds:** BS.1770-4 integrated loudness, momentary and short-term blocks, and 4× oversampled
   true peak, as pure functions in `src/domain`.
@@ -173,40 +185,54 @@ their numbers are written in Result; the pending owner checks below are logged.
   are not restated here); silence returns `-Infinity`; a sample rate other than 48 kHz throws;
   mono and stereo inputs follow the standard's channel weights.
 - **Records:** governed by [0008](decisions/0008-loudness-written-here.md).
-- **Parallel:** with 1b or 1c. It shares no files with them.
+- **Parallel:** with any of 1b–1d. It shares no files with them.
 
-#### 1e — Render core, drone voice and golden hashes
+#### 1f — Render core, master bus and drone voice
 
 - **Builds:** `render(genome, ctx, {seed, duration, offset, voices})` in `src/engine`, where
-  `voices` limits the render to the listed voice ids (phase 6's stems), the voice
-  registry, the master bus (Convolver with an impulse response generated from the seed, feedback
-  delay, stereo width), and the first voice, drone (detuned oscillator stacks, slow filter
-  sweeps). `ENGINE_VERSION`. A static `cost(genome)` estimate of concurrent nodes over time.
-  The golden test, the hash files and the script that writes a new version's entries.
-  `src/engine/genomes/` with the first golden genome. The `RenderResult` type (per-channel
-  `Float32Array`s, sample rate, engine version) that export, features and CLAP all take.
-- **Tiers:** engine; test/ for the golden harness; scripts/ for the hash writer.
-- **Tests first:** `render()` twice with the same inputs gives the same hash; a different seed
-  gives a different hash; adding another voice doesn't change the drone's solo render; the golden
-  hash for the drone genome and the master bus matches; the hash writer refuses to overwrite an
-  existing version's entry; `cost()` of each golden genome is under the budget and a genome
-  built to exceed it fails; 200 `randomGenome` seeds render 2 s each with every sample finite
-  (an extreme filter Q or frequency in a feedback path can produce NaN, which would be written
-  out as noise).
-- **Records:** governed by [0009](decisions/0009-engine-version-golden-hashes.md), 0003, 0007.
-  Writes 0010: whether events are scheduled all up front or in windows with `suspend()` (from
-  1a's answer), how the impulse response is generated (with `convolver.normalize` set
-  explicitly, since its default scales by the IR), the cost unit (node-seconds alive, which
-  counts the thousands of short grain nodes that concurrent counts miss) and the budget. It also
-  states how long renders fit in memory: a 300 s stereo render is about 115 MB of float output and
-  20 min about 460 MB, rendered in one context, with a peak-memory ceiling the bench measures.
-  Splitting a render into segments would change reverb and filter state at the joins, so it is
-  rejected unless the bench shows the ceiling can't hold. The scheduling choice must hold for a
-  20-minute track at a granular cloud's maximum density (tens of thousands of grain events), not
-  only for 300 s.
-- **Parallel:** with 1f or 1g.
+  `voices` limits the render to the listed voice ids (phase 6's stems); the voice registry; the
+  master bus (Convolver with an impulse response generated from the seed, feedback delay, stereo
+  width); the first voice, drone (detuned oscillator stacks, slow filter sweeps);
+  `ENGINE_VERSION`; and the `RenderResult` type (per-channel `Float32Array`s, sample rate, engine
+  version) that export, features and CLAP all take. `src/engine/genomes/` with the drone's golden
+  genome, which uses a trajectory and a non-neutral macro.
+- **Tiers:** engine.
+- **Tests first:** `render()` twice with the same inputs gives identical samples; a different
+  seed gives different samples; adding another voice doesn't change the drone's solo render;
+  the sum of the solo renders of a two-voice genome matches the full render within a stated
+  tolerance (not bit for bit: summing order differs); 200 `randomGenome` seeds render 2 s each
+  with every sample finite (an extreme filter Q or frequency in a feedback path can produce NaN,
+  which would be written out as noise); an excerpt matches the same window of a longer render
+  within the tolerance 0007 states.
+- **Records:** governed by 0003, 0005, 0006, 0007. Writes 0010: whether events are scheduled
+  all up front or in windows with `suspend()` (from 1a's answers, including the 20-minute
+  probe), how the impulse response is generated (with `convolver.normalize` set explicitly,
+  since its default scales by the IR), and how long renders fit in memory: a 300 s stereo
+  render is about 115 MB of float output and 20 min about 460 MB, rendered in one context, with
+  a peak-memory ceiling the bench measures. Splitting a render into segments would change reverb
+  and filter state at the joins, so it is rejected unless the bench shows the ceiling can't
+  hold. The scheduling choice must hold for a 20-minute track at a granular cloud's maximum
+  density, not only for 300 s. The master bus is linear; normalization and limiting run only
+  after voices are summed, so stems sum to the mix within a tolerance before the limiter.
+- **Parallel:** with 1h or 1i.
 
-#### 1f — Normalization and true-peak limiter
+#### 1g — Golden hashes and the cost budget
+
+- **Builds:** the golden test, the per-genome hash files with their coarse summaries, and the
+  script that writes a new version's entries ([0009](decisions/0009-engine-version-golden-hashes.md)).
+  A static `cost(genome)` in node-seconds alive, which counts the thousands of short grain nodes
+  that a count of concurrent nodes misses. `randomGenome` gains its cost cap.
+- **Tiers:** engine; test/ for the golden harness; scripts/ for the hash writer.
+- **Tests first:** the drone's and the master bus's golden hashes match; a changed sample fails
+  with a message that prints the summaries and says to bump `ENGINE_VERSION`; the hash writer
+  refuses to overwrite an existing version's entry; a missing platform entry fails naming the
+  platform; `cost()` of each golden genome is under the budget and a genome built to exceed it
+  fails; every `randomGenome` with a cost cap stays under it.
+- **Records:** governed by [0009](decisions/0009-engine-version-golden-hashes.md). Adds the cost
+  unit and budget to 0010, calibrated against 1a's probes.
+- **Parallel:** with 1h or 1i. After 1f.
+
+#### 1h — Normalization and true-peak limiter
 
 - **Builds:** `normalize(channels, {target, ceiling})` in `src/domain`: gain to the target, a
   look-ahead true-peak limiter at the ceiling (−1.0 dBTP by default), and a re-measure that
@@ -221,9 +247,9 @@ their numbers are written in Result; the pending owner checks below are logged.
   signal built so limiting can't reach the target throws naming the final error.
 - **Records:** governed by [0008](decisions/0008-loudness-written-here.md). Writes 0011: the
   limiter's look-ahead, attack and release, the iteration limit, and the gain cap.
-- **Parallel:** with 1e or 1g, after 1d.
+- **Parallel:** with 1f or 1g, after 1e.
 
-#### 1g — WAV and FLAC writers
+#### 1i — WAV and FLAC writers
 
 - **Builds:** a 24-bit PCM WAV encoder and a FLAC encoder that spawns `flac`, in `src/server`.
 - **Tiers:** server.
@@ -232,69 +258,69 @@ their numbers are written in Result; the pending owner checks below are logged.
   `flac -d` of the FLAC gives samples identical to the WAV; a failing `flac` (bad path) throws
   with its stderr.
 - **Records:** governed by [0012](decisions/0012-flac-via-cli.md).
-- **Parallel:** with 1e or 1f. It depends only on 1a.
+- **Parallel:** with any step from 1b on. It depends only on 1a.
 
-#### 1h — Pad/swell and bell/pluck voices
+#### 1j — Pad/swell and bell/pluck voices
 
 - **Builds:** the pad/swell voice (ADSR on Gain, chords from the mode via 1b's pitch helpers) and
-  the bell/pluck voice (FM from oscillator pairs, and Karplus-Strong; probabilistic triggers from
-  the voice's seed stream), each with its descriptors, macro mappings and a golden genome.
+  the bell/pluck voice (FM from oscillator pairs, and Karplus-Strong; probabilistic triggers by
+  thinning), each with its descriptors, macro mappings and a golden genome that uses a
+  trajectory and a non-neutral macro.
 - **Tiers:** engine.
 - **Tests first:** a golden hash for each voice; chord notes are all in the genome's mode; the
   trigger count over a fixed duration matches the seed exactly and its density parameter on
   average; envelopes ramp rather than jump (no sample-to-sample step above a stated size at note
   edges); `cost()` stays in budget at the voice's maximum density.
-- **Records:** governed by 0005, 0006, 0009, 0010. Writes 0013. If 1a finds the feedback-loop
-  delay floor is one render quantum (128 frames, so a loop can't play above about 375 Hz at
-  48 kHz), as the Web Audio spec requires, Karplus-Strong is computed in JS into an
-  `AudioBuffer` from the seed and played by an `AudioBufferSource`. That is the default either
-  way: it doesn't depend on how the library handles cycles.
-- **Parallel:** with 1i. Both add a line to the voice registry, and each writes its own golden
+- **Records:** governed by 0003, 0005, 0006, 0009, 0010. Writes 0013. Karplus-Strong is computed
+  in JS into an `AudioBuffer` from the seed and played by an `AudioBufferSource`: the Web Audio
+  spec holds a `DelayNode` in a cycle to at least one render quantum (128 frames, so a loop
+  can't play above about 375 Hz at 48 kHz), and a buffer doesn't depend on how the library
+  handles cycles.
+- **Parallel:** with 1k. Both add a line to the voice registry, and each writes its own golden
   hash files (0009), so their merges don't conflict beyond that line.
 
-#### 1i — Granular cloud and noise bed voices
+#### 1k — Granular cloud and noise bed voices
 
-- **Builds:** the granular cloud (density, grain size, pitch spread; one `AudioBufferSource` per
-  grain over a source buffer generated from the seed or rendered from another voice) and noise
-  beds (white, pink and brown noise computed into buffers from the seed, shaped by modulated
-  filters into wind, rain and surf presets), each with descriptors, macro mappings and a golden
-  genome. The sample layer waits for phase 2, which gives it a configured folder.
+- **Builds:** the granular cloud (density, grain size, pitch spread, over a source buffer
+  generated from the seed or rendered from another voice) and noise beds (white, pink and brown
+  noise computed into buffers from the seed, shaped by modulated filters into wind, rain and surf
+  presets), each with descriptors, macro mappings and a golden genome that uses a trajectory and
+  a non-neutral macro. The sample layer waits for phase 2, which gives it a configured folder.
 - **Tiers:** engine.
 - **Tests first:** a golden hash for each voice; grain count over a duration matches the seed
   exactly and the density on average; no grain starts or ends with a step (each has a window);
   noise spectra slope as named (pink about −3 dB/octave, brown about −6, measured with a test
   FFT); `cost()` stays in budget at maximum density.
-- **Records:** governed by 0005, 0006, 0009, 0010. Writes 0014, which caps grains per second and
-  chooses between one node per grain (scheduled in `suspend` windows if 1a found them exact) and
-  grains mixed in JS into buffers from the seed, using 1a's cost probe and the 0010 budget.
-- **Parallel:** with 1h.
+- **Records:** governed by 0003, 0005, 0006, 0009, 0010. Writes 0014, which caps grains per
+  second and chooses between one `AudioBufferSource` per grain (scheduled in `suspend` windows if
+  1a found them exact) and grains mixed in JS into buffers from the seed, using 1a's probes and
+  the 0010 budget.
+- **Parallel:** with 1j.
 
-#### 1j — Export pipeline and sidecar JSON
+#### 1l — Export pipeline and sidecar JSON
 
 - **Builds:** `exportRender(genome, {seed, duration, offset, outDir})` in `src/server`: create
   the `OfflineAudioContext`, render, normalize, write WAV and FLAC, and write the sidecar JSON
   (normalized genome, seed, duration, offset, engine version, schema version, sample rate,
-  node-web-audio-api version, loudness target and measured values, `genomeHash`, and the SHA-256
-  of the interleaved 24-bit PCM as written, after normalization, the same bytes 0009 hashes).
-  It throws if any rendered sample is not finite.
-  `rerender(sidecarPath, outDir)` that fails if the new hash differs, naming both engine versions
-  when they don't match.
+  node-web-audio-api and Node versions, loudness target and measured values, `genomeHash`, and
+  the SHA-256 of the interleaved 24-bit PCM as written, after normalization, the same bytes 0009
+  hashes). It throws if any rendered sample is not finite. `rerender(sidecarPath, outDir)` that
+  fails if the new hash differs, naming both engine versions when they don't match.
 - **Tiers:** server.
 - **Tests first:** an export of a 3 s golden genome writes three files whose JSON names the
   others; the JSON's hash matches the WAV's samples; `rerender` reproduces it; a sidecar with an
-  older engine version fails with a message naming both versions; output paths are inside
-  `outDir` and the test roots `outDir` in a temp folder.
+  older engine version fails with a message naming both versions; a render containing NaN
+  throws; output paths are inside `outDir` and the test roots `outDir` in a temp folder.
 - **Records:** governed by 0009, 0011, 0012. Writes 0015: the sidecar's fields and file naming.
   Stems wait for phase 6.
-- **Parallel:** none. It joins 1e–1i.
+- **Parallel:** none. It joins 1f–1k.
 
-#### 1k — CLI, example genome and bench
+#### 1m — CLI, example genome and bench
 
 - **Builds:** `./scripts/render` and its CLI module, `./scripts/bench` (speed and peak memory), a
-  manual loudness-oracle
-  script that compares our meter with ffmpeg's on an export, and `src/engine/genomes/example.json`:
-  a few minutes of drone, pad, noise bed and sparse bells in D dorian at −20 LUFS. The CLI module
-  joins `knip.json`'s entries.
+  manual loudness-oracle script that compares our meter with ffmpeg's on an export, and
+  `src/engine/genomes/example.json`: a few minutes of drone, pad, noise bed and sparse bells in
+  D dorian at −20 LUFS. The CLI module joins `knip.json`'s entries.
 - **Tiers:** server; scripts/.
 - **Tests first:** the CLI's argument parser rejects a missing `--out`, a non-numeric seed and an
   unknown flag, each with a message; a CLI run on a 3 s golden genome into a temp folder writes
@@ -311,7 +337,9 @@ their numbers are written in Result; the pending owner checks below are logged.
 **Acceptance, as measurable checks:**
 
 1. Over an owner-started evaluation of at least 48 genomes across at least 3 vibes, at least 90%
-   validate after at most one repair round. The script reports the rate before and after repair.
+   validate after at most one repair round. The script runs through the server's omlx queue and
+   reports the rate before and after repair, per vibe, with a 95% Wilson interval (about ±8
+   points at 48), and counts truncated responses as their own reject reason.
 2. Every constraint kind in the spec has a linter rule with a passing and a failing fixture.
 3. The candidate grid plays from Safari on mbp2015 (pending owner check).
 4. Thumbs, A/B choices (ties included) and notes are stored, and read back after a server
@@ -326,14 +354,19 @@ the queue, with tests using a fake.
   field-recording folder; tests and agent runs root everything in a temp folder.
 - **Store** — `node:sqlite` in WAL with migrations; `vibes`, `genomes`, `renders`, `ratings`,
   `sketches` as the spec lists them, append-only for the irreplaceable tables, plus `sessions`,
-  `generations` and `vibe_revisions` tables. What later phases train and evaluate on has to be captured from the first
-  session, because it can't be recovered afterwards:
+  `generations`, `vibe_revisions` and `rated_audio` tables. Irreplaceable rows are marked removed
+  with `removedAt` and `removedReason`, never deleted, and a documented backup command copies the
+  database with `VACUUM INTO`, since copying a WAL database's file alone can miss writes. What
+  later phases train and evaluate on has to be captured from the first session, because it
+  can't be recovered afterwards:
   - **generations** (irreplaceable): every LLM call's exact prompt, the ids of the examples
-    retrieved into it, model id, sampling parameters, raw response, repair round, latency and
+    retrieved into it, model id, sampling parameters, raw response, `finish_reason` (so a
+    response cut off by `max_tokens` is told apart from invalid JSON), repair round, latency and
     token counts, and a `requestGroup` shared by the candidates of one request. SFT and DPO
     (phase 8) need the exact prompt each completion came from, and DPO pairs are strongest when
     both sides share one.
-  - **genomes**: `genomeHash` (0005) unique per vibe, source, parent ids, the locks in force, and
+  - **genomes**: `genomeHash` (0005) unique per vibe, one row however often it is regenerated,
+    with generations and ratings pointing at it many to one; source, parent ids, the locks in force, and
     the operator and its parameters for mutations. Candidates the linter rejected are stored too,
     with the reasons: they are negative examples and the denominator of the valid rate.
   - **ratings** name what was heard by genome id, seed, excerpt offset and duration, and engine
@@ -343,8 +376,9 @@ the queue, with tests using a fake.
     much of each excerpt was played. Pairs shown and skipped are stored as skips. Bradley–Terry
     needs position-bias correction, and evaluating a reranker needs to know what was shown and
     why.
-  - **rated audio** is kept: every excerpt the owner rated is stored as FLAC (about 4 MB) under
-    the app-data root, as irreplaceable data. After an engine bump the current engine can't
+  - **rated_audio** (irreplaceable): every excerpt the owner rated is stored as FLAC (about
+    4 MB) under the app-data root, with a row holding its path, the SHA-256 of its PCM and the
+    gain applied. A store check fails loudly when a rated file is missing or its hash differs. After an engine bump the current engine can't
     re-render it (0009), and without the file every feature and CLAP embedding of a rated
     excerpt would be lost when the extractor changes. Ratings also store the gain normalization
     applied to what was heard.
@@ -372,16 +406,18 @@ the queue, with tests using a fake.
 - **Prompt, parse and repair** — the prompt built from brief, constraints, `schemaText()`, notes
   and locks; examples retrieved by rating and recency until CLAP arrives in phase 4, with the
   retrieval method's name logged in `generations` so the two policies stay apart in the data; JSON extraction; one repair round fed the validator's errors.
-- **Excerpt renders and audio serving** — 20–30 s excerpts through 1j's functions, at the offset
-  rule from 0007, each with a first feature set (integrated and short-term loudness, true peak,
+- **Excerpt renders and audio serving** — 20–30 s excerpts through 1l's functions, at
+  `excerptOffset` (0007), normalized to the vibe's loudness target so an A/B choice isn't won by
+  the louder side, each with a first feature set (integrated and short-term loudness, true peak,
   spectral centroid, onset rate) as pure functions in `src/domain`, so the first sessions'
   ratings already have features. Excerpts are served as WAV with HTTP range requests, which
   Safari needs to play `<audio>`; 30 s is about 8.6 MB on the LAN, and WAV avoids a lossy
   encoder and a new tool.
 - **Session UI and ratings** — vibe page, candidate grid, thumbs, A/B and notes, keyboard first,
   checked in Safari 15. A/B sides are randomized from a logged seed.
-- **Evaluation script** — the owner-started run behind acceptance 1, with `randomGenome` as a
-  fake-LLM baseline for the pipeline tests.
+- **Evaluation script** — the owner-started run behind acceptance 1, sent through the server's
+  queue like any other generation, with `randomGenome` as a fake-LLM baseline for the pipeline
+  tests.
 - **Sample layer** — the field-recording voice, reading the configured folder.
 
 **Result:**
@@ -417,7 +453,9 @@ GPU, and its packages need the owner's approval. The sidecar is one long-lived c
 started through `uv run`, speaking line-delimited JSON over stdio with the protocol defined once
 in a file both sides load; audio and arrays pass as file paths; Node owns every SQLite write;
 optimizers use ask/tell, with Python returning points in [0, 1]^d that Node decodes, lints,
-renders and embeds. Tests use a fake sidecar on the Node side and a fake server in pytest;
+renders and embeds. Each request has a timeout; a crashed or hung sidecar is restarted and the
+failed request reported to the owner, never retried silently, and a session stop cancels what
+is in flight. Tests use a fake sidecar on the Node side and a fake server in pytest;
 active learning picks the pairs with the widest uncertainty; a "what you like" summary is
 generated from the model. **Gate:** `./scripts/check` including the sidecar's pytest; held-out
 agreement in Result. **Result:**
@@ -426,7 +464,7 @@ agreement in Result. **Result:**
 
 **Goal:** search inside the vibe's constraints, not only through the LLM. **Acceptance:**
 preference-based BO or CMA-ES over the macros and selected raw parameters never moves a locked
-value and never proposes a genome the linter rejects; a MAP-Elites archive on two or three
+value and never renders or presents a genome the linter rejects; a MAP-Elites archive on two or three
 owner-chosen axes fills its cells and the map view plays a cell on click; breeding makes children
 from two sketches by LLM crossover plus mutation; CLAP text directions become sliders and
 reference audio becomes a target region. Optimizers propose through `fromVector` (0005), and the
@@ -469,7 +507,9 @@ Result. The datasets come from phase 2's `generations` table, DPO pairs from can
 listening, and a Wilson interval; at 40 pairs a 65% win rate is not yet distinguishable from 50%,
 so the plan states the pair count needed for the effect it hopes to see. Training checks free
 memory first and caps MLX's memory, refusing to start if it would push omlx's loaded model into
-swap. Train and evaluation sets split by vibe, and SFT uses the logged prompts verbatim. **Gate:** `./scripts/check`; the A/B result. **Result:**
+swap. Train and evaluation sets split by vibe, and SFT uses the logged prompts verbatim; a
+generation whose retrieved examples come from the other side of the split is excluded, or the
+held-out vibes leak into training through the prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
 
 ## How to run
 
@@ -510,3 +550,11 @@ swap. Train and evaluation sets split by vibe, and SFT uses the logged prompts v
   store; omlx busy detection by time to first token, one candidate per request; retrieval
   before CLAP; the sidecar interface, preference-model method, optimizer budgets, CLAP and
   `mlx-lm-lora` approvals, and training memory checks as phase 4–8 lines.
+- 2026-11-05: review round 3 (fresh context, Sonnet: 61.6k tokens, 8 tool calls, 43 s). Taken:
+  steps 1c and 1e split, so phase 1 is now 1a–1m; `excerptOffset` given a home in 1d; stems
+  tested to a tolerance with limiting after the sum; a 20-minute memory probe in 1a;
+  `randomGenome` with a cost cap; interior breakpoints kept by `fromVector` and the optimizer
+  vector defined as raw values plus macros (0005 and 0006 amended); the CPU recorded in hash
+  files (0009); `rated_audio` rows with hashes, `removedAt`, `finish_reason`, a backup command,
+  the evaluation script through the queue and its interval; sidecar timeouts and restarts;
+  phase 5 and 8 wording.

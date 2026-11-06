@@ -55,3 +55,6 @@ By the owner's choice on 2026-11-05:
 - 2026-11-05: from the second plan review. Each hash file also records the Node version, since
   V8 may change `Math.sin`, `Math.exp` and `Math.pow` results between releases and the engine
   uses them to generate impulse responses and noise. Engine bumps are tagged `engine-v<N>`.
+- 2026-11-05: from the third plan review. Hash files also record the CPU model, because the
+  library's SIMD paths may differ between Apple chips. Only mbp2021's entries count; another
+  machine's mismatch says so rather than failing as a changed render.

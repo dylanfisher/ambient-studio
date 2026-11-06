@@ -33,3 +33,10 @@ parameter's range. At 0.5 for every macro, effective values equal raw values exa
   values are stored apart, so either answer works without a migration.
 - A change to the mapping table changes renders, so it bumps the engine version
   ([0009](0009-engine-version-golden-hashes.md)).
+
+## Amendments
+
+- 2026-11-05: from the third plan review. The optimizer vector holds raw values and macro values,
+  never effective values. Where offsets push a parameter against its clamp, the effective value
+  stops changing, and optimizers see a flat region there; that is accepted as the cost of
+  keeping raw and macro values separate.
