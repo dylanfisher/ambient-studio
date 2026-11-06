@@ -34,3 +34,10 @@ but nothing in the gate or tests needs it.
 
 - About 300 lines of DSP to own, held to published test signals.
 - The ffmpeg cross-check is a manual step at the end of phase 1, listed in its gate.
+
+## Amendments
+
+- 2026-11-05: from the plan review. The K-weighting coefficients are the standard's 48 kHz values,
+  and a different sample rate throws rather than recomputing them; every render is 48 kHz. A
+  signal with no block above the absolute gate has integrated loudness `-Infinity`, and anything
+  that normalizes to a target throws on it.

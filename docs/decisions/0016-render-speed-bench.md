@@ -14,8 +14,8 @@ gate would fail whenever the machine is busy.
 By the owner's choice on 2026-11-05, `./scripts/bench` renders the example genome for 300 s at
 48 kHz stereo with seed 1: one warm-up run, then five timed runs. It prints the median and slowest
 ratio of audio time to wall time, for render alone and for render plus export (normalize, limit,
-WAV, FLAC). It runs on mbp2021 under `nice -n 10`, with omlx serving as usual, and prints the load
-average next to the numbers. The phase 1 target is a render-only median of at least 10×.
+WAV, FLAC). It also prints the peak resident memory of the render process. It runs on mbp2021 under
+`nice -n 10`, with omlx serving as usual, and prints the load average next to the numbers. The phase 1 target is a render-only median of at least 10×.
 
 The bench is not part of `./scripts/check`. The gate instead checks a static cost budget computed
 from the genome, which doesn't depend on time (step 1e). The bench is re-run at the end of every

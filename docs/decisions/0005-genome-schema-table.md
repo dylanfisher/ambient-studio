@@ -47,3 +47,20 @@ If `tsc` can't express that, the builder of step 1c records what it did instead.
   optimizer bounds together.
 - The schema text for the LLM has to stay short (omlx contexts are short), so descriptions are one
   line each and the text generator is tested for its length.
+
+## Amendments
+
+- 2026-11-05: added from the plan review, before any code.
+  - **Voice ids.** Each voice carries an `id`, a short string unique within the genome, not an
+    array index. Seed streams, locks and crossover refer to it. The engine connects voices to the
+    bus sorted by id, so reordering the list never changes the float summing order or the sound.
+  - **Genome hash.** `genomeHash(genome)` is SHA-256 over canonical JSON of the normalized genome
+    (sorted keys, numbers in shortest round-trip form). Stores and sidecars use it to tell when two
+    sources produced the same genome, so a preference model never sees one genome as two items.
+  - **Vector view.** Every descriptor has `encode(value) → [0, 1]` along its scale and the inverse
+    `decode`. `toVector(genome, paths)` and `fromVector(genome, paths, vector)` give optimizers and
+    preference models a fixed-length view. A trajectory is encoded as its start value, end value
+    and curve; trajectories with more breakpoints are searched only through those three numbers.
+  - **Adding a parameter.** A new parameter always has a default that reproduces the sound from
+    before it existed. Adding one bumps `schemaVersion` with a migration that writes the default
+    into stored genomes, so old genomes re-render the same.

@@ -17,8 +17,9 @@ By the owner's choice on 2026-11-05:
 - A golden test renders a fixed set of short genomes (2–4 s each, at least one per voice type
   plus the master bus) and hashes each output with SHA-256 after quantizing to interleaved 24-bit
   PCM, the bits an export would hold.
-- The expected hashes live in a committed JSON file keyed by engine version, each entry also
-  naming the platform (`darwin-arm64`) and the node-web-audio-api version
+- The expected hashes live in committed files, one per golden genome per engine version
+  (`test/fixtures/golden/v<N>/<name>.json`), so two branches that add voices never edit the same
+  file. Each also names the platform (`darwin-arm64`) and the node-web-audio-api version
   ([0002](0002-pin-node-web-audio-api.md)). A mismatch for the current version fails the test and
   says to bump the version.
 - A script writes the entry for a version that has none and refuses to overwrite an existing
@@ -34,7 +35,17 @@ By the owner's choice on 2026-11-05:
 
 ## Consequences
 
-- Any change to a voice, the master bus, the macro mapping or the PRNG shows up as a failing hash.
+- Any change to a voice, the master bus, the macro mapping, the PRNG, or the normalizer and
+  limiter (which run in `src/domain` but decide the exported samples) shows up as a failing hash.
   Refactors that keep the samples identical pass untouched.
 - An old engine's code isn't kept in the tree. Re-rendering a sketch made with an older version
   means checking out the commit that bumped past it; the UI warns instead (phase 2 onward).
+
+## Amendments
+
+- 2026-11-05: from the plan review, before any code. One hash file per golden genome per version
+  instead of one shared file. The normalizer and limiter are part of what the version covers.
+  Each hash file also stores coarse summaries of the render (peak, RMS, energy in 8 bands) that
+  the failure message prints and that never pass or fail anything, so a failing hash shows which
+  part of the sound moved. Golden genomes for the voices use a trajectory and a non-neutral macro,
+  so a change to `effectiveParams` is caught.
