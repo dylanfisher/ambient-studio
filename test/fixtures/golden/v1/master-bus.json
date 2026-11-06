@@ -1,0 +1,37 @@
+{
+  "genome": "master-bus",
+  "engineVersion": 1,
+  "hashes": {
+    "raw": {
+      "darwin-arm64": {
+        "cpu": "Apple M1 Max",
+        "node": "v26.12.1",
+        "nodeWebAudioApi": "2.2.0",
+        "renders": {
+          "start": {
+            "seed": 1,
+            "offset": 0,
+            "duration": 2,
+            "sha256": "03933a2ea165a688bf05f92596bb40ee88eb6e67467fa6826206f3ecfc4c8b3f",
+            "summary": {
+              "peak": -9.06,
+              "rms": -20.25,
+              "bands": [-32.57, -39.02, -21.04, -31.93, -38.15, -119.16, -142.33, -153.91]
+            }
+          },
+          "end": {
+            "seed": 1,
+            "offset": 58,
+            "duration": 2,
+            "sha256": "96d0e5bd287cc60c9c91364fcb95cd34a9a889901956232d349560691edc6f10",
+            "summary": {
+              "peak": -8.04,
+              "rms": -20.69,
+              "bands": [-27.93, -36.16, -22.25, -31.69, -37.49, -134.47, -151.11, -159.68]
+            }
+          }
+        }
+      }
+    }
+  }
+}
