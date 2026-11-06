@@ -33,7 +33,8 @@ bit for bit.
 
 ## Amendments
 
-- 2026-11-06: from step 1i. Float maps to 24-bit as `Math.round(x * 2^23)`, clipped to
+- 2026-11-06: from step 1i (provisional, owner to confirm). Float maps to 24-bit as
+  `Math.round(x * 2^23)`, clipped to
   −8388608…8388607: −1.0 is −8388608, +1.0 clips to 8388607, and a value already on the 24-bit
   grid round-trips exactly. A tie rounds toward +infinity. NaN throws, naming the channel and
   frame; ±Infinity clips. One function, `encodePcm24` in `src/server`, owns this, and the golden
@@ -46,7 +47,8 @@ bit for bit.
   its message on stderr. A missing binary rejects with Node's spawn error. flac refuses to
   overwrite an existing output file, and that failure is left loud. On mbp2021, 300 s of stereo
   encoded to PCM in 0.16 s, wrote as WAV in 0.01 s and as FLAC in 1.3 s.
-- 2026-11-06: from step 1l. `writeWav` opens its file exclusively and throws `EEXIST` rather than
+- 2026-11-06: from step 1l (provisional, owner to confirm).
+  `writeWav` opens its file exclusively and throws `EEXIST` rather than
   overwrite, matching flac, so an export never replaces an earlier one
   ([0015](0015-export-sidecar-json.md)).
 - 2026-11-06: **a zero exit from flac is a success even if the pipe closed first** (step 1i,

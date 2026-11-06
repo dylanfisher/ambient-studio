@@ -79,7 +79,24 @@ their numbers are written in Result; the pending owner checks below are logged.
   should sound about equally loud. Listen on headphones or a full-range speaker: most of the
   energy is under 100 Hz, which laptop speakers don't reproduce.
 
-**Result:**
+**Result:** met on 2026-11-06 at `1cfb0c0` (engine version 2, tagged `engine-v2`), on mbp2021.
+
+1. `./scripts/render src/engine/genomes/example.json --seed 1 --duration 300 --out <dir>` writes
+   a 2-channel, 48 kHz, 24-bit WAV and FLAC (300.000 s by `afinfo`) and the sidecar JSON, in 16 s.
+2. `./scripts/bench`, 300 s: render-only median 23.0x (slowest 23.0x), render and export 19.1x
+   (18.8x), peak RSS 567 and 600 MiB. 720 s: 22.9x and 18.9x, peak RSS 866 and 1,193 MiB; render
+   RSS projected to 900 s is 994 MiB, under 0010's 1,536 MiB ceiling. Cost 320.4 of 560.
+3. Our meter: −16.00 LUFS against the −16 target, true peak −2.38 dBTP (gain −1.43 dB).
+4. ffmpeg `ebur128`: −16.0 LUFS and −2.4 dBTP, differences 0.00 LU and 0.02 dB.
+5. `./scripts/render --from` reproduces PCM SHA-256 `8e2309d3…`; the WAV is byte-identical. Two
+   300 s Colundi renders in separate runs gave the same hash (`70a99e56…`).
+6. `flac -d` of the FLAC hashes `8e2309d3…`, the same as the WAV's data chunk.
+7. Golden hashes cover all five voices and the master bus, raw and normalized, for every genome
+   in `src/engine/genomes/`, and pass.
+
+Also: `colundi.json` exports at −16.00 LUFS and −4.15 dBTP (ffmpeg −16.0, −4.2). The 200-seed
+sweep rendered 2 s of every `randomGenome` with no non-finite sample (highest peak 0.51); 18 were
+silent, all sparse bell or granular genomes whose thinning fired nothing in 2 s.
 
 ### Steps
 
@@ -881,3 +898,39 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   need about 3.4 GB at the densest bell setting over 900 s. A determinism fix is in progress.
   Colundi bell partials come from the genome's scale (`core18`), not all 128 values, since the
   schema has one scale per genome.
+- 2026-11-06: render determinism fixed in ec9a5c6, merged as 9b3d135 (Opus: 183k tokens, 86 tool
+  calls, 24.4 min; reviewer Sonnet: 86k tokens, 28 tool calls, 5.7 min, PASS). Setup nodes are held
+  for the render, bell notes go through 8 fixed slot gains, and pad notes share long-lived envelope
+  gains, so no node ever sums three inputs whose order the library's id reuse can change (rule in
+  0010). A GC-stress harness found 0 differing samples across the example, Colundi, 10 random and
+  densest-setting genomes, against 2.4–2.8 million before. Bell, pad, example and Colundi hashes
+  moved: ENGINE_VERSION 2, v2 goldens written, v1 kept, tagged `engine-v2`.
+- 2026-11-06: three faults only the full gate's load showed, each fixed: `writeFlac` turned a
+  successful flac exit into "Premature close" when flac closed its input first (3295aeb, also hit
+  real exports); render tests near Vitest's 5 s default (one 30 s suite timeout, fcf0bd0); and the
+  suspend race beating three back-to-back retries (1cfb0c0: six attempts with a growing wait of
+  10 ms to 2 s before rendering starts; a stress harness of 384 renders failed none, against 2 of
+  256 before). Four gates in a row passed after.
+- 2026-11-06: phase 1 retrospective (orchestrator rule 11).
+
+  | Work | Build | After the build | Review |
+  |---|---|---|---|
+  | 1j | 309k, 132 calls, 33.3 min | fix 2.7 min | 100k, 7.0 min, PASS |
+  | 1k | 303k, 154 calls, 37.3 min | rebase 3.7, fix 3.3 min | 85k, 3.9 min, PASS |
+  | 1l | 150k, 66 calls, 11.9 min | rebase 15.7, fix 3.5 min | 63k FAIL, then 48k PASS |
+  | 1m | 189k, 100 calls, 27.2 min | rebase 3.0 min | read by the orchestrator |
+  | determinism | 183k, 86 calls, 24.4 min | — | 86k, 5.7 min, PASS |
+  | gate faults | 45k + 51k + 80k, 24.4 min | — | — |
+
+  Where it went: the two voice steps run side by side were the most expensive of the phase, and
+  each built its own `MACRO` export, `highestValue` and excerpt helpers, because their briefs
+  didn't say which one owned shared helpers (orchestrator rule 4, not applied). The largest bug of
+  the phase, GC-dependent summing order, passed every review and every 2–4 s golden and was found
+  only by acceptance check 5 at 300 s; a gated test now forces collection mid-render. Load-only
+  faults cost four extra rounds; each showed first in a gate run while a builder was also working.
+  Reviews paid for themselves: 1l's found a cleanup that could delete another process's file, and
+  1f's led to three render bugs. Changes for phase 2: parallel briefs name an owner for every
+  helper both steps could need; a step that adds a render path runs a long-render determinism
+  check, not only short goldens; the orchestrator runs merge gates when no builder is running, or
+  runs them twice. The gate's tools still skip `tmp/`, `.claude/worktrees/`, `node_modules/` and
+  `.venv/`.

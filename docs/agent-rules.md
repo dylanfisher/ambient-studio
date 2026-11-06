@@ -72,7 +72,8 @@ and write down why when a rule comes from something that went wrong.
 3. Before a brief, find the decision records that govern the step (docs/map.md) and quote them.
    Don't describe a decided approach from memory.
 4. When two briefs touch the same idea, name in each what the other adds, and tell the later one
-   to build on it. Two builders working blind each define it.
+   to build on it. Two builders working blind each define it. Name an owner for every helper both could need (shared constants,
+   test helpers); in phase 1 two voice builders each wrote the same three.
 5. Fixes for a FAIL go back to a builder, and a fresh reviewer checks them. After a second FAIL
    with the same cause, don't send a third patch round: narrow the scope, change the design, or
    ask the owner.

@@ -41,7 +41,7 @@ but nothing in the gate or tests needs it.
   and a different sample rate throws rather than recomputing them; every render is 48 kHz. A
   signal with no block above the absolute gate has integrated loudness `-Infinity`, and anything
   that normalizes to a target throws on it.
-- 2026-11-06: from step 1e, choices the builder made.
+- 2026-11-06: from step 1e, choices the builder made (provisional, owner to confirm).
   - **Channels.** The loudness functions take one or two channels and throw on more, since
     weights beyond stereo depend on speaker position, which an array of channels doesn't carry.
     Mono is one channel at weight 1.0, so it reads 3.01 dB below the same signal on both
