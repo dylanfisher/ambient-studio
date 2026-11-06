@@ -51,8 +51,8 @@ creates nothing; the store and job runner make their own folders.
 `~/.config/ambient-studio/config.json`. Its `dataRoot` is
 `~/Library/Application Support/Ambient Studio/`, `fieldRecordings` is `null`, omlx is
 `http://127.0.0.1:8000` with a placeholder model id the owner replaces, and the server listens on
-`0.0.0.0:4180` so mbp2015 and mbp2026 reach it over the LAN. Its queue numbers are placeholders:
-step 2d sets and justifies the real ones in its record, and edits the example to match.
+`0.0.0.0:4180` so mbp2015 and mbp2026 reach it over the LAN. Its queue numbers are set and
+justified in [0022](0022-omlx-queue.md).
 `sendResponseFormat` is `false` until the evaluation run (2l) shows whether omlx accepts it.
 
 **Test guard.** While Vitest runs, `loadConfig` refuses a config file, `dataRoot` or
@@ -96,3 +96,7 @@ only: `scripts/` and `test/` are tools, and a test stubs variables with `vi.stub
   reads the environment or the file itself.
 - The guard checks paths as written, not where symlinks lead.
 - The README tells the owner to copy `example.json`.
+
+## Amendments
+
+- 2026-11-06: the example's queue numbers, placeholders until now, are set by 0022 (step 2d).

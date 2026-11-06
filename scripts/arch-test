@@ -30,7 +30,18 @@ import { lint } from "../domain/lint.js";
 import { config } from "../config/config.js";
 const later = await import("../engine/voice.js");
 JS
-write "$good/src/web/app.js" <<<'export { lint } from "../domain/lint.js";'
+write "$good/src/server/omlx-queue.js" <<'JS'
+import { request } from "node:http";
+export const ask = () => fetch("http://127.0.0.1:8000/v1/chat/completions");
+JS
+write "$good/src/server/listen.js" <<'JS'
+import http, { createServer } from "node:http";
+export const servers = [http.createServer(), createServer()];
+JS
+write "$good/src/web/app.js" <<'JS'
+export { lint } from "../domain/lint.js";
+export const vibes = () => fetch("/api/vibes");
+JS
 write "$good/src/server/clock.js" <<<'export const now = () => Date.now() + Math.random();'
 
 if ! out=$(node scripts/arch.js --root "$good" 2>&1); then
@@ -60,6 +71,17 @@ write "$bad/src/server/home.js" <<<'export const home = process["env"].HOME;'
 write "$bad/src/server/destructured.js" <<<'const { env } = process;'
 write "$bad/src/server/optional.js" <<<'export const home = process?.env.HOME;'
 write "$bad/src/server/env.js" <<<'import { argv, env } from "node:process";'
+write "$bad/src/server/client.js" <<'JS'
+const url = "http://127.0.0.1:8000/v1/models";
+export const models = await fetch(url);
+JS
+write "$bad/src/server/get.js" <<<'import { get } from "node:https";'
+write "$bad/src/server/send.js" <<<'import http, { request as send } from "node:http";'
+write "$bad/src/server/raw.js" <<'JS'
+import * as http from "node:http";
+export const ask = () => http.request("http://127.0.0.1:8000/v1/models");
+JS
+write "$bad/src/config/probe.js" <<<'export const probe = () => globalThis.fetch("http://127.0.0.1:8000");'
 
 out=$(node scripts/arch.js --root "$bad" 2>&1)
 status=$?
@@ -82,7 +104,12 @@ for want in \
   'src/server/home.js:1: reads process.env; only src/config reads the environment' \
   'src/server/destructured.js:1: reads process.env; only src/config reads the environment' \
   'src/server/optional.js:1: reads process.env; only src/config reads the environment' \
-  'src/server/env.js:1: reads process.env; only src/config reads the environment'; do
+  'src/server/env.js:1: reads process.env; only src/config reads the environment' \
+  'src/server/client.js:2: calls fetch; only src/server/omlx-queue.js sends HTTP requests (0022)' \
+  'src/server/get.js:1: imports get from node:http; only src/server/omlx-queue.js sends HTTP requests (0022)' \
+  'src/server/send.js:1: imports request from node:http; only src/server/omlx-queue.js sends HTTP requests (0022)' \
+  'src/server/raw.js:2: calls http.request; only src/server/omlx-queue.js sends HTTP requests (0022)' \
+  'src/config/probe.js:1: calls fetch; only src/server/omlx-queue.js sends HTTP requests (0022)'; do
   if ! grep -qF -- "$want" <<<"$out"; then
     printf 'arch-test: no finding\n  %s\nin:\n%s\n' "$want" "$out" >&2
     problems=$((problems + 1))

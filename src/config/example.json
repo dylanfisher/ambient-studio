@@ -4,12 +4,12 @@
     "model": "replace-with-the-model-id-omlx-serves"
   },
   "queue": {
-    "requestTimeoutMs": 120000,
-    "firstTokenThresholdMs": 15000,
+    "requestTimeoutMs": 600000,
+    "firstTokenThresholdMs": 30000,
     "minGapMs": 2000,
-    "backoffBaseMs": 2000,
-    "maxWaitMs": 120000,
-    "maxTokens": 4096,
+    "backoffBaseMs": 5000,
+    "maxWaitMs": 300000,
+    "maxTokens": 10752,
     "contextBudgetTokens": 8192,
     "sendResponseFormat": false
   },
