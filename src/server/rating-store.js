@@ -106,6 +106,17 @@ export function addRatedAudio(store, draft) {
 }
 
 /**
+ * The row for a heard identity at a target, removed or not: the table holds one per pair.
+ * @param {Store} store
+ * @param {HeardExcerpt & { target: number }} heard
+ * @returns {RatedAudio | undefined}
+ */
+export function findRatedAudio(store, { genomeId, seed, offset, duration, engineVersion, target }) {
+  const where = { genomeId, seed, offset, duration, engineVersion, target };
+  return selectRows(store, TABLE.ratedAudio, RATED_AUDIO, where, { includeRemoved: true })[0];
+}
+
+/**
  * Every rated-audio row, removed ones too, since their files are kept.
  * @param {Store} store
  * @returns {RatedAudio[]}

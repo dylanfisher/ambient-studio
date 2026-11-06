@@ -6,6 +6,9 @@ import { COST_BUDGET, cost } from "../engine/cost.js";
 import { integratedLoudness } from "./integrated-loudness.js";
 import { lintResult } from "./lint-result.js";
 
+/** The rule of a near-silence finding; the server reads it to tell why normalize threw. */
+export const NEAR_SILENCE = "nearSilence";
+
 /** A sample at or above full scale is clipping. */
 const FULL_SCALE = 1;
 /**
@@ -43,7 +46,7 @@ function nearSilence({ channels, sampleRate }) {
   return [
     {
       path: "$",
-      rule: "nearSilence",
+      rule: NEAR_SILENCE,
       message: `the render ${reads}, under ${NEAR_SILENCE_LUFS} LUFS; raise the voices' levels`,
     },
   ];

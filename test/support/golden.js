@@ -143,7 +143,7 @@ const WAV_HEADER_BYTES = 44;
  * @param {Buffer} wav
  * @returns {Float32Array[]}
  */
-function decodeWav(wav) {
+export function decodeWav(wav) {
   const channelCount = wav.readUInt16LE(22);
   const pcm = wav.subarray(WAV_HEADER_BYTES, WAV_HEADER_BYTES + wav.readUInt32LE(40));
   const frames = pcm.length / (channelCount * PCM24_BYTES);

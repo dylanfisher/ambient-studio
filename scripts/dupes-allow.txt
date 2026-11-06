@@ -14,7 +14,8 @@ literal "lowpass" | files src/engine/drone.js src/engine/noise-bed.js | the Web 
 literal "density" | files src/engine/bell.js src/engine/granular-cloud.js | each voice's own parameter: bell notes a minute, grains a second
 literal "tone" | files src/engine/noise-bed.js src/engine/pad.js | each voice's own parameter in its macro rows: the pad's harmonic tilt in dB an octave, the noise bed's filter shift in octaves
 literal "depth" | files src/engine/noise-bed.js src/engine/pad.js | the noise bed's sweep-and-swell parameter, and a description word in the pad's swell descriptor
-literal "utf8" | files src/config/config.js src/server/export-render.js src/server/omlx-queue.js src/server/render-cli.js src/server/renderer-versions.js src/server/routing.js src/server/store.js src/server/write-flac.js | the text encoding passed to a read or a stream, or a Buffer's toString
+literal "utf8" | files src/config/config.js src/server/export-render.js src/server/omlx-queue.js src/server/producer.js src/server/render-cli.js src/server/renderer-versions.js src/server/routing.js src/server/store.js src/server/write-flac.js | the text encoding passed to a read or a stream, or a Buffer's toString
+literal "EEXIST" | files src/server/capture-rated-audio.js src/server/export-render.js | Node's error code for a name `link` found taken, checked where each links its own files
 literal "boolean" | files src/config/config.js src/engine/descriptor.js src/server/render-cli.js | the JavaScript typeof tag in config.js and descriptor.js, the option type node:util parseArgs takes in render-cli
 literal "duration" | files src/domain/constraint-schema.js src/engine/excerpt-offset.js src/server/render-cli.js | a genome parameter named in an excerpt error and as a range constraint's kind, and the CLI flag named in a usage error
 literal "seed" | files src/engine/prng.js src/server/render-cli.js | the PRNG key named in its range error, and the CLI flag named in a usage error
