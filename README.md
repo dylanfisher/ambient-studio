@@ -40,6 +40,6 @@ Data (the database, renders, exports) lives in `~/Library/Application Support/Am
 | `src/web/` | The studio UI, plain HTML/CSS/JS with no build step. |
 | `sidecar/` | Python: CLAP embeddings, preference models, optimizers, LoRA training. |
 | `test/` | JS tests, mirroring `src/`. |
-| `docs/` | [Code map](docs/map.md), [decisions](docs/decisions/), [writing](docs/writing.md), [agent rules](docs/agent-rules.md), [reference sources](docs/reference.md). |
+| `docs/` | [Product spec](docs/spec.md), [code map](docs/map.md), [decisions](docs/decisions/), [writing](docs/writing.md), [agent rules](docs/agent-rules.md), [reference sources](docs/reference.md). |
 
 Built mostly by AI coding agents; their instructions are in [AGENTS.md](AGENTS.md).
