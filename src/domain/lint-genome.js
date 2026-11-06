@@ -5,6 +5,7 @@
 /** @import { Constraints } from "./constraint-schema.js" */
 /** @import { Finding, LintResult } from "./lint-result.js" */
 import { drone } from "../engine/drone.js";
+import { excerptRoom } from "../engine/excerpt-offset.js";
 import { GENOME_KEY, GLOBAL_PARAMS, VOICE_PARAMS } from "../engine/genome-schema.js";
 import { highestValue } from "../engine/highest-value.js";
 import { isObject } from "../engine/is-object.js";
@@ -61,8 +62,8 @@ function loneStaticDrone(genome) {
 
 /** @param {Genome} genome @returns {Finding[]} */
 function excerptLength(genome) {
+  if (excerptRoom(genome, EXCERPT_SECONDS) >= 0) return [];
   const between = genome.duration - genome.fadeIn - genome.fadeOut;
-  if (between >= EXCERPT_SECONDS) return [];
   return [
     {
       path: "$.duration",

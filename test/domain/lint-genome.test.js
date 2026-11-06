@@ -3,6 +3,8 @@ import { CONSTRAINT_KINDS } from "../../src/domain/constraint-schema.js";
 import { EXCERPT_SECONDS } from "../../src/domain/excerpt-seconds.js";
 import { lintGenome } from "../../src/domain/lint-genome.js";
 import { cost } from "../../src/engine/cost.js";
+import { excerptOffset } from "../../src/engine/excerpt-offset.js";
+import { draw } from "../../src/engine/prng.js";
 import { requireGenome } from "../../src/engine/validate-genome.js";
 
 const voices = [
@@ -315,6 +317,41 @@ describe("floors", () => {
     ]);
     const exact = genome({ ...fades, duration: 40 + EXCERPT_SECONDS });
     expect(findingsFor(exact, "excerptLength")).toEqual([]);
+  });
+
+  /** @param {() => unknown} fn */
+  const throws = (fn) => {
+    try {
+      fn();
+      return false;
+    } catch (error) {
+      if (!(error instanceof RangeError)) throw error;
+      return true;
+    }
+  };
+
+  test("passes the excerpt floor exactly when excerptOffset takes the excerpt", () => {
+    // 122.8 - 8.1 - 89.7 is 25 in one order of subtraction and 25 - 7.1e-15 in the other.
+    const edge = genome({ duration: 122.8, fadeIn: 8.1, fadeOut: 89.7 });
+    expect(throws(() => excerptOffset(edge, 1, EXCERPT_SECONDS))).toBe(
+      findingsFor(edge, "excerptLength").length > 0,
+    );
+    let tight = 0;
+    for (let i = 0; i < 4000; i++) {
+      // Whole tenths, with the duration put at, one step under or one step over the floor.
+      const fadeIn = Math.floor(draw(1, "", i, 0) * 601) / 10;
+      const fadeOut = Math.floor(draw(1, "", i, 1) * 901) / 10;
+      const step = Math.floor(draw(1, "", i, 2) * 3) - 1;
+      const exact = Math.round((fadeIn + fadeOut + EXCERPT_SECONDS) * 10) / 10;
+      const duration = Math.min(Math.max(Math.round(exact * 10 + step) / 10, 60), 900);
+      const g = genome({ duration, fadeIn, fadeOut });
+      const fails = findingsFor(g, "excerptLength").length > 0;
+      expect(fails, JSON.stringify({ duration, fadeIn, fadeOut })).toBe(
+        throws(() => excerptOffset(g, 1, EXCERPT_SECONDS)),
+      );
+      if (step === 0) tight++;
+    }
+    expect(tight).toBeGreaterThan(1000);
   });
 
   test("the base fixture passes every floor", () => {

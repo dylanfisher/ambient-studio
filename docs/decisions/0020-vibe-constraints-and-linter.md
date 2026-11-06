@@ -75,7 +75,9 @@ monotonic).
   (globals, macros or the voice) is a trajectory, and the drone's highest effective `sweep` is 0.
   The motion macro raises the sweep, so a lone drone with `sweep` 0 and `motion` above 0.5 passes.
 - `excerptLength` (at `$.duration`): `duration − fadeIn − fadeOut` is at least
-  `EXCERPT_SECONDS`.
+  `EXCERPT_SECONDS`. The test is `excerptRoom` in `src/engine/excerpt-offset.js`, the same
+  subtraction `excerptOffset` throws on (2026-11-06; a different order of subtraction passed
+  lint and threw on 122.8 s with fades of 8.1 s and 89.7 s).
 
 **`EXCERPT_SECONDS` is 25**, in `src/domain/excerpt-seconds.js`. 0007 sized the worst pre-roll
 (about 68 s) against a 25 s excerpt, and 25 s holds a 20 s pad attack or a full bell decay with
