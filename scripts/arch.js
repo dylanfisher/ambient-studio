@@ -2,7 +2,8 @@
 // Enforces the tier rules in docs/map.md. This file holds the rules; map.md describes them.
 // Fails on an import edge the table forbids, on a src/ file outside every tier, and on any
 // non-relative import from a tier the browser loads as-is: the web UI has no build step, so a
-// `node:` module or a bare package name there breaks in the browser and nowhere else.
+// `node:` module or a bare package name there breaks in the browser and nowhere else. Also fails
+// on `Math.random` or `Date.now` in the engine, which must render the same audio from a seed.
 // `--root <dir>` checks another tree instead of this repo; scripts/arch-test uses it.
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
@@ -27,6 +28,7 @@ const allowed = {
   web: ["domain", "engine"],
 };
 const browserTiers = new Set(["engine", "domain", "web"]);
+const unseeded = /\b(Math\.random|Date\.now)\b/g;
 
 const importPattern =
   /(?:^|[\s;])(?:import|export)\s(?:[^'"`;]*?\sfrom\s)?\s*["']([^"']+)["']|import\(\s*["']([^"']+)["']\s*\)/g;
@@ -51,7 +53,17 @@ for (const file of walk(src)) {
     problems.push(`${shown}: not inside a tier (${Object.keys(allowed).join(", ")})`);
     continue;
   }
-  for (const match of readFileSync(file, "utf8").matchAll(importPattern)) {
+  const text = readFileSync(file, "utf8");
+  if (tier === "engine") {
+    text.split("\n").forEach((line, index) => {
+      for (const match of line.matchAll(unseeded)) {
+        problems.push(
+          `${shown}:${index + 1}: uses ${match[1]}; the engine draws only from its seeded PRNG`,
+        );
+      }
+    });
+  }
+  for (const match of text.matchAll(importPattern)) {
     const spec = match[1] ?? match[2] ?? "";
     if (!spec.startsWith(".")) {
       if (browserTiers.has(tier)) {

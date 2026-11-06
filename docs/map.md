@@ -37,7 +37,7 @@ duplicate it — do not abstract yet (principle 3).
 
 | Tier | Path | What belongs here | May import from |
 |---|---|---|---|
-| **engine** | `src/engine` | The generative engine: genome schema, voices, macros, `render()`. Written against the Web Audio API and given its `AudioContext`, so the same file runs offline in Node and live in the browser. Deterministic given a seed. | nothing |
+| **engine** | `src/engine` | The generative engine: genome schema, voices, macros, `render()`. Written against the Web Audio API and given its `AudioContext`, so the same file runs offline in Node and live in the browser. Deterministic given a seed, so no `Math.random` or `Date.now`. | nothing |
 | **domain** | `src/domain` | Pure project logic both sides need: the linter, feature math, prompt building, arrangement and album arc. No I/O. | engine |
 | **config** | `src/config` | The one module that reads the config file and environment, and throws on a missing key. | nothing |
 | **server** | `src/server` | Everything with I/O: HTTP routes, the SQLite store, the omlx queue, offline rendering, export, the sidecar client. | domain, engine, config |

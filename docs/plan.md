@@ -25,8 +25,8 @@ unneeded stays unused rather than being given to another step.
 | # | Topic | Step | State |
 |---|---|---|---|
 | 0002 | node-web-audio-api, pinned at 2.2.0 | 1a | [written](decisions/0002-pin-node-web-audio-api.md), amended by 1a |
-| 0003 | Seeded randomness: the counter-based PRNG and thinning | 1b | reserved |
-| 0004 | Pitch: tunings (relative and absolute-frequency), scales, Scala import | 1b | reserved |
+| 0003 | Seeded randomness: the counter-based PRNG and thinning | 1b | [written](decisions/0003-counter-based-prng.md) |
+| 0004 | Pitch: tunings (relative and absolute-frequency), scales, Scala import | 1b | [written](decisions/0004-tunings-and-scales.md) |
 | 0005 | Genome schema as one descriptor table | 1c | [written](decisions/0005-genome-schema-table.md) |
 | 0006 | Macros as bounded offsets | 1d | [written](decisions/0006-macros-bounded-offsets.md) |
 | 0007 | Trajectories, the render time base and excerpts | 1d | reserved |

@@ -51,17 +51,19 @@ export function $1(values) {
 JS
 }
 
-# Passes: short literals, shared import specifiers, a literal written once, and an allowlisted
-# literal in exactly the files its entry names.
+# Passes: short literals, shared import specifiers (JSDoc @import too), a literal written once,
+# and an allowlisted literal in exactly the files its entry names.
 clean="$base/clean"
 write "$clean/src/server/a.js" <<'JS'
 import { x } from "./shared.js";
+/** @import { T } from "./types.js" */
 const short = "abc";
 const encoding = "utf8";
 const once = "only.here";
 JS
 write "$clean/src/server/b.js" <<'JS'
 import { x } from "./shared.js";
+/** @import { T } from "./types.js" */
 const short = "abc";
 const encoding = "utf8";
 JS
