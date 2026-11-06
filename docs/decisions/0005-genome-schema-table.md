@@ -80,3 +80,61 @@ If `tsc` can't express that, the builder of step 1c records what it did instead.
   HTTP on the LAN. Records refer to a genome by its row id, never by its hash; the hash only
   finds duplicates. A migration that writes new defaults into stored genomes recomputes their
   hash column in the same migration, and nothing else needs to change.
+- 2026-11-06: from step 1c, as built. Each item is provisional: owner to confirm.
+  - **Shape.** A genome is flat global keys (`duration`, `tuning`, `scale`, `key`, `pulse`,
+    `bpm`, `loudness`, `ceiling`, `width`, `fadeIn`, `fadeOut`, `reverbDecay`, `reverbLevel`,
+    `delayTime`, `delayFeedback`, `delayLevel`), plus `schemaVersion` (now 1), a `macros` object
+    and a `voices` list. A missing `schemaVersion` is written as the current one; any other
+    version is an error, since migrations run before validation. Error paths are JSONPath:
+    `$.voices[0].level`.
+  - **Voices.** A voice is `{id, type, ...}`. Ids match `^[a-z][a-z0-9-]{0,15}$`, so no voice
+    takes the empty id that genome-wide draws use ([0003](0003-counter-based-prng.md)). Every
+    voice has `start` and `end` (0–900 s, defaults 0 and 900, `end` after `start`; a voice plays
+    to the end of the timeline by default), `level` (−60 to 0 dB, default −12, may be a
+    trajectory) and `detune` (0–12 cents, default 3). With an unknown `type`, only these are
+    checked, because the voice's own parameters can't be told from unknown keys.
+  - **Pitch.** Defaults are 12-tet (`DEFAULT_TUNING` in the tuning registry), `aeolian`, key 9
+    (A minor). A scale must be one of the
+    chosen tuning's own; the default scale with a tuning that lacks it is an error naming the
+    tuning's scales, not a silent switch. A descriptor may carry `when`, a condition on the other
+    values of its object: `key` exists only with a relative tuning (an error if given with an
+    absolute one, and left out of the stored genome), and is checked against that tuning's
+    degree count.
+  - **Pulse.** `pulse` is `none` (default) or `beat`; `bpm` (40–140, default 60) exists only
+    with `beat`.
+  - **Master bus.** Delay time 0.1–2 s on a log scale, default 0.75; feedback 0–0.9, default
+    0.35; level −40 to −6 dB, default −24. `fadeIn + fadeOut` must not exceed `duration`. Among
+    the parameters 1c defines, only `reverbLevel`, `delayFeedback`, `delayLevel`, the macros and
+    voice `level` may be trajectories; the rest are fixed per genome.
+  - **Macros** are named `brightness`, `density`, `motion`, `space` (depth/space), `warmth` and
+    `tension`, and share one descriptor (0–1, default 0.5, may be a trajectory).
+  - **Trajectories.** `src/engine/trajectory.js` holds a minimal shape,
+    `{"points": [[seconds, value], ...]}` with times rising and each value checked against the
+    parameter's range. Step 1d replaces the shape, its schema-text line and its check in that
+    one file under decision 0007; no stored genome holds a trajectory yet.
+  - **Vector view.** `encode` and `decode` are functions in `descriptor.js` that take a
+    descriptor, not methods on it, so descriptors stay plain frozen data. `decode` clamps to
+    the range and rounds an int.
+  - **Fixture voice.** The registry exports `registerVoice` and `unregisterVoice`. Production
+    voices are imported and listed in `voice-registry.js`. `test/support/fixture-voice.js`
+    exports the voice object only; a test file registers it in `beforeAll` and unregisters it
+    in `afterAll`, so `src/engine` never imports test code and the fixture never reaches
+    another file's registry, even with Vitest's isolation off. The schema-text length test
+    checks that the fixture is absent.
+  - **Caps.** A genome holds at most 16 voices, and a trajectory at most 64 points. A cap added
+    after genomes are stored would invalidate some of them, so they're set now: 16 is twice the
+    five phase 1 voice types with room for layering, and 64 points at the 20 s minimum gap 1d
+    draws covers a 900 s timeline with room to spare.
+  - **Types.** `tsc` expresses the derived type: `ValuesOf<table>` maps each descriptor to its
+    value type (enum values as a literal union, `boolean`, `number`, or `number | Trajectory`),
+    and a parameter with `when` becomes optional. `Genome` is built from the global, macro and
+    voice tables. Because the registry is open, `Voice` types the common parameters and allows
+    any other key; `VoiceOf<typeof drone>` types one voice's own parameters for its module.
+  - **Canonical JSON.** `canonicalGenome` validates first, so an input with omitted defaults
+    gives the same text as its normalized form, and it throws on an invalid genome. Voices sort
+    by id in UTF-16 code-unit order; other arrays keep their order.
+  - **Schema text** is one line per parameter, `name~ range unit =default description`, with
+    `~` marking a possible trajectory. Scales and the key range are listed per tuning, and
+    trajectory times and voice `start` and `end` are named as timeline seconds. The global
+    part is 1,519 characters, which leaves about 1,480 for the phase 1 voices, about 290 each
+    across five.

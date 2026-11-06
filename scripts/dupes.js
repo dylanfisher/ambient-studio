@@ -39,8 +39,8 @@ function walk(dir) {
 }
 
 // Import lines name modules, not facts, so the same specifier in two files is fine. A JSDoc
-// `@import` line is one too.
-const importLine = /^\s*(import|export\s.*\sfrom|from\s\S+\simport|\/\*\*\s*@import)\b/;
+// `@import` line is one too, and so is the `} from "…"` line that ends a wrapped import.
+const importLine = /^\s*(import|export\s.*\sfrom|\}\s*from|from\s\S+\simport|\/\*\*\s*@import)\b/;
 const literal = /(["'])((?:\\.|(?!\1)[^\\\n]){4,})\1/g;
 
 /** @type {Map<string, Map<string, number>>} literal → file → first line it appears on */
