@@ -249,8 +249,11 @@ to 2.
   - `render()` keeps every node created before rendering starts (the bus, the gates and levels,
     every node a voice's `build` makes, and the windows created at once) referenced until the
     last window is created; it wraps the context's `create…` methods to collect them. These
-    nodes then keep the lowest ids, and since none connects into an event node, the
-    depth-first sort visits them first, in the same order every run.
+    nodes then keep the lowest ids and the same ids every run. The crate's depth-first sort
+    reverses its post-order (`graph.rs`), so higher ids, the event nodes, are processed before
+    the held ones. That doesn't matter: no node has both held and event inputs, so the order
+    among held nodes is fixed by their ids and the order among event nodes never meets a held
+    one.
   - Event nodes created in windows may be summed in any order, so at most two of them may be
     nonzero into one long-lived node at any frame. The bell connects each note through one of
     eight slot gains created in `build` (`eventSlots` in `src/engine/event-slots.js`), the first
@@ -261,6 +264,11 @@ to 2.
     keeps the `(j + c) mod 3` panning. A pad note is now its oscillator alone. A granular
     window's buffer runs at most 0.5 s past its 2 s window, and noise buffers abut, so both
     already meet the rule.
+  - The rule for future voices: no node may receive event (transient) inputs together with
+    long-lived inputs, and at most two event inputs may be nonzero at once at any node. The
+    crate sums a node's inputs as `((i1 + i2) + i3)` in processing order, and floating-point
+    addition commutes for two terms only, so a third nonzero event input would make the sum
+    depend on which node got which id.
 
   Costs: the bell gains 8 (its densest 36, 552 beside the longest reverb); the pad gains its
   envelope gains (3 to 4 a group) and loses a gain a note (its densest 43.2 to 37.6, 551.6

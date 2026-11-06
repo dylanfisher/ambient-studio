@@ -54,7 +54,9 @@ const GATE_RAMP = 0.02;
  * must not create an event at or after its `to`: that event belongs to the next window, which
  * would create it again, and on the last window it lies past the render's end. It skips events
  * before the setup's `from`, which the pre-roll covers.
- * Undefined for a voice whose nodes all exist from the start.
+ * Undefined for a voice whose nodes all exist from the start. A window's event nodes follow the
+ * summing rule in decision 0010: none may feed a node that also has long-lived inputs, and at
+ * most two may be nonzero into one node at once.
  * @typedef {((from: number, to: number) => void) | undefined} VoiceWindow
  */
 
