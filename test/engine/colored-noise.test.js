@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
+import { fft } from "../../src/domain/fft.js";
 import { coloredNoise, NOISE_COLORS } from "../../src/engine/colored-noise.js";
-import { fft } from "../support/golden.js";
 
 const RATE = 48000;
 const FFT_SIZE = 4096;
