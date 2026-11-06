@@ -175,8 +175,34 @@ const swellGain = (swing, period, time) =>
   dbToGain((-swing * (1 - Math.cos((2 * Math.PI * time) / period))) / 2);
 
 /**
- * The swell gain and the panners live through the render; each chord's notes are an
- * oscillator and a gain each, from the chord's start to the end of its release (decision 0010).
+ * The groups of envelope gains a pad's chords take turns on: enough that a group is free again
+ * by the time its next chord starts, rounded up to a multiple of the pan count.
+ * @param {PadVoice} pad
+ */
+function chordGroups(pad) {
+  const overlapping = Math.ceil((pad.hold + pad.release) / pad.hold);
+  return PANS.length * Math.ceil(overlapping / PANS.length);
+}
+
+/**
+ * The note whose envelope gain note `j` shares: notes `j` and `j + PANS.length` share one when
+ * `j / PANS.length` rounds down to an even number, so a gain carries one note or two, panned
+ * the same.
+ * @param {number} j
+ */
+const sharedWith = (j) => j - PANS.length * (Math.floor(j / PANS.length) % 2);
+
+/**
+ * The envelope gains in a group: one for each note that doesn't share another's.
+ * @param {PadVoice} pad
+ */
+const gainsPerGroup = (pad) =>
+  Array.from({ length: pad.notes }, (_, j) => j).filter((j) => sharedWith(j) === j).length;
+
+/**
+ * The swell gain, the panners and the envelope gains live through the render; each chord's
+ * notes are an oscillator each, from the chord's start to the end of its release (decision
+ * 0010).
  * @param {Voice} voice
  */
 function cost(voice) {
@@ -184,9 +210,9 @@ function cost(voice) {
   const chord = eventCost({
     rate: 1 / pad.hold,
     seconds: pad.hold + pad.release,
-    nodes: 2 * pad.notes,
+    nodes: pad.notes,
   });
-  return 1 + PANS.length + chord;
+  return 1 + PANS.length + chordGroups(pad) * gainsPerGroup(pad) + chord;
 }
 
 /**
@@ -212,6 +238,20 @@ function build({ ctx, output, genome, voice, seed, from, startFrame, at, automat
   });
   const envelope = padEnvelope(pad.attack, pad.hold, pad.release);
   const length = pad.hold + pad.release;
+  // Chord c's notes play through group c % groups of envelope gains that live through the
+  // render, which carry its envelope. A group carries one chord at a time, and each gain at
+  // most two notes, whose sum doesn't depend on the order the library adds them in (see
+  // event-slots.js for why that order can change). `groups` is a multiple of the pan count, so
+  // a gain feeds the one panner every chord it carries pans its notes to.
+  const groups = chordGroups(pad);
+  const envelopeGains = Array.from({ length: groups }, (_, group) =>
+    Array.from({ length: pad.notes }, (_, j) => {
+      if (sharedWith(j) !== j) return undefined;
+      const gain = ctx.createGain();
+      gain.connect(/** @type {AudioNode} */ (panners[(j + group) % PANS.length]));
+      return gain;
+    }),
+  );
   /** @param {number} frame a timeline frame */
   const frameTime = (frame) => at(from) + (frame - startFrame) / rate;
 
@@ -230,17 +270,18 @@ function build({ ctx, output, genome, voice, seed, from, startFrame, at, automat
     const begin = Math.max(frame, startFrame);
     const elapsed = (begin - frame) / rate;
     const start = frameTime(frame);
-    notes.forEach((hz, j) => {
-      const cents = (draw(seed, voice.id, chord, SLOT.detune + j) * 2 - 1) * pad.detune;
-      const oscillator = phasedOscillator(ctx, gains, hz * centsToRatio(cents), elapsed);
-      const gain = ctx.createGain();
+    const group = /** @type {(GainNode | undefined)[]} */ (envelopeGains[chord % groups]);
+    for (const gain of group) {
+      if (!gain) continue;
       gain.gain.setValueAtTime(envelopeAt(envelope, elapsed) / notes.length, frameTime(begin));
       for (const [time, value] of envelope) {
         if (time > elapsed) gain.gain.linearRampToValueAtTime(value / notes.length, start + time);
       }
-      oscillator
-        .connect(gain)
-        .connect(/** @type {AudioNode} */ (panners[(j + chord) % PANS.length]));
+    }
+    notes.forEach((hz, j) => {
+      const cents = (draw(seed, voice.id, chord, SLOT.detune + j) * 2 - 1) * pad.detune;
+      const oscillator = phasedOscillator(ctx, gains, hz * centsToRatio(cents), elapsed);
+      oscillator.connect(/** @type {GainNode} */ (group[sharedWith(j)]));
       oscillator.start(frameTime(begin));
       oscillator.stop(start + length);
     });

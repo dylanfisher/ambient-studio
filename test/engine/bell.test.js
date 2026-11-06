@@ -138,7 +138,7 @@ describe("the bell", () => {
     },
   );
 
-  test("costs a buffer source and a gain per note at the highest density it reaches", () => {
+  test("costs its eight slot gains, and a buffer source and a gain per note at the highest density it reaches", () => {
     const genome = withBell({
       density: {
         points: [
@@ -150,7 +150,7 @@ describe("the bell", () => {
     });
     const voice = firstVoice(genome);
     expect(bell.cost(voice, genome)).toBeCloseTo(
-      eventCost({ rate: 20 / 60, seconds: 6, nodes: 2 }),
+      8 + eventCost({ rate: 20 / 60, seconds: 6, nodes: 2 }),
       9,
     );
     // The density macro at 1 moves 20 a minute up a quarter of the range's octaves.
@@ -170,11 +170,11 @@ describe("the bell", () => {
     );
     const voice = firstVoice(densest);
     expect(bell.cost(voice, densest)).toBeCloseTo(
-      eventCost({ rate: 40 / 60, seconds: 15, nodes: 2 }),
+      8 + eventCost({ rate: 40 / 60, seconds: 15, nodes: 2 }),
       9,
     );
     expect(cost(densest)).toBeLessThanOrEqual(COST_BUDGET);
-    expect(cost(densest) - masterBusCost(densest)).toBeCloseTo(2 + 28, 9);
+    expect(cost(densest) - masterBusCost(densest)).toBeCloseTo(2 + 8 + 28, 9);
   });
 
   test("the golden genome uses Colundi's core18, a trajectory and a non-neutral macro", () => {

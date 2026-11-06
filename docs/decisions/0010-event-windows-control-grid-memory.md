@@ -242,3 +242,47 @@ to 2.
   it. `SWEPT_FILTER_WEIGHT` in `cost-unit.js` (21, the node included) counts such a filter
   for both voices, which raises the drone's cost by 20 (the drone golden 73 to 93, the bus
   golden 101 to 121); renders don't change.
+- 2026-11-06: **renders don't depend on garbage collection** (step 1m, provisional: owner to
+  confirm). The library sums a node's inputs in an order that changes when V8 collects a node
+  and its id is reused ([0002](0002-pin-node-web-audio-api.md)'s amendment of this date), so
+  re-rendering a 300 s export of `example.json` changed its PCM hash. Two rules fix it:
+  - `render()` keeps every node created before rendering starts (the bus, the gates and levels,
+    every node a voice's `build` makes, and the windows created at once) referenced until the
+    last window is created; it wraps the context's `create…` methods to collect them. These
+    nodes then keep the lowest ids, and since none connects into an event node, the
+    depth-first sort visits them first, in the same order every run.
+  - Event nodes created in windows may be summed in any order, so at most two of them may be
+    nonzero into one long-lived node at any frame. The bell connects each note through one of
+    eight slot gains created in `build` (`eventSlots` in `src/engine/event-slots.js`), the first
+    free from the note's first frame; the cap keeps eight sounding at most. The pad's envelope
+    moves from a gain per note to long-lived gains in groups: chord c uses group c mod G, where
+    G is 3 × ⌈⌈(hold + release) / hold⌉ / 3⌉ (3 for every valid pad), so a group carries one
+    chord at a time, and in a group notes j and j + 3 share a gain when ⌊j / 3⌋ is even, which
+    keeps the `(j + c) mod 3` panning. A pad note is now its oscillator alone. A granular
+    window's buffer runs at most 0.5 s past its 2 s window, and noise buffers abut, so both
+    already meet the rule.
+
+  Costs: the bell gains 8 (its densest 36, 552 beside the longest reverb); the pad gains its
+  envelope gains (3 to 4 a group) and loses a gain a note (its densest 43.2 to 37.6, 551.6
+  beside the longest reverb); `example.json` costs 320.4. Renders change, so `ENGINE_VERSION`
+  is 2: the bell, Colundi, example and pad goldens moved; drone, master bus, granular cloud and
+  noise bed did not.
+
+  Checked on mbp2021 under `nice -n 10`: the test renders a genome with dense bells, a
+  seven-note pad and a drone that stops at 3 s, once keeping every node and once forcing a
+  collection at every suspend, and requires the same samples; it failed before the change
+  (peak difference 2.2e-8), failed with the slots but without keeping (1.5e-8), and a 30 s bell
+  at 40 notes a minute and 15 s ring failed with the keeping but without slots (694,686
+  samples, up to 4.5e-8). A 300 s export of `example.json` with seed 1 and its `--from`
+  re-render give the same PCM SHA-256 (`8e2309d3…`), two 300 s renders of `colundi.json` in
+  separate processes too (`70a99e56…`). The bench at 300 s: render alone 23.1x median, peak RSS
+  575 MiB; with the export 19.0x, 672 MiB. Only the nodes created before rendering are kept,
+  a few dozen, so memory doesn't grow with length.
+
+  Rejected: **releasing event nodes at window boundaries and forcing a collection there**
+  (`--expose-gc`, then waiting for N-API finalizers before `resume()`). It relies on one forced
+  collection reaching every released node and on finalizer timing, neither of which V8 or Node
+  promises; a node it missed would still be freed at a time V8 picks. Every process that renders
+  would need the flag, and the hook would do nothing in a browser. **Keeping every node for the
+  whole render**: two 300 s renders matched, but it cost about 14.4 s against 13 s, and the
+  densest bell's buffers over 900 s would need about 3.4 GB, over the 1.5 GiB ceiling.

@@ -1,5 +1,8 @@
 // Renders are short (2–6 s) to keep the gate light on a machine that also serves omlx.
 /** @import { Genome } from "../../src/engine/genome-schema.js" */
+import { setImmediate } from "node:timers/promises";
+import v8 from "node:v8";
+import vm from "node:vm";
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 import { bellNotes } from "../../src/engine/bell.js";
 import { ENGINE_VERSION } from "../../src/engine/engine-version.js";
@@ -34,6 +37,52 @@ const pair = requireGenome(
   },
   "a two-drone genome",
 );
+
+v8.setFlagsFromString("--expose-gc");
+const collectGarbage = /** @type {() => void} */ (vm.runInNewContext("gc"));
+
+/**
+ * Keeps every node created on `ctx` referenced for the life of the process, so the library
+ * frees none of them.
+ * @param {OfflineAudioContext} ctx
+ */
+function keepEveryNode(ctx) {
+  /** @type {Record<string, unknown>} */
+  const target = /** @type {any} */ (ctx);
+  for (let proto = Object.getPrototypeOf(ctx); proto; proto = Object.getPrototypeOf(proto)) {
+    for (const name of Object.getOwnPropertyNames(proto)) {
+      const create = target[name];
+      if (!name.startsWith("create") || typeof create !== "function" || Object.hasOwn(target, name))
+        continue;
+      target[name] = (/** @type {unknown[]} */ ...args) => {
+        const node = create.apply(ctx, args);
+        everyNode.push(node);
+        return node;
+      };
+    }
+  }
+}
+/** @type {unknown[]} */
+const everyNode = [];
+afterAll(() => {
+  everyNode.length = 0;
+});
+
+/**
+ * Collects garbage, and lets the finalizers that free nodes run, at every suspend of `ctx`
+ * before `render()`'s window, so every node no longer referenced is freed as early as it can be.
+ * @param {OfflineAudioContext} ctx
+ */
+function collectAtEverySuspend(ctx) {
+  const suspend = ctx.suspend.bind(ctx);
+  Object.defineProperty(ctx, "suspend", {
+    value: (/** @type {number} */ time) =>
+      suspend(time).then(async () => {
+        collectGarbage();
+        await setImmediate();
+      }),
+  });
+}
 
 describe("render", () => {
   test("gives identical samples for the same inputs, with the engine version", async () => {
@@ -231,6 +280,30 @@ describe("render", () => {
       /no voice "nope"/,
     );
   });
+
+  test("renders the same samples whether nodes are collected at once or never", async () => {
+    // The library frees a node once its JS object is collected and gives its id to the next
+    // node created, and its graph order follows ids. Dense bells, a seven-note pad whose second
+    // chord starts at 20 s, and a drone that stops at 3 s, so ids are freed and reused.
+    const genome = requireGenome(
+      {
+        ...droneGenome,
+        reverbDecay: 2,
+        macros: {},
+        voices: [
+          { ...droneGenome.voices[0], end: 3 },
+          { id: "pad", type: "pad", notes: 7, hold: 20, attack: 2, release: 30 },
+          { id: "bell", type: "bell", density: 40, decay: 5, partials: 4 },
+        ],
+      },
+      "a genome whose nodes end and are replaced",
+    );
+    const options = { seed: 1, duration: 22 };
+    const kept = await renderOffline(genome, options, keepEveryNode);
+    const collected = await renderOffline(genome, options, collectAtEverySuspend);
+    // A peak, not toEqual: diffing two million-sample arrays that differ takes minutes.
+    expect(difference(collected, kept).peak).toBe(0);
+  }, 30_000);
 
   test("20 random genomes render 2 s each with every sample finite", async () => {
     let sounding = 0;
