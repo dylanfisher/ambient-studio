@@ -1354,3 +1354,17 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   `.claude/worktrees/`, `node_modules/` and `.venv/`: arch and dupes walk `src/` and
   `sidecar/src/`, biome reads `.gitignore` (which lists all four), tsc, knip and Vitest name
   their folders, and ruff skips `.venv`.
+- 2026-11-06: 2g merged as 81255de (Opus: 148k tokens, 65 tool calls, 13.4 min, then a fix round
+  at 202k, 69 calls, 16.5 min; reviewer Sonnet: 69k tokens, 20 tool calls, 4.2 min, FAIL; fixes
+  read by the orchestrator). `startServer(config)` with a route table later steps add to, static
+  serving of `src/web`, `src/engine` and `src/domain` with only listed extensions, and
+  `GET /audio/:renderId` with single ranges per RFC 9110 (several ranges or `If-Range` get the
+  whole file). Paths are parsed raw, since `new URL()` folds `/%2e%2e/x` into `/x`; JSON bodies
+  only, 1 MiB at most. The review failed the step on a 500 that any LAN client could trigger with
+  a 300-character file name, and whose body held the server's absolute path; such names are now a
+  404, and a 500 sends only "internal error". The fix round also added a Host allowlist against DNS
+  rebinding (loopback, this machine's name and current interface addresses, else 421), and the
+  full suite found the 413 reply racing a client still sending (29 of 600 reset); the server now
+  drops the rest of the body. 827 tests. Pending owner check: the index page reads "Engine version
+  2 loaded." in Safari 17.6 on mbp2015 and on mbp2026, by LAN IP (`mbp2021.local` gets a 421, since
+  this machine's host name is `MacBookPro`).
