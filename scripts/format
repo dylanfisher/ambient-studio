@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Rewrite the sources in place to the house format, and apply the linters' safe fixes (import
+# order among them). `./scripts/check` only reports these problems; this fixes them.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+node_modules/.bin/biome check --write .
+cd sidecar
+uv run --frozen ruff format .
+uv run --frozen ruff check --fix .

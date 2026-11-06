@@ -45,8 +45,9 @@ between server and web, which talk only over HTTP. engine, domain and web are lo
 browser without a bundler, so they import only relative paths: no `node:` modules, no package
 names.
 
-`scripts/arch` enforces this table and is the only place the rules are written as code; it runs as
-the `arch` step of `./scripts/check`. Change the table and the script together.
+`scripts/arch.js` enforces this table and is the only place the rules are written as code; it runs
+as the `arch` step of `./scripts/check`. Change the table and the script together, and plant the
+new rule in `scripts/arch-test`.
 
 ## Naming
 

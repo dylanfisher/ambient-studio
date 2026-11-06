@@ -21,6 +21,7 @@ Instructions for AI coding agents working in this repo. Humans: see [README.md](
 | Run locally | `./scripts/dev` |
 | Run tests | `./scripts/test` |
 | Run the tests for what you changed | `./scripts/test --changed` (add `--low` while omlx is serving) |
+| Fix formatting | `./scripts/format` |
 | **Full gate** | `./scripts/check` |
 
 `./scripts/check` is the gate — see Definition of done. Iterate with `./scripts/test --changed`; run `check` once, at the end. Work split across subagents follows [docs/agent-rules.md](docs/agent-rules.md).

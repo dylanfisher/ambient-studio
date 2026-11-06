@@ -21,9 +21,9 @@ apply.
 - **Vitest** for JS tests, for its `--changed` and output; **Biome** to format and lint.
 - **A uv-managed Python 3.12 sidecar** in `sidecar/`, with ruff, strict pyright and pytest. It is
   a separate process the server calls; nothing imports it.
-- **Tiers** `engine → domain → server | web`, plus `config`, enforced by `scripts/arch` with no
+- **Tiers** `engine → domain → server | web`, plus `config`, enforced by `scripts/arch.js` with no
   dependency. Browser tiers import only relative paths.
-- **Single-source checks:** jscpd plus a repeated-literal scan (`scripts/dupes`), and knip for
+- **Single-source checks:** jscpd plus a repeated-literal scan (`scripts/dupes.js`), and knip for
   unused exports.
 
 Ported from app-conventions (`guide/`): settings in `~/.config/<app>/config.json` read by one
@@ -57,3 +57,11 @@ persistence guide's own stated exception).
 - The gate needs both pnpm and uv. `./scripts/setup` checks for both.
 - Python tooling runs through `uv run --frozen` inside `sidecar/`, so the lockfile is the only
   source of Python versions.
+
+## Amendments
+
+- 2026-11-05: the checkers are `scripts/arch.js` and `scripts/dupes.js`, so tsc and Biome check
+  them like the rest of the JS; both tools skip files without an extension. Each has a
+  self-test in the gate (`scripts/arch-test`, `scripts/dupes-test`) that plants every kind of
+  finding, as music-player's ADRs 0024 and 0030 do. The literal scan reads its exceptions from
+  `scripts/dupes-allow.txt`, where each entry names its exact files and a reason.

@@ -14,5 +14,5 @@
     "exactOptionalPropertyTypes": true,
     "skipLibCheck": true
   },
-  "include": ["src", "test", "*.config.js"]
+  "include": ["src", "test", "scripts/*.js", "*.config.js"]
 }

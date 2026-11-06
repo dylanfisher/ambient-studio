@@ -3,10 +3,19 @@
 // Fails on an import edge the table forbids, on a src/ file outside every tier, and on any
 // non-relative import from a tier the browser loads as-is: the web UI has no build step, so a
 // `node:` module or a bare package name there breaks in the browser and nowhere else.
+// `--root <dir>` checks another tree instead of this repo; scripts/arch-test uses it.
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 
-const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
+const rootArg = process.argv.indexOf("--root");
+const rootValue = rootArg === -1 ? undefined : process.argv[rootArg + 1];
+if (rootArg !== -1 && !rootValue) {
+  console.error("arch: --root needs a directory");
+  process.exit(2);
+}
+const root = rootValue
+  ? resolve(rootValue)
+  : resolve(dirname(new URL(import.meta.url).pathname), "..");
 const src = join(root, "src");
 
 /** @type {Record<string, string[]>} tier → tiers it may import from */

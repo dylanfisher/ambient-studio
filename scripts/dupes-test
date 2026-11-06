@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+# Runs scripts/dupes.js on fixture trees and checks what it reports: a clean tree it must pass,
+# one with each kind of repeated literal and bad allowlist entry planted once, and one with a
+# copied block. A checker that has never been seen failing passes an empty tree just as happily
+# as a clean one.
+set -uo pipefail
+cd "$(dirname "$0")/.."
+
+base=$(mktemp -d)
+trap 'rm -rf "$base"' EXIT
+problems=0
+output=""
+
+# write <path> — the file's text comes from standard input.
+write() { mkdir -p "$(dirname "$1")"; cat > "$1"; }
+
+# expect <tree> <exit status> <line>... — runs the script on <tree>, then checks the status and
+# that each <line> is a whole line of its output.
+expect() {
+  local tree="$1" status="$2"; shift 2
+  local actual
+  output=$(node scripts/dupes.js --root "$tree" 2>&1)
+  actual=$?
+  if [ "$actual" != "$status" ]; then
+    printf 'dupes-test: %s exited %s, expected %s:\n%s\n' "$tree" "$actual" "$status" "$output" >&2
+    problems=$((problems + 1))
+  fi
+  for line in "$@"; do
+    if ! grep -qxF -- "$line" <<<"$output"; then
+      printf 'dupes-test: %s is missing the line\n  %s\nin:\n%s\n' "$tree" "$line" "$output" >&2
+      problems=$((problems + 1))
+    fi
+  done
+}
+
+# A block of 12 lines with no literals in it; each copy renames the function.
+block() {
+  cat <<JS
+export function $1(values) {
+  let total = 0;
+  for (const value of values) {
+    if (value > 0) {
+      total += value * 2;
+    }
+  }
+  if (total > 100) {
+    total -= 100;
+  }
+  return Math.round(total / 3);
+}
+JS
+}
+
+# Passes: short literals, shared import specifiers, a literal written once, and an allowlisted
+# literal in exactly the files its entry names.
+clean="$base/clean"
+write "$clean/src/server/a.js" <<'JS'
+import { x } from "./shared.js";
+const short = "abc";
+const encoding = "utf8";
+const once = "only.here";
+JS
+write "$clean/src/server/b.js" <<'JS'
+import { x } from "./shared.js";
+const short = "abc";
+const encoding = "utf8";
+JS
+write "$clean/sidecar/src/pkg/c.py" <<<'short = "abc"'
+write "$clean/scripts/dupes-allow.txt" <<'TXT'
+# A comment line.
+literal "utf8" | files src/server/b.js src/server/a.js | the file encoding, not a shared fact
+TXT
+expect "$clean" 0 "no copied blocks or repeated literals (1 allowed)"
+
+# Fails: a literal across JS files and across JS and Python, an allowlisted literal that spread
+# to a third file, and each kind of bad entry.
+planted="$base/planted"
+write "$planted/src/domain/a.js" <<'JS'
+const key = "planted.key";
+const encoding = "utf8";
+
+const shared = 'both.languages';
+JS
+write "$planted/src/server/b.js" <<'JS'
+const encoding = "utf8";
+const label = `${1}` + "planted.key";
+JS
+write "$planted/src/web/c.js" <<<'const encoding = "utf8";'
+write "$planted/sidecar/src/pkg/d.py" <<<'shared = "both.languages"'
+write "$planted/scripts/dupes-allow.txt" <<'TXT'
+literal "utf8" | files src/domain/a.js src/server/b.js | a third file has it now
+literal "gone.key" | files src/domain/a.js src/server/b.js | was fixed
+literal "no.reason" | files src/domain/a.js |
+literal "no.files" | reviewed
+literal "twice" | files src/domain/a.js src/server/b.js | first
+literal "twice" | files src/server/b.js src/domain/a.js | again, in another order
+TXT
+expect "$planted" 1 \
+  'literal "planted.key" in 2 files; define it once and import it:' \
+  "  src/domain/a.js:1" \
+  "  src/server/b.js:2" \
+  'literal "both.languages" in 2 files; define it once and import it:' \
+  "  sidecar/src/pkg/d.py:1" \
+  "  src/domain/a.js:4" \
+  'literal "utf8" in 3 files; define it once and import it:' \
+  "  src/web/c.js:1" \
+  "  key: literal \"utf8\" | files src/domain/a.js src/server/b.js src/web/c.js" \
+  'scripts/dupes-allow.txt:1: matches nothing, delete it: literal "utf8" | files src/domain/a.js src/server/b.js' \
+  'scripts/dupes-allow.txt:2: matches nothing, delete it: literal "gone.key" | files src/domain/a.js src/server/b.js' \
+  'scripts/dupes-allow.txt:3: entry has no reason' \
+  'scripts/dupes-allow.txt:4: expected `literal "…" | files <file>… | <reason>`' \
+  'scripts/dupes-allow.txt:6: repeats line 5'
+
+# Fails: one block copied into two files, which jscpd finds.
+copied="$base/copied"
+block first | write "$copied/src/domain/one.js"
+block second | write "$copied/src/server/two.js"
+: | write "$copied/scripts/dupes-allow.txt"
+expect "$copied" 1
+if ! grep -q "Found 1 clones" <<<"$output"; then
+  printf 'dupes-test: jscpd missed the copied block:\n%s\n' "$output" >&2
+  problems=$((problems + 1))
+fi
+
+# A flag without its value, and a tree without an allowlist, fail loudly instead of passing.
+mkdir -p "$base/bare/src"
+expect "$base/bare" 2 "dupes: scripts/dupes-allow.txt is missing"
+output=$(node scripts/dupes.js --root 2>&1)
+status=$?
+if [ "$status" != 2 ] || [ "$output" != "dupes: --root needs a directory" ]; then
+  printf 'dupes-test: --root without a value exited %s:\n%s\n' "$status" "$output" >&2
+  problems=$((problems + 1))
+fi
+
+if [ "$problems" -gt 0 ]; then
+  echo "dupes-test: $problems problems" >&2
+  exit 1
+fi
+echo "dupes passes the clean tree and fails each planted duplicate and bad entry"

@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# Runs scripts/arch.js on two fixture trees: one it must pass, and one with each kind of broken
+# tier rule planted once, which it must report file by file. A checker that has never been seen
+# failing passes an empty or broken tree just as happily as a clean one.
+set -uo pipefail
+cd "$(dirname "$0")/.."
+
+base=$(mktemp -d)
+trap 'rm -rf "$base"' EXIT
+problems=0
+
+# write <path> — the file's text comes from standard input.
+write() { mkdir -p "$(dirname "$1")"; cat > "$1"; }
+
+good="$base/good"
+write "$good/src/engine/voice.js" <<'JS'
+import { seed } from "./seed.js";
+export const voice = seed;
+JS
+write "$good/src/engine/seed.js" <<<'export const seed = 1;'
+write "$good/src/domain/lint.js" <<<'import { voice } from "../engine/voice.js";'
+write "$good/src/config/config.js" <<<'import { readFileSync } from "node:fs";'
+write "$good/src/server/main.js" <<'JS'
+import { createServer } from "node:http";
+import { lint } from "../domain/lint.js";
+import { config } from "../config/config.js";
+const later = await import("../engine/voice.js");
+JS
+write "$good/src/web/app.js" <<<'export { lint } from "../domain/lint.js";'
+
+if ! out=$(node scripts/arch.js --root "$good" 2>&1); then
+  printf 'arch-test: the good tree failed:\n%s\n' "$out" >&2
+  problems=$((problems + 1))
+fi
+
+bad="$base/bad"
+write "$bad/src/engine/up.js" <<<'import { lint } from "../domain/lint.js";'
+write "$bad/src/engine/reexport.js" <<<'export { main } from "../server/main.js";'
+write "$bad/src/domain/lint.js" <<<'import { readFileSync } from "node:fs";'
+write "$bad/src/domain/package.js" <<<'import _ from "lodash";'
+write "$bad/src/server/main.js" <<<'import { app } from "../web/app.js";'
+write "$bad/src/web/app.js" <<<'const config = await import("../config/config.js");'
+write "$bad/src/config/config.js" <<<'import { seed } from "../engine/seed.js";'
+write "$bad/src/stray/thing.js" <<<'export const thing = 1;'
+
+out=$(node scripts/arch.js --root "$bad" 2>&1)
+status=$?
+if [ "$status" != 1 ]; then
+  printf 'arch-test: the bad tree exited %s, expected 1:\n%s\n' "$status" "$out" >&2
+  problems=$((problems + 1))
+fi
+for want in \
+  'src/engine/up.js: engine may not import domain ("../domain/lint.js")' \
+  'src/engine/reexport.js: engine may not import server ("../server/main.js")' \
+  'src/domain/lint.js: imports "node:fs"; domain runs in the browser unbundled' \
+  'src/domain/package.js: imports "lodash"; domain runs in the browser unbundled' \
+  'src/server/main.js: server may not import web ("../web/app.js")' \
+  'src/web/app.js: web may not import config ("../config/config.js")' \
+  'src/config/config.js: config may not import engine ("../engine/seed.js")' \
+  'src/stray/thing.js: not inside a tier'; do
+  if ! grep -qF -- "$want" <<<"$out"; then
+    printf 'arch-test: no finding\n  %s\nin:\n%s\n' "$want" "$out" >&2
+    problems=$((problems + 1))
+  fi
+done
+
+out=$(node scripts/arch.js --root 2>&1)
+status=$?
+if [ "$status" != 2 ] || [ "$out" != "arch: --root needs a directory" ]; then
+  printf 'arch-test: --root without a value exited %s:\n%s\n' "$status" "$out" >&2
+  problems=$((problems + 1))
+fi
+
+[ "$problems" = 0 ] && echo "arch passes the clean tree and reports each planted import"
+exit "$problems"

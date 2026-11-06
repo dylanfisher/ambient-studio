@@ -70,10 +70,14 @@ both() { local js=0 py=0; bash -c "$1" || js=1; (cd sidecar && bash -c "$2") || 
 run format    both 'node_modules/.bin/biome format .' 'uv run --frozen ruff format --check .'
 run lint      both 'node_modules/.bin/biome check --formatter-enabled=false .' 'uv run --frozen ruff check .'
 run typecheck both 'node_modules/.bin/tsc -p . && echo "tsc: no errors"' 'uv run --frozen pyright'
-run arch      ./scripts/arch
+run arch      ./scripts/arch.js
+# Each checker's own test plants every kind of finding, so a checker that stops seeing them
+# fails here instead of passing an empty or broken tree.
+run arch-test ./scripts/arch-test
 # Principles 1 and 3 by tool: a literal or block defined in more than one place, and
 # public API nothing outside its module calls.
-run dupes     ./scripts/dupes
+run dupes     ./scripts/dupes.js
+run dupes-test ./scripts/dupes-test
 run surface   node_modules/.bin/knip
 run test      ./scripts/test
 

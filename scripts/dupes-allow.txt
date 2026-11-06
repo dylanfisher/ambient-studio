@@ -1,0 +1,5 @@
+# Literals scripts/dupes.js accepts in more than one file, one entry per line:
+#   literal "<text>" | files <file> <file>… | <reason>
+# Add one only when the files mean different things by the same text: a "utf8" encoding, an
+# HTTP method, a flag two programs each define. A fact both files share gets one definition
+# and an import instead. The script prints each finding's key, everything before the reason.
