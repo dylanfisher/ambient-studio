@@ -1,7 +1,7 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "entry": ["src/server/main.js", "src/web/**/*.js", "scripts/*"],
-  "project": ["src/**/*.js", "scripts/*"],
+  "project": ["src/**/*.js", "scripts/*", "test/support/*.js"],
   "ignoreDependencies": ["@biomejs/biome", "jscpd"],
   "ignoreBinaries": ["flac"]
 }
