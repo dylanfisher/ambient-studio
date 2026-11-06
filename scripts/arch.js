@@ -5,6 +5,10 @@
 // `node:` module or a bare package name there breaks in the browser and nowhere else. Also fails
 // on `Math.random` or `Date.now` in the engine, which must render the same audio from a seed, and
 // on a `process.env` read outside src/config, the one module that reads the environment (0019).
+// And fails on an HTTP client outside src/server/omlx-queue.js, the only code that may call omlx
+// (0022): a `fetch` call, or `request` or `get` from node:http or node:https, or node:http
+// imported dynamically. `createServer` is allowed, and so is `fetch` in src/web, where the
+// browser calls the studio's own server. node:http2, node:net and undici are refused everywhere.
 // `--root <dir>` checks another tree instead of this repo; scripts/arch-test uses it.
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
@@ -32,6 +36,59 @@ const browserTiers = new Set(["engine", "domain", "web"]);
 const unseeded = /\b(Math\.random|Date\.now)\b/g;
 const envRead =
   /\bprocess\s*(?:\??\.\s*env\b|\?\.\s*\[\s*["'`]env["'`]\s*\]|\[\s*["'`]env["'`]\s*\])|\{[^}]*\benv\b[^}]*\}\s*=\s*process\b|import\s*\{[^}]*\benv\b[^}]*\}\s*from\s*["'](?:node:)?process["']/;
+
+const QUEUE_MODULE = "src/server/omlx-queue.js";
+const fetchCall = /\bfetch\s*\(/g;
+const httpModule = `["'](?:node:)?https?["']`;
+/** `import { request } from "node:http"`, with or without a default import before the braces. */
+const httpNamedImport = new RegExp(
+  String.raw`import\s*(?:\w+\s*,\s*)?\{([^}]*)\}\s*from\s*${httpModule}`,
+  "g",
+);
+/** `import http from "node:http"` or `import * as http from …`: the name its calls go through. */
+const httpModuleImport = new RegExp(
+  String.raw`import\s+(?:\*\s*as\s+)?(\w+)\s*(?:,\s*\{[^}]*\})?\s*from\s*${httpModule}`,
+  "g",
+);
+const httpDynamicImport = /import\(\s*["']((?:node:)?https?)["']\s*\)/g;
+/** Clients no file uses, the queue included: it speaks HTTP/1.1 through node:http. */
+const otherClient =
+  /(?:\sfrom\s*|import\(\s*|^import\s*)["']((?:node:)?(?:http2|net)|undici(?:\/[^"']*)?)["']/gm;
+
+/**
+ * Every HTTP client use in `text`, as `line: what`.
+ * @param {string} text
+ * @param {string} tier
+ * @param {boolean} queue whether `text` is the queue module, which may use node:http(s)
+ * @returns {string[]}
+ */
+function httpClients(text, tier, queue) {
+  /** @param {number} index */
+  const lineOf = (index) => text.slice(0, index).split("\n").length;
+  const found = [];
+  for (const match of text.matchAll(otherClient)) {
+    found.push(`${lineOf(match.index)}: imports ${match[1]}`);
+  }
+  if (queue) return found;
+  for (const match of text.matchAll(httpDynamicImport)) {
+    found.push(`${lineOf(match.index)}: imports ${match[1]} dynamically`);
+  }
+  if (tier !== "web") {
+    for (const match of text.matchAll(fetchCall)) found.push(`${lineOf(match.index)}: calls fetch`);
+  }
+  for (const match of text.matchAll(httpNamedImport)) {
+    for (const name of (match[1] ?? "").matchAll(/\b(request|get)\b/g)) {
+      found.push(`${lineOf(match.index)}: imports ${name[1]} from node:http`);
+    }
+  }
+  for (const match of text.matchAll(httpModuleImport)) {
+    const call = new RegExp(String.raw`\b${match[1]}\s*\.\s*(request|get)\s*\(`, "g");
+    for (const use of text.matchAll(call)) {
+      found.push(`${lineOf(use.index)}: calls ${match[1]}.${use[1]}`);
+    }
+  }
+  return found;
+}
 
 const importPattern =
   /(?:^|[\s;])(?:import|export)\s(?:[^'"`;]*?\sfrom\s)?\s*["']([^"']+)["']|import\(\s*["']([^"']+)["']\s*\)/g;
@@ -74,6 +131,9 @@ for (const file of walk(src)) {
         );
       }
     });
+  }
+  for (const use of httpClients(text, tier, shown === QUEUE_MODULE)) {
+    problems.push(`${shown}:${use}; only ${QUEUE_MODULE} sends HTTP requests (0022)`);
   }
   for (const match of text.matchAll(importPattern)) {
     const spec = match[1] ?? match[2] ?? "";

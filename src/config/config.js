@@ -18,6 +18,7 @@ import { isAbsolute, join, resolve, sep } from "node:path";
  * @typedef {object} QueueConfig
  * @property {number} requestTimeoutMs
  * @property {number} firstTokenThresholdMs
+ * @property {number} minPrefillTokensPerSecond
  * @property {number} minGapMs
  * @property {number} backoffBaseMs
  * @property {number} maxWaitMs
@@ -163,6 +164,7 @@ const SCHEMA = {
   queue: {
     requestTimeoutMs: positiveInteger,
     firstTokenThresholdMs: positiveInteger,
+    minPrefillTokensPerSecond: positiveInteger,
     minGapMs: positiveInteger,
     backoffBaseMs: positiveInteger,
     maxWaitMs: positiveInteger,

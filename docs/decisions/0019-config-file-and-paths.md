@@ -27,6 +27,7 @@ key fails instead of being ignored.
 | `omlx.model` | non-empty string, the model id sent with each request |
 | `queue.requestTimeoutMs`, `queue.firstTokenThresholdMs`, `queue.minGapMs`, `queue.backoffBaseMs`, `queue.maxWaitMs` | whole milliseconds, at least 1 |
 | `queue.maxTokens`, `queue.contextBudgetTokens` | whole tokens, at least 1 |
+| `queue.minPrefillTokensPerSecond` | whole tokens a second, at least 1: the slowest prefill the first-token threshold and timeout allow for (0022) |
 | `queue.sendResponseFormat` | boolean: whether requests carry a JSON-schema `response_format` |
 | `dataRoot` | folder path |
 | `fieldRecordings` | folder path, or `null` until the owner sets one |
@@ -51,8 +52,8 @@ creates nothing; the store and job runner make their own folders.
 `~/.config/ambient-studio/config.json`. Its `dataRoot` is
 `~/Library/Application Support/Ambient Studio/`, `fieldRecordings` is `null`, omlx is
 `http://127.0.0.1:8000` with a placeholder model id the owner replaces, and the server listens on
-`0.0.0.0:4180` so mbp2015 and mbp2026 reach it over the LAN. Its queue numbers are placeholders:
-step 2d sets and justifies the real ones in its record, and edits the example to match.
+`0.0.0.0:4180` so mbp2015 and mbp2026 reach it over the LAN. Its queue numbers are set and
+justified in [0022](0022-omlx-queue.md).
 `sendResponseFormat` is `false` until the evaluation run (2l) shows whether omlx accepts it.
 
 **Test guard.** While Vitest runs, `loadConfig` refuses a config file, `dataRoot` or
@@ -77,7 +78,7 @@ only: `scripts/` and `test/` are tools, and a test stubs variables with `vi.stub
 - **Defaults in code with the file overriding them** — rejected by principle 5: a missing key would
   run on a value nobody chose, and the queue's numbers protect a live site.
 - **Environment variables for each setting** — rejected: the owner keeps one file to edit, and
-  the queue alone has eight numbers.
+  the queue alone has nine numbers.
 - **Ignoring unknown keys** — rejected: a typo of a required key is caught as missing, but a stale
   key left after a rename would sit in the file looking as if it did something.
 - **Detecting tests by `NODE_ENV === "test"`** — rejected: Vitest sets it only when it is unset,
@@ -96,3 +97,9 @@ only: `scripts/` and `test/` are tools, and a test stubs variables with `vi.stub
   reads the environment or the file itself.
 - The guard checks paths as written, not where symlinks lead.
 - The README tells the owner to copy `example.json`.
+
+## Amendments
+
+- 2026-11-06: the example's queue numbers, placeholders until now, are set by 0022 (step 2d).
+- 2026-11-06: added `queue.minPrefillTokensPerSecond` (step 2d), so the first-token threshold
+  and the timeout grow with the prompt's length instead of calling a long prompt busy (0022).

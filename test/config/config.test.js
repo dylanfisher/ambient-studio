@@ -133,6 +133,7 @@ describe("loadConfig", () => {
     queue: [],
     "queue.requestTimeoutMs": "120000",
     "queue.firstTokenThresholdMs": 0,
+    "queue.minPrefillTokensPerSecond": 0.5,
     "queue.minGapMs": -1,
     "queue.backoffBaseMs": 1.5,
     "queue.maxWaitMs": null,
