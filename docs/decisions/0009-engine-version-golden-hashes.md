@@ -88,4 +88,5 @@ By the owner's choice on 2026-11-05:
   between −52 and −68 LUFS for three of the four, more than normalize's 40 dB gain cap under a
   −16 target, and the bell genome's middle is silent. `node scripts/write-golden.js` writes both
   kinds, keeping any entry that exists, so a golden genome added later gets both entries from
-  that one command.
+  that one command. Step 1k's granular-cloud and noise-bed goldens got theirs that way after
+  both steps merged; their start windows were loud enough, so every golden uses the same window.
