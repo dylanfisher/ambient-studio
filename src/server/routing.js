@@ -3,16 +3,23 @@
 /** @import { IncomingMessage, ServerResponse } from "node:http" */
 /** @import { Config } from "../config/config.js" */
 /** @import { Paths } from "../config/paths.js" */
+/** @import { JobRunner } from "./job-runner.js" */
+/** @import { OmlxQueue } from "./omlx-queue.js" */
 /** @import { Store } from "./store.js" */
 
 /**
- * What every handler can reach. A step that adds a long-lived part (the job runner) adds it here
- * and to `startServer`.
+ * What every handler can reach. A step that adds a long-lived part adds it here and to
+ * `startServer`.
  * @typedef {object} App
  * @property {Config} config
  * @property {Paths} paths
  * @property {Store} store
  * @property {(line: string) => void} log
+ * @property {OmlxQueue} queue the one omlx queue; only jobs send to it
+ * @property {JobRunner} jobs
+ * @property {() => number} random a draw in [0, 1), for stream and order seeds
+ * @property {Map<number, number[]>} sessionJobs the ids of the jobs each session added since
+ *   start-up, so stopping it can cancel them
  */
 
 /**
