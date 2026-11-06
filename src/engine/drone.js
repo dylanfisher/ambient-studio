@@ -3,7 +3,7 @@
 // render cost (decision 0002, probe d), so each copy plays its harmonic partials from one
 // PeriodicWave rather than one oscillator per partial.
 /** @import { ValuesOf } from "./descriptor.js" */
-/** @import { VOICE_PARAMS } from "./genome-schema.js" */
+/** @import { Genome, Voice, VOICE_PARAMS } from "./genome-schema.js" */
 /** @import { MacroRow } from "./macro-table.js" */
 /** @import { Pitch } from "./pitch.js" */
 /** @import { VoiceSetup, VoiceWindow } from "./render.js" */
@@ -163,14 +163,35 @@ function phasedWave(gains, turns) {
 }
 
 /**
+ * The fundamental and partials a drone voice plays in the genome's tuning.
+ * @param {Genome} genome
+ * @param {DroneVoice} drone
+ */
+function stack(genome, drone) {
+  const pitch = resolvePitch(getTuning(genome.tuning), genome.scale, genome.key);
+  const fundamental = droneFundamental(pitch, drone.root);
+  return { fundamental, partials: dronePartials(pitch, fundamental, drone.partials, drone.slope) };
+}
+
+/**
+ * The filter, a panner per copy, and in each copy the oscillator of the harmonic partials plus
+ * one per snapped partial, all alive while the voice plays (decision 0010).
+ * @param {Voice} voice
+ * @param {Genome} genome
+ */
+function cost(voice, genome) {
+  const { partials } = stack(genome, /** @type {DroneVoice} */ (/** @type {unknown} */ (voice)));
+  const snapped = partials.filter((p) => p.harmonic === undefined).length;
+  return 1 + COPIES.length * (2 + snapped);
+}
+
+/**
  * @param {VoiceSetup} setup
  * @returns {VoiceWindow}
  */
 function build({ ctx, output, genome, voice, from, to, startFrame, at, automate }) {
   const drone = /** @type {DroneVoice} */ (/** @type {unknown} */ (voice));
-  const pitch = resolvePitch(getTuning(genome.tuning), genome.scale, genome.key);
-  const fundamental = droneFundamental(pitch, drone.root);
-  const partials = dronePartials(pitch, fundamental, drone.partials, drone.slope);
+  const { fundamental, partials } = stack(genome, drone);
   // The copies' stacks sum to at most 1 before the voice's level.
   const total = partials.reduce((sum, p) => sum + p.gain, 0) * COPIES.length;
 
@@ -239,5 +260,6 @@ export const drone = {
   ]),
   /** Its oscillators sound from start to end, their phase from timeline time. */
   longestEvent: () => 0,
+  cost,
   build,
 };

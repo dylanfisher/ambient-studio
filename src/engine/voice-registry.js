@@ -3,7 +3,7 @@
 // only. Tests register the fixture voice from test/support/ in `beforeAll` and unregister it in
 // `afterAll`, so this file never imports test code (decision 0005).
 /** @import { DescriptorTable } from "./descriptor.js" */
-/** @import { Voice } from "./genome-schema.js" */
+/** @import { Genome, Voice } from "./genome-schema.js" */
 /** @import { MacroRow } from "./macro-table.js" */
 /** @import { VoiceSetup, VoiceWindow } from "./render.js" */
 import { drone } from "./drone.js";
@@ -21,6 +21,11 @@ import { checkMacroRows } from "./macro-table.js";
  * @property {(voice: Voice) => number} longestEvent seconds the longest event the voice plays
  *   lasts, which an excerpt's pre-roll covers (decision 0007); 0 for sounds whose phase comes
  *   from timeline time
+ * @property {(voice: Voice, genome: Genome) => number} cost the voice's render cost at its
+ *   densest, in node-seconds alive per second of timeline (decision 0010): 1 for each node it
+ *   keeps alive while it plays, plus `eventCost` for the nodes it creates per event. The value a
+ *   trajectory or a macro can push highest counts, so the cost bounds every window. `render()`'s
+ *   gate and level gain after the voice are counted by `cost()`, not here.
  * @property {(setup: VoiceSetup) => VoiceWindow} build creates the voice's nodes in a render,
  *   connected to `setup.output`, and returns what creates its events window by window
  */
