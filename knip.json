@@ -3,5 +3,5 @@
   "entry": ["src/server/main.js", "src/server/render-cli.js", "src/web/**/*.js", "scripts/*"],
   "project": ["src/**/*.js", "scripts/*", "test/support/*.js"],
   "ignoreDependencies": ["@biomejs/biome", "jscpd"],
-  "ignoreBinaries": ["flac", "ffmpeg"]
+  "ignoreBinaries": ["ffmpeg"]
 }

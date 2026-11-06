@@ -14,10 +14,16 @@ literal "lowpass" | files src/engine/drone.js src/engine/noise-bed.js | the Web 
 literal "density" | files src/engine/bell.js src/engine/granular-cloud.js | each voice's own parameter: bell notes a minute, grains a second
 literal "tone" | files src/engine/noise-bed.js src/engine/pad.js | each voice's own parameter in its macro rows: the pad's harmonic tilt in dB an octave, the noise bed's filter shift in octaves
 literal "depth" | files src/engine/noise-bed.js src/engine/pad.js | the noise bed's sweep-and-swell parameter, and a description word in the pad's swell descriptor
-literal "utf8" | files src/config/config.js src/server/export-render.js src/server/render-cli.js src/server/renderer-versions.js src/server/write-flac.js | the text encoding passed to a read or a stream
+literal "utf8" | files src/config/config.js src/server/export-render.js src/server/render-cli.js src/server/renderer-versions.js src/server/store.js src/server/write-flac.js | the text encoding passed to a read or a stream
 literal "boolean" | files src/config/config.js src/engine/descriptor.js src/server/render-cli.js | the JavaScript typeof tag in config.js and descriptor.js, the option type node:util parseArgs takes in render-cli
 literal "duration" | files src/domain/constraint-schema.js src/engine/excerpt-offset.js src/server/render-cli.js | a genome parameter named in an excerpt error and as a range constraint's kind, and the CLI flag named in a usage error
 literal "seed" | files src/engine/prng.js src/server/render-cli.js | the PRNG key named in its range error, and the CLI flag named in a usage error
 literal "object" | files src/config/config.js src/engine/is-object.js | the typeof tag in a plain-object check each tier keeps, since config may not import engine (map.md)
 literal "voices" | files src/domain/constraint-schema.js src/engine/genome-schema.js | the constraint form for a list of voice types, and the genome's key for its voice list
 literal "tuning" | files src/domain/constraint-schema.js src/engine/genome-schema.js | the genome parameter a fixed constraint names, and that parameter's one-line description in the schema
+literal "renders" | files src/config/paths.js src/server/store.js | the render-cache folder's name in paths.js, the renders table's in store.js
+literal "rated_audio" | files src/config/paths.js src/server/store.js | the rated-audio folder's name in paths.js, the rated_audio table's in store.js
+literal "notes" | files src/engine/bell.js src/server/store.js | a description word in the bell's descriptor, the notes table's name in store.js
+literal "params" | files src/engine/genome-schema.js src/server/evaluation-store.js | a voice's parameter table in a type, the evaluations table's JSON column in evaluation-store
+literal "start" | files src/engine/vector-view.js src/server/session-store.js | which end of a vector in vector-view, a session event's kind in session-store
+literal "--silent" | files src/server/read-flac-pcm.js src/server/write-flac.js | flac's quiet flag, given to its decode command in one file and its encode command in the other

@@ -1,0 +1,131 @@
+// LLM calls, the genomes they reach and the candidates that record each time one was reached
+// (decision 0021). Genomes hold content only, one row per genome a vibe has reached (0005).
+/** @import { Genome } from "../engine/genome-schema.js" */
+/** @import { Removable, Store } from "./store.js" */
+import { canonicalGenome } from "../engine/canonical-genome.js";
+import { genomeHash } from "./genome-hash.js";
+import { decode, insertRow, selectRow, TABLE } from "./store.js";
+
+/**
+ * One LLM call, as 2f stores it: Phase 8's fine-tuning needs the exact prompt.
+ * @typedef {object} GenerationDraft
+ * @property {number} vibeRevisionId
+ * @property {number | null} sessionId null for a call outside a session, as in an evaluation
+ * @property {string} requestGroup shared by the candidates of one request
+ * @property {unknown} prompt the messages sent
+ * @property {unknown[]} exampleIds the examples retrieved into the prompt
+ * @property {string} retrievalMethod
+ * @property {string} model
+ * @property {unknown} sampling
+ * @property {string} response the raw text
+ * @property {string} finishReason
+ * @property {number} repairRound 0 for a first try
+ * @property {number | null} repairsId the generation this one repairs; null in round 0
+ * @property {number} latencyMs
+ * @property {number | null} firstTokenMs null when no token arrived
+ * @property {number | null} promptTokens null when omlx doesn't report it
+ * @property {number | null} completionTokens
+ */
+
+/** @typedef {GenerationDraft & Removable & { id: number, createdAt: number }} Generation */
+
+/**
+ * @typedef {Removable & {
+ *   id: number,
+ *   vibeId: number,
+ *   genomeHash: string,
+ *   genome: Genome,
+ *   createdAt: number,
+ * }} GenomeRow `genome` is the canonical genome, parsed
+ */
+
+/**
+ * One time a genome was produced, or an output that never became one.
+ * @typedef {object} CandidateDraft
+ * @property {number} vibeRevisionId
+ * @property {number | null} generationId null for a candidate no LLM call made
+ * @property {number | null} genomeId null when the output never parsed into a genome
+ * @property {number} seed
+ * @property {string} source llm, mutation, crossover, optimizer, breeding or random
+ * @property {unknown[]} parentIds
+ * @property {unknown} locks
+ * @property {string | null} operator
+ * @property {unknown} operatorParams
+ * @property {string | null} intent the model's one-line intent
+ * @property {string | null} rejectReason null for a valid candidate
+ * @property {unknown} lint the lint result with every reason; null when nothing was linted
+ */
+
+/** @typedef {CandidateDraft & Removable & { id: number, createdAt: number }} Candidate */
+
+const GENERATIONS = { json: ["prompt", "exampleIds", "sampling"] };
+const GENOMES = { json: ["genome"] };
+const CANDIDATES = { json: ["parentIds", "locks", "operatorParams", "lint"] };
+
+/**
+ * @param {Store} store
+ * @param {GenerationDraft} draft
+ * @returns {Generation}
+ */
+export function addGeneration(store, draft) {
+  return insertRow(store, TABLE.generations, GENERATIONS, { ...draft });
+}
+
+/**
+ * @param {Store} store
+ * @param {number} id
+ * @returns {Generation | undefined}
+ */
+export function getGeneration(store, id) {
+  return selectRow(store, TABLE.generations, GENERATIONS, id);
+}
+
+/**
+ * The vibe's row for `genome`, written when the vibe hasn't reached it before. Throws on an
+ * invalid genome.
+ * @param {Store} store
+ * @param {number} vibeId
+ * @param {unknown} genome
+ * @returns {GenomeRow}
+ */
+export function putGenome(store, vibeId, genome) {
+  const hash = genomeHash(genome);
+  store.db
+    .prepare(
+      `INSERT INTO genomes (vibeId, genomeHash, genome, createdAt) VALUES (?, ?, ?, ?)
+       ON CONFLICT (vibeId, genomeHash) DO NOTHING`,
+    )
+    .run(vibeId, hash, canonicalGenome(genome), store.now());
+  const row = store.db
+    .prepare("SELECT * FROM genomes WHERE vibeId = ? AND genomeHash = ?")
+    .get(vibeId, hash);
+  if (!row) throw new Error(`genome ${hash} wasn't stored for vibe ${vibeId}`);
+  return decode(GENOMES, row);
+}
+
+/**
+ * @param {Store} store
+ * @param {number} id
+ * @returns {GenomeRow | undefined}
+ */
+export function getGenome(store, id) {
+  return selectRow(store, TABLE.genomes, GENOMES, id);
+}
+
+/**
+ * @param {Store} store
+ * @param {CandidateDraft} draft
+ * @returns {Candidate}
+ */
+export function addCandidate(store, draft) {
+  return insertRow(store, TABLE.candidates, CANDIDATES, { ...draft });
+}
+
+/**
+ * @param {Store} store
+ * @param {number} id
+ * @returns {Candidate | undefined}
+ */
+export function getCandidate(store, id) {
+  return selectRow(store, TABLE.candidates, CANDIDATES, id);
+}
