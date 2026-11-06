@@ -3,9 +3,10 @@
 // the real omlx.
 import { afterEach, describe, expect, test } from "vitest";
 import { loadConfig } from "../../src/config/config.js";
+import { CHARS_PER_TOKEN, estimateTokens } from "../../src/domain/prompt-tokens.js";
 import exampleGenome from "../../src/engine/genomes/example.json" with { type: "json" };
 import { randomGenome } from "../../src/engine/random-genome.js";
-import { CHARS_PER_TOKEN, createOmlxQueue, estimateTokens } from "../../src/server/omlx-queue.js";
+import { createOmlxQueue } from "../../src/server/omlx-queue.js";
 import { fakeClock } from "../support/fake-clock.js";
 import { fakeOmlx } from "../support/fake-omlx.js";
 import { tempRoot } from "../support/temp-root.js";

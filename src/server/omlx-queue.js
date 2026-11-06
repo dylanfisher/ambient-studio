@@ -5,18 +5,8 @@ import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 /** @import { IncomingMessage } from "node:http" */
 /** @import { Config, QueueConfig } from "../config/config.js" */
-
-/** The context budget's estimate of characters per token, for prompts and answers alike. */
-export const CHARS_PER_TOKEN = 3.5;
-
-/**
- * Tokens `text` is estimated to take at `CHARS_PER_TOKEN`, rounded up.
- * @param {string} text
- * @returns {number}
- */
-export const estimateTokens = (text) => Math.ceil(text.length / CHARS_PER_TOKEN);
-
-/** @typedef {{ role: "system" | "user" | "assistant", content: string }} ChatMessage */
+/** @import { ChatMessage } from "../domain/prompt-tokens.js" */
+import { CHARS_PER_TOKEN, estimateTokens, promptText } from "../domain/prompt-tokens.js";
 
 /**
  * The timers the queue uses for its gap, backoff and timeouts; the server passes the real ones,
@@ -365,7 +355,7 @@ export function createOmlxQueue({ omlx, queue, clock, jitter, onRetry }) {
 
   return {
     request(request) {
-      const prompt = request.messages.map((message) => message.content).join("");
+      const prompt = promptText(request.messages);
       const tokens = estimateTokens(prompt);
       if (tokens > queue.contextBudgetTokens) {
         return Promise.reject(
