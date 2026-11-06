@@ -138,8 +138,11 @@ Schema text: pad 247 characters, bell 268; the whole text is 2,462 of 3,000.
 
 ## Consequences
 
-- Bell notes cost JS time the cost unit doesn't count: at the densest FM setting, 40 notes a
-  minute take about 19 ms of computing per second of timeline. The bench (1m) sees it.
+- The cost unit counts nodes, not the JS that computes bell notes: the densest FM bell, 40
+  notes a minute at 29 ms each, adds about 0.019 s of JS per second of timeline. On a genome
+  filled to the 560 budget, which renders at 11.5x at the slowest calibrated rate, that brings
+  it to about 9.4x, under phase 1's 10x. The bench (1m) checks it; if it holds, the bell's cost
+  gains a term for its computing time.
 - `decay` is fixed per genome: a trajectory would give notes different ring lengths and break
   the latest-eight rule.
 - Changing the grid step, any draw slot, the ratio tables, the envelopes or the synthesis

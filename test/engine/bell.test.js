@@ -228,4 +228,53 @@ describe("the bell", () => {
     expect(bellNotes(genome, voice, 1, RATE, 2, 22).filter((n) => n.cut).length).toBeGreaterThan(2);
     await expectExcerptMatches(genome, { seed: 1, full: 22, offset: 18, length: 4 });
   });
+
+  test("plays notes only from its start to its end, and an excerpt across them matches", async () => {
+    const genome = requireGenome(
+      {
+        ...withBell({ density: 40, decay: 2, start: 3.3, end: 6.1 }),
+        reverbDecay: 1,
+        delayFeedback: 0,
+      },
+      "a bell that starts and ends inside the render",
+    );
+    const voice = firstVoice(genome);
+    const notes = bellNotes(genome, voice, 1, RATE, 0, 10);
+    expect(notes.length).toBeGreaterThan(0);
+    for (const { frame } of notes) {
+      expect(frame).toBeGreaterThanOrEqual(3.3 * RATE);
+      expect(frame).toBeLessThan(6.1 * RATE);
+    }
+    const result = await renderOffline(genome, { seed: 1, duration: 10 });
+    const before = result.channels.map((c) => c.subarray(0, Math.floor(3.3 * RATE)));
+    expect(before.every((c) => c.every((x) => x === 0))).toBe(true);
+    expect(rms(result)).toBeGreaterThan(1e-3);
+    // The excerpt's pre-roll (3 s) starts before the voice does; the voice ends inside it.
+    await expectExcerptMatches(genome, { seed: 1, full: 10, offset: 5, length: 2.5 });
+  });
+
+  test("renders harmonic ratios in a relative tuning, windowed, up front and as an excerpt", async () => {
+    const genome = requireGenome(
+      {
+        ...withBell({ density: 40, decay: 2, partials: 10, ratios: "harmonic" }),
+        tuning: "12-tet",
+        scale: "aeolian",
+        key: 9,
+        reverbDecay: 1,
+        delayFeedback: 0,
+      },
+      "a bell with harmonic ratios",
+    );
+    const windowed = await renderOffline(genome, { seed: 1, duration: 7 });
+    const upFront = await renderUpFront(genome, { seed: 1, duration: 7 });
+    expect(rms(windowed)).toBeGreaterThan(1e-3);
+    expect(upFront.channels).toEqual(windowed.channels);
+    const bar = requireGenome(
+      { ...genome, voices: [{ ...firstVoice(genome), ratios: "bar" }] },
+      "the same bell with bar ratios",
+    );
+    const barRender = await renderOffline(bar, { seed: 1, duration: 7 });
+    expect(barRender.channels[0]).not.toEqual(windowed.channels[0]);
+    await expectExcerptMatches(genome, { seed: 1, full: 12, offset: 9, length: 2.5 });
+  });
 });

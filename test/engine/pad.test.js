@@ -169,15 +169,16 @@ describe("the pad", () => {
   });
 
   // A 1 s reverb and no echo, so the pre-roll is 1 s and the chords sounding at the excerpt's
-  // start (chord 0 from 0 to 24 s, chord 1 from 20 s) start there with the phase and gain they
-  // have reached.
-  const shortPreRoll = () =>
+  // start start there with the phase and gain they have reached. Chord 0 rises over 0-2 s,
+  // decays to 3 s, holds to 20 s and releases to 24 s; chord 1 does the same from 20 s.
+  /** @param {Record<string, unknown>} [changes] on the voice */
+  const shortPreRoll = (changes = {}) =>
     requireGenome(
       {
         ...padGenome,
         reverbDecay: 1,
         delayFeedback: 0,
-        voices: [{ ...goldenPad, hold: 20, attack: 2, release: 4 }],
+        voices: [{ ...goldenPad, hold: 20, attack: 2, release: 4, ...changes }],
       },
       "a pad with a short pre-roll",
     );
@@ -187,12 +188,30 @@ describe("the pad", () => {
   });
 
   test.each([
-    ["one chord in its attack", 27],
-    ["one chord in its release and the next in its attack", 22.5],
+    ["one chord in its sustain", 27],
+    ["one chord in its release and the next in its attack", 21],
+    ["one chord in its release and the next in its decay", 22.5],
   ])(
     "an excerpt matches its window of a longer render with %s (0007's tolerance)",
     async (_, offset) => {
       const { excerpt } = await expectExcerptMatches(shortPreRoll(), {
+        seed: 1,
+        full: 30,
+        offset,
+        length: 2.5,
+      });
+      expect(rms(excerpt)).toBeGreaterThan(1e-3);
+    },
+  );
+
+  test.each([
+    ["starts", 12.5],
+    ["ends", 25],
+  ])(
+    "an excerpt matches where the voice %s inside it, mid-chord (0007's tolerance)",
+    async (_, offset) => {
+      const genome = shortPreRoll({ start: 13, end: 26.5 });
+      const { excerpt } = await expectExcerptMatches(genome, {
         seed: 1,
         full: 30,
         offset,

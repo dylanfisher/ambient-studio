@@ -43,11 +43,35 @@ const builtIn = () => [bell, drone, pad];
 /** @type {Map<string, VoiceType> | undefined} */
 let registered;
 
-/** The registered voice types, the built-in ones added on first use. */
+/**
+ * Adds `voice` to `into`, or throws when its type is taken, a parameter shadows a common one,
+ * or a macro row is invalid.
+ * @template {VoiceType} V
+ * @param {Map<string, VoiceType>} into
+ * @param {V} voice
+ * @returns {V}
+ */
+function add(into, voice) {
+  if (into.has(voice.type)) throw new Error(`voice type "${voice.type}" is already registered`);
+  for (const name of Object.keys(voice.params)) {
+    if (Object.hasOwn(VOICE_PARAMS, name) || VOICE_KEYS.includes(name)) {
+      throw new Error(`voice type "${voice.type}": "${name}" is a parameter every voice has`);
+    }
+  }
+  checkMacroRows(voice.macros, { ...VOICE_PARAMS, ...voice.params }, `voice type "${voice.type}"`);
+  into.set(voice.type, voice);
+  return voice;
+}
+
+/**
+ * The registered voice types, the built-in ones added on first use. The map is kept only once
+ * every built-in type is in it, so a built-in that throws throws again on the next call.
+ */
 function voices() {
   if (!registered) {
-    registered = new Map();
-    for (const voice of builtIn()) registerVoice(voice);
+    const built = new Map();
+    for (const voice of builtIn()) add(built, voice);
+    registered = built;
   }
   return registered;
 }
@@ -59,19 +83,7 @@ function voices() {
  * @param {V} voice
  * @returns {V}
  */
-export function registerVoice(voice) {
-  if (voices().has(voice.type)) {
-    throw new Error(`voice type "${voice.type}" is already registered`);
-  }
-  for (const name of Object.keys(voice.params)) {
-    if (Object.hasOwn(VOICE_PARAMS, name) || VOICE_KEYS.includes(name)) {
-      throw new Error(`voice type "${voice.type}": "${name}" is a parameter every voice has`);
-    }
-  }
-  checkMacroRows(voice.macros, { ...VOICE_PARAMS, ...voice.params }, `voice type "${voice.type}"`);
-  voices().set(voice.type, voice);
-  return voice;
-}
+export const registerVoice = (voice) => add(voices(), voice);
 
 /**
  * Removes a voice type, so a test's fixture doesn't outlive the file that registered it.
