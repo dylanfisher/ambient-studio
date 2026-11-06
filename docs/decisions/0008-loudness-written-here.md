@@ -41,3 +41,29 @@ but nothing in the gate or tests needs it.
   and a different sample rate throws rather than recomputing them; every render is 48 kHz. A
   signal with no block above the absolute gate has integrated loudness `-Infinity`, and anything
   that normalizes to a target throws on it.
+- 2026-11-06: from step 1e, choices the builder made.
+  - **Channels.** The loudness functions take one or two channels and throw on more, since
+    weights beyond stereo depend on speaker position, which an array of channels doesn't carry.
+    Mono is one channel at weight 1.0, so it reads 3.01 dB below the same signal on both
+    stereo channels; there is no dual-mono compensation. True peak takes any channel count and
+    reports the loudest.
+  - **Windows.** K-weighted power is summed into 10 ms sub-blocks, and every window is a whole
+    number of them: gating blocks are 40 with a hop of 10, starting at the first sample;
+    momentary is 40 and short-term 300, both with a hop of 1. The momentary and short-term
+    series have one value per 10 ms, element j for the window starting at j × 10 ms, and only
+    complete windows. A 10 ms hop puts a window exactly on every segment boundary in Tech 3341
+    cases 10, 11, 13 and 14; a 100 ms hop would read case 13 up to 0.46 LU low.
+  - **True peak** is the largest output of the standard's four filter phases, run 11 samples
+    past the end of the input, and doesn't also take the sample peak. It reads up to 0.31 dB
+    under the band-limited peak (case 17), inside Tech 3341's −0.4 dB, so a limiter whose
+    ceiling this meter checks can let the analog peak exceed the ceiling by that much.
+  - **Cases not tested.** Case 6 is 5.0 surround, which the meter doesn't take. Cases 7 and 8 are
+    recorded programme, not synthesizable; the manual ffmpeg comparison stands in for them.
+  - **Case 20–23 synthesis.** The 4× signal is low-passed with a 1023-tap Blackman windowed sinc
+    at 22 kHz before decimation. A gentler 20 kHz, 255-tap filter takes 0.25 dB off the peak
+    before the meter sees it and puts case 22 at −0.41 dBTP, just outside tolerance.
+  - **Measured.** Integrated: cases 1 and 2 +0.007 LU, 3 and 4 −0.014, 5 +0.021. Momentary and
+    short-term: cases 1 and 2 +0.007, 9 +0.014, 10 and 11 +0.007 in every segment, 12 +0.040,
+    13 and 14 +0.006 in every segment. True peak: cases 15 to 19 −0.217, +0.024, −0.313, −0.026,
+    +0.029 dB; 20 to 23 −0.168, −0.119, −0.232, −0.119 dB. On a 300 s stereo signal, integrated
+    loudness takes about 95 ms and true peak about 270 ms on mbp2021.
