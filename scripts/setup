@@ -11,7 +11,7 @@ if [ "$have" != "$want" ]; then
   printf '\033[31m✗ Node %s is required (.nvmrc); found %s.\033[0m\n' "$want" "${have:-none}" >&2
   exit 1
 fi
-for tool in pnpm uv; do
+for tool in pnpm uv flac; do
   command -v "$tool" >/dev/null || { printf "\033[31m✗ %s is required: brew install %s\033[0m\n" "$tool" "$tool" >&2; exit 1; }
 done
 
