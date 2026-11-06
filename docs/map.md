@@ -26,6 +26,10 @@ against a codebase you haven't searched.
 | a sidecar function | `rg '^(async )?def <name>\|^class <Name>' sidecar/src/` |
 | a change to how something behaves | `rg -il '<topic>' docs/decisions/` — read the record that governs it first |
 
+`rg` finds a name; the `LSP` tool finds a symbol. Before changing, moving or removing an export,
+run its `findReferences` to list every caller, including ones that import it under another name,
+and use `hover` for the type `tsc` infers. Setup: [reference.md](reference.md).
+
 If a search turns up something close but not identical, that's the second occurrence. Use it or
 duplicate it — do not abstract yet (principle 3).
 

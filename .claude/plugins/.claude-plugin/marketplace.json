@@ -1,0 +1,11 @@
+{
+  "name": "endless-ambiance-local",
+  "owner": { "name": "dylanfisher" },
+  "plugins": [
+    {
+      "name": "tsgo-lsp",
+      "description": "TypeScript 7's own language server, from this checkout's node_modules",
+      "source": "./tsgo-lsp"
+    }
+  ]
+}

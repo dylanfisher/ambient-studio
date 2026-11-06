@@ -25,5 +25,16 @@
       "Edit(.env.local)",
       "Edit(.env.*.local)"
     ]
+  },
+  "enabledPlugins": {
+    "tsgo-lsp@endless-ambiance-local": true
+  },
+  "extraKnownMarketplaces": {
+    "endless-ambiance-local": {
+      "source": {
+        "source": "directory",
+        "path": "./.claude/plugins"
+      }
+    }
   }
 }
