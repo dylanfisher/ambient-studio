@@ -239,5 +239,6 @@ to 2.
   Measured over 120 s renders with an 8 s reverb, a voice whose `BiquadFilter` frequency is
   automated on the control grid takes about 2.5 ms more a timeline second than its node count
   says, about 20 node-seconds: the drone (2.9 ms beside the bus) and the noise bed both show
-  it. 0014 counts it for the noise bed; the drone's cost still counts its filter as one node,
-  for the bench (1m) to settle.
+  it. `SWEPT_FILTER_WEIGHT` in `cost-unit.js` (21, the node included) counts such a filter
+  for both voices, which raises the drone's cost by 20 (the drone golden 73 to 93, the bus
+  golden 101 to 121); renders don't change.

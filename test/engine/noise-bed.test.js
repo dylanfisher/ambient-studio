@@ -152,6 +152,34 @@ describe("the noise bed", () => {
     );
   });
 
+  test("plays only from its start to its end, and an excerpt across its end matches", async () => {
+    const genome = requireGenome(
+      {
+        ...bedGenome,
+        voices: bedGenome.voices.map((v) => ({ ...v, start: 2.3, end: 6.7 })),
+      },
+      "the golden with voices starting and ending inside the render",
+    );
+    /** @type {import("../support/record-sources.js").StartedSource[]} */
+    let started = [];
+    const whole = await renderOffline(genome, { seed: 1, duration: 9 }, (ctx) => {
+      started = recordSources(ctx);
+    });
+    // No buffer for the window before the start or the one after the end.
+    expect(started.length).toBeGreaterThan(0);
+    for (const { frame } of started) {
+      expect(frame).toBeGreaterThanOrEqual(2 * RATE);
+      expect(frame).toBeLessThan(8 * RATE);
+    }
+    // Silent before the start, but for the library's gate ramp reaching up to a quantum early
+    // (measured 3e-12 for the noise golden, 3e-10 for the drone's); sounding between start and
+    // end.
+    const left = /** @type {Float32Array} */ (whole.channels[0]);
+    expect(left.subarray(0, Math.round(2.3 * RATE)).every((v) => Math.abs(v) < 1e-9)).toBe(true);
+    expect(left.subarray(3 * RATE, 6 * RATE).some((v) => Math.abs(v) > 1e-4)).toBe(true);
+    await expectExcerptMatches(genome, { seed: 1, full: 9, offset: 5.5, length: 2.5 });
+  });
+
   test("an excerpt matches the same window of a longer render (0007's tolerance)", async () => {
     const { excerpt } = await expectExcerptMatches(golden, {
       seed: 1,

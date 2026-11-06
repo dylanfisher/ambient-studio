@@ -7,7 +7,7 @@
 /** @import { MacroRow } from "./macro-table.js" */
 /** @import { VoiceSetup, VoiceWindow } from "./render.js" */
 import { coloredNoise, NOISE_COLORS, PINK } from "./colored-noise.js";
-import { eventCost } from "./cost-unit.js";
+import { eventCost, SWEPT_FILTER_WEIGHT } from "./cost-unit.js";
 import { dbToGain } from "./decibels.js";
 import { choice, number } from "./descriptor.js";
 import { MACRO } from "./macro-table.js";
@@ -190,23 +190,19 @@ export function noiseChunk({ seed, voiceId, color, preset, first, frames, sample
 /** The filter's highest frequency, under Nyquist at 48 kHz. */
 const MAX_HZ = 20000;
 
-/** The filter and the swell gain, alive while the voice plays. */
-const LONG_LIVED = 2;
 /**
- * Render time the node count doesn't show, in node-seconds a second at the fastest rate 0010
- * measured, 1.24e-4 s each. Measured on mbp2021 over 120 s renders (decision 0014): computing
- * the noise in JS took 1.0 to 1.5 ms a timeline second by preset and color, and the swept filter
- * about 2.5 ms more than its one node, as the drone's swept filter does.
+ * Computing the noise in JS costs render time the node count doesn't show: 1.0 to 1.5 ms a
+ * timeline second by preset and color, measured on mbp2021 over 120 s renders, about 12
+ * node-seconds at 1.24e-4 s each (decision 0014).
  */
 const NOISE_WEIGHT = 12;
-const SWEPT_FILTER_WEIGHT = 20;
 
-/** The filter and the gain, one buffer source a window, the noise and the filter's sweep. */
+/** The swept filter, the swell gain, one buffer source a window, and the noise. */
 const cost = () =>
-  LONG_LIVED +
+  SWEPT_FILTER_WEIGHT +
+  1 +
   eventCost({ rate: 1 / WINDOW, seconds: WINDOW, nodes: 1 }) +
-  NOISE_WEIGHT +
-  SWEPT_FILTER_WEIGHT;
+  NOISE_WEIGHT;
 
 /**
  * @param {VoiceSetup} setup

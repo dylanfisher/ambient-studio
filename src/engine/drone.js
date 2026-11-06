@@ -7,6 +7,7 @@
 /** @import { MacroRow } from "./macro-table.js" */
 /** @import { Pitch } from "./pitch.js" */
 /** @import { VoiceSetup, VoiceWindow } from "./render.js" */
+import { SWEPT_FILTER_WEIGHT } from "./cost-unit.js";
 import { dbToGain } from "./decibels.js";
 import { int, number } from "./descriptor.js";
 import { MACRO } from "./macro-table.js";
@@ -157,15 +158,15 @@ function stack(genome, drone) {
 }
 
 /**
- * The filter, a panner per copy, and in each copy the oscillator of the harmonic partials plus
- * one per snapped partial, all alive while the voice plays (decision 0010).
+ * The swept filter, a panner per copy, and in each copy the oscillator of the harmonic
+ * partials plus one per snapped partial, all alive while the voice plays (decision 0010).
  * @param {Voice} voice
  * @param {Genome} genome
  */
 function cost(voice, genome) {
   const { partials } = stack(genome, /** @type {DroneVoice} */ (/** @type {unknown} */ (voice)));
   const snapped = partials.filter((p) => p.harmonic === undefined).length;
-  return 1 + COPIES.length * (2 + snapped);
+  return SWEPT_FILTER_WEIGHT + COPIES.length * (2 + snapped);
 }
 
 /**

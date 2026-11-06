@@ -96,11 +96,12 @@ swell gain.
   wind), `tone` −2–2 octaves on the preset's center (default 0, a trajectory, safe −2 to 0.5),
   `depth` 0–1 (default 0.5, a trajectory), `period` 4–60 s (log, default 10). Macro rows:
   brightness moves `tone` by 0.25, motion moves `depth` by 0.25. `longestEvent` is 0.
-- **Cost:** 38 node-seconds a second for any preset: the filter and the gain (2), a buffer source
-  a window (4), computing the noise in JS (12: 1.0–1.5 ms a timeline second in a render) and the
-  swept filter (20). Over 120 s renders on mbp2021 a noise bed added about 4.4 ms a timeline
-  second beside the bus, of which only 1.0–1.5 was in its windows; a swept `BiquadFilter` costs
-  far more than one node, and the drone's swept filter measures the same (below).
+- **Cost:** 38 node-seconds a second for any preset: the swept filter (`SWEPT_FILTER_WEIGHT`,
+  21, shared with the drone), the swell gain (1), a buffer source a window (4) and computing the
+  noise in JS (12: 1.0–1.5 ms a timeline second in a render). Over 120 s renders on mbp2021 a
+  noise bed added about 4.4 ms a timeline second beside the bus, of which only 1.0–1.5 was in
+  its windows; a swept `BiquadFilter` costs far more than one node, and the drone's measures the
+  same, so the drone now counts its filter by the same weight (0010's amendment).
 
 **Engine changes this needed.**
 
@@ -149,13 +150,15 @@ up-front scheduling render identical samples for both.
 
 - Grain and noise renders depend on JS arithmetic (`Math.sin`, `Math.cos`, `Math.exp`, `**`),
   which the golden hashes record the Node version for ([0009](0009-engine-version-golden-hashes.md)).
+- Registering the two voices changes what `randomGenome` returns for existing seeds, since it
+  draws types from `voiceTypeIds()` ([0003](0003-counter-based-prng.md)'s amendment accepts
+  this). No stored genome renders differently, so `ENGINE_VERSION` stays 1.
 - Changing the candidate grid, the slots, the window, the source tone, the noise filters, the
   presets or their levels changes renders and bumps `ENGINE_VERSION`.
 - The densest cloud with the longest (20 s) reverb costs 565, over the budget, so
   `randomGenome` redraws such genomes; with a 19.7 s reverb or shorter it fits. A noise bed fits
   beside the longest reverb (554).
 - The cost weights here are fitted to single measurements on mbp2021 under load; the bench (1m)
-  re-measures. A swept `BiquadFilter` costs about 20 node-seconds a second rather than 1, which
-  0010's drone count doesn't include; 0010's amendment notes it.
+  re-measures, including `SWEPT_FILTER_WEIGHT`.
 - A sampled or resampled source (another voice, the sample layer) can replace the generated tone
   without changing how grains are scheduled or mixed.
