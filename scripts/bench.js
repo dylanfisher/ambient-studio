@@ -2,16 +2,21 @@
 // The render-speed bench (decision 0016), run by ./scripts/bench under `nice -n 10`. For each
 // case it starts one child process for the render alone and one for render plus export, each
 // under /usr/bin/time -l for its peak RSS, and prints the ratio of audio time to wall time.
-// mbp2021 only: it reads macOS's /usr/bin/time output. Not part of ./scripts/check.
-//   ./scripts/bench                 the 300 s case, then the 720 s case, and the render's peak
-//                                   RSS projected from both to 0010's 900 s
+// mbp2021 only: it reads macOS's /usr/bin/time output. Not part of ./scripts/check. A last case
+// times the features and render checks on a 30 s excerpt (decision 0023).
+//   ./scripts/bench                 the 300 s case, then the 720 s case, the render's peak RSS
+//                                   projected from both to 0010's 900 s, then the features case
 //   ./scripts/bench --duration S    one case, 300 or 720, which takes under 5 minutes
+//   ./scripts/bench --features      the features case alone, which takes seconds
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { loadavg, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { extractFeatures } from "../src/domain/extract-features.js";
+import { normalize } from "../src/domain/normalize.js";
+import { renderChecks } from "../src/domain/render-checks.js";
 import { cost } from "../src/engine/cost.js";
 import { requireGenome } from "../src/engine/validate-genome.js";
 import { exportRender } from "../src/server/export-render.js";
@@ -26,9 +31,12 @@ const CASES = Object.freeze({ 300: 5, 720: 2 });
 const RSS_CEILING = { bytes: 1.5 * 2 ** 30, seconds: 900 };
 const TARGET_SPEED = 10;
 const MODES = Object.freeze({ render: "render", export: "render+export" });
+/** The features case: one excerpt of this length, timed this many runs after a warm-up. */
+const FEATURES_CASE = Object.freeze({ duration: 30, runs: 5 });
 const MIB = 2 ** 20;
 
 /** @typedef {keyof typeof MODES} Mode */
+/** @typedef {Mode | "features"} ChildMode */
 
 /**
  * The example genome stretched to `duration` when the case is longer than its timeline, so the
@@ -43,12 +51,13 @@ function benchGenome(duration) {
 /**
  * The child: a warm-up and then `runs` timed runs in one process, printing the wall seconds of
  * each as JSON, warm-up first.
- * @param {Mode} mode
+ * @param {ChildMode} mode
  * @param {number} duration
  * @param {number} runs
  */
 async function child(mode, duration, runs) {
   const genome = benchGenome(duration);
+  if (mode === "features") return featuresChild(genome, duration, runs);
   /** @type {number[]} */
   const seconds = [];
   for (let run = 0; run <= runs; run++) {
@@ -66,8 +75,29 @@ async function child(mode, duration, runs) {
 }
 
 /**
+ * The features child: renders and normalizes once, untimed, then times `extractFeatures` and
+ * `renderChecks` on the result, printed as `child` prints.
+ * @param {ReturnType<typeof benchGenome>} genome
+ * @param {number} duration
+ * @param {number} runs
+ */
+async function featuresChild(genome, duration, runs) {
+  const raw = await renderOffline(genome, { seed: SEED, duration });
+  const heard = normalize(raw.channels, raw.sampleRate, { target: genome.loudness });
+  /** @type {number[]} */
+  const seconds = [];
+  for (let run = 0; run <= runs; run++) {
+    const start = performance.now();
+    extractFeatures(raw, heard);
+    renderChecks(raw, genome);
+    seconds.push((performance.now() - start) / 1000);
+  }
+  console.log(JSON.stringify(seconds));
+}
+
+/**
  * Runs a child under /usr/bin/time -l.
- * @param {Mode} mode
+ * @param {ChildMode} mode
  * @param {number} duration
  * @param {number} runs
  * @returns {{ seconds: number[]; rss: number }} wall seconds, warm-up first, and peak RSS bytes
@@ -122,11 +152,29 @@ function bench(duration) {
   return /** @type {Record<Mode, { median: number; rss: number }>} */ (found);
 }
 
+function benchFeatures() {
+  const { duration, runs } = FEATURES_CASE;
+  console.log(
+    `${duration} s excerpt of example.json, seed ${SEED}, rendered and normalized once; 1 warm-up + ${runs} timed runs`,
+  );
+  console.log(`  ${load()}`);
+  const { seconds, rss } = measure("features", duration, runs);
+  const timed = seconds.slice(1);
+  console.log(
+    `  ${"features+checks".padEnd(13)} median ${median(timed).toFixed(3)} s (${(duration / median(timed)).toFixed(0)}x), slowest ${Math.max(...timed).toFixed(3)} s; peak RSS ${mib(rss)}; runs ${seconds.map((s) => s.toFixed(3)).join(" ")} s (warm-up first)`,
+  );
+  console.log(`  ${load()}`);
+}
+
 const childAt = process.argv.indexOf("--child");
 if (childAt !== -1) {
   const [mode, duration, runs] = process.argv.slice(childAt + 1);
-  if (mode !== "render" && mode !== "export") throw new Error(`bench: no mode "${mode}"`);
+  if (mode !== "render" && mode !== "export" && mode !== "features") {
+    throw new Error(`bench: no mode "${mode}"`);
+  }
   await child(mode, Number(duration), Number(runs));
+} else if (process.argv.includes("--features")) {
+  benchFeatures();
 } else {
   const durationAt = process.argv.indexOf("--duration");
   const durations =
@@ -155,4 +203,5 @@ if (childAt !== -1) {
       `render peak RSS projected to ${RSS_CEILING.seconds} s: ${mib(projected)}, ${projected <= RSS_CEILING.bytes ? "under" : "over"} the ${mib(RSS_CEILING.bytes)} ceiling (0010)`,
     );
   }
+  if (durationAt === -1) benchFeatures();
 }
