@@ -35,7 +35,7 @@ unneeded stays unused rather than being given to another step.
 | 0010 | Event scheduling, memory and the cost budget | 1f (1g adds the cost budget) | written, provisional |
 | 0011 | Normalization and the true-peak limiter | 1h | [written](decisions/0011-normalize-true-peak-limiter.md), provisional |
 | 0012 | WAV written here, FLAC through the CLI | 1i | [written](decisions/0012-flac-via-cli.md) |
-| 0013 | Pad/swell and bell/pluck voice designs | 1j | reserved |
+| 0013 | Pad/swell and bell/pluck voice designs | 1j | [written](decisions/0013-pad-and-bell-voices.md), provisional |
 | 0014 | Granular cloud and noise bed voice designs | 1k | reserved |
 | 0015 | The export sidecar JSON and re-render check | 1l | reserved |
 | 0016 | Render speed measured by a bench script | 1m | [written](decisions/0016-render-speed-bench.md) |
@@ -835,3 +835,15 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   the suite twice, and tags wait for the gate (orchestrator rule 6); voice briefs carry the
   render and cost API so builders read less. The gate's tools still skip `tmp/`,
   `.claude/worktrees/`, `node_modules/` and `.venv/`.
+- 2026-11-06: 1j merged as d50c845 (Opus: 309k tokens, 132 tool calls, 33.3 min, then a 2.7 min
+  fix round; reviewer Sonnet: 100k tokens, 20 tool calls, 7.0 min, PASS). The pad (chords on a
+  hold grid, ADSR, swell; chords sounding at an excerpt's start begin mid-chord, so it adds no
+  pre-roll) and the bell (additive, FM and Karplus-Strong notes computed in JS into one buffer each;
+  at most 8 at once, cut deterministically by the seed). Densest pad and additive bell over 900 s
+  with an 8 s reverb: 18.6x, 923 MiB; excerpts within 9e-8. JS note time isn't in the cost unit:
+  the densest FM bell on a genome at the budget would fall to about 9.4x, for the bench to check.
+  `--low` test runs now allow 30 s per test, since background priority stretched render tests past
+  5 s. Pending owner checks: pad chord changes for clicks and swell depth; Colundi bells may sound
+  thin above 685 Hz; bright and high-index FM bells for whistling or aliasing; the 8-note cap for
+  chopping at 40 notes a minute; the pluck strike at `fall` 3; whether the pad needs more upper
+  partials.
