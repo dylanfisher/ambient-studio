@@ -13,7 +13,7 @@ import { sha256Hex } from "./sha256-hex.js";
  * @param {string} flacPath
  * @returns {Promise<string>}
  */
-async function pcmHash(flacPath) {
+export async function pcmHash(flacPath) {
   return sha256Hex(await readFlacPcm(flacPath));
 }
 
