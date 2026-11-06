@@ -36,7 +36,7 @@ unneeded stays unused rather than being given to another step.
 | 0011 | Normalization and the true-peak limiter | 1h | [written](decisions/0011-normalize-true-peak-limiter.md), provisional |
 | 0012 | WAV written here, FLAC through the CLI | 1i | [written](decisions/0012-flac-via-cli.md) |
 | 0013 | Pad/swell and bell/pluck voice designs | 1j | [written](decisions/0013-pad-and-bell-voices.md), provisional |
-| 0014 | Granular cloud and noise bed voice designs | 1k | reserved |
+| 0014 | Granular cloud and noise bed voice designs | 1k | [written](decisions/0014-granular-cloud-noise-bed.md), provisional |
 | 0015 | The export sidecar JSON and re-render check | 1l | reserved |
 | 0016 | Render speed measured by a bench script | 1m | [written](decisions/0016-render-speed-bench.md) |
 | 0017 | Phase 1 exposes rendering as a CLI | 1m | [written](decisions/0017-phase-1-cli.md) |
@@ -847,3 +847,15 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   thin above 685 Hz; bright and high-index FM bells for whistling or aliasing; the 8-note cap for
   chopping at 40 notes a minute; the pluck strike at `fall` 3; whether the pad needs more upper
   partials.
+- 2026-11-06: 1k merged as 2ce63ab (Opus: 303k tokens, 154 tool calls, 37.3 min; rebase onto 1j
+  3.7 min; fix round 3.3 min; reviewer Sonnet: 85k tokens, 22 tool calls, 3.9 min, PASS). The
+  granular cloud mixes grains in JS into one buffer per 2 s window (cost 49 at 30 grains a second,
+  against 585 for a source, gain and panner per grain); noise beds in white, pink and brown
+  (slopes within 0.05 dB/octave of nominal) shaped into wind, rain and surf, at least 30 dB under
+  the drone. Excerpts within 3.4e-8. A default drone, pad, bell and noise genome renders at 22.7x
+  with an 8 s reverb. The review found an automated filter costs about 20 node-units, so the
+  drone's cost now counts its swept filter (golden 73 → 93). 1j and 1k each built a `MACRO`
+  export, `highestValue` and the excerpt helpers in parallel; 1k took 1j's on rebase. Pending
+  owner checks: grain edges and window joins every 2 s; grain pitch on the scale; wind, rain and
+  surf read as named, rain drops not clicks; whether 30 dB under the drone is too quiet; zipper
+  noise on swept filters; the cloud in mono.
