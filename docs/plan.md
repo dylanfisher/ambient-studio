@@ -1257,3 +1257,18 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   for truncated responses; the excerpt-length lint floor and silent renders as failed checks;
   the FFT promoted from the golden helper; `samples` carried through export and `--from`; 2g and
   2h split into four steps; owners for `arch.js`, `producer` and the `samples` plumbing.
+- 2026-11-06: 2a merged as b40833d (Opus: 112k tokens, 57 tool calls, 10.9 min). `loadConfig()`
+  with every key required and unknown keys refused, `paths(dataRoot)`, `src/config/example.json`,
+  `test/support/temp-root.js`, and an `arch.js` rule against `process.env` outside src/config.
+  Under Vitest the config refuses the owner's two real folders, checked against both `$HOME` and
+  the account's home, without case. The guard tests were seen failing only on the missing
+  module: switching the guard off would have read the owner's real config. Pending owner checks:
+  the model id in `example.json` is a placeholder; host `0.0.0.0` and port 4180.
+- 2026-11-06: 2b merged as f6b50ea (Opus: 209k tokens, 82 tool calls, 20.6 min). The genome's
+  loudness tops out at −10 LUFS (0018 and 0011 amended; no render changed). 14 constraint kinds
+  with a validator, `constraintsText()` (539 of 800 characters for a full set) and
+  `lintGenome`, each kind with a passing and a failing fixture in one table (acceptance 2);
+  `EXCERPT_SECONDS` 25; floors at −50 dB per voice over the span it plays, a lone static drone,
+  and the excerpt length. 2a and 2b were merged before review, against orchestrator rule 10; a
+  review of both runs after the fact. Pending owner checks: the −50 dB near-silence floor, the
+  25 s excerpt, and whether a lone drone with only a sweep should pass.
