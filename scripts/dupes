@@ -1,0 +1,52 @@
+#!/usr/bin/env node
+// Principle 1 by tool: fail on a block of about eight lines copied between source files
+// (jscpd), and on a string literal of four or more characters written in more than one
+// source file. Tests are excluded; they restate values on purpose.
+import { spawnSync } from "node:child_process";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
+
+const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
+const sourceDirs = ["src", "sidecar/src"].filter((dir) => existsSync(join(root, dir)));
+
+const jscpd = spawnSync(
+  join(root, "node_modules/.bin/jscpd"),
+  ["--min-lines", "8", "--format", "javascript,python", "--exit-code", "1", ...sourceDirs],
+  { cwd: root, stdio: "inherit" },
+);
+if (jscpd.error) throw jscpd.error;
+
+/** @param {string} dir @returns {string[]} */
+function walk(dir) {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) return entry.name === "__pycache__" ? [] : walk(path);
+    return /\.(m?js|py)$/.test(entry.name) ? [path] : [];
+  });
+}
+
+// Import lines name modules, not facts, so the same specifier in two files is fine.
+const importLine = /^\s*(import|export\s.*\sfrom|from\s\S+\simport)\b/;
+const literal = /(["'])((?:\\.|(?!\1)[^\\\n]){4,})\1/g;
+
+/** @type {Map<string, Set<string>>} literal → files it appears in */
+const seen = new Map();
+for (const file of sourceDirs.flatMap((dir) => walk(join(root, dir)))) {
+  for (const line of readFileSync(file, "utf8").split("\n")) {
+    if (importLine.test(line)) continue;
+    for (const match of line.matchAll(literal)) {
+      const text = match[2] ?? "";
+      const files = seen.get(text) ?? new Set();
+      files.add(relative(root, file));
+      seen.set(text, files);
+    }
+  }
+}
+
+const repeated = [...seen].filter(([, files]) => files.size > 1);
+for (const [text, files] of repeated) {
+  console.error(`"${text}" is written in ${[...files].join(", ")}; define it once and import it`);
+}
+
+if (jscpd.status !== 0 || repeated.length > 0) process.exit(1);
+console.log("no copied blocks or repeated literals");

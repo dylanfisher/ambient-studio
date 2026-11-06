@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# Run the tests.
-#   ./scripts/test                   the whole suite
+# Run the tests: Vitest for the JS, pytest for sidecar/.
+#   ./scripts/test                   the whole suite; skipped when its inputs match the last
+#                                    passing full run (--fresh forces a run)
 #   ./scripts/test --changed [ref]   only the tests for the files changed since ref (default
 #                                    HEAD), uncommitted and untracked files included. A change
-#                                    to a shared input (the manifest, test helpers, this
-#                                    script) runs the whole suite.
-#   ./scripts/test <args>            passes args to the test runner, for a focused run
+#                                    to a shared input (the manifests, lockfiles, test config,
+#                                    test/support/, this script) runs the whole suite.
+#   ./scripts/test --low ...         at background priority with two workers, so builders
+#                                    running tests don't starve omlx serving the live site
+#   ./scripts/test <args>            passes args to `vitest run`, for a focused run
 #
 # `--changed` is the inner loop: agents iterate with it and run ./scripts/check once, at the
 # end. Several full runs at once, one per parallel agent, load the machine until timing tests
@@ -13,9 +16,57 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# Replace the two lines below with the real commands, e.g.
-#   npm:    exec npx vitest run "$@"            --changed: npx vitest run --changed "${2:-HEAD}"
-#   pytest: exec uv run pytest "$@"             --changed: map each changed file to its test file
-#   go:     exec go test ./... "$@"             --changed: go test on the packages git diff names
-printf '\033[31m✗ no test command configured — run /scaffold (see docs/scaffold.md).\033[0m\n' >&2
-exit 1
+shared='^(package\.json|pnpm-lock\.yaml|vitest\.config\.js|tsconfig\.json|scripts/test|test/support/|sidecar/(pyproject\.toml|uv\.lock|tests/conftest\.py))'
+stamp=tmp/test-pass
+
+low=0 fresh=0 changed=0 ref=HEAD args=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --low) low=1 ;;
+    --fresh) fresh=1 ;;
+    --changed)
+      changed=1
+      if [ $# -gt 1 ] && [ "${2#-}" = "$2" ]; then ref="$2"; shift; fi
+      ;;
+    *) args+=("$1") ;;
+  esac
+  shift
+done
+
+prefix=() vitest_extra=()
+if [ "$low" = 1 ]; then
+  if command -v taskpolicy >/dev/null; then prefix=(taskpolicy -b); else prefix=(nice -n 10); fi
+  vitest_extra=(--maxWorkers=2)
+fi
+
+vitest() { ${prefix[@]+"${prefix[@]}"} node_modules/.bin/vitest run ${vitest_extra[@]+"${vitest_extra[@]}"} "$@"; }
+pytest() { (cd sidecar && ${prefix[@]+"${prefix[@]}"} uv run --frozen pytest -q); }
+
+full() {
+  local inputs
+  inputs=$(git ls-files -co --exclude-standard -- src test sidecar scripts/test \
+    package.json pnpm-lock.yaml vitest.config.js tsconfig.json | sort | xargs shasum | shasum)
+  if [ "$fresh" = 0 ] && [ -e "$stamp" ] && [ "$(cat "$stamp")" = "$inputs" ]; then
+    echo "inputs match the last passing run — skipped (--fresh to run anyway)"
+    return 0
+  fi
+  vitest
+  pytest
+  mkdir -p tmp && printf '%s\n' "$inputs" > "$stamp"
+}
+
+if [ "${#args[@]}" -gt 0 ]; then
+  vitest "${args[@]}"
+elif [ "$changed" = 0 ]; then
+  full
+else
+  files=$( { git diff --name-only "$ref"; git ls-files --others --exclude-standard; } | sort -u)
+  if [ -z "$files" ]; then echo "nothing changed since $ref"; exit 0; fi
+  if grep -qE "$shared" <<<"$files"; then
+    echo "a shared input changed — running the whole suite"
+    fresh=1 full
+    exit 0
+  fi
+  if grep -qE '^(src|test)/' <<<"$files"; then vitest --changed "$ref" --passWithNoTests; fi
+  if grep -q '^sidecar/' <<<"$files"; then pytest; fi
+fi

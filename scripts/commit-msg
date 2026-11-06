@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Checks a commit title against docs/writing.md. Linked into .git/hooks by ./scripts/setup.
+set -euo pipefail
+
+title=$(grep -v '^#' "$1" | head -n 1)
+types='feat|fix|refactor|perf|test|docs|build|ci|chore'
+scopes='engine|domain|config|server|web|sidecar'
+
+case "$title" in Merge\ *|Revert\ *|fixup!\ *|squash!\ *) exit 0 ;; esac
+
+fail() { printf '\033[31m✗ commit title: %s\033[0m\n  %s\n  see docs/writing.md\n' "$1" "$title" >&2; exit 1; }
+
+[[ "$title" =~ ^($types)(\(($scopes)\))?!?:\ .+ ]] ||
+  fail "want <type>(<scope>): <summary>; types $types, scopes $scopes"
+summary=${title#*: }
+[[ "$summary" =~ ^[a-z0-9\`] ]] || fail "lowercase after the colon"
+[[ "$summary" != *. ]] || fail "no trailing period"
+[ "${#title}" -le 72 ] || fail "${#title} characters (limit 72)"

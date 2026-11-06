@@ -16,9 +16,6 @@ run() {
   if ! "$@"; then failures+=("$name"); fi
 }
 
-# Setup-time steps and the todo() placeholder. Deleted, with this line, once the project is set up.
-[ -e scripts/scaffold-check ] && source scripts/scaffold-check
-
 # AGENTS.md is the highest-leverage file in the repo and the easiest to let rot.
 # The limit is in words, not lines: a line cap is met by packing a rule onto one
 # 800-character line, which costs the same context and reads worse.
@@ -68,14 +65,16 @@ run links bash -c '
   echo "all relative links resolve"
 '
 
-run format    todo "npx prettier --check ."
-run lint      todo "npx eslint ."
-run typecheck todo "npx tsc --noEmit"   # delete this step entirely if the language is untyped
-run arch      todo "npx depcruise --validate"   # or ./scripts/arch — see the Tiers table in docs/map.md
+# JS and Python halves both run, so a JS failure doesn't hide a Python one.
+both() { local js=0 py=0; bash -c "$1" || js=1; (cd sidecar && bash -c "$2") || py=1; return $((js | py)); }
+run format    both 'node_modules/.bin/biome format .' 'uv run --frozen ruff format --check .'
+run lint      both 'node_modules/.bin/biome check --formatter-enabled=false .' 'uv run --frozen ruff check .'
+run typecheck both 'node_modules/.bin/tsc -p . && echo "tsc: no errors"' 'uv run --frozen pyright'
+run arch      ./scripts/arch
 # Principles 1 and 3 by tool: a literal or block defined in more than one place, and
-# public API nothing outside its module calls. Delete a step the project declines.
-run dupes     todo "npx jscpd --exit-code 1 src"
-run surface   todo "npx knip"
+# public API nothing outside its module calls.
+run dupes     ./scripts/dupes
+run surface   node_modules/.bin/knip
 run test      ./scripts/test
 
 if [ ${#failures[@]} -gt 0 ]; then

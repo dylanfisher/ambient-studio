@@ -1,26 +1,16 @@
 # AGENTS.md
 
-<!-- ══════════════════════════════════════════════════════════════
-     TEMPLATE — NOT YET INITIALIZED
-
-     Agent: if this block is still present, this repo was just cloned
-     from the starter and has not been set up. Do NOT infer the answers
-     by scanning the filesystem — run the interview in docs/scaffold.md
-     (or the /scaffold command) with the user, fill in every {{...}}
-     below, then delete this block.
-     ══════════════════════════════════════════════════════════════ -->
-
 Instructions for AI coding agents working in this repo. Humans: see [README.md](README.md).
 
 **Keep this file under 700 words.** Anything longer lives in `docs/` and is linked from here.
 
 ## Stack
 
-- **Language:** {{LANGUAGE + VERSION}}
-- **Package manager:** {{PACKAGE MANAGER}}
-- **Framework:** {{FRAMEWORK, or "none"}}
-- **Test framework:** {{TEST FRAMEWORK}}
-- **Layout:** {{where source lives, where tests live}} — tiers and search recipes: [docs/map.md](docs/map.md)
+- **Language:** JavaScript (ESM) on Node 26.12.1 (`.nvmrc`), typed with JSDoc and checked by `tsc --strict`; Python 3.12 in `sidecar/`
+- **Package manager:** pnpm (`packageManager` in package.json); uv for `sidecar/`
+- **Framework:** none. `node:http` and `node:sqlite` (WAL) on the server; plain HTML/CSS/ES modules in the browser, no build step; Web Audio via `node-web-audio-api` offline
+- **Test framework:** Vitest; pytest in `sidecar/`
+- **Layout:** `src/{engine,domain,config,server,web}`, tests mirrored under `test/`; Python in `sidecar/src`, tests in `sidecar/tests` — tiers and search recipes: [docs/map.md](docs/map.md)
 - **Reference docs:** [docs/reference.md](docs/reference.md) says which local source answers which question. Check it before the web.
 
 ## Commands
@@ -30,7 +20,7 @@ Instructions for AI coding agents working in this repo. Humans: see [README.md](
 | Install / bootstrap | `./scripts/setup` |
 | Run locally | `./scripts/dev` |
 | Run tests | `./scripts/test` |
-| Run the tests for what you changed | `./scripts/test --changed` |
+| Run the tests for what you changed | `./scripts/test --changed` (add `--low` while omlx is serving) |
 | **Full gate** | `./scripts/check` |
 
 `./scripts/check` is the gate — see Definition of done. Iterate with `./scripts/test --changed`; run `check` once, at the end. Work split across subagents follows [docs/agent-rules.md](docs/agent-rules.md).
@@ -51,18 +41,28 @@ Non-negotiable, regardless of stack. Rationale: [docs/principles.md](docs/princi
 
 ## Boundaries
 
-<!-- Highest-value section. Be specific about what must NOT be touched directly.
-     Delete these examples and replace with real ones. -->
-- {{e.g. Never edit `db/migrations/` by hand — run `<migration command>`.}}
-- {{e.g. `src/generated/` is generated — edit the schema, then regenerate.}}
-- **Commit locally; never push.** The owner pushes.
-- **Pre-release:** breaking changes are fine. Stored data has one shape — no version fields, migrations, or compatibility shims; data that doesn't match is discarded. Delete this line at the first production release.
-- Never write, print, or `op read` a plaintext secret. `.env.example` holds `op://` references; they resolve via `op run` at runtime.
+- **omlx is shared with a live public site.** Reach it only through the server's queue: one request
+  in flight, back off when it's busy, short contexts, model id from config. Never change its
+  settings or load or swap models.
+- **Nothing runs in the background.** Generation, sidecar jobs and LoRA training start only when
+  the owner starts them; training uses its own small model, never omlx. Tests use fakes for omlx
+  and the sidecar.
+- **Renders are reproducible.** A change that alters the audio an existing genome + seed renders
+  bumps the engine version.
+- **Never touch the owner's real data** in `~/.config/ambient-studio/` or
+  `~/Library/Application Support/Ambient Studio/`. Tests, and any run an agent starts, root
+  paths in a temp folder.
+- **Commit locally; never push or call `gh`.** The owner pushes; the repo is public.
+- **Pre-release, derived data** (renders, features, embeddings, preference models) has one shape:
+  no version fields or migrations; data that doesn't match is discarded and rebuilt.
+  **Irreplaceable data** (vibes, genomes, ratings, sketches, tracks, albums, notes) is append-only:
+  mark rows removed, never delete, and a shape change ships with a migration.
+- The app has no secrets. If one appears, stop and ask.
 
 ## Definition of done
 
 - `./scripts/check` passes clean.
 - New behavior has a test that fails without the change.
 - No new dependencies, no new files outside the agreed layout, no TODOs left behind.
-- If a decision was non-obvious, record it in `docs/decisions/`.
+- A choice a reader would otherwise reopen, behavior included, has a record in `docs/decisions/`.
 - Comments, docs, and commit messages follow [docs/writing.md](docs/writing.md).
