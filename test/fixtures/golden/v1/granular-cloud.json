@@ -1,0 +1,37 @@
+{
+  "genome": "granular-cloud",
+  "engineVersion": 1,
+  "hashes": {
+    "raw": {
+      "darwin-arm64": {
+        "cpu": "Apple M1 Max",
+        "node": "v26.12.1",
+        "nodeWebAudioApi": "2.2.0",
+        "renders": {
+          "start": {
+            "seed": 1,
+            "offset": 0,
+            "duration": 2,
+            "sha256": "68bd9663774c46fd2d747e1475deda6b3a5513480ab1392ce52bb7df7d55a4df",
+            "summary": {
+              "peak": -17.35,
+              "rms": -36.11,
+              "bands": [-99.56, -48.37, -41.7, -40.03, -42.06, -47.47, -85.67, -107.47]
+            }
+          },
+          "end": {
+            "seed": 1,
+            "offset": 58,
+            "duration": 2,
+            "sha256": "6282e2c75682cf5ac8ccc16f53ccafbfc360909d53303b7a07df2947a9e5848b",
+            "summary": {
+              "peak": -53.32,
+              "rms": -72.04,
+              "bands": [-137.23, -86.38, -77.56, -75.56, -77.35, -83.19, -118.47, -144.12]
+            }
+          }
+        }
+      }
+    }
+  }
+}

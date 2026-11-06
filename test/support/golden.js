@@ -131,7 +131,7 @@ export async function renderRaw(genome, { seed, offset, duration }) {
  * @param {Float64Array} re
  * @param {Float64Array} im
  */
-function fft(re, im) {
+export function fft(re, im) {
   const n = re.length;
   for (let i = 1, j = 0; i < n; i++) {
     let bit = n >> 1;

@@ -10,3 +10,7 @@ literal "${key}" | files src/engine/schema-text.js src/engine/tuning.js | quotes
 literal "${name}" | files src/engine/tuning.js src/engine/voice-registry.js | quotes a scale name in a tuning error and a parameter name in a voice error
 literal "linear" | files src/engine/descriptor.js src/engine/trajectory.js | a parameter scale in descriptor.js, a trajectory segment curve in trajectory.js
 literal "${id}" | files src/engine/render.js src/engine/tuning-registry.js | quotes a voice id in a render error and a tuning id in a registry error
+literal "lowpass" | files src/engine/drone.js src/engine/noise-bed.js | the Web Audio filter type each voice sets on its own filter
+literal "density" | files src/engine/bell.js src/engine/granular-cloud.js | each voice's own parameter: bell notes a minute, grains a second
+literal "tone" | files src/engine/noise-bed.js src/engine/pad.js | each voice's own parameter, named in its macro rows: the pad's and the noise bed's filter shift
+literal "depth" | files src/engine/noise-bed.js src/engine/pad.js | the noise bed's sweep-and-swell parameter, and a description word in the pad's swell descriptor

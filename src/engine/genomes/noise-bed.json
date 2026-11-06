@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "duration": 60,
+  "tuning": "12-tet",
+  "scale": "aeolian",
+  "key": 9,
+  "fadeIn": 1,
+  "fadeOut": 20,
+  "width": -3,
+  "reverbDecay": 2,
+  "reverbLevel": -18,
+  "delayTime": 0.5,
+  "delayFeedback": 0.2,
+  "delayLevel": -30,
+  "macros": { "brightness": 0.3 },
+  "voices": [
+    {
+      "id": "rain",
+      "type": "noise",
+      "level": -6,
+      "color": "pink",
+      "preset": "rain",
+      "tone": 0,
+      "depth": 0.4,
+      "period": 8
+    },
+    {
+      "id": "surf",
+      "type": "noise",
+      "level": -3,
+      "color": "brown",
+      "preset": "surf",
+      "tone": { "points": [[0, -1], [2, 0.5, "smooth"]] },
+      "depth": 0.7,
+      "period": 6
+    }
+  ]
+}

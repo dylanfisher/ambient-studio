@@ -1,0 +1,37 @@
+{
+  "genome": "noise-bed",
+  "engineVersion": 1,
+  "hashes": {
+    "raw": {
+      "darwin-arm64": {
+        "cpu": "Apple M1 Max",
+        "node": "v26.12.1",
+        "nodeWebAudioApi": "2.2.0",
+        "renders": {
+          "start": {
+            "seed": 1,
+            "offset": 0,
+            "duration": 2,
+            "sha256": "25a6b49aae446e8bf4754f7b7ee364beab10d764c490e3f953c6d322c235839e",
+            "summary": {
+              "peak": -23.4,
+              "rms": -37.86,
+              "bands": [-38.61, -48.63, -51.15, -55.26, -58.83, -59.26, -59, -55.97]
+            }
+          },
+          "end": {
+            "seed": 1,
+            "offset": 58,
+            "duration": 2,
+            "sha256": "60895ea3bd2eaf4f04e50d8eb235259141e131bd980ae9c5c6012fd49a089fa7",
+            "summary": {
+              "peak": -62.23,
+              "rms": -80.47,
+              "bands": [-80.26, -92.31, -95.29, -102.72, -102.78, -95.91, -95.86, -93.06]
+            }
+          }
+        }
+      }
+    }
+  }
+}
