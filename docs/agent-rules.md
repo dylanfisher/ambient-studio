@@ -38,8 +38,8 @@ and write down why when a rule comes from something that went wrong.
    running alone, or a subagent making a small fix, works in the main checkout.
 2. Write the test first and see it fail.
 3. Iterate with `./scripts/test --changed`. Before committing, run the format and lint steps of
-   `./scripts/check` and `./scripts/test --changed <base>`. Don't run the full `./scripts/check`:
-   the orchestrator runs it at merge.
+   `./scripts/check` and `./scripts/test --changed <base>`, skipping any your diff can't fail
+   (AGENTS.md). Don't run the full `./scripts/check`: the orchestrator runs it at merge.
 4. Use only the decision-record number the orchestrator gave you.
 5. Scratch files go in your session's scratchpad. Don't write to `tmp/`; the orchestrator owns it.
 6. Commit on your branch, following docs/writing.md. Never push.
@@ -70,7 +70,8 @@ and write down why when a rule comes from something that went wrong.
 5. Fixes for a FAIL go back to a builder, and a fresh reviewer checks them. After a second FAIL
    with the same cause, don't send a third patch round: narrow the scope, change the design, or
    ask the owner.
-6. Merge onto the integration branch, then run `./scripts/check`. A flaky test that fails a merge
+6. Merge onto the integration branch, then run `./scripts/check` if the merge changed anything
+   it reads. A flaky test that fails a merge
    gets a hunt for its cause, not a rerun.
 7. After a merge, remove the worktree and delete the branch. At the end of each phase and before a
    session ends, run `git worktree list` and remove every worktree no running agent is using, and
@@ -83,6 +84,7 @@ and write down why when a rule comes from something that went wrong.
     key, the omlx or sidecar boundary, concurrency, or a diff over about 300 lines or across
     tiers. Add a security pass when the change parses input, writes files or opens the network,
     and a performance pass when it touches the render path. Give each reviewer numbered
-    questions. For anything smaller, read the diff yourself and run the gate.
+    questions. For anything smaller, read the diff yourself and run the gate if it
+    reads what changed.
 11. Log each subagent's tokens, tool calls and wall time in the progress log. Every two or three
     phases, change the briefs where the most went.

@@ -24,7 +24,7 @@ Instructions for AI coding agents working in this repo. Humans: see [README.md](
 | Fix formatting | `./scripts/format` |
 | **Full gate** | `./scripts/check` |
 
-`./scripts/check` is the gate — see Definition of done. Iterate with `./scripts/test --changed`; run `check` once, at the end. Work split across subagents follows [docs/agent-rules.md](docs/agent-rules.md).
+`./scripts/check` is the gate — see Definition of done. Iterate with `./scripts/test --changed`; run `check` once, at the end. **Run a check only when it can fail on your diff.** Name the step that reads what you changed; if none does (`.claude/`, `tmp/`), skip it and say so. Work split across subagents follows [docs/agent-rules.md](docs/agent-rules.md).
 
 ## Principles
 
@@ -62,7 +62,7 @@ Non-negotiable, regardless of stack. Rationale: [docs/principles.md](docs/princi
 
 ## Definition of done
 
-- `./scripts/check` passes clean.
+- `./scripts/check` passes clean, when the change touches anything it reads.
 - New behavior has a test that fails without the change.
 - No new dependencies, no new files outside the agreed layout, no TODOs left behind.
 - A choice a reader would otherwise reopen, behavior included, has a record in `docs/decisions/`.
