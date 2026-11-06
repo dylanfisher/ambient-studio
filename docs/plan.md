@@ -778,3 +778,10 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   0.31 dB under-read; passes aim for ±0.1 LU, accept ±0.5 only when passes or the +40 dB cap run
   out. 300 s stereo at −16 LUFS: 1.6 s; 900 s at −9 LUFS: 8.4 s. 0011 is provisional. Pending
   owner check: a heavily limited −9 LUFS drone, listening for pumping or bass distortion.
+- 2026-11-06: 1c merged as 7b36494 (Opus: 183k tokens, 101 tool calls, 14.5 min, then a 3.9 min
+  fix round; reviewer Sonnet: 75k tokens, 16 tool calls, 3.0 min, PASS). Descriptors (`number`,
+  `int`, `choice`, `flag`), `validateGenome` listing every error with its path, `canonicalGenome`,
+  `schemaText()` at 1,519 characters before voices, a voice registry, at most 16 voices and 64
+  trajectory points. The fix round removed the fixture voice's import side effect, fixed
+  `dupes.js` reading a wrapped import's closing line as a literal, and defined the default tuning
+  once. 0005's 1c amendment is provisional.
