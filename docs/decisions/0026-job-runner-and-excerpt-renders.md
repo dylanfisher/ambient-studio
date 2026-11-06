@@ -24,7 +24,9 @@ it, at once when nothing is running; there is no timer or start-up hook. A job g
 `AbortSignal` and a `progress(done, total)` function. Its status, which the UI polls, is its
 `id`, `kind`, `state` (`queued`, `running`, `done`, `failed`, `cancelled`), `progress`, `result`,
 the `error` message and the `addedAt`, `startedAt` and `finishedAt` times from an injected clock.
-Statuses are copies, and every job since start-up is kept in memory; a restart forgets them.
+Statuses are copies. `get(id)` returns one with its `result`, and `list()` returns every job's
+without it, so polling the list doesn't copy each finished job's output; the UI polls `get`.
+Every job since start-up is kept in memory; a restart forgets them.
 
 **Cancelling** a queued job removes it unstarted. Cancelling a running one aborts its signal: the
 job stops at its next check, and the excerpt job checks before each render. A job that rejects
@@ -41,11 +43,14 @@ when it sets none. The genome's own `loudness` is not used: two genomes of one v
 differ. The ceiling is the genome's. 2e's render checks run on the raw render, and both feature
 sets are measured.
 
-**A render normalize can't lift.** `normalize` throws on silence and on gain above its 40 dB
-cap. Both happen only under the near-silence check's −50 LUFS floor, so when that check has
-failed, the throw becomes `heard: null` in the features, the WAV holds the raw render with no
-gain, and the job goes on. A normalize throw with that check passing is a fault, and fails the
-job. A rated copy of such an excerpt records 0 dB of gain.
+**A render normalize can't lift.** Any throw from `normalize` is that candidate's failed check,
+never the job's failure: the features get `heard: null`, the WAV holds the raw render with no
+gain, and the job goes on. On silence and on gain above its 40 dB cap, which happen only under
+the near-silence check's −50 LUFS floor, that check has already failed and says why. Any other
+throw, such as a limiter that stops short of the target on a quiet, peaky render (the noise-bed
+golden at −10 LUFS stops at −12.26), adds a finding with rule `normalize` (`NORMALIZE_FAILED`)
+and normalize's message. Only a fault outside normalize, such as I/O, an invalid genome or a
+non-finite sample, fails the job. A rated copy of such an excerpt records 0 dB of gain.
 
 **The render cache.** WAVs sit flat in the render-cache folder, named
 `<genomeId>-seed<seed>-<duration>s-<target>LUFS-<12 hex of SHA-256 of the producer>.wav`, so a
@@ -53,7 +58,11 @@ render under a new target or producer never overwrites a file a row still names.
 written into a temp folder beside it and renamed into place. The row's key is the window
 (genome, seed, offset, duration) as 0021 says; a row is reused when its target and producer
 match and its file exists. Otherwise the excerpt is rendered again, `putRender` replaces the row,
-and the replaced row's file is deleted.
+and the replaced row's file is deleted. A render id is never reused: migration
+`0003-renders-autoincrement.sql` rebuilds `renders` with `AUTOINCREMENT`, since SQLite otherwise
+gives the highest id back after a delete and a stale `/audio/:renderId` URL would serve another
+render. The migration drops the rows, which are derived, so the WAVs cached before it stay in the
+render-cache folder with no row, once; nothing reads or deletes them.
 
 **The producer** is `engine-<ENGINE_VERSION> features-<SHA-256>`, the hash over each
 `FEATURE_EXTRACTOR` file's path and contents in the list's order, each ended by a NUL. It is
@@ -67,8 +76,10 @@ in the rated-audio folder, named
 row with the heard identity, the target, the PCM hash `checkRatedAudio` checks, and the gain from
 the heard features. A second call for the same identity returns the existing row, removed or
 not, since the table holds one per identity. It refuses a render made under another producer:
-the row would record this engine version for audio another one made. A FLAC already at the name
-with no row fails with its path, since a rated file is never replaced.
+the row would record this engine version for audio another one made. When the FLAC's name is
+already taken, it reads the row again: a capture of the same excerpt running at the same time
+linked first and wrote it, and that row is returned. A taken name with no row fails with its
+path, since a rated file is never replaced.
 
 **Cost**, measured on mbp2021 under `nice -n 10` at a load average of 2.7: rendering, checking,
 normalizing, measuring and writing one excerpt took 1.04–1.09 s for the drone golden and
@@ -84,10 +95,10 @@ normalizing, measuring and writing one excerpt took 1.04–1.09 s for the drone 
   each WAV, and refuses to overwrite, which a cache must do.
 - **The genome's `loudness` as the target** — rejected: an A/B choice between genomes at
   different targets is won by the louder one.
-- **Failing the job on a silent genome** — rejected: one quiet candidate would cost the other
-  seven their excerpts, and the near-silence check already says what is wrong.
+- **Failing the job on a silent genome, or on any other normalize throw** — rejected: one odd
+  candidate would cost the other seven their excerpts, and a failed check says what is wrong.
 - **Naming cached files by render id** — rejected: the id is known only after the row is
-  written, and SQLite gives a replaced row's id back to the next insert.
+  written.
 - **Hashing the producer on every render** — rejected: it would hash edits the running server
   hasn't loaded, and reads about sixty files per excerpt.
 
@@ -99,6 +110,15 @@ normalizing, measuring and writing one excerpt took 1.04–1.09 s for the drone 
   small, and a cap can come with the first sign it isn't.
 - Editing any engine or feature file re-renders every cached excerpt on its next request; each
   takes one to three seconds.
-- SQLite reuses the id of a deleted row when it was the highest, so a replaced render's new row
-  can get its old id. An audio URL for the stale render then serves the new one, which is the
-  same window under the current producer.
+- An audio URL for a replaced render stops resolving; the UI asks for the candidate's current
+  excerpt again.
+- Migration 0003 orphans the WAVs cached before it, once. They are derived and can be deleted
+  by hand; nothing cleans the folder.
+- A candidate with a `normalize` finding plays its raw render, at whatever level it rendered,
+  so it won't match the other side of an A/B choice. The finding says so.
+
+## Amendments
+
+- 2026-11-06: from the step's review, before merge. Any normalize throw is a failed check, not a
+  failed job; render ids are never reused (migration 0003); `list()` leaves out results; a
+  capture that finds its name taken by a parallel capture returns that capture's row.
