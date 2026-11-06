@@ -1368,3 +1368,16 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   drops the rest of the body. 827 tests. Pending owner check: the index page reads "Engine version
   2 loaded." in Safari 17.6 on mbp2015 and on mbp2026, by LAN IP (`mbp2021.local` gets a 421, since
   this machine's host name is `MacBookPro`).
+- 2026-11-06: 2h merged as 298d65e (Opus: 192k tokens, 104 tool calls, 18.9 min, then a fix round
+  at 240k, 81 calls, 10.3 min; reviewer Sonnet: 64k tokens, 13 tool calls, 5.1 min, PASS with
+  findings taken before merge; fixes read by the orchestrator). A job runner that runs one job at a
+  time in order, with polled status (`list` without results, `get` with them) and cancellation
+  through an `AbortSignal`; nothing starts on its own. `renderExcerpt` renders at the candidate's
+  seed and `excerptOffset`, 25 s, normalized to the vibe's loudness constraint or −16 LUFS so both
+  A/B sides play at one level, with 2e's checks and both feature sets, cached as WAV under a name
+  that carries the target and the producer's hash. `PRODUCER` is `engine-<version>
+  features-<sha256 of FEATURE_EXTRACTOR's files>`. Any normalize throw is a failed check on that
+  candidate and the job goes on. Migration 0003 recreates `renders` with AUTOINCREMENT: without
+  it SQLite reused a replaced render's id, so a stale `/audio/:renderId` URL could serve other
+  audio. `captureRatedAudio` writes the FLAC once per heard identity. 25 s excerpt with checks and
+  features: 1.0–2.6 s; a cache hit 0.2 ms; a capture 150 ms. 852 tests. 0026 is provisional.
