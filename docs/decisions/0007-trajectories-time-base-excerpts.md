@@ -114,3 +114,39 @@ rounded; `renderPlan` (1f) converts it to frames.
 - A new curve name can be added later without a migration. Changing what an existing name
   computes changes renders and bumps the engine version
   ([0009](0009-engine-version-golden-hashes.md)).
+
+## Amendments
+
+- 2026-11-06: from step 1f, as built. Each item is provisional: owner to confirm.
+  - **Tolerance.** An excerpt differs from the same window of a full render by a peak of at
+    most 1e-5, with the difference's RMS at least 100 dB under the window's RMS.
+    `test/engine/render.test.js` holds it on the drone's golden genome, on voices that start and
+    end inside the render, on a Colundi drone with snapped partials, and on a test voice with
+    events in every window.
+  - **Measured** on mbp2021, seed 1, 10 s excerpts against full renders of the golden drone
+    genome (`src/engine/genomes/drone.json`) changed to `duration` 900, `reverbDecay` 8,
+    `delayTime` 0.75 and `delayFeedback` 0.35 (12.9 s of pre-roll): at offsets 30, 450 and
+    860 s a peak of at most 8.3e-7, 120 dB under. The same genome with `duration` 400,
+    `reverbDecay` 1 and `delayFeedback` 0, against a 310 s render: at 30, 150 and 300 s at most
+    8.3e-7, 122 dB under.
+  - **Sources found and removed while measuring.** (1) The library starts an oscillator
+    between frames in a way that doesn't give the phase the formula above assumes: an oscillator
+    started at the first whole cycle after the render's start differed by a peak of 1.8e-3 at
+    some offsets. Oscillators now start on whole frames, the voice's first frame
+    `⌈start × 48000⌉` or the render's first frame, and the phase the voice has reached by then
+    is rotated into the `PeriodicWave` (real and imaginary parts `g·sin nφ`, `g·cos nφ`).
+    (2) With a short reverb, the excerpt's first moments differed by a peak of 1.4e-5: the
+    oscillators' late start at the render's beginning reached the offset through the reverb's
+    −60 dB tail. Whole-frame starts removed it too (7.8e-7 at 150 s with a 1 s reverb), so the
+    pre-roll has no margin added; a 0.5 s margin was tried and isn't needed. (3) A render
+    ending on a 2 s window boundary missed its last control-grid sample, so its final 0.1 s
+    held instead of ramping; that, not the excerpt, was the 5.2e-4 first reported at 860 s,
+    and a test now checks that a render's samples don't depend on where it ends.
+  - **Pre-roll.** The highest feedback is sampled on the control grid
+    ([0010](0010-event-windows-control-grid-memory.md)) from 0 to the offset. The context
+    starts on a whole 128-frame render quantum at or before `offset − preRoll`, so an
+    excerpt's quanta line up with a full render's. `renderPlan` throws on a window that runs
+    past the genome's `duration`.
+  - **Fades** are sampled on the control grid like every other parameter: the fade-in rises
+    from 0 at timeline 0, the fade-out falls to 0 at the last grid time before `duration`, both
+    along the `smooth` curve, so a render ends in exact zeros.

@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "duration": 60,
+  "tuning": "12-tet",
+  "scale": "dorian",
+  "key": 2,
+  "fadeIn": 1,
+  "fadeOut": 20,
+  "width": -3,
+  "reverbDecay": 2,
+  "reverbLevel": -12,
+  "delayTime": 0.4,
+  "delayFeedback": 0.3,
+  "delayLevel": -24,
+  "macros": { "brightness": 0.7 },
+  "voices": [
+    {
+      "id": "drone",
+      "type": "drone",
+      "level": -10,
+      "detune": 4,
+      "root": 37,
+      "partials": 8,
+      "slope": 6,
+      "cutoff": { "points": [[0, 250], [3, 900, "smooth"]] },
+      "sweep": 1,
+      "period": 30,
+      "q": 1
+    }
+  ]
+}
