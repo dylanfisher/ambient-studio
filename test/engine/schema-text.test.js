@@ -25,7 +25,7 @@ describe("schemaText", () => {
 
   test("gives each parameter's range, unit and default, and marks trajectories", () => {
     const text = schemaText();
-    expect(text).toMatch(/^loudness -30\.\.-9 LUFS =-16 /m);
+    expect(text).toMatch(/^loudness -30\.\.-10 LUFS =-16 /m);
     expect(text).toMatch(/^reverbLevel~ -30\.\.-6 dB =-12 /m);
     expect(text).toMatch(/^pulse none\|beat =none /m);
   });

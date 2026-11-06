@@ -5,7 +5,7 @@
 
 ## Context
 
-Every export is brought to a loudness target from −30 to −9 LUFS with true peak at or under
+Every export is brought to a loudness target from −30 to −10 LUFS with true peak at or under
 −1.0 dBTP ([0018](0018-default-loudness-target.md)), measured by our BS.1770-4 meter
 ([0008](0008-loudness-written-here.md)). The renders are bass-heavy drones whose peaks sit well
 above their loudness, so at the louder targets some limiting is needed, and limiting lowers
@@ -72,3 +72,9 @@ every caller passes one (step 1l); `ceiling` defaults to −1.0 dBTP.
   target".
 - Changing any number here changes exported samples and needs an engine version bump once step 1l
   adds the normalized golden hashes.
+
+## Amendments
+
+- 2026-11-06: from step 2b. The target range tops out at −10 LUFS
+  ([0018](0018-default-loudness-target.md)); the −9 figures above are the measurements that led
+  there.

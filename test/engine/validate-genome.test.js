@@ -121,7 +121,7 @@ describe("validateGenome", () => {
   /** @type {[string, Record<string, unknown>, string, RegExp][]} */
   const rules = [
     ["a number below its range", { duration: 30 }, "$.duration", /from 60 to 900 s, got 30/],
-    ["a number above its range", { loudness: -3 }, "$.loudness", /from -30 to -9 LUFS/],
+    ["a number above its range", { loudness: -9 }, "$.loudness", /from -30 to -10 LUFS, got -9/],
     ["a string for a number", { width: "-3" }, "$.width", /must be a number/],
     ["a non-finite number", { width: Number.NaN }, "$.width", /must be a number/],
     [

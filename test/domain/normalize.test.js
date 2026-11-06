@@ -80,7 +80,7 @@ describe("normalize", () => {
     expect(peak).toBeLessThanOrEqual(-1);
   });
 
-  test.each([-30, -16, -12, -9])("a bass-heavy tone reaches %d LUFS at -1 dBTP", (target) => {
+  test.each([-30, -16, -12, -10])("a bass-heavy tone reaches %d LUFS at -1 dBTP", (target) => {
     const input = atLoudness(stereo(sines(bassPartials, 10)), -40);
     const { loudness, peak } = measured(normalize(input, fs, { target, ceiling: -1 }));
     expect(Math.abs(loudness - target)).toBeLessThanOrEqual(0.1);
@@ -93,9 +93,9 @@ describe("normalize", () => {
       (x, n) => 0.05 * x * (1 + 0.8 * Math.sin((2 * Math.PI * n) / (8 * fs))),
     );
     const { loudness, peak } = measured(
-      normalize(stereo(withBursts(tone, 3.7)), fs, { target: -9 }),
+      normalize(stereo(withBursts(tone, 3.7)), fs, { target: -10 }),
     );
-    expect(Math.abs(loudness + 9)).toBeLessThanOrEqual(0.1);
+    expect(Math.abs(loudness + 10)).toBeLessThanOrEqual(0.1);
     expect(peak).toBeLessThanOrEqual(-1);
   });
 
@@ -180,8 +180,8 @@ describe("normalize", () => {
   test("a signal limiting can't bring to the target throws naming the final error", () => {
     // Full-scale bursts every 100 ms hold the limiter down, so more gain can't raise the tone.
     const input = stereo(withBursts(sines([{ frequency: 1000, amplitude: 0.03 }], 5), 0.1));
-    expect(() => normalize(input, fs, { target: -9 })).toThrow(
-      /can't reach -9 LUFS: .* LUFS, -?\d+\.\d LU from the target/,
+    expect(() => normalize(input, fs, { target: -10 })).toThrow(
+      /can't reach -10 LUFS: .* LUFS, -?\d+\.\d LU from the target/,
     );
   });
 
