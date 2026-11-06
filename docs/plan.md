@@ -746,3 +746,9 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
 - 2026-11-06: 1i merged as 892fa90 (Opus: 81k tokens, 30 tool calls, 4.4 min). `encodePcm24` is
   the one float-to-24-bit conversion (round to nearest, clip, NaN throws); a plain PCM WAV header;
   FLAC by streaming the WAV into `flac --best`. 300 s stereo: 0.16 s encode, 1.3 s FLAC.
+- 2026-11-06: 1b merged as 24bc97b (Opus: 154k + 165k-context fix round, 80 tool calls, 13.4 min;
+  reviewer Sonnet: 72k tokens, 12 tool calls, 2.6 min, PASS). A counter-based PRNG (lowbias32
+  absorption; draws independent on every key axis by the reviewer's chi-square and lag-1 checks);
+  relative and absolute tunings as JS data modules through one registry; Scala text with an
+  optional base frequency; Colundi with `subset38`, `core36`, `core18`; shared diatonic modes;
+  `Math.random` and `Date.now` banned in src/engine by arch.js. 0003 and 0004 are provisional.
