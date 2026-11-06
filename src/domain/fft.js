@@ -16,12 +16,16 @@ export function fft(re, im) {
   }
   for (let size = 2; size <= n; size *= 2) {
     const step = (-2 * Math.PI) / size;
-    for (let start = 0; start < n; start += size) {
-      for (let k = 0; k < size / 2; k++) {
+    const half = size / 2;
+    // Twiddle index outside, blocks inside: each twiddle is computed once a stage instead of
+    // once a block. The butterflies of a stage touch disjoint pairs, so the order doesn't
+    // change any output bit.
+    for (let k = 0; k < half; k++) {
+      const c = Math.cos(step * k);
+      const s = Math.sin(step * k);
+      for (let start = 0; start < n; start += size) {
         const a = start + k;
-        const b = a + size / 2;
-        const c = Math.cos(step * k);
-        const s = Math.sin(step * k);
+        const b = a + half;
         const br = /** @type {number} */ (re[b]);
         const bi = /** @type {number} */ (im[b]);
         const tr = br * c - bi * s;

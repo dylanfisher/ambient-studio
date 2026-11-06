@@ -74,7 +74,9 @@ difference, so the list can't drift from the code.
 normalize" in place of nulls.
 
 **Cost.** On mbp2021 under `nice -n 10`, `./scripts/bench --features` times `extractFeatures` and
-`renderChecks` on a 30 s excerpt of example.json at a median of 0.95 s (31× real time).
+`renderChecks` on a 30 s excerpt of example.json at a median of 0.46 s (65× real time, load
+average 2.3). The FFT is most of it; computing each twiddle once a stage instead of once a block
+took it from 0.95 s, with every golden summary unchanged.
 
 ## Alternatives considered
 
