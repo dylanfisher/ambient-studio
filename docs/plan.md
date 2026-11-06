@@ -1281,3 +1281,16 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   passed, 583 tests). Read by the orchestrator. Not fixed: the arch rule still misses a namespace
   import of `node:process` and a multi-line `env` import, and the config guard doesn't follow
   symlinks; no code does either today.
+- 2026-11-06: 2c merged as cae5925 (Opus: 208k tokens, 92 tool calls, 21.8 min, then a fix
+  round at 242k, 41 calls, 12.0 min; reviewer Sonnet: 67k tokens, 3.0 min, FAIL; second
+  reviewer Sonnet: 40k tokens, 3.1 min, PASS). `node:sqlite` in WAL with SQL migrations, one store
+  file per table group, and append-only triggers generated from each table's live columns after
+  every migration; `recursive_triggers` on so `INSERT OR REPLACE` can't delete a kept row. The
+  first review failed the step: an applied migration edited later went unnoticed, so old and new
+  databases could diverge; migrations now carry a SHA-256 checked at open. Also a 5 s busy timeout,
+  the applied list read inside `BEGIN IMMEDIATE`, and ratings and feedback checked against the
+  `rated_audio` row they name. The two-process open test found that switching a new file to WAL
+  fails at once while another connection does the same; `useWal` waits on the write lock and
+  tries up to three times (40 runs alone and 18 under load, no failures). `./scripts/backup`
+  writes a UTC-dated folder and keeps it when the rated-audio check fails. 631 tests. 0021 is
+  provisional.
