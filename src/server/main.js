@@ -80,8 +80,6 @@ async function answer(routes, app, request, response) {
       response.destroy();
       return;
     }
-    // A body over the limit is left unread; closing the connection discards the rest.
-    if (known && error.status === 413) response.setHeader("connection", "close");
     sendJson(response, known ? error.status : 500, {
       error: known ? error.message : "internal error",
     });

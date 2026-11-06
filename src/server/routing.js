@@ -138,15 +138,24 @@ export async function readJson(request) {
     );
   }
   const tooBig = new HttpError(413, `the request body is over the ${MAX_BODY_BYTES}-byte limit`);
-  if (Number(request.headers["content-length"] ?? 0) > MAX_BODY_BYTES) throw tooBig;
+  // Past the limit the rest of the body is read and dropped, not left unread: closing the
+  // connection on a client still sending resets it, and the client loses the 413.
+  if (Number(request.headers["content-length"] ?? 0) > MAX_BODY_BYTES) {
+    request.resume();
+    throw tooBig;
+  }
   /** @type {Buffer[]} */
   const chunks = [];
   let length = 0;
-  for await (const chunk of request) {
-    length += chunk.length;
-    if (length > MAX_BODY_BYTES) throw tooBig;
-    chunks.push(chunk);
-  }
+  await new Promise((resolve, reject) => {
+    request.on("data", (/** @type {Buffer} */ chunk) => {
+      length += chunk.length;
+      if (length <= MAX_BODY_BYTES) chunks.push(chunk);
+      else reject(tooBig); // only the first call counts; later chunks are dropped
+    });
+    request.once("end", resolve);
+    request.once("error", reject);
+  });
   try {
     return JSON.parse(Buffer.concat(chunks).toString("utf8"));
   } catch (error) {

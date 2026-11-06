@@ -34,7 +34,10 @@ response; returning `undefined` with nothing sent is a 500. JSON API routes go u
 `/x`. Each segment is percent-decoded, and a path with an empty, `.` or `..` segment, a bad
 escape, or a segment that decodes to `/`, `\` or NUL is a 404 before any route or file is
 looked at. `body()` reads at most 1 MiB (`MAX_BODY_BYTES`): a larger `Content-Length`, or a
-chunked body that passes it, is a 413 and the connection is closed. A body not labeled
+chunked body that passes it, is a 413. The rest of the body is read and dropped and the
+connection kept: closing it on a client still sending resets the connection, and the client
+loses the 413 (29 of 600 oversize requests did on mbp2021; none do now). Node's
+`requestTimeout` bounds how long a client can keep sending. A body not labeled
 `application/json` is a 415, and one that doesn't parse is a 400 whose message gives the parse
 error.
 
