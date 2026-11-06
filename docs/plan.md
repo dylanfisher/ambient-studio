@@ -1272,3 +1272,12 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   and the excerpt length. 2a and 2b were merged before review, against orchestrator rule 10; a
   review of both runs after the fact. Pending owner checks: the −50 dB near-silence floor, the
   25 s excerpt, and whether a lone drone with only a sweep should pass.
+- 2026-11-06: review of 2a and 2b after merge (Sonnet: 80k tokens, 13 tool calls, 3.4 min,
+  FAIL). Blocking: the excerpt floor subtracted the fades in another order than `excerptOffset`,
+  so `duration 122.8, fadeIn 8.1, fadeOut 89.7` passed lint and then threw (95 of 2 million
+  random draws). Fixed in e118675 by `excerptRoom` in the engine, which both call, with a
+  4,000-case sweep; also 3c4c834 (`Object.hasOwn` for config keys) and fae110d (`arch.js` catches
+  destructured and optional `process.env`) (Sonnet: 57k tokens, 17 tool calls, 2.0 min; gate
+  passed, 583 tests). Read by the orchestrator. Not fixed: the arch rule still misses a namespace
+  import of `node:process` and a multi-line `env` import, and the config guard doesn't follow
+  symlinks; no code does either today.
