@@ -115,6 +115,32 @@ export function listRatedAudio(store) {
 }
 
 /**
+ * Throws unless the rated-audio row `heard` names has the heard identity written beside it.
+ * @param {Store} store
+ * @param {string} what names the rating or side in the message
+ * @param {HeardExcerpt & { ratedAudioId: number }} heard
+ */
+function requireSameExcerpt(store, what, heard) {
+  const id = heard.ratedAudioId;
+  const row = store.db
+    .prepare(
+      `SELECT genomeId, seed, offset, duration, engineVersion FROM ${TABLE.ratedAudio} WHERE id = ?`,
+    )
+    .get(id);
+  if (!row) throw new Error(`${what} names rated audio ${id}, and there is no rated audio ${id}`);
+  /** @type {Record<string, unknown>} */
+  const said = heard;
+  const differs = Object.entries(row).filter(([field, value]) => said[field] !== value);
+  if (differs.length > 0) {
+    const listed = (/** @type {(field: string, value: unknown) => string} */ format) =>
+      differs.map(([field, value]) => format(field, value)).join(", ");
+    throw new Error(
+      `${what} says ${listed((field) => `${field} ${said[field]}`)}, but its rated audio ${id} has ${listed((field, value) => `${field} ${value}`)}`,
+    );
+  }
+}
+
+/**
  * @param {Row} row
  * @returns {Rating}
  */
@@ -140,6 +166,8 @@ function ratingFromRow(row) {
  * @returns {Rating}
  */
 export function addRating(store, { a, b, ...rest }) {
+  requireSameExcerpt(store, "side a of the rating", a);
+  requireSameExcerpt(store, "side b of the rating", b);
   /** @type {Record<string, unknown>} */
   const values = { ...rest };
   for (const [field, value] of Object.entries(a)) values[sideColumn("a", field)] = value;
@@ -167,6 +195,7 @@ export function getRating(store, id) {
  * @returns {Feedback}
  */
 export function addFeedback(store, draft) {
+  requireSameExcerpt(store, "the feedback", draft);
   return insertRow(store, TABLE.feedback, FEEDBACK, { ...draft });
 }
 

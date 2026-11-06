@@ -5,6 +5,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { sha256Hex } from "./sha256-hex.js";
 
 /**
  * @typedef {object} Store
@@ -48,6 +49,11 @@ export const TABLE = /** @type {const} */ ({
 /** @typedef {Exclude<(typeof TABLE)[keyof typeof TABLE], typeof TABLE.renders>} IrreplaceableTable */
 
 const MIGRATIONS_DIR = join(import.meta.dirname, "migrations");
+/**
+ * How long a connection waits for another's write lock before failing: two processes opening
+ * the store at once, or the backup's read beside a writer, wait rather than fail.
+ */
+const BUSY_TIMEOUT_MS = 5000;
 const MIGRATION_FILE = /^(\d{4})-[a-z0-9-]+\.sql$/;
 
 /**
@@ -163,9 +169,35 @@ function addTriggers(db) {
 }
 
 /**
+ * How many migrations the database has applied. Throws on one this code doesn't have, and on
+ * one whose file has changed since it was applied.
+ * @param {DatabaseSync} db
+ * @param {Migration[]} migrations
+ */
+function appliedCount(db, migrations) {
+  const applied = db.prepare("SELECT id, name, sha256 FROM migrations ORDER BY id").all();
+  for (const row of applied) {
+    const known = migrations[Number(row.id) - 1];
+    if (!known || known.name !== row.name) {
+      throw new Error(
+        `the database has applied migration ${row.name}, which this code doesn't have; it was written by a newer version`,
+      );
+    }
+    const now = sha256Hex(known.sql);
+    if (now !== row.sha256) {
+      throw new Error(
+        `migration ${known.name}.sql has changed since this database applied it (SHA-256 ${row.sha256} then, ${now} now). An applied migration is never edited: restore the file and put the change in a new migration`,
+      );
+    }
+  }
+  return applied.length;
+}
+
+/**
  * Applies the migrations a database hasn't had, each in its own transaction with the triggers
- * rebuilt after it. Throws on migrations not numbered 1, 2, 3…, and on a database that has
- * applied one this code doesn't know.
+ * rebuilt after it. The applied list is read inside that transaction, so two processes opening
+ * a new database can't both apply one. Throws on migrations not numbered 1, 2, 3…, and as
+ * `appliedCount` does.
  * @param {DatabaseSync} db
  * @param {Migration[]} migrations
  * @param {() => number} now
@@ -178,31 +210,31 @@ function migrate(db, migrations, now) {
       );
     }
   }
-  db.exec(`CREATE TABLE IF NOT EXISTS migrations (
-    id INTEGER PRIMARY KEY, name TEXT NOT NULL, appliedAt INTEGER NOT NULL) STRICT`);
-  const applied = db.prepare("SELECT id, name FROM migrations ORDER BY id").all();
-  for (const row of applied) {
-    const known = migrations[Number(row.id) - 1];
-    if (known?.name !== row.name) {
-      throw new Error(
-        `the database has applied migration ${row.name}, which this code doesn't have; it was written by a newer version`,
-      );
-    }
-  }
-  for (const migration of migrations.slice(applied.length)) {
+  for (;;) {
     db.exec("BEGIN IMMEDIATE");
+    /** @type {Migration | undefined} */
+    let migration;
     try {
+      db.exec(`CREATE TABLE IF NOT EXISTS migrations (id INTEGER PRIMARY KEY, name TEXT NOT NULL,
+        sha256 TEXT NOT NULL, appliedAt INTEGER NOT NULL) STRICT`);
+      migration = migrations[appliedCount(db, migrations)];
+      if (!migration) {
+        db.exec("COMMIT");
+        return;
+      }
       dropTriggers(db);
       db.exec(migration.sql);
       addTriggers(db);
-      db.prepare("INSERT INTO migrations (id, name, appliedAt) VALUES (?, ?, ?)").run(
+      db.prepare("INSERT INTO migrations (id, name, sha256, appliedAt) VALUES (?, ?, ?, ?)").run(
         migration.id,
         migration.name,
+        sha256Hex(migration.sql),
         now(),
       );
       db.exec("COMMIT");
     } catch (error) {
       db.exec("ROLLBACK");
+      if (!migration) throw error;
       throw new Error(`migration ${migration.name} failed and was rolled back`, { cause: error });
     }
   }
@@ -223,7 +255,7 @@ function migrate(db, migrations, now) {
  * @returns {Store}
  */
 export function openStore(file, { now, migrations = readMigrations() }) {
-  const db = new DatabaseSync(file);
+  const db = new DatabaseSync(file, { timeout: BUSY_TIMEOUT_MS });
   try {
     db.exec("PRAGMA journal_mode = WAL");
     db.exec("PRAGMA foreign_keys = ON");
@@ -245,7 +277,7 @@ export function openStore(file, { now, migrations = readMigrations() }) {
  * @param {string} dest must not exist
  */
 export function backupDatabase(file, dest) {
-  const db = new DatabaseSync(file, { readOnly: true });
+  const db = new DatabaseSync(file, { readOnly: true, timeout: BUSY_TIMEOUT_MS });
   try {
     db.prepare("VACUUM INTO ?").run(dest);
   } finally {

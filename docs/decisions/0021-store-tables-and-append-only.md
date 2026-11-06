@@ -16,17 +16,22 @@ holds; later steps (2f, 2h, 2i, 2l) write them.
 ## Decision
 
 **Open.** `openStore(file, {now})` in `src/server/store.js` opens `node:sqlite`'s `DatabaseSync`
-with `journal_mode = WAL`, `foreign_keys = ON` and `recursive_triggers = ON`, and applies the
-migrations the database hasn't had. `now` is the clock for `createdAt`, `removedAt` and the
+with `journal_mode = WAL`, `foreign_keys = ON`, `recursive_triggers = ON` and a 5 s busy
+timeout (`BUSY_TIMEOUT_MS`, also on the backup's connection), so a second process waits for a
+write lock instead of failing at once, and applies the migrations the database hasn't had. `now` is the clock for `createdAt`, `removedAt` and the
 migration log, in milliseconds since the Unix epoch; tests pass a counting clock
 (`test/support/temp-store.js`).
 
 **Migrations are SQL files**, `src/server/migrations/NNNN-slug.sql`, numbered 1, 2, 3… with no
 gaps, applied in order, each in its own `BEGIN IMMEDIATE` transaction and recorded in a
-`migrations` table (`id`, `name`, `appliedAt`). A failed migration rolls back and throws its
-name. A database that has applied a migration this code doesn't have, or one under another name,
-is refused: it was written by a newer version. An applied migration is never edited; a change
-is a new file. Every later shape change to an irreplaceable table ships as a migration with a
+`migrations` table (`id`, `name`, `sha256` of the file's text, `appliedAt`). The applied list is
+read inside that transaction, so two processes opening a new database at once apply each
+migration once. A failed migration rolls back and throws its name. A database that has applied a
+migration this code doesn't have, or one under another name, is refused: it was written by a
+newer version. An applied migration is never edited, and open enforces it: a file whose SHA-256
+differs from the one recorded when it was applied is refused, naming the file and both hashes,
+since an edit would leave old and new databases with different shapes under one number. A
+change is a new file. Every later shape change to an irreplaceable table ships as a migration with a
 test that runs it over the previous shape (`openStore`'s `migrations` option takes a shorter
 list for that).
 
@@ -35,6 +40,7 @@ store drops every table's append-only triggers, runs the SQL, then creates them 
 table's columns as they are now: `<table>_no_delete` raises on any `DELETE`, and
 `<table>_no_update` raises unless the update sets `removedAt` and `removedReason` on a row whose
 `removedAt` is null and changes no other column (compared with `IS NOT`, so null counts).
+Setting `removedAt` back to null raises too.
 Dropping them first lets a migration rewrite rows; recreating them from the live schema covers a
 column a migration adds. Every table except `migrations` and the derived ones listed in
 `NOT_APPEND_ONLY` (now just `renders`) is irreplaceable, and must have `removedAt` and
@@ -74,11 +80,14 @@ ratings, feedback, sketches), `render-store.js`, `evaluation-store.js`. They sha
 `selectRow` and `selectRows` from store.js, with a codec naming each table's JSON and boolean
 columns. `insertRow` sets `createdAt`; an unknown key fails as an unknown column, and an
 `undefined` value throws rather than being stored as null. SQL lives only in these files, store.js
-and the migrations.
+and the migrations. `addRating` (each side) and `addFeedback` throw unless the `rated_audio` row
+they name has the same genome, seed, offset, duration and engine version as the identity written
+beside it, so the two copies of what was heard can't disagree.
 
 **PCM hash.** A rated excerpt's `pcmSha256` is `sha256Hex` of its interleaved 24-bit
 little-endian PCM, the same bytes an export's `pcmSha256` covers (0015).
 `readFlacPcm(path)` decodes a FLAC to those bytes with `flac -d --force-raw-format`.
+A test checks that a real 3 s export's FLAC hashes this way to the export's own `pcmSha256`.
 `checkRatedAudio(store, folder)` checks every `rated_audio` row, removed ones included, and throws
 listing each file that is missing, sits outside the folder, fails to decode, or hashes
 differently.
@@ -111,7 +120,8 @@ refused. The read-only connection neither migrates the source nor waits on its w
 
 - A table added later without `removedAt` and `removedReason`, and not listed as derived, fails
   its migration at open. `test/server/store.test.js` checks every irreplaceable table has both
-  triggers, gets a row from `fillStore`, and refuses `DELETE` and an update of each column.
+  triggers, gets a row from `fillStore`, and refuses `DELETE` and an update of each column, and
+  that a column a later migration adds is covered.
 - Table rebuilds in SQLite (to change a CHECK or drop a column) need `foreign_keys` off, which
   can't change inside a transaction; the first migration that needs one adds that to the runner.
 - `source` and `rejectReason` are free text, so 2f and later steps add values without a

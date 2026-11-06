@@ -1,4 +1,7 @@
 // The store's migrations and its append-only triggers (decision 0021).
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+import { writeFile } from "node:fs/promises";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, test } from "vitest";
 import { markRemoved, openStore, readMigrations } from "../../src/server/store.js";
@@ -131,9 +134,74 @@ describe("migrations", () => {
 
   test("refuse a database that has a migration this code doesn't know", async () => {
     const { store, paths, now } = await made();
-    run(store.db, "INSERT INTO migrations (id, name, appliedAt) VALUES (999, '0999-future', 0)");
+    run(
+      store.db,
+      "INSERT INTO migrations (id, name, sha256, appliedAt) VALUES (999, '0999-future', '', 0)",
+    );
     store.close();
     expect(() => openStore(paths.database, { now })).toThrow(/0999-future/);
+  });
+
+  test("refuse a migration whose text changed after it was applied, naming it", async () => {
+    const { store, paths, now } = await made();
+    store.close();
+    const [first, ...rest] = readMigrations();
+    if (!first) throw new Error("no migrations");
+    const edited = [{ ...first, sql: `${first.sql}\n-- edited\n` }, ...rest];
+    expect(() => openStore(paths.database, { now, migrations: edited })).toThrow(
+      new RegExp(`${first.name}\\.sql .*changed`),
+    );
+  });
+
+  test("a migration that adds a column covers it with the update trigger", async () => {
+    const { store, paths, now } = await made();
+    const { notes } = fillStore(store);
+    store.close();
+    const migrations = [
+      ...readMigrations(),
+      extra("mood", "ALTER TABLE notes ADD COLUMN mood TEXT;"),
+    ];
+    const reopened = openStore(paths.database, { now, migrations });
+    cleanups.push(async () => reopened.close());
+    const sql = "UPDATE notes SET mood = 'calm', removedAt = 1, removedReason = 'r' WHERE id = ?";
+    expect(() => run(reopened.db, sql, notes)).toThrow(APPEND_ONLY);
+  });
+
+  test("two processes opening one new database both succeed and apply each migration once", async () => {
+    const { paths } = await made();
+    const file = `${paths.database}-shared`;
+    const go = `${paths.database}-go`;
+    const storeUrl = new URL("../../src/server/store.js", import.meta.url).href;
+    // Each child says it's ready, waits for the go file, then opens the store, so both opens
+    // start together.
+    const code = `
+      import { existsSync } from "node:fs";
+      import { openStore } from ${JSON.stringify(storeUrl)};
+      console.log("ready");
+      const pause = new Int32Array(new SharedArrayBuffer(4));
+      while (!existsSync(${JSON.stringify(go)})) Atomics.wait(pause, 0, 0, 1);
+      openStore(${JSON.stringify(file)}, { now: Date.now }).close();
+    `;
+    const children = [0, 1].map(() =>
+      spawn(process.execPath, ["--input-type=module", "-e", code], {
+        stdio: ["ignore", "pipe", "pipe"],
+      }),
+    );
+    /** @type {string[]} */
+    const errors = children.map(() => "");
+    children.forEach((child, i) => {
+      child.stderr.on("data", (chunk) => {
+        errors[i] += chunk;
+      });
+    });
+    await Promise.all(children.map((child) => once(child.stdout, "data")));
+    await writeFile(go, "");
+    const codes = await Promise.all(children.map(async (child) => (await once(child, "close"))[0]));
+    expect({ codes, errors }).toEqual({ codes: [0, 0], errors: ["", ""] });
+    const db = new DatabaseSync(file);
+    cleanups.push(async () => db.close());
+    const applied = db.prepare("SELECT id FROM migrations ORDER BY id").all();
+    expect(applied.map((row) => row.id)).toEqual(readMigrations().map(({ id }) => id));
   });
 
   test("refuse migration files numbered out of order", () => {
@@ -214,6 +282,14 @@ describe("append-only tables", () => {
     expect(() => markRemoved(store, /** @type {any} */ ("renders"), 1, "x")).toThrow(
       /irreplaceable/,
     );
+  });
+
+  test("setting removedAt back to null raises", async () => {
+    const { store } = await made();
+    const { notes } = fillStore(store);
+    markRemoved(store, "notes", notes, "duplicate");
+    const sql = "UPDATE notes SET removedAt = NULL WHERE id = ?";
+    expect(() => run(store.db, sql, notes)).toThrow(APPEND_ONLY);
   });
 
   test("an update that sets removedAt without a reason raises", async () => {

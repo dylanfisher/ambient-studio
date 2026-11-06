@@ -1,9 +1,10 @@
 // Every rated excerpt's FLAC exists and decodes to the PCM its row hashes (decision 0021).
 import { mkdir, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
 import { checkRatedAudio } from "../../src/server/check-rated-audio.js";
+import { exportRender } from "../../src/server/export-render.js";
 import { putGenome } from "../../src/server/generation-store.js";
 import { addRatedAudio } from "../../src/server/rating-store.js";
 import { sha256Hex } from "../../src/server/sha256-hex.js";
@@ -93,4 +94,26 @@ test("refuses a row whose file would sit outside the folder", async () => {
   const { store, paths, row } = await setup();
   addRatedAudio(store, { ...row, seed: 8, file: "../outside.flac" });
   await expect(checkRatedAudio(store, paths.ratedAudio)).rejects.toThrow(/outside/);
+});
+
+test("hashes a real export's FLAC to the export's own pcmSha256", async () => {
+  const made = await tempStore();
+  cleanups.push(made.remove);
+  const { store, paths } = made;
+  const { sidecar, paths: files } = await exportRender(droneGenome, {
+    seed: 1,
+    duration: 3,
+    target: -16,
+    outDir: paths.ratedAudio,
+  });
+  const vibe = createVibe(store, { name: "v", brief: "b", constraints: {}, softTargets: {} });
+  const genome = putGenome(store, vibe.id, droneGenome);
+  addRatedAudio(store, {
+    ...heardExcerpt(genome.id),
+    target: -16,
+    file: basename(/** @type {string} */ (files.flac)),
+    pcmSha256: sidecar.pcmSha256,
+    gainDb: sidecar.loudness.gainDb,
+  });
+  await expect(checkRatedAudio(store, paths.ratedAudio)).resolves.toBe(1);
 });

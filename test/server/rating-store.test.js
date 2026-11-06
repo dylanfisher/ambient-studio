@@ -117,3 +117,33 @@ test("a sketch reads back after a reopen", async () => {
   });
   expect(getSketch(made.reopen(), sketch.id)).toEqual(sketch);
 });
+
+test("a rating or feedback whose heard identity differs from its rated audio is refused", async () => {
+  const { store, common, heard, audio, block } = await setup();
+  const side = { ...heard, ratedAudioId: audio.id, playedFraction: 1, ...unranked };
+  const rating = {
+    ...common,
+    leftSide: /** @type {const} */ ("a"),
+    orderSeed: 1,
+    outcome: /** @type {const} */ ("tie"),
+    timeTakenMs: 1,
+  };
+  expect(() => addRating(store, { ...rating, a: side, b: { ...side, seed: 8 } })).toThrow(
+    /side b .*seed 8.*rated audio .*seed 7/,
+  );
+  expect(() =>
+    addRating(store, { ...rating, a: { ...side, ratedAudioId: audio.id + 9 }, b: side }),
+  ).toThrow(/side a .*no rated audio/);
+  const thumbs = {
+    ...block,
+    kind: /** @type {const} */ ("thumbs"),
+    direction: /** @type {const} */ ("up"),
+    note: null,
+    macro: null,
+    macroValue: null,
+  };
+  expect(() => addFeedback(store, { ...thumbs, engineVersion: 1 })).toThrow(
+    /feedback .*engineVersion 1.*engineVersion 2/,
+  );
+  expect(store.db.prepare("SELECT count(*) AS n FROM ratings").get()?.n).toBe(0);
+});
