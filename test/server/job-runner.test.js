@@ -61,6 +61,16 @@ test("two jobs added at once run one at a time, in order", async () => {
   expect(runner.list().map((job) => job.id)).toEqual([a.id, b.id]);
 });
 
+test("list gives each job's status without its result, which get gives", async () => {
+  const runner = createJobRunner({ now: countingClock() });
+  const job = runner.add("render", async () => ({ renders: [1, 2, 3] }));
+  await runner.idle();
+  const [listed] = runner.list();
+  expect(listed).toMatchObject({ id: job.id, state: "done" });
+  expect(listed).not.toHaveProperty("result");
+  expect(runner.get(job.id).result).toEqual({ renders: [1, 2, 3] });
+});
+
 test("a job reports its progress, and a failed job doesn't stop the next", async () => {
   const runner = createJobRunner({ now: countingClock() });
   const hold = deferred();

@@ -32,8 +32,9 @@
  * @typedef {object} JobRunner
  * @property {(kind: string, run: (job: JobContext) => Promise<unknown>) => JobStatus} add queues
  *   a job, which starts at once when none is running
- * @property {(id: number) => JobStatus} get
- * @property {() => JobStatus[]} list every job since the runner was made, oldest first
+ * @property {(id: number) => JobStatus} get the job's status with its result
+ * @property {() => Omit<JobStatus, "result">[]} list every job since the runner was made, oldest
+ *   first, without results, so a list doesn't copy every finished job's output
  * @property {(id: number) => JobStatus} cancel drops a queued job, or aborts a running one's
  *   signal; a finished job is left as it is
  * @property {(id: number) => Promise<void>} settled resolves once the job has finished, however
@@ -146,7 +147,7 @@ export function createJobRunner({ now }) {
       return structuredClone(added.status);
     },
     get: (id) => structuredClone(job(id).status),
-    list: () => [...jobs.values()].map(({ status }) => structuredClone(status)),
+    list: () => [...jobs.values()].map(({ status: { result, ...rest } }) => structuredClone(rest)),
     cancel(id) {
       const found = job(id);
       const at = queue.indexOf(found);
