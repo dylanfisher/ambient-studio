@@ -29,6 +29,8 @@ export const fixtureVoice = {
     { macro: "density", param: "level", depth: 0.2 },
   ]),
   longestEvent: () => 0,
+  /** Stands in for a voice's nodes, so random genomes have a cost to cap. */
+  cost: () => 4,
   /** @returns {undefined} */
   build() {
     throw new Error("the fixture voice is for schema tests and doesn't render");

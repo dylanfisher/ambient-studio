@@ -91,6 +91,60 @@ real time with a peak RSS of 187 MiB; 300 s at 28.8x, 343 MiB; 900 s at 28.9x, 7
 are computed into (1j, 1k). A single 20-minute context would need about 1.1 GB by the same
 arithmetic.
 
+**Cost unit and budget** (step 1g; provisional, owner to confirm). The gate can't time renders
+([0016](0016-render-speed-bench.md)), so `cost(genome)` in `src/engine/cost.js` estimates the
+render time from the genome alone. The library processes every node on every quantum from its
+creation to its end, so the unit is the **node-second alive per second of timeline**: about how
+many nodes are alive on average. It sums:
+
+- 1 for every node that lives through the render: oscillators (each `PeriodicWave` oscillator
+  of a drone stack, and each single-sine oscillator of a snapped partial), filters, gains,
+  panners, the delay, the splitter and merger, and the destination. The bus has 14; `render()`
+  adds a gate and a level gain per voice. A test counts the nodes a render of each golden genome
+  creates and checks the count against `cost()`.
+- **25 for each second of the reverb's impulse response** (`IR_WEIGHT`), a fixed cost while the
+  render runs. Probe (d) over 60 s ran at 7.9x without its 12 s convolver and 6.1x with it, so
+  12 s of response cost as much as about 300 other nodes.
+- For events created in windows, `eventCost({rate, seconds, nodes})` = rate × nodes × (seconds
+  + 6): each node costs the seconds it sounds plus **6 node-seconds** (`EVENT_OVERHEAD`). It
+  waits up to 3 s from its window's creation, and probe (b)'s windowed grains, 30 a second of 3
+  nodes each at 14x, cost about 3 s more each than that wait and their sound. This is what a
+  count of concurrent nodes misses: at 30 grains a second, a few nodes sound at once, while
+  about 560 node-seconds a second are alive.
+
+Each voice type gives its own cost through `cost(voice, genome)` in the registry
+(`src/engine/voice-registry.js`): its nodes at its densest setting, counting the highest value
+a trajectory or a macro can reach, so the sum bounds every window. `cost()` adds the bus and
+counts every voice as if all played at once. Oscillators weigh the same as other nodes: 1a's
+probes don't separate an oscillator from the gain it played through.
+
+Calibration: the seconds of render time one node-second costs, from each measurement:
+
+| Measurement | Cost | Speed | Seconds per node-second |
+|---|---|---|---|
+| Probe (d): 1,021 nodes, 12 s response, 720 s | 1,321 | 6.1x | 1.24e-4 |
+| Probe (a): 40 oscillators and filters, 200 sources, 6 s response, 60 s | about 432 | 15.8x | 1.47e-4 |
+| Probe (b), windowed: 30 grains/s of 3 nodes, 20 min | about 560 | 14x | 1.28e-4 (sets the overhead) |
+| 1f's drone, 8 s response, 900 s | 223 | 28.9x | 1.55e-4 |
+
+The **budget is 560** node-seconds a second (`COST_BUDGET`). At the slowest rate measured (the
+drone's, 1.55e-4) a genome at the budget renders at 11.5x real time, and at probe (d)'s rate at
+14.4x, against phase 1's target of 10x. It admits:
+
+- every valid master bus with a voice: the longest response (20 s) costs 514 with the bus's
+  nodes, so a 20 s reverb leaves room for little more than one drone or one bell voice;
+- the densest bell setting 1j builds over 900 s or any length (the cost is a rate, so it doesn't
+  grow with the duration): 40 notes a minute, each note computed into a buffer and played by one
+  buffer source and its gain for a 15 s ring, costs 2/3 × 2 × (15 + 6) = 28, and 544 with the
+  longest response (a test checks it);
+- the golden genomes: the drone 73, the master bus 101. Random genomes without a cap cost 48 to
+  538 over 200 seeds.
+
+It does not admit probe (b)'s grain cloud, about 560 on its own: 1k's grain design (0014) must
+cost less per grain or cap the rate lower. `randomGenome(seed, {costCap})` draws until a genome
+costs at most the cap (the budget by default, `Infinity` for none), continuing the seed's draw
+sequence so the result stays fixed by the seed, and throws after 100 draws over the cap.
+
 **Drone voice.** Parameters beside the common ones: `root` (33–135 Hz, log, default 55): the
 fundamental is the scale note nearest it in 33–135 Hz, found through `tuningFrequencies` for
 every tuning; `partials` (4–12, default 8); `slope` (4–8 dB per partial octave, default 6);
@@ -153,3 +207,12 @@ to 2.
 - Changing the grid step, the window placement relative to the grid, the impulse-response
   formula or the drone's design changes renders and bumps `ENGINE_VERSION`
   ([0009](0009-engine-version-golden-hashes.md)).
+- Every voice type gives a `cost`, and 1j and 1k test it at their maximum density. The weights
+  are fitted to four measurements and miss each by up to 25%; the bench (1m) re-measures, and
+  its numbers can move the weights or the budget.
+
+## Amendments
+
+- 2026-11-06: step 1g adds the cost unit, its weights and the budget of 560, calibrated on 1a's
+  probes and 1f's drone measurement, and the cost cap on `randomGenome`. Provisional: owner to
+  confirm.

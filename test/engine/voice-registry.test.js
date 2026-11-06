@@ -19,7 +19,7 @@ const swell = number({
 });
 
 // What every voice type needs to render, taken from the fixture for the ad hoc types below.
-const { longestEvent, build } = fixtureVoice;
+const { longestEvent, cost, build } = fixtureVoice;
 
 beforeAll(() => registerVoice(fixtureVoice));
 afterAll(() => unregisterVoice(fixtureVoice.type));
@@ -43,6 +43,7 @@ describe("the voice registry", () => {
         params: { [name]: gain },
         macros: [],
         longestEvent,
+        cost,
         build,
       };
       expect(() => registerVoice(voice)).toThrow(`"${name}" is a parameter every voice has`);
@@ -56,6 +57,7 @@ describe("the voice registry", () => {
       params: { gain },
       macros: [],
       longestEvent,
+      cost,
       build,
     };
     registerVoice(voice);
@@ -92,6 +94,7 @@ describe("the voice registry", () => {
       params: { gain },
       macros: [row, row],
       longestEvent,
+      cost,
       build,
     };
     expect(() => registerVoice(voice)).toThrow(/"space" → "level" is listed twice/);

@@ -2,6 +2,7 @@
 // short tone burst every half second of timeline from 0, so events fall on window boundaries
 // too. A test file registers it in `beforeAll` and unregisters it in `afterAll`.
 /** @import { VoiceSetup, VoiceWindow } from "../../src/engine/render.js" */
+import { eventCost } from "../../src/engine/cost-unit.js";
 
 /** Seconds between bursts. */
 export const PULSE_EVERY = 0.5;
@@ -41,5 +42,7 @@ export const pulseVoice = {
   params: {},
   macros: [],
   longestEvent: () => BURST,
+  /** One buffer source per burst. */
+  cost: () => eventCost({ rate: 1 / PULSE_EVERY, seconds: BURST, nodes: 1 }),
   build,
 };

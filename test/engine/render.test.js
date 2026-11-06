@@ -202,6 +202,7 @@ describe("render", () => {
       params: {},
       macros: [],
       longestEvent: () => 0,
+      cost: () => 0,
       build: () => (from) => {
         if (from >= 2) throw new Error("window at 2 s failed");
       },

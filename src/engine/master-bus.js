@@ -5,6 +5,7 @@
 /** @import { ControlValue } from "./render.js" */
 /** @import { Genome } from "./genome-schema.js" */
 import { CONTROL_RATE, controlTime } from "./control-grid.js";
+import { IR_WEIGHT } from "./cost-unit.js";
 import { dbToGain } from "./decibels.js";
 import { GLOBAL_PARAMS } from "./genome-schema.js";
 import { impulseResponse } from "./impulse-response.js";
@@ -48,6 +49,16 @@ function widthStage(ctx, widthDb) {
   }
   return { input: splitter, output: merger };
 }
+
+/** The nodes `masterBus` creates, and the destination they feed. */
+const BUS_NODES = 14;
+
+/**
+ * The bus's render cost in node-seconds a second (decision 0010): its nodes, and the reverb's
+ * impulse response by its length, which is the reverb's decay.
+ * @param {Genome} genome a normalized genome
+ */
+export const masterBusCost = (genome) => BUS_NODES + IR_WEIGHT * genome.reverbDecay;
 
 /**
  * Builds the bus into `ctx.destination` and returns the node voices connect to.

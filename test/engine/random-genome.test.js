@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
+import { COST_BUDGET, cost } from "../../src/engine/cost.js";
 import { isObject } from "../../src/engine/is-object.js";
 import { randomGenome } from "../../src/engine/random-genome.js";
 import { validateGenome } from "../../src/engine/validate-genome.js";
@@ -95,6 +96,21 @@ describe("randomGenome", () => {
       const { duration, fadeIn, fadeOut } = randomGenome(seed);
       expect(fadeIn + fadeOut).toBeLessThanOrEqual(duration / 2);
     }
+  });
+
+  test("every output stays under its cost cap, the budget when none is given", () => {
+    const tight = 150;
+    for (const seed of SEEDS) {
+      expect(cost(randomGenome(seed))).toBeLessThanOrEqual(COST_BUDGET);
+      expect(cost(randomGenome(seed, { costCap: tight }))).toBeLessThanOrEqual(tight);
+    }
+    // The cap changed some draws: without it, some seeds cost more.
+    const uncapped = SEEDS.map((seed) => cost(randomGenome(seed, { costCap: Infinity })));
+    expect(uncapped.filter((c) => c > tight).length).toBeGreaterThan(10);
+  });
+
+  test("throws when no draw can meet the cost cap", () => {
+    expect(() => randomGenome(1, { costCap: 10 })).toThrow(/cost cap of 10/);
   });
 
   test("throws with no voice type registered", () => {

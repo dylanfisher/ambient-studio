@@ -1,0 +1,37 @@
+{
+  "genome": "drone",
+  "engineVersion": 1,
+  "hashes": {
+    "raw": {
+      "darwin-arm64": {
+        "cpu": "Apple M1 Max",
+        "node": "v26.12.1",
+        "nodeWebAudioApi": "2.2.0",
+        "renders": {
+          "start": {
+            "seed": 1,
+            "offset": 0,
+            "duration": 2,
+            "sha256": "0a2b23b08e4347c0fd6ce2f7414fe2e927a0a3d718f1719b57e542e63fae4e33",
+            "summary": {
+              "peak": -6.61,
+              "rms": -15.53,
+              "bands": [-16.22, -26.61, -28.79, -32.17, -111.94, -127.94, -139.69, -148.94]
+            }
+          },
+          "end": {
+            "seed": 1,
+            "offset": 58,
+            "duration": 2,
+            "sha256": "8f78ca891e0dea337afd9e1a1c25a40c4255c0257051a859ef835489831311f8",
+            "summary": {
+              "peak": -36.41,
+              "rms": -51.04,
+              "bands": [-52.05, -59.16, -63.46, -72.43, -153.01, -171.28, -185.84, -191.34]
+            }
+          }
+        }
+      }
+    }
+  }
+}

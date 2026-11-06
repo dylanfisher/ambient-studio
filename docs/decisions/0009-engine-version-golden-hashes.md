@@ -62,3 +62,22 @@ By the owner's choice on 2026-11-05:
   quantized to 24-bit (step 1g, before the normalizer exists), and the export's PCM after
   normalization and limiting (step 1l, through `exportRender`). Both are keyed by engine
   version, and both must match.
+- 2026-11-06: step 1g builds the raw goldens (provisional, owner to confirm):
+  - Every genome in `src/engine/genomes/` is a golden, named for its file, so a voice step adds
+    its golden genome without editing a list. Each renders two windows with seed 1: its first
+    2 s and its last 2 s, so every golden covers both fades, and the end window covers an
+    excerpt's pre-roll. `master-bus.json` (a Colundi drone with a snapped partial, a reverb level
+    trajectory, a 0.25 s delay at feedback 0.5, width −6 dB, 1.5 s fades) is the bus's golden.
+  - A hash file holds `genome`, `engineVersion` and `hashes`, keyed by kind (`raw`; 1l adds
+    `normalized`) and then platform. An entry names the CPU model, Node and node-web-audio-api
+    versions, and per window its seed, offset, duration, `sha256` and summary: peak and RMS in
+    dBFS, and the mean power of 8 bands with upper edges at 63, 125, 250, 500, 1000, 2000 and
+    4000 Hz and Nyquist, from Hann-windowed 4096-sample FFT blocks.
+  - mbp2021 is known by platform `darwin-arm64` and CPU `Apple M1 Max`. `scripts/write-golden.js`
+    refuses to run on any other machine, writes an entry only where none exists for that kind
+    and platform, and lists the rest as kept. A mismatch on another CPU skips the test with a
+    message that says only mbp2021's entries count. On mbp2021, a mismatch fails, prints the
+    entry's and the new summaries for each window that moved, and says to bump
+    `ENGINE_VERSION`; when the Node or library version differs from the entry's, it says that
+    first, since going back to the entry's versions may be the fix.
+  - The harness is `test/support/golden.js`, shared by the test and the writer.
