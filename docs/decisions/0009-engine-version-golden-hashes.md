@@ -81,3 +81,11 @@ By the owner's choice on 2026-11-05:
     `ENGINE_VERSION`; when the Node or library version differs from the entry's, it says that
     first, since going back to the entry's versions may be the fix.
   - The harness is `test/support/golden.js`, shared by the test and the writer.
+- 2026-11-06: step 1l adds the normalized goldens (provisional, owner to confirm). Each golden
+  is exported through `exportRender` to its own `loudness` target, and the harness hashes the
+  WAV's PCM (`renderNormalized` in `test/support/golden.js`). The normalized kind renders only
+  the start window, 2 s from 0 with seed 1: every golden's end window sits deep in its fade-out,
+  between −52 and −68 LUFS for three of the four, more than normalize's 40 dB gain cap under a
+  −16 target, and the bell genome's middle is silent. `node scripts/write-golden.js` writes both
+  kinds, keeping any entry that exists, so a golden genome added later gets both entries from
+  that one command.

@@ -2,17 +2,20 @@
 // scripts/write-golden.js. Every genome in src/engine/genomes/ is a golden: it renders a window
 // at its start and one at its end, each quantized to interleaved 24-bit PCM and hashed. The
 // expected hashes live in test/fixtures/golden/v<N>/<name>.json, one file per golden per engine
-// version, keyed by the kind of render ("raw" here; step 1l adds the normalized exports) and
-// the platform.
+// version, keyed by the kind of render and the platform. "raw" is the render quantized to
+// 24-bit; "normalized" is the PCM `exportRender` writes, after normalization and limiting.
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { cpus } from "node:os";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { cpus, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { SAMPLE_RATE } from "../../src/engine/render-plan.js";
 import { requireGenome } from "../../src/engine/validate-genome.js";
-import { encodePcm24 } from "../../src/server/encode-pcm24.js";
+import { encodePcm24, FULL_SCALE, PCM24_BYTES } from "../../src/server/encode-pcm24.js";
+import { exportRender } from "../../src/server/export-render.js";
 import { renderOffline } from "../../src/server/render-offline.js";
+import { rendererVersions } from "../../src/server/renderer-versions.js";
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const GENOME_DIR = join(root, "src/engine/genomes");
@@ -83,12 +86,10 @@ const FFT_SIZE = 4096;
 
 /** @returns {Environment} */
 export function currentEnvironment() {
-  const pkg = join(root, "node_modules/node-web-audio-api/package.json");
   return {
     platform: `${process.platform}-${process.arch}`,
     cpu: cpus()[0]?.model ?? "unknown",
-    node: process.version,
-    nodeWebAudioApi: JSON.parse(readFileSync(pkg, "utf8")).version,
+    ...rendererVersions(),
   };
 }
 
@@ -104,14 +105,20 @@ export function goldenGenomes() {
 }
 
 /**
- * The windows a golden renders: its first and last 2 s, which take in both fades.
+ * The windows a golden renders. Raw: its first and last 2 s, which take in both fades.
+ * Normalized: only the first 2 s, since the last sits deep in the fade-out, more than
+ * normalize's 40 dB gain cap under the target.
  * @param {unknown} genome
+ * @param {string} kind "raw" or "normalized"
  * @returns {GoldenWindow[]}
  */
-function goldenWindows(genome) {
+function goldenWindows(genome, kind) {
   const { duration } = requireGenome(genome, "a golden genome");
+  const start = { name: "start", seed: SEED, offset: 0, duration: WINDOW_SECONDS };
+  if (kind === "normalized") return [start];
+  if (kind !== "raw") throw new Error(`no golden kind "${kind}"; there are raw and normalized`);
   return [
-    { name: "start", seed: SEED, offset: 0, duration: WINDOW_SECONDS },
+    start,
     { name: "end", seed: SEED, offset: duration - WINDOW_SECONDS, duration: WINDOW_SECONDS },
   ];
 }
@@ -124,6 +131,50 @@ export async function renderRaw(genome, { seed, offset, duration }) {
     duration,
   });
   return result.channels;
+}
+
+/** Bytes of the plain PCM header `writeWav` writes before the samples. */
+const WAV_HEADER_BYTES = 44;
+
+/**
+ * The samples of a WAV that `writeWav` wrote, back as floats. Each 24-bit value v becomes
+ * v / 2^23, which `encodePcm24` maps back to v, so hashing these hashes the file's PCM.
+ * @param {Buffer} wav
+ * @returns {Float32Array[]}
+ */
+function decodeWav(wav) {
+  const channelCount = wav.readUInt16LE(22);
+  const pcm = wav.subarray(WAV_HEADER_BYTES, WAV_HEADER_BYTES + wav.readUInt32LE(40));
+  const frames = pcm.length / (channelCount * PCM24_BYTES);
+  const channels = Array.from({ length: channelCount }, () => new Float32Array(frames));
+  for (let i = 0; i < frames; i++) {
+    for (const [c, channel] of channels.entries()) {
+      channel[i] = pcm.readIntLE((i * channelCount + c) * PCM24_BYTES, PCM24_BYTES) / FULL_SCALE;
+    }
+  }
+  return channels;
+}
+
+/**
+ * Exports the window through `exportRender` to the genome's own loudness target, into a temp
+ * folder, and returns the WAV's samples.
+ * @type {GoldenRender}
+ */
+export async function renderNormalized(genome, { seed, offset, duration }) {
+  const normalized = requireGenome(genome, "a golden genome");
+  const outDir = await mkdtemp(join(tmpdir(), "golden-export-"));
+  try {
+    const { paths } = await exportRender(normalized, {
+      seed,
+      offset,
+      duration,
+      target: normalized.loudness,
+      outDir,
+    });
+    return decodeWav(await readFile(paths.wav));
+  } finally {
+    await rm(outDir, { recursive: true });
+  }
 }
 
 /**
@@ -215,15 +266,16 @@ function summarize(channels) {
 }
 
 /**
- * Renders each of the golden's windows with `render` and hashes it.
+ * Renders each of the golden's windows of `kind` with `render` and hashes it.
  * @param {unknown} genome
  * @param {GoldenRender} render
+ * @param {string} kind
  * @returns {Promise<Record<string, RenderHash>>}
  */
-export async function goldenRenders(genome, render) {
+export async function goldenRenders(genome, render, kind) {
   /** @type {Record<string, RenderHash>} */
   const renders = {};
-  for (const window of goldenWindows(genome)) {
+  for (const window of goldenWindows(genome, kind)) {
     const { name, ...where } = window;
     const channels = await render(genome, window);
     const sha256 = createHash("sha256").update(encodePcm24(channels)).digest("hex");
@@ -356,7 +408,7 @@ export async function writeGoldens({ dir, version, kind, env, render }) {
       continue;
     }
     const { cpu, node, nodeWebAudioApi, platform } = env;
-    const renders = await goldenRenders(genome, render);
+    const renders = await goldenRenders(genome, render, kind);
     const entry = { cpu, node, nodeWebAudioApi, renders };
     addEntry(path, { genome: name, version, kind, platform }, entry);
     result.written.push(path);
