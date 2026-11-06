@@ -64,3 +64,10 @@ If `tsc` can't express that, the builder of step 1c records what it did instead.
   - **Adding a parameter.** A new parameter always has a default that reproduces the sound from
     before it existed. Adding one bumps `schemaVersion` with a migration that writes the default
     into stored genomes, so old genomes re-render the same.
+- 2026-11-05: from the second plan review. The vector view covers `number` and `int` parameters
+  only; `toVector` throws on an `enum` or `bool` path, because an optimizer stepping through an
+  ordinal code for an enum produces arbitrary jumps. Enums and bools change only through the LLM
+  or mutation operators, and a trajectory's curve is held fixed while its start and end values
+  are searched. Every voice has `start`, `end` and a `level` that may be a trajectory, so phase 6
+  can fade a voice in or out between two genomes instead of interpolating a voice one of them
+  lacks.

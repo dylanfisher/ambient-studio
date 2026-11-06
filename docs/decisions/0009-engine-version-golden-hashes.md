@@ -38,8 +38,11 @@ By the owner's choice on 2026-11-05:
 - Any change to a voice, the master bus, the macro mapping, the PRNG, or the normalizer and
   limiter (which run in `src/domain` but decide the exported samples) shows up as a failing hash.
   Refactors that keep the samples identical pass untouched.
-- An old engine's code isn't kept in the tree. Re-rendering a sketch made with an older version
-  means checking out the commit that bumped past it; the UI warns instead (phase 2 onward).
+- An old engine's code isn't kept in the tree. Each bump's commit is tagged `engine-v<N>`
+  locally, so re-rendering a sketch made with an older version means a worktree at that tag; the
+  UI warns instead (phase 2 onward).
+- Audio the owner has rated can't be re-rendered by the current engine after a bump, so phase 2
+  keeps rated excerpts as files (see the plan's phase 2 Store line).
 
 ## Amendments
 
@@ -49,3 +52,6 @@ By the owner's choice on 2026-11-05:
   the failure message prints and that never pass or fail anything, so a failing hash shows which
   part of the sound moved. Golden genomes for the voices use a trajectory and a non-neutral macro,
   so a change to `effectiveParams` is caught.
+- 2026-11-05: from the second plan review. Each hash file also records the Node version, since
+  V8 may change `Math.sin`, `Math.exp` and `Math.pow` results between releases and the engine
+  uses them to generate impulse responses and noise. Engine bumps are tagged `engine-v<N>`.

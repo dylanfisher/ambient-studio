@@ -106,16 +106,22 @@ their numbers are written in Result; the pending owner checks below are logged.
 
 #### 1b — Seeded randomness and pitch
 
-- **Builds:** a seeded PRNG in `src/engine` with named streams, so each voice draws from
-  `stream(seed, voiceId)` and adding or removing a voice never changes another voice's random
-  choices. Pitch helpers: scales and modes as degree lists, tunings (12-TET, just intonation
+- **Builds:** a counter-based PRNG in `src/engine`: every draw is a hash of
+  `(seed, voiceId, eventIndex, slot)`, not the next value of a running stream. Adding or removing
+  a voice never changes another voice's choices, and changing one parameter doesn't shift every
+  later draw, so the sound under a fixed seed moves smoothly as parameters move, which the
+  optimizers (phase 5) and morphing (phase 6) depend on. Probabilistic triggers use thinning:
+  one draw per candidate slot, compared with the density at that time. `Math.random` and
+  `Date.now` are banned in `src/engine` by a lint rule or an `arch.js` check, planted in its
+  self-test. Pitch helpers: scales and modes as degree lists, tunings (12-TET, just intonation
   ratio tables, custom cents per degree), and `frequency(key, mode, tuning, degree, octave)`.
 - **Tiers:** engine.
-- **Tests first:** the PRNG gives a fixed sequence for a fixed seed (literal values in the test);
-  two streams with different ids don't share a prefix; streams are independent of the order
-  they're created in. Pitch: A4 = 440 Hz in 12-TET; D dorian's degrees; a just fifth is exactly
+- **Tests first:** the PRNG gives fixed values for fixed keys (literals in the test); draws for
+  different voice ids don't share values; a draw doesn't depend on which other draws were made
+  first; with thinning, raising density by 10% keeps every original event and adds new ones;
+  the ban catches a planted `Math.random`. Pitch: A4 = 440 Hz in 12-TET; D dorian's degrees; a just fifth is exactly
   3/2; custom cents shift by the stated amount; out-of-range degrees wrap octaves.
-- **Records:** writes 0003 (PRNG algorithm and stream derivation) and 0004 (pitch, tuning and
+- **Records:** writes 0003 (the hash, the key layout and thinning) and 0004 (pitch, tuning and
   reference pitch). Both change renders if they change later, under
   [0009](decisions/0009-engine-version-golden-hashes.md).
 - **Parallel:** with 1c and 1d.
@@ -127,7 +133,8 @@ their numbers are written in Result; the pending owner checks below are logged.
   assembly of voice descriptors, `validateGenome()` returning the normalized genome or every
   error with its path, the derived JSDoc genome type, and `schemaText()` for the LLM. Trajectories
   as breakpoint lists with a curve per segment, and their evaluation at a time. The macro mapping
-  table and `effectiveParams(genome, t)`. Voice ids, `genomeHash()`, and the vector view
+  table and `effectiveParams(genome, t)`. Voice ids and each voice's `start`, `end` and `level`,
+  `genomeHash()`, and the vector view
   (`encode`/`decode` per descriptor, `toVector`/`fromVector`) from 0005's amendment, which
   phases 4 and 5 search and fit over. `randomGenome(schema, seed)`, a generator of valid genomes
   that tests use for property checks and phase 2 uses as a stand-in for the LLM. No voices yet;
@@ -140,7 +147,8 @@ their numbers are written in Result; the pending owner checks below are logged.
   a macro at 1 moves each mapped parameter by its depth along its scale and clamps at the range;
   `schemaText()` stays under 3,000 characters for the full phase 1 schema; validating a
   normalized genome returns it unchanged; `genomeHash` ignores key order and voice order;
-  `fromVector(toVector(g))` round-trips within float precision; every `randomGenome` output for
+  `fromVector(toVector(g))` round-trips within float precision and `toVector` throws on an enum
+  path; every `randomGenome` output for
   200 seeds validates.
 - **Records:** governed by [0005](decisions/0005-genome-schema-table.md) and
   [0006](decisions/0006-macros-bounded-offsets.md). Writes 0007: the trajectory format, whether
@@ -148,7 +156,11 @@ their numbers are written in Result; the pending owner checks below are logged.
   and how `render()` renders an excerpt from an offset (pre-roll so reverb tails are present).
   An excerpt is a window of the same timeline a full render plays, and its offset is chosen by a
   stated rule from the genome and seed and stored with it, so ratings on excerpts describe the
-  sound a long render plays rather than every genome's first 25 s.
+  sound a long render plays rather than every genome's first 25 s. Oscillator and LFO phases are
+  computed from absolute time, not accumulated, and the pre-roll is at least the reverb's decay
+  plus the delay's feedback decay. Filter and reverb state still only converge, so an excerpt is
+  close to the same window of a full render, not identical; 0007 says so and states the
+  measured difference on a golden genome.
 - **Parallel:** with 1b and 1d.
 
 #### 1d — Loudness meter
@@ -165,7 +177,8 @@ their numbers are written in Result; the pending owner checks below are logged.
 
 #### 1e — Render core, drone voice and golden hashes
 
-- **Builds:** `render(genome, ctx, {seed, duration, offset})` in `src/engine`, the voice
+- **Builds:** `render(genome, ctx, {seed, duration, offset, voices})` in `src/engine`, where
+  `voices` limits the render to the listed voice ids (phase 6's stems), the voice
   registry, the master bus (Convolver with an impulse response generated from the seed, feedback
   delay, stereo width), and the first voice, drone (detuned oscillator stacks, slow filter
   sweeps). `ENGINE_VERSION`. A static `cost(genome)` estimate of concurrent nodes over time.
@@ -174,7 +187,7 @@ their numbers are written in Result; the pending owner checks below are logged.
   `Float32Array`s, sample rate, engine version) that export, features and CLAP all take.
 - **Tiers:** engine; test/ for the golden harness; scripts/ for the hash writer.
 - **Tests first:** `render()` twice with the same inputs gives the same hash; a different seed
-  gives a different hash; a different voice's seed stream doesn't change the drone; the golden
+  gives a different hash; adding another voice doesn't change the drone's solo render; the golden
   hash for the drone genome and the master bus matches; the hash writer refuses to overwrite an
   existing version's entry; `cost()` of each golden genome is under the budget and a genome
   built to exceed it fails; 200 `randomGenome` seeds render 2 s each with every sample finite
@@ -188,7 +201,9 @@ their numbers are written in Result; the pending owner checks below are logged.
   states how long renders fit in memory: a 300 s stereo render is about 115 MB of float output and
   20 min about 460 MB, rendered in one context, with a peak-memory ceiling the bench measures.
   Splitting a render into segments would change reverb and filter state at the joins, so it is
-  rejected unless the bench shows the ceiling can't hold.
+  rejected unless the bench shows the ceiling can't hold. The scheduling choice must hold for a
+  20-minute track at a granular cloud's maximum density (tens of thousands of grain events), not
+  only for 300 s.
 - **Parallel:** with 1f or 1g.
 
 #### 1f — Normalization and true-peak limiter
@@ -310,8 +325,8 @@ the queue, with tests using a fake.
 - **Config and paths** — the config module, with the omlx model id, the app-data root and the
   field-recording folder; tests and agent runs root everything in a temp folder.
 - **Store** — `node:sqlite` in WAL with migrations; `vibes`, `genomes`, `renders`, `ratings`,
-  `sketches` as the spec lists them, append-only for the irreplaceable tables, plus a
-  `generations` table. What later phases train and evaluate on has to be captured from the first
+  `sketches` as the spec lists them, append-only for the irreplaceable tables, plus `sessions`,
+  `generations` and `vibe_revisions` tables. What later phases train and evaluate on has to be captured from the first
   session, because it can't be recovered afterwards:
   - **generations** (irreplaceable): every LLM call's exact prompt, the ids of the examples
     retrieved into it, model id, sampling parameters, raw response, repair round, latency and
@@ -328,19 +343,35 @@ the queue, with tests using a fake.
     much of each excerpt was played. Pairs shown and skipped are stored as skips. Bradley–Terry
     needs position-bias correction, and evaluating a reranker needs to know what was shown and
     why.
+  - **rated audio** is kept: every excerpt the owner rated is stored as FLAC (about 4 MB) under
+    the app-data root, as irreplaceable data. After an engine bump the current engine can't
+    re-render it (0009), and without the file every feature and CLAP embedding of a rated
+    excerpt would be lost when the extractor changes. Ratings also store the gain normalization
+    applied to what was heard.
+  - **vibe_revisions**: editing a vibe's constraints appends a revision, and each generation,
+    lint result and rating names the revision it was made under, because a constraint change
+    alters what an earlier pass or rating meant.
+  - **directional feedback** ("more like this / less like this" on a macro or parameter) and
+    thumbs are typed rows of their own, not encoded as pairs, so phase 4 decides how each enters
+    the model.
   - **renders** carry features under the derived-data rule: when the extractor changes, rows are
     discarded and recomputed, with no version field.
 - **omlx queue** — one in-process FIFO, and only the server calls omlx (the CLI never does). One
-  request in flight; a timeout per request through `AbortController`; a hard `max_tokens`; a
+  request in flight, and a minimum gap between requests so the live site's requests interleave;
+  one candidate per request, with one prompt shared by the candidates of a `requestGroup` and
+  varied sampling, so a timeout loses one candidate and DPO pairs share an exact prompt; a timeout per request through `AbortController`; a hard `max_tokens`; a
   context budget estimated at 3.5 characters per token, since Node has no tokenizer here. Busy
-  means HTTP 429 or 503, or latency above a configured threshold; the queue backs off
+  means HTTP 429 or 503, or time to the first streamed token above a configured threshold (total
+  latency mixes our output length with the other site's load); whether omlx accepts a JSON-schema
+  `response_format` per request is checked, since that is a request parameter, not a setting; the queue backs off
   exponentially with jitter up to a maximum wait, then fails the request with a message to the
   owner, never retrying silently. Tests use a fake omlx that records the most requests it ever
   had in flight (must be 1) and an injected clock for backoff.
 - **Constraints and linter** — the vibe's hard constraints as a schema in `src/domain`, and lint
   rules over the genome and over render checks (clipping, near-silence, DC offset, cost budget).
 - **Prompt, parse and repair** — the prompt built from brief, constraints, `schemaText()`, notes
-  and locks; JSON extraction; one repair round fed the validator's errors.
+  and locks; examples retrieved by rating and recency until CLAP arrives in phase 4, with the
+  retrieval method's name logged in `generations` so the two policies stay apart in the data; JSON extraction; one repair round fed the validator's errors.
 - **Excerpt renders and audio serving** — 20–30 s excerpts through 1j's functions, at the offset
   rule from 0007, each with a first feature set (integrated and short-term loudness, true peak,
   spectral centroid, onset rate) as pure functions in `src/domain`, so the first sessions'
@@ -374,7 +405,19 @@ prior; held-out pairwise agreement reported per vibe, split by session (pairs sh
 candidate across train and test leak), with a bootstrap 95% interval and the pair count, and
 "not enough data" below a stated minimum; compared with three baselines (always-left, louder
 wins, features only); ties excluded from agreement and counted as half a win in the fit, in a
-record; CLAP's 512 dimensions against tens of pairs need strong L2 or a low-rank projection;
+record; CLAP's 512 dimensions against tens of pairs need strong L2 or a low-rank projection. Candidate
+method, decided in phase 4's records: Bayesian logistic Bradley–Terry (Laplace posterior) on
+PCA-reduced CLAP plus features and macros, with a left/right bias term; the posterior gives the
+uncertainty, an information-gain pair picker and Thompson sampling for phase 5; ties as half a
+win or a Davidson model, and thumbs as a pointwise term. Models are keyed by a hash of the
+ratings, extractor and hyperparameters that produced them, which satisfies the spec's
+"versioned" under the derived-data rule. The CLAP checkpoint (and so its window length, sample
+rate and dimension) is named in a record, it runs on CPU so it doesn't compete with omlx for the
+GPU, and its packages need the owner's approval. The sidecar is one long-lived child process
+started through `uv run`, speaking line-delimited JSON over stdio with the protocol defined once
+in a file both sides load; audio and arrays pass as file paths; Node owns every SQLite write;
+optimizers use ask/tell, with Python returning points in [0, 1]^d that Node decodes, lints,
+renders and embeds. Tests use a fake sidecar on the Node side and a fake server in pytest;
 active learning picks the pairs with the widest uncertainty; a "what you like" summary is
 generated from the model. **Gate:** `./scripts/check` including the sidecar's pytest; held-out
 agreement in Result. **Result:**
@@ -389,16 +432,21 @@ from two sketches by LLM crossover plus mutation; CLAP text directions become sl
 reference audio becomes a target region. Optimizers propose through `fromVector` (0005), and the
 archive's descriptors are computed on the same excerpt windows the owner rates. Gains are
 measured against the preference model, whose own held-out error bounds the claim, and spot-checked
-with owner A/B pairs. **Gate:** `./scripts/check`; archive coverage and the
+with owner A/B pairs. Owner-in-the-loop preferential BO (a query budget in the tens) and
+model-in-the-loop CMA-ES (hundreds of render-and-embed evaluations, an owner-started job with a
+stated budget) are different tools; the phase's records say which the acceptance means.
+Linter-rejected points are penalized, and locks remove their paths from the vector. **Gate:** `./scripts/check`; archive coverage and the
 optimizer's agreement with the preference model in Result. **Result:**
 
 ## Phase 6 — Track builder
 
 **Goal:** sketches arranged into 3–20 minute tracks. **Acceptance:** sections on a timeline,
 crossfade and morph transitions (genome interpolation over time), macro automation curves, an
-LLM-proposed structure for a target length and arc; a full-track render of 20 minutes stays at
-least 10× real time on the bench and inside a stated memory ceiling; per-voice stems sum to the
-full mix within a stated error. **Gate:** `./scripts/check`; bench numbers for a 20-minute track
+LLM-proposed structure for a target length and arc; morphs interpolate numeric parameters in
+encoded space and crossfade two instances of a voice for enums and bools; a full-track render of 20 minutes stays at
+least 10× real time on the bench and inside a stated memory ceiling; per-voice stems (solo renders through `voices`) sum to
+the full mix before the limiter within a stated error; the limiter is nonlinear, so the stems
+are exported unlimited at the mix's gain. **Gate:** `./scripts/check`; bench numbers for a 20-minute track
 in Result. **Result:**
 
 ## Phase 7 — Album builder
@@ -412,13 +460,16 @@ manifest of tracks, durations and re-render info, each track re-renderable from 
 ## Phase 8 — Fine-tuning
 
 **Goal:** better first drafts from a small model trained on the owner's choices, never touching
-omlx. **Acceptance:** mlx-lm LoRA SFT on kept sketches and DPO on pairwise choices, on a separate
+omlx. **Acceptance:** mlx-lm LoRA SFT on kept sketches and DPO on pairwise choices (core mlx-lm
+has no DPO; the third-party `mlx-lm-lora` package does, and needs the owner's approval); on a separate
 small model, started only by the owner; every adapter versioned with its dataset and metrics;
 blind A/B evaluation against the baseline, with the win rate and its confidence interval in
 Result. The datasets come from phase 2's `generations` table, DPO pairs from candidates of one
 `requestGroup`. The A/B uses at least 40 pairs in randomized order, a pairing fixed before
 listening, and a Wilson interval; at 40 pairs a 65% win rate is not yet distinguishable from 50%,
-so the plan states the pair count needed for the effect it hopes to see. **Gate:** `./scripts/check`; the A/B result. **Result:**
+so the plan states the pair count needed for the effect it hopes to see. Training checks free
+memory first and caps MLX's memory, refusing to start if it would push omlx's loaded model into
+swap. Train and evaluation sets split by vibe, and SFT uses the logged prompts verbatim. **Gate:** `./scripts/check`; the A/B result. **Result:**
 
 ## How to run
 
@@ -451,3 +502,11 @@ so the plan states the pair count needed for the effect it hopes to see. **Gate:
   phases 4–8; the omlx queue's terms; evaluation protocols for phases 4, 5 and 8. Changed from
   the review: ratings name what was heard rather than pointing at a `renders` row, which is
   derived data.
+- 2026-11-05: review round 2 (fresh context, Sonnet: 66.5k tokens, 8 tool calls, 107 s). Taken: a counter-based PRNG with thinning
+  (1b); rated excerpts kept as FLAC so ratings survive engine bumps and extractor changes, and
+  `engine-v<N>` tags (0009 amended); excerpts stated as approximate windows; the vector view
+  limited to numeric parameters, and voice start/end/level for morphing (0005 amended); solo
+  renders for stems; sessions, vibe revisions and typed directional feedback in the phase 2
+  store; omlx busy detection by time to first token, one candidate per request; retrieval
+  before CLAP; the sidecar interface, preference-model method, optimizer budgets, CLAP and
+  `mlx-lm-lora` approvals, and training memory checks as phase 4–8 lines.
