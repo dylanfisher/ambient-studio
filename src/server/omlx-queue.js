@@ -44,7 +44,34 @@ import { CHARS_PER_TOKEN, estimateTokens, promptText } from "../domain/prompt-to
  * @property {number | null} promptTokens from the stream's `usage`; null when it sent none
  * @property {number | null} completionTokens likewise
  * @property {RetryEvent[]} retries every backoff before the answer, also passed to `onRetry`
+ * @property {Record<string, unknown>} params the request body as sent, without its messages
  */
+
+/**
+ * How a request that was queued failed: a cancel, a busy omlx past the maximum wait, a timeout,
+ * a connection error or an error status. `attempts` counts the HTTP requests sent; `latencyMs`
+ * runs from sending the last of them to the failure, and is null when none was sent.
+ */
+export class OmlxRequestError extends Error {
+  /**
+   * @param {string} message
+   * @param {{
+   *   cause: unknown,
+   *   attempts: number,
+   *   latencyMs: number | null,
+   *   params: Record<string, unknown>,
+   *   retries: RetryEvent[],
+   * }} details
+   */
+  constructor(message, { cause, attempts, latencyMs, params, retries }) {
+    super(message, { cause });
+    this.name = "OmlxRequestError";
+    this.attempts = attempts;
+    this.latencyMs = latencyMs;
+    this.params = params;
+    this.retries = retries;
+  }
+}
 
 /**
  * @typedef {object} OmlxQueue
@@ -119,7 +146,7 @@ export function createOmlxQueue({ omlx, queue, clock, jitter, onRetry }) {
    * `Busy`; throws on anything else.
    * @param {CompletionRequest} request
    * @param {number} prefillMs the prompt's prefill allowance, added to both time limits
-   * @returns {Promise<Omit<Completion, "retries"> | Busy>}
+   * @returns {Promise<Omit<Completion, "retries" | "params"> | Busy>}
    */
   async function attempt(request, prefillMs) {
     const firstTokenLimitMs = queue.firstTokenThresholdMs + prefillMs;
@@ -275,9 +302,17 @@ export function createOmlxQueue({ omlx, queue, clock, jitter, onRetry }) {
 
   /** @param {CompletionRequest} request */
   function body(request) {
+    return { messages: request.messages, ...params(request) };
+  }
+
+  /**
+   * The request body apart from its messages, which callers store as what was sent.
+   * @param {CompletionRequest} request
+   * @returns {Record<string, unknown>}
+   */
+  function params(request) {
     return {
       model: omlx.model,
-      messages: request.messages,
       stream: true,
       stream_options: { include_usage: true },
       n: 1,
@@ -302,6 +337,38 @@ export function createOmlxQueue({ omlx, queue, clock, jitter, onRetry }) {
   async function run(request, prefillMs) {
     /** @type {RetryEvent[]} */
     const retries = [];
+    const sent = params(request);
+    let attempts = 0;
+    let lastSentAt = 0;
+    try {
+      return {
+        ...(await untilAnswered(request, prefillMs, retries, (at) => {
+          attempts++;
+          lastSentAt = at;
+        })),
+        retries,
+        params: sent,
+      };
+    } catch (error) {
+      throw new OmlxRequestError(/** @type {Error} */ (error).message, {
+        cause: error,
+        attempts,
+        latencyMs: attempts === 0 ? null : clock.now() - lastSentAt,
+        params: sent,
+        retries,
+      });
+    }
+  }
+
+  /**
+   * Attempts `request` until one answers, backing off while omlx is busy.
+   * @param {CompletionRequest} request
+   * @param {number} prefillMs
+   * @param {RetryEvent[]} retries filled with each backoff
+   * @param {(at: number) => void} onSend called as each attempt is sent
+   * @returns {Promise<Omit<Completion, "retries" | "params">>}
+   */
+  async function untilAnswered(request, prefillMs, retries, onSend) {
     let waited = 0;
     const epoch = cancels;
     for (let number = 1; ; number++) {
@@ -309,12 +376,13 @@ export function createOmlxQueue({ omlx, queue, clock, jitter, onRetry }) {
       if (cancels !== epoch) throw cancelled();
       /** @type {Awaited<ReturnType<typeof attempt>>} */
       let outcome;
+      onSend(clock.now());
       try {
         outcome = await attempt(request, prefillMs);
       } finally {
         lastEndedAt = clock.now();
       }
-      if (!("busy" in outcome)) return { ...outcome, retries };
+      if (!("busy" in outcome)) return outcome;
       if (cancels !== epoch) throw cancelled();
       const draw = jitter();
       if (!(draw >= 0 && draw < 1))
@@ -379,7 +447,13 @@ export function createOmlxQueue({ omlx, queue, clock, jitter, onRetry }) {
     },
     cancel() {
       cancels++;
-      for (const job of waiting.splice(0)) job.reject(cancelled());
+      for (const job of waiting.splice(0)) {
+        const error = cancelled();
+        const details = { cause: error, attempts: 0, latencyMs: null, retries: [] };
+        job.reject(
+          new OmlxRequestError(error.message, { ...details, params: params(job.request) }),
+        );
+      }
       interrupt?.(cancelled());
     },
   };

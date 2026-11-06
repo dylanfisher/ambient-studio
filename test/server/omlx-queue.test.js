@@ -6,7 +6,7 @@ import { loadConfig } from "../../src/config/config.js";
 import { CHARS_PER_TOKEN, estimateTokens } from "../../src/domain/prompt-tokens.js";
 import exampleGenome from "../../src/engine/genomes/example.json" with { type: "json" };
 import { randomGenome } from "../../src/engine/random-genome.js";
-import { createOmlxQueue } from "../../src/server/omlx-queue.js";
+import { createOmlxQueue, OmlxRequestError } from "../../src/server/omlx-queue.js";
 import { fakeClock } from "../support/fake-clock.js";
 import { fakeOmlx } from "../support/fake-omlx.js";
 import { tempRoot } from "../support/temp-root.js";
@@ -83,6 +83,17 @@ const ask = (content = PROMPT) => ({
 });
 
 /**
+ * The request body the fake received, without its messages: what the queue reports as sent.
+ * @param {{ body: Record<string, unknown> } | undefined} received
+ */
+function sentParams(received) {
+  if (!received) throw new Error("the fake received no request");
+  const params = { ...received.body };
+  delete params.messages;
+  return params;
+}
+
+/**
  * Settles `promise` into a value the test can inspect without an unhandled rejection.
  * @param {Promise<Completion>} promise
  */
@@ -144,6 +155,7 @@ describe("createOmlxQueue", () => {
       promptTokens: 12,
       completionTokens: 2,
       retries: [],
+      params: sentParams(omlx.requests[0]),
     });
   });
 
@@ -237,6 +249,8 @@ describe("createOmlxQueue", () => {
     );
     expect(retries.map((event) => event.delayMs)).toEqual(BACKOFFS);
     expect(omlx.requests).toHaveLength(4);
+    expect(error).toBeInstanceOf(OmlxRequestError);
+    expect(error).toMatchObject({ attempts: 4, latencyMs: 0, retries });
   });
 
   test("a held stream is aborted when the fake clock passes the timeout", async () => {
@@ -253,6 +267,10 @@ describe("createOmlxQueue", () => {
     expect(error?.message).toBe(`omlx request timed out after ${TIMEOUT / 1000} s`);
     await omlx.waitForAborted(1);
     expect(omlx.requests).toHaveLength(1);
+    // The failure says what was sent and how long the attempt ran.
+    expect(error).toBeInstanceOf(OmlxRequestError);
+    const params = sentParams(omlx.requests[0]);
+    expect(error).toMatchObject({ attempts: 1, latencyMs: TIMEOUT, params, retries: [] });
   });
 
   test("a prompt over the context budget is refused unsent", async () => {
@@ -330,7 +348,9 @@ describe("createOmlxQueue failures and stream parsing", () => {
     expect((await first).text).toBe("one");
     await clock.waitForTimer(QUEUE.minGapMs);
     queue.cancel();
-    expect((await second).error?.message).toBe("omlx request cancelled");
+    const { error } = await second;
+    expect(error?.message).toBe("omlx request cancelled");
+    expect(error).toMatchObject({ attempts: 0, latencyMs: null });
     await clock.waitFor((pending) => pending.length === 0);
     expect(omlx.requests).toHaveLength(1);
   });
