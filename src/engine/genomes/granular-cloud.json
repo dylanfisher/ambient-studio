@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "duration": 60,
+  "tuning": "12-tet",
+  "scale": "minor-pentatonic",
+  "key": 9,
+  "fadeIn": 1,
+  "fadeOut": 20,
+  "width": -3,
+  "reverbDecay": 2,
+  "reverbLevel": -14,
+  "delayTime": 0.5,
+  "delayFeedback": 0.3,
+  "delayLevel": -26,
+  "macros": { "motion": 0.75 },
+  "voices": [
+    {
+      "id": "cloud",
+      "type": "granular",
+      "level": -9,
+      "detune": 4,
+      "density": { "points": [[0, 4], [2, 20, "smooth"]] },
+      "size": 0.12,
+      "root": 196,
+      "spread": 0.6
+    }
+  ]
+}

@@ -234,3 +234,11 @@ to 2.
   FM bell adds about 0.019 s of JS per second of timeline, which would bring a genome filled to
   the budget from 11.5x to about 9.4x. The bench (1m) checks it
   ([0013](0013-pad-and-bell-voices.md)).
+- 2026-11-06: from step 1k, provisional: owner to confirm. `render.js` exports `WINDOW` (2 s),
+  for voices whose cost counts a buffer a window ([0014](0014-granular-cloud-noise-bed.md)).
+  Measured over 120 s renders with an 8 s reverb, a voice whose `BiquadFilter` frequency is
+  automated on the control grid takes about 2.5 ms more a timeline second than its node count
+  says, about 20 node-seconds: the drone (2.9 ms beside the bus) and the noise bed both show
+  it. `SWEPT_FILTER_WEIGHT` in `cost-unit.js` (21, the node included) counts such a filter
+  for both voices, which raises the drone's cost by 20 (the drone golden 73 to 93, the bus
+  golden 101 to 121); renders don't change.

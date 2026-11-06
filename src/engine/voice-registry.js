@@ -9,7 +9,9 @@
 import { bell } from "./bell.js";
 import { drone } from "./drone.js";
 import { VOICE_KEYS, VOICE_PARAMS } from "./genome-schema.js";
+import { granularCloud } from "./granular-cloud.js";
 import { checkMacroRows } from "./macro-table.js";
+import { noiseBed } from "./noise-bed.js";
 import { pad } from "./pad.js";
 
 /**
@@ -38,7 +40,7 @@ import { pad } from "./pad.js";
  * a list built while this module loads would hold it before it exists.
  * @returns {VoiceType[]}
  */
-const builtIn = () => [bell, drone, pad];
+const builtIn = () => [bell, drone, granularCloud, noiseBed, pad];
 
 /** @type {Map<string, VoiceType> | undefined} */
 let registered;

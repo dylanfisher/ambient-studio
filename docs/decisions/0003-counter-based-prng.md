@@ -71,3 +71,7 @@ pure function of its key, and `fires(seed, voiceId, eventIndex, density)` for tr
 - 2026-11-06: from step 1f, provisional: owner to confirm. `GENOME_SLOT.reverb` (3) draws the
   reverb's impulse-response noise, at event index `frame × 2 + channel`
   ([0010](0010-event-windows-control-grid-memory.md)).
+- 2026-11-06: from step 1k, provisional: owner to confirm. `drawer(seed, voiceId)` absorbs the
+  seed and voice id once and returns `(eventIndex, slot) => draw(seed, voiceId, eventIndex,
+  slot)`, the same values about 3 times faster for many draws under one id, as noise at every
+  frame ([0014](0014-granular-cloud-noise-bed.md)); `draw` is built on it.

@@ -1,6 +1,11 @@
 import { describe, expect, test } from "vitest";
 import { COST_BUDGET, cost } from "../../src/engine/cost.js";
-import { EVENT_OVERHEAD, eventCost, IR_WEIGHT } from "../../src/engine/cost-unit.js";
+import {
+  EVENT_OVERHEAD,
+  eventCost,
+  IR_WEIGHT,
+  SWEPT_FILTER_WEIGHT,
+} from "../../src/engine/cost-unit.js";
 import { GLOBAL_PARAMS } from "../../src/engine/genome-schema.js";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
 import { masterBusCost } from "../../src/engine/master-bus.js";
@@ -69,7 +74,11 @@ describe("cost", () => {
       counter = countNodes(ctx);
     });
     const destination = 1;
-    expect(counter.count + destination).toBe(cost(normalized) - IR_WEIGHT * normalized.reverbDecay);
+    // Each drone's swept filter is one node that costs SWEPT_FILTER_WEIGHT.
+    const sweeps = normalized.voices.length * (SWEPT_FILTER_WEIGHT - 1);
+    expect(counter.count + destination).toBe(
+      cost(normalized) - IR_WEIGHT * normalized.reverbDecay - sweeps,
+    );
   });
 
   test("a partial snapped to the tuning costs an oscillator in each copy", () => {
