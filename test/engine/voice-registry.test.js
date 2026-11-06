@@ -18,6 +18,9 @@ const swell = number({
   description: "x",
 });
 
+// What every voice type needs to render, taken from the fixture for the ad hoc types below.
+const { longestEvent, build } = fixtureVoice;
+
 beforeAll(() => registerVoice(fixtureVoice));
 afterAll(() => unregisterVoice(fixtureVoice.type));
 
@@ -39,13 +42,22 @@ describe("the voice registry", () => {
         description: "x",
         params: { [name]: gain },
         macros: [],
+        longestEvent,
+        build,
       };
       expect(() => registerVoice(voice)).toThrow(`"${name}" is a parameter every voice has`);
     }
   });
 
   test("an unregistered voice is gone, and unregistering an unknown type throws", () => {
-    const voice = { type: "passing", description: "x", params: { gain }, macros: [] };
+    const voice = {
+      type: "passing",
+      description: "x",
+      params: { gain },
+      macros: [],
+      longestEvent,
+      build,
+    };
     registerVoice(voice);
     unregisterVoice("passing");
     expect(findVoiceType("passing")).toBeUndefined();
@@ -74,7 +86,14 @@ describe("the voice registry", () => {
 
   test("two rows for the same macro and parameter throw", () => {
     const row = { macro: /** @type {const} */ ("space"), param: "level", depth: 0.2 };
-    const voice = { type: "twice", description: "x", params: { gain }, macros: [row, row] };
+    const voice = {
+      type: "twice",
+      description: "x",
+      params: { gain },
+      macros: [row, row],
+      longestEvent,
+      build,
+    };
     expect(() => registerVoice(voice)).toThrow(/"space" → "level" is listed twice/);
   });
 });

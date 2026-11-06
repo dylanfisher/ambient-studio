@@ -3,7 +3,10 @@
 // only. Tests register the fixture voice from test/support/ in `beforeAll` and unregister it in
 // `afterAll`, so this file never imports test code (decision 0005).
 /** @import { DescriptorTable } from "./descriptor.js" */
+/** @import { Voice } from "./genome-schema.js" */
 /** @import { MacroRow } from "./macro-table.js" */
+/** @import { VoiceSetup, VoiceWindow } from "./render.js" */
+import { drone } from "./drone.js";
 import { VOICE_KEYS, VOICE_PARAMS } from "./genome-schema.js";
 import { checkMacroRows } from "./macro-table.js";
 
@@ -15,10 +18,15 @@ import { checkMacroRows } from "./macro-table.js";
  *   voice has
  * @property {readonly MacroRow[]} macros the macro rows on the voice's own parameters and the
  *   common ones, which the macro table adds to its global rows (decision 0006)
+ * @property {(voice: Voice) => number} longestEvent seconds the longest event the voice plays
+ *   lasts, which an excerpt's pre-roll covers (decision 0007); 0 for sounds whose phase comes
+ *   from timeline time
+ * @property {(setup: VoiceSetup) => VoiceWindow} build creates the voice's nodes in a render,
+ *   connected to `setup.output`, and returns what creates its events window by window
  */
 
 /** @type {VoiceType[]} */
-const builtIn = [];
+const builtIn = [drone];
 
 /** @type {Map<string, VoiceType>} */
 const voices = new Map();

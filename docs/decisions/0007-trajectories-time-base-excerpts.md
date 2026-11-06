@@ -114,3 +114,25 @@ rounded; `renderPlan` (1f) converts it to frames.
 - A new curve name can be added later without a migration. Changing what an existing name
   computes changes renders and bumps the engine version
   ([0009](0009-engine-version-golden-hashes.md)).
+
+## Amendments
+
+- 2026-11-06: from step 1f, as built. Each item is provisional: owner to confirm.
+  - **Tolerance.** An excerpt differs from the same window of a full render by a peak of at
+    most 1e-3 (−60 dBFS), with the difference's RMS at least 80 dB under the window's RMS.
+    `test/engine/render.test.js` holds it on the drone's golden genome. Measured on mbp2021:
+    the golden genome's 2.5 s excerpt at 4.5 s against a 7 s render differs by a peak of
+    2.9e-7, 133 dB under. The same drone with an 8 s reverb and 0.35 feedback (12.9 s of
+    pre-roll), 10 s excerpts against a 300 s and a 900 s render: at 30, 45, 150 and 450 s a
+    peak of at most 4.0e-7 (129 dB under); at 270 s 3.1e-5 (109 dB); at 860 s 5.2e-4 (82.5 dB).
+    The late difference appears only with both the sweep and the detune on, and wasn't traced
+    further; float rounding over a long-running oscillator or automation timeline is the likely
+    cause. Without the whole-cycle oscillator start the golden excerpt differs by a peak of 0.53.
+  - **Pre-roll.** The highest feedback is sampled on the control grid
+    ([0010](0010-event-windows-control-grid-memory.md)) from 0 to the offset. The context
+    starts on a whole 128-frame render quantum at or before `offset − preRoll`, so an excerpt's
+    quanta line up with a full render's. `renderPlan` throws on a window that runs past the
+    genome's `duration`.
+  - **Fades** are sampled on the control grid like every other parameter: the fade-in rises
+    from 0 at timeline 0, the fade-out falls to 0 at the last grid time before `duration`, both
+    along the `smooth` curve, so a render ends in exact zeros.

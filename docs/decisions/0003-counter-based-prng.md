@@ -68,3 +68,6 @@ pure function of its key, and `fires(seed, voiceId, eventIndex, density)` for tr
   slot from `GENOME_SLOT` in `prng.js` (`excerpt` 1, `randomGenome` 2), one list so two uses
   never share a key. `randomGenome` numbers its draws in order, as event indices 0, 1, 2…; it
   isn't a render, so a draw moving when the registry gains a voice type doesn't matter.
+- 2026-11-06: from step 1f, provisional: owner to confirm. `GENOME_SLOT.reverb` (3) draws the
+  reverb's impulse-response noise, at event index `frame × 2 + channel`
+  ([0010](0010-event-windows-control-grid-memory.md)).

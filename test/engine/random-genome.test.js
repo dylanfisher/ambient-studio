@@ -2,7 +2,12 @@ import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 import { isObject } from "../../src/engine/is-object.js";
 import { randomGenome } from "../../src/engine/random-genome.js";
 import { validateGenome } from "../../src/engine/validate-genome.js";
-import { registerVoice, unregisterVoice } from "../../src/engine/voice-registry.js";
+import {
+  registerVoice,
+  requireVoiceType,
+  unregisterVoice,
+  voiceTypeIds,
+} from "../../src/engine/voice-registry.js";
 import { fixtureVoice } from "../support/fixture-voice.js";
 
 beforeAll(() => registerVoice(fixtureVoice));
@@ -93,11 +98,12 @@ describe("randomGenome", () => {
   });
 
   test("throws with no voice type registered", () => {
-    unregisterVoice(fixtureVoice.type);
+    const registered = voiceTypeIds().map(requireVoiceType);
+    for (const voice of registered) unregisterVoice(voice.type);
     try {
       expect(() => randomGenome(1)).toThrow(/no voice type/);
     } finally {
-      registerVoice(fixtureVoice);
+      for (const voice of registered) registerVoice(voice);
     }
   });
 });

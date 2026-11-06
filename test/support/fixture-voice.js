@@ -28,4 +28,9 @@ export const fixtureVoice = {
     { macro: "warmth", param: "cutoff", depth: -0.1 },
     { macro: "density", param: "level", depth: 0.2 },
   ]),
+  longestEvent: () => 0,
+  /** @returns {undefined} */
+  build() {
+    throw new Error("the fixture voice is for schema tests and doesn't render");
+  },
 };
