@@ -19,7 +19,18 @@ const QUEUE = {
   minGapMs: 2_000,
   backoffBaseMs: 4_000,
   maxWaitMs: 30_000,
+  minPrefillTokensPerSecond: 100,
 };
+const PROMPT = "a drone in D dorian";
+/**
+ * The prefill allowance a prompt adds to the first-token threshold and the timeout (0022).
+ * @param {string} prompt
+ */
+const prefillMs = (prompt) =>
+  Math.ceil((estimateTokens(prompt) * 1000) / QUEUE.minPrefillTokensPerSecond);
+/** The first-token threshold and the timeout for `PROMPT`. */
+const THRESHOLD = QUEUE.firstTokenThresholdMs + prefillMs(PROMPT);
+const TIMEOUT = QUEUE.requestTimeoutMs + prefillMs(PROMPT);
 /** The fixed jitter draw: each backoff is 0.75 of its exponential step (decision 0022). */
 const JITTER = 0.5;
 /** Backoffs for retries 1–3 at that draw; a fourth (24 s) would pass the 30 s maximum wait. */
@@ -66,7 +77,7 @@ async function setup(queueEdits = {}) {
 }
 
 /** @param {string} [content] */
-const ask = (content = "a drone in D dorian") => ({
+const ask = (content = PROMPT) => ({
   messages: [{ role: /** @type {const} */ ("user"), content }],
 });
 
@@ -174,15 +185,40 @@ describe("createOmlxQueue", () => {
     omlx.script({ tokens: ["late"], holdAfter: 0 }, { tokens: ["prompt"] });
     const result = queue.request(ask());
     await omlx.waitForRequests(1);
-    clock.advance(QUEUE.firstTokenThresholdMs);
+    clock.advance(THRESHOLD - 1);
+    expect(omlx.aborted()).toBe(0);
+    clock.advance(1);
     await omlx.waitForAborted(1);
     await clock.waitForTimer(/** @type {number} */ (BACKOFFS[0]));
     clock.advance(/** @type {number} */ (BACKOFFS[0]));
     const done = await result;
     expect(done.text).toBe("prompt");
     expect(retries).toEqual([
-      { attempt: 1, reason: "no first token in 10 s", delayMs: BACKOFFS[0] },
+      { attempt: 1, reason: `no first token in ${THRESHOLD / 1000} s`, delayMs: BACKOFFS[0] },
     ]);
+  });
+
+  test("the first-token threshold and the timeout grow with the prompt's prefill", async () => {
+    const { clock, omlx, queue } = await setup();
+    omlx.script({ tokens: ["ok"], holdAfter: 0 });
+    // 3 500 characters is 1 000 tokens, 10 s of prefill at 100 tokens a second.
+    const result = settle(queue.request(ask("p".repeat(3_500))));
+    await omlx.waitForRequests(1);
+    await clock.waitForTimer(QUEUE.firstTokenThresholdMs + 10_000);
+    await clock.waitForTimer(QUEUE.requestTimeoutMs + 10_000);
+    clock.advance(QUEUE.firstTokenThresholdMs + 9_999);
+    omlx.release();
+    expect((await result).value?.firstTokenMs).toBe(QUEUE.firstTokenThresholdMs + 9_999);
+  });
+
+  test("a busy first token past the maximum wait names the prefill key in its message", async () => {
+    const { clock, omlx, queue } = await setup({ maxWaitMs: 1_000 });
+    omlx.script({ tokens: ["late"], holdAfter: 0 });
+    const result = settle(queue.request(ask()));
+    await omlx.waitForRequests(1);
+    clock.advance(THRESHOLD);
+    const { error } = await result;
+    expect(error?.message).toContain("queue.minPrefillTokensPerSecond");
   });
 
   test("past the maximum wait a busy request fails with the owner's message", async () => {
@@ -208,14 +244,12 @@ describe("createOmlxQueue", () => {
     const result = settle(queue.request(ask()));
     await omlx.waitForRequests(1);
     // The first token clears the first-token timer; only then is the stream past busy.
-    await clock.waitFor(
-      (pending) => !pending.some((timer) => timer.delay === QUEUE.firstTokenThresholdMs),
-    );
-    clock.advance(QUEUE.requestTimeoutMs - 1);
+    await clock.waitFor((pending) => !pending.some((timer) => timer.delay === THRESHOLD));
+    clock.advance(TIMEOUT - 1);
     expect(omlx.aborted()).toBe(0);
     clock.advance(1);
     const { error } = await result;
-    expect(error?.message).toBe("omlx request timed out after 60 s");
+    expect(error?.message).toBe(`omlx request timed out after ${TIMEOUT / 1000} s`);
     await omlx.waitForAborted(1);
     expect(omlx.requests).toHaveLength(1);
   });
@@ -267,6 +301,129 @@ describe("createOmlxQueue", () => {
       "set queue.sendResponseFormat to false in the config",
     );
     expect(omlx.requests).toHaveLength(1);
+  });
+});
+
+/** @param {unknown} data */
+const sse = (data) => `data: ${JSON.stringify(data)}\n\n`;
+/** @param {string} content */
+const contentEvent = (content) => sse({ choices: [{ index: 0, delta: { content } }] });
+
+describe("createOmlxQueue failures and stream parsing", () => {
+  test("cancel during a backoff rejects the request and sends nothing more", async () => {
+    const { clock, omlx, queue } = await setup();
+    omlx.script({ status: 429, body: "busy" });
+    const result = settle(queue.request(ask()));
+    await clock.waitForTimer(/** @type {number} */ (BACKOFFS[0]));
+    queue.cancel();
+    expect((await result).error?.message).toBe("omlx request cancelled");
+    await clock.waitFor((pending) => pending.length === 0);
+    expect(omlx.requests).toHaveLength(1);
+  });
+
+  test("cancel during the gap rejects the waiting request unsent", async () => {
+    const { clock, omlx, queue } = await setup();
+    omlx.script({ tokens: ["one"] });
+    const first = queue.request(ask());
+    const second = settle(queue.request(ask()));
+    expect((await first).text).toBe("one");
+    await clock.waitForTimer(QUEUE.minGapMs);
+    queue.cancel();
+    expect((await second).error?.message).toBe("omlx request cancelled");
+    await clock.waitFor((pending) => pending.length === 0);
+    expect(omlx.requests).toHaveLength(1);
+  });
+
+  test("an event that isn't JSON fails with omlx's context, and the next request never overlaps it", async () => {
+    const { clock, omlx, queue } = await setup();
+    // Held open after the bad event: only the client closing its connection ends the first.
+    omlx.script({ raw: [contentEvent("a"), "data: {not json\n\n"], holdAfter: 2 });
+    omlx.script({ tokens: ["next"] });
+    const failed = settle(queue.request(ask()));
+    const next = queue.request(ask());
+    expect((await failed).error?.message).toBe(
+      "omlx sent a stream event that isn't JSON: {not json",
+    );
+    await clock.waitForTimer(QUEUE.minGapMs);
+    clock.advance(QUEUE.minGapMs);
+    expect((await next).text).toBe("next");
+    expect(omlx.maxInFlight()).toBe(1);
+  });
+
+  test("an error event mid-stream fails with its message", async () => {
+    const { omlx, queue } = await setup();
+    omlx.script({ raw: [contentEvent("a"), sse({ error: { message: "model crashed" } })] });
+    await expect(queue.request(ask())).rejects.toThrow("omlx stream error: model crashed");
+  });
+
+  test("a stream that ends without a finish_reason fails", async () => {
+    const { omlx, queue } = await setup();
+    omlx.script({ raw: [contentEvent("a"), "data: [DONE]\n\n"] });
+    await expect(queue.request(ask())).rejects.toThrow(
+      "omlx's stream ended without a finish_reason",
+    );
+  });
+
+  test("chunks split mid-line and mid-character, and a last event with no newline, parse", async () => {
+    const { omlx, queue } = await setup();
+    const whole = Buffer.from(
+      `${sse({ choices: [{ index: 0, delta: { content: "café" }, finish_reason: "stop" }] })}` +
+        `data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 3, completion_tokens: 1 } })}`,
+    );
+    const accent = whole.indexOf(Buffer.from("é"));
+    omlx.script({
+      raw: [whole.subarray(0, 12), whole.subarray(12, accent + 1), whole.subarray(accent + 1)],
+    });
+    const result = await queue.request(ask());
+    expect([result.text, result.finishReason]).toEqual(["café", "stop"]);
+    expect([result.promptTokens, result.completionTokens]).toEqual([3, 1]);
+  });
+
+  test("reasoning content is kept apart from the text and counts as the first token", async () => {
+    const { clock, omlx, queue } = await setup();
+    omlx.script({ reasoning: ["think", "ing"], tokens: ["late", " answer"], holdAfter: 0 });
+    const result = queue.request(ask());
+    await omlx.waitForRequests(1);
+    await clock.waitFor((pending) => !pending.some((timer) => timer.delay === THRESHOLD));
+    clock.advance(THRESHOLD);
+    omlx.release();
+    expect(await result).toMatchObject({
+      text: "late answer",
+      reasoning: "thinking",
+      firstTokenMs: 0,
+      latencyMs: THRESHOLD,
+      retries: [],
+    });
+  });
+
+  test("time to first token and latency are measured on the injected clock", async () => {
+    const { clock, omlx, queue } = await setup();
+    omlx.script({ tokens: ["a", "b"], holdAfter: 0 });
+    const result = queue.request(ask());
+    await omlx.waitForRequests(1);
+    clock.advance(1_234);
+    omlx.release();
+    expect(await result).toMatchObject({ firstTokenMs: 1_234, latencyMs: 1_234 });
+  });
+
+  test("an HTTP 500 fails with its body and is not retried", async () => {
+    const { omlx, queue, retries } = await setup();
+    omlx.script({ status: 500, body: "boom" });
+    await expect(queue.request(ask())).rejects.toThrow("omlx answered HTTP 500: boom");
+    expect(omlx.requests).toHaveLength(1);
+    expect(retries).toEqual([]);
+  });
+
+  test("an error status whose body is slower than the threshold is not read as busy", async () => {
+    const { clock, omlx, queue, retries } = await setup();
+    omlx.script({ status: 500, body: "slow boom", holdAfter: 0 });
+    const result = settle(queue.request(ask()));
+    await omlx.waitForRequests(1);
+    await clock.waitFor((pending) => !pending.some((timer) => timer.delay === THRESHOLD));
+    clock.advance(THRESHOLD);
+    omlx.release();
+    expect((await result).error?.message).toBe("omlx answered HTTP 500: slow boom");
+    expect(retries).toEqual([]);
   });
 });
 

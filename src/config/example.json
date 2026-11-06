@@ -6,6 +6,7 @@
   "queue": {
     "requestTimeoutMs": 600000,
     "firstTokenThresholdMs": 30000,
+    "minPrefillTokensPerSecond": 100,
     "minGapMs": 2000,
     "backoffBaseMs": 5000,
     "maxWaitMs": 300000,
