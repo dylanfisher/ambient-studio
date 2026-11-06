@@ -3,7 +3,10 @@ import { afterEach, expect, test } from "vitest";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
 import { putGenome } from "../../src/server/generation-store.js";
 import { findRender, getRender, putRender } from "../../src/server/render-store.js";
+import { openStore, readMigrations } from "../../src/server/store.js";
 import { createVibe } from "../../src/server/vibe-store.js";
+
+/** @import { Store } from "../../src/server/store.js" */
 import { tempStore } from "../support/temp-store.js";
 
 /** @type {(() => Promise<void>)[]} */
@@ -15,7 +18,14 @@ afterEach(async () => {
 async function setup() {
   const made = await tempStore();
   cleanups.push(made.remove);
-  const { store } = made;
+  return { ...made, ...renderDraft(made.store) };
+}
+
+/**
+ * A vibe and a genome in `store`, and the key and draft of a render of it.
+ * @param {Store} store
+ */
+function renderDraft(store) {
   const vibe = createVibe(store, { name: "v", brief: "b", constraints: {}, softTargets: {} });
   const genome = putGenome(store, vibe.id, droneGenome);
   const key = {
@@ -27,7 +37,7 @@ async function setup() {
     producer: "engine2-abc",
   };
   const draft = { ...key, file: "r1.wav", features: { raw: {}, heard: {} }, checks: { ok: true } };
-  return { ...made, key, draft };
+  return { key, draft };
 }
 
 test("a render is found by its full key, after a reopen too", async () => {
@@ -69,4 +79,32 @@ test("a render is read by its id, and an unknown id reads as undefined", async (
   const { render } = putRender(store, draft);
   expect(getRender(store, render.id)).toEqual(render);
   expect(getRender(store, render.id + 1)).toBeUndefined();
+});
+
+test("a replaced render gets a new, higher id, never the one it replaced", async () => {
+  const { store, draft } = await setup();
+  const { render: old } = putRender(store, draft);
+  const { render } = putRender(store, { ...draft, producer: "engine2-def", file: "r2.wav" });
+  expect(render.id).toBeGreaterThan(old.id);
+  expect(getRender(store, old.id)).toBeUndefined();
+});
+
+test("migration 0003 over a database built with 0001 and 0002 drops its renders", async () => {
+  const { paths, now } = await setup();
+  const file = `${paths.database}-0002`;
+  const migrations = readMigrations();
+  const old = openStore(file, { now, migrations: migrations.slice(0, 2) });
+  const { draft } = renderDraft(old);
+  putRender(old, draft);
+  old.close();
+
+  const store = openStore(file, { now, migrations });
+  try {
+    expect(store.db.prepare("SELECT count(*) AS n FROM renders").get()?.n).toBe(0);
+    const { render: first } = putRender(store, draft);
+    const { render } = putRender(store, { ...draft, file: "r2.wav" });
+    expect(render.id).toBeGreaterThan(first.id);
+  } finally {
+    store.close();
+  }
 });
