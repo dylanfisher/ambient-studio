@@ -743,3 +743,6 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   within −0.31/+0.03 dB. Cases 6 (5.0 surround), 7 and 8 (programme material) are untested; the
   ffmpeg comparison stands in for 7 and 8. 300 s stereo costs about 93 ms integrated and 271 ms
   true peak. The LSP plugin loaded in its worktree but served no `.js` file.
+- 2026-11-06: 1i merged as 892fa90 (Opus: 81k tokens, 30 tool calls, 4.4 min). `encodePcm24` is
+  the one float-to-24-bit conversion (round to nearest, clip, NaN throws); a plain PCM WAV header;
+  FLAC by streaming the WAV into `flac --best`. 300 s stereo: 0.16 s encode, 1.3 s FLAC.
