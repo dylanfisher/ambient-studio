@@ -1,9 +1,10 @@
-// Which preference models the store's ratings call for (decision 0044): one global model over
-// every vibe and one per vibe whose prior is centered on it, each named by its model key
-// (decision 0043) and kept as a file under the data root. A rating or thumbs whose excerpt has no
-// embedding under the embedder's producer is left out and listed, as one with no features is.
+// Which preference models the store's ratings call for (decision 0044): per vibe, a prior model
+// fitted on every other vibe's ratings and the vibe's own model centered on it, each named by its
+// model key (decision 0043) and kept as a file under the data root. A rating or thumbs whose
+// excerpt has no embedding under the embedder's producer is left out and listed, as one with no
+// features is. A fold leaves one session out of every set and of the basis.
 /** @import { Paths } from "../config/paths.js" */
-/** @import { Missing, TrainingSet } from "../domain/training-set.js" */
+/** @import { Item, Missing, TrainingSet } from "../domain/training-set.js" */
 /** @import { Store } from "./store.js" */
 import { join } from "node:path";
 import { findEmbedding } from "./embedding-store.js";
@@ -13,10 +14,10 @@ import { readTrainingSet } from "./read-training-set.js";
 import { listVibes } from "./vibe-store.js";
 
 /**
- * What every fit is given, in its key. Scales are prior standard deviations in logits:
- * `weightScale` of an item's score under the global prior, `vibeScale` of a vibe's score away
- * from the global one, `biasScale` of the left/right bias and `interceptScale` of the thumbs
- * intercept. Decision 0044 says why each value.
+ * What every fit is given, in its key, beside the model code. Scales are prior standard
+ * deviations in logits: `weightScale` of an item's score under the base prior, `vibeScale` of a
+ * vibe's score away from its prior model's, `biasScale` of the left/right bias and
+ * `interceptScale` of the thumbs intercept. Decision 0044 says why each value.
  */
 export const HYPERPARAMETERS = Object.freeze({
   pcaDimension: 12,
@@ -38,10 +39,16 @@ export const HYPERPARAMETERS = Object.freeze({
  */
 
 /**
+ * A vibe's prior model: fitted on every other vibe's pairs and thumbs, with the basis computed
+ * from `basisItems`, every excerpt in the plan's sets.
+ * @typedef {PlannedModel & { basisItems: Item[] }} PlannedPrior
+ */
+
+/**
  * @typedef {object} ModelPlan
  * @property {string} embeddingProducer
- * @property {PlannedModel} global over every vibe not removed
- * @property {(PlannedModel & { vibeId: number })[]} vibes oldest first
+ * @property {number | null} heldOutSession the session left out, for a fold
+ * @property {(PlannedModel & { vibeId: number, prior: PlannedPrior })[]} vibes oldest first
  */
 
 /**
@@ -82,41 +89,79 @@ function keepEmbedded(set, embedded) {
 }
 
 /**
- * The models the store's ratings call for under `embeddingProducer`.
+ * The sets' pairs and thumbs together.
+ * @param {TrainingSet[]} sets
+ * @returns {TrainingSet}
+ */
+const union = (sets) => ({
+  pairs: sets.flatMap((s) => s.pairs),
+  thumbs: sets.flatMap((s) => s.thumbs),
+  missing: sets.flatMap((s) => s.missing),
+});
+
+/**
+ * Every excerpt the set names, once each, in the order first named.
+ * @param {TrainingSet} set
+ * @returns {Item[]}
+ */
+function itemsOf({ pairs, thumbs }) {
+  /** @type {Map<number, Item>} */
+  const items = new Map();
+  for (const item of [...pairs.flatMap((p) => [p.winner, p.loser]), ...thumbs.map((t) => t.item)]) {
+    if (!items.has(item.ratedAudioId)) items.set(item.ratedAudioId, item);
+  }
+  return [...items.values()];
+}
+
+/**
+ * The models the store's ratings call for under `embeddingProducer`. With `heldOutSession`, that
+ * session's pairs and thumbs are in no set, so none of its excerpts reach the basis either,
+ * unless another session rated the same excerpt; 4e's folds use this.
  * @param {Store} store
  * @param {string} embeddingProducer
+ * @param {{ modelCode: string, heldOutSession?: number | null }} options `modelCode` names the
+ *   sidecar's preference code, from its `preference_code` method
  * @returns {ModelPlan}
  */
-export function modelPlan(store, embeddingProducer) {
+export function modelPlan(store, embeddingProducer, { modelCode, heldOutSession = null }) {
   /** @param {number} ratedAudioId */
   const embedded = (ratedAudioId) =>
     findEmbedding(store, { ratedAudioId, renderId: null }, embeddingProducer) !== undefined;
   /** @param {TrainingSet} set @param {Record<string, unknown>} hyperparameters */
   const key = (set, hyperparameters) =>
     modelKey(set, { featureProducer: PRODUCER, embeddingProducer, hyperparameters });
+  /** @param {{ sessionId: number }} row */
+  const kept = (row) => row.sessionId !== heldOutSession;
+  const base = { ...HYPERPARAMETERS, modelCode };
 
-  const kept = listVibes(store).map((vibe) => ({
-    vibeId: vibe.id,
-    ...keepEmbedded(readTrainingSet(store, vibe.id), embedded),
-  }));
-  /** @type {TrainingSet} */
-  const union = {
-    pairs: kept.flatMap(({ set }) => set.pairs),
-    thumbs: kept.flatMap(({ set }) => set.thumbs),
-    missing: kept.flatMap(({ set }) => set.missing),
-  };
-  const global = {
-    key: key(union, HYPERPARAMETERS),
-    set: union,
-    unembedded: kept.flatMap(({ unembedded }) => unembedded),
-    hyperparameters: HYPERPARAMETERS,
-  };
-  // The global key in each vibe's hyperparameters, since a vibe's prior and basis change when
-  // any vibe's ratings do (decision 0043). Two vibes with no ratings share a key and a file:
-  // both are the global prior.
-  const vibes = kept.map(({ vibeId, set, unembedded }) => {
-    const hyperparameters = { ...HYPERPARAMETERS, globalModel: global.key };
-    return { vibeId, key: key(set, hyperparameters), set, unembedded, hyperparameters };
+  const vibes = listVibes(store).map((vibe) => {
+    const read = readTrainingSet(store, vibe.id);
+    const fold = { ...read, pairs: read.pairs.filter(kept), thumbs: read.thumbs.filter(kept) };
+    return { vibeId: vibe.id, ...keepEmbedded(fold, embedded) };
   });
-  return { embeddingProducer, global, vibes };
+  const everything = union(vibes.map((v) => v.set));
+  // The basis is every vibe's excerpts, so each prior's key names every set's ratings through
+  // `basis`, not only the other vibes' its pairs come from.
+  const basis = key(everything, base);
+  const basisItems = itemsOf(everything);
+  return {
+    embeddingProducer,
+    heldOutSession,
+    vibes: vibes.map(({ vibeId, set, unembedded }) => {
+      const others = vibes.filter((v) => v.vibeId !== vibeId);
+      const priorSet = union(others.map((v) => v.set));
+      const priorHyperparameters = { ...base, basis };
+      const prior = {
+        key: key(priorSet, priorHyperparameters),
+        set: priorSet,
+        unembedded: others.flatMap((v) => v.unembedded),
+        hyperparameters: priorHyperparameters,
+        basisItems,
+      };
+      // The prior's key in the vibe's, since the vibe's prior and basis change when any
+      // vibe's ratings do (decision 0043). Identical inputs share a key and a file.
+      const hyperparameters = { ...base, globalModel: prior.key };
+      return { vibeId, key: key(set, hyperparameters), set, unembedded, hyperparameters, prior };
+    }),
+  };
 }

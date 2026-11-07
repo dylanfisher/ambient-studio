@@ -1,6 +1,7 @@
 // The fit job (decision 0044) run directly against the fake sidecar, over rows seeded by hand:
 // what it writes for the sidecar, which keys it fits, which it keeps, and what it reports.
 /** @import { TestApp } from "../support/test-app.js" */
+/** @import { ModelPlan } from "../../src/server/preference-model.js" */
 import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -24,9 +25,12 @@ import { testApp } from "../support/test-app.js";
 import { features } from "../support/training-rows.js";
 
 const EMBEDDER = { producer: "fake-clap@1 clap-aa", dimension: 4, ready: true };
+const CODE = { code: "preference-aa" };
 const FITTED = { pairs: 1, thumbs: 1, items: 2, clapDimension: 1, iterations: 5 };
 const unranked = { rank: null, score: null, modelVersion: null, wildcard: null };
 const TARGET = -16;
+// The embedding of the excerpt only the held-out session rated, found in no other row.
+const HELD_OUT_VECTOR = [0, 0, 0, 7];
 
 /** @type {TestApp[]} */
 const apps = [];
@@ -35,9 +39,10 @@ afterEach(async () => {
 });
 
 /**
- * A test app whose config names a checkpoint folder, with two vibes. The first has excerpts x
- * and y, embedded, and z, not embedded; x beat y, x tied z, and x has a thumbs up. The second
- * has no ratings.
+ * A test app whose config names a checkpoint folder, with three vibes. In the first, session 1
+ * has excerpts x and y, embedded, and z, not embedded; x beat y, x tied z, x beat z, and x has
+ * a thumbs up. Session 2 of the first vibe rated w, rated nowhere else, against y, and gave w a
+ * thumbs down. The second vibe has one rating of its own, u beat v; the third has none.
  */
 async function setup() {
   const made = await testApp();
@@ -46,14 +51,18 @@ async function setup() {
   const checkpointCache = join(app.config.dataRoot, "clap");
   app.config = { ...app.config, sidecar: { ...app.config.sidecar, checkpointCache } };
   const { store } = app;
-  const vibe = createVibe(store, { name: "v", brief: "b", constraints: {}, softTargets: {} });
-  const empty = createVibe(store, { name: "w", brief: "b", constraints: {}, softTargets: {} });
+  /** @param {string} name */
+  const brief = (name) => createVibe(store, { name, brief: "b", constraints: {}, softTargets: {} });
+  const vibe = brief("v");
+  const other = brief("o");
+  const empty = brief("w");
   const session = startSession(store, vibe.id);
-  const common = { sessionId: session.id, vibeRevisionId: vibe.revision.id };
+  const later = startSession(store, vibe.id);
+  const elsewhere = startSession(store, other.id);
 
-  /** @param {number} brightness @param {number[] | null} vector */
-  const excerpt = (brightness, vector) => {
-    const genome = putGenome(store, vibe.id, {
+  /** @param {number} vibeId @param {number} brightness @param {number[] | null} vector */
+  const excerpt = (vibeId, brightness, vector) => {
+    const genome = putGenome(store, vibeId, {
       ...droneGenome,
       macros: { ...droneGenome.macros, brightness },
     });
@@ -84,36 +93,77 @@ async function setup() {
     }
     return { ...heard, ratedAudioId: audio.id, playedFraction: 1 };
   };
-  const x = excerpt(0.2, [1, 0, 0, 0]);
-  const y = excerpt(0.8, [0, 1, 0, 0]);
-  const z = excerpt(0.5, null);
-  /** @param {typeof x} a @param {typeof x} b @param {"a" | "b" | "tie"} outcome */
-  const rate = (a, b, outcome) =>
-    addRating(store, {
-      ...common,
-      a: { ...a, ...unranked },
-      b: { ...b, ...unranked },
-      leftSide: "b",
-      orderSeed: 1,
-      outcome,
-      timeTakenMs: 1,
-    });
-  const win = rate(x, y, "a");
-  const tie = rate(x, z, "tie");
-  const up = addFeedback(store, {
-    ...common,
-    ...x,
-    timeTakenMs: 1,
-    kind: "thumbs",
-    direction: "up",
-    note: null,
-    macro: null,
-    macroValue: null,
-  });
-  return { ...made, vibe, empty, x, y, z, win, tie, up };
+  const x = excerpt(vibe.id, 0.2, [1, 0, 0, 0]);
+  const y = excerpt(vibe.id, 0.8, [0, 1, 0, 0]);
+  const z = excerpt(vibe.id, 0.5, null);
+  const w = excerpt(vibe.id, 0.6, HELD_OUT_VECTOR);
+  const u = excerpt(other.id, 0.3, [0, 0, 1, 0]);
+  const v = excerpt(other.id, 0.7, [0, 0, 1, 1]);
+  /**
+   * @param {{ id: number }} at the session
+   * @param {number} vibeRevisionId
+   */
+  const rater = (at, vibeRevisionId) => {
+    const common = { sessionId: at.id, vibeRevisionId };
+    return {
+      /** @param {typeof x} a @param {typeof x} b @param {"a" | "b" | "tie"} outcome */
+      rate: (a, b, outcome) =>
+        addRating(store, {
+          ...common,
+          a: { ...a, ...unranked },
+          b: { ...b, ...unranked },
+          leftSide: "b",
+          orderSeed: 1,
+          outcome,
+          timeTakenMs: 1,
+        }),
+      /** @param {typeof x} heard @param {"up" | "down"} direction */
+      thumbs: (heard, direction) =>
+        addFeedback(store, {
+          ...common,
+          ...heard,
+          timeTakenMs: 1,
+          kind: "thumbs",
+          direction,
+          note: null,
+          macro: null,
+          macroValue: null,
+        }),
+    };
+  };
+  const first = rater(session, vibe.revision.id);
+  const win = first.rate(x, y, "a");
+  const tie = first.rate(x, z, "tie");
+  const again = first.rate(x, z, "a");
+  const up = first.thumbs(x, "up");
+  const held = rater(later, vibe.revision.id);
+  const heldRating = held.rate(w, y, "a");
+  held.thumbs(w, "down");
+  const theirs = rater(elsewhere, other.revision.id).rate(u, v, "a");
+  return {
+    ...made,
+    vibe,
+    other,
+    empty,
+    later,
+    x,
+    y,
+    z,
+    w,
+    win,
+    tie,
+    again,
+    up,
+    heldRating,
+    theirs,
+  };
 }
 
 const job = () => ({ signal: new AbortController().signal, progress: () => undefined });
+const plan = (
+  /** @type {TestApp["app"]} */ app,
+  heldOutSession = /** @type {number | null} */ (null),
+) => modelPlan(app.store, EMBEDDER.producer, { modelCode: CODE.code, heldOutSession });
 
 /**
  * Every fit request the fake received, in order.
@@ -126,57 +176,151 @@ const fits = async (sidecar) =>
 
 // The fake writes `floats` to the request's `out`, so an empty list leaves an empty model file.
 const fitted = { do: /** @type {const} */ ("answer"), result: FITTED, floats: [] };
+const start = [
+  { do: /** @type {const} */ ("answer"), result: EMBEDDER },
+  { do: /** @type {const} */ ("answer"), result: CODE },
+];
 
-test("leaves out a rating whose excerpt has no embedding, and lists it", async () => {
-  const { app, vibe, empty, x, z, win, tie, up } = await setup();
-  const plan = modelPlan(app.store, EMBEDDER.producer);
-  const [first, second] = plan.vibes;
+/** @param {TestApp["app"]} app */
+const temps = async (app) =>
+  (await readdir(app.config.dataRoot)).filter((name) => name.startsWith(".fit-"));
+
+/**
+ * Every set file the plan's fits would read, as the job writes them.
+ * @param {TestApp["app"]} app
+ * @param {ModelPlan} planned
+ */
+const inputs = (app, planned) =>
+  planned.vibes.flatMap(({ prior, ...vibe }) =>
+    [
+      { model: prior, prior: null, basisItems: prior.basisItems },
+      { model: vibe, prior: "/data/prior.json", basisItems: [] },
+    ].map(({ model, prior: priorPath, basisItems }) =>
+      fitInput(app.store, model.set, {
+        embeddingProducer: EMBEDDER.producer,
+        dimension: EMBEDDER.dimension,
+        hyperparameters: model.hyperparameters,
+        prior: priorPath,
+        embeddingsPath: "/data/.fit-1/embeddings.f32",
+        basisItems,
+      }),
+    ),
+  );
+
+/**
+ * Each item's spectral centroid in a set file, which `features` makes 100 times its rated
+ * audio id.
+ * @param {Record<string, unknown>} set
+ */
+const centroids = (set) => {
+  const index = FEATURE_NAMES.findIndex(({ name }) => name === "centroidMean");
+  return /** @type {{ features: unknown[] }[]} */ (set.items).map((item) => item.features[index]);
+};
+
+test("leaves out a rating whose excerpt has no embedding, listing each excerpt once", async () => {
+  const made = await setup();
+  const { app, vibe, other, empty, x, z, win, tie, again, up, heldRating } = made;
+  const [first, second, third] = plan(app).vibes;
   expect(first?.vibeId).toBe(vibe.id);
-  expect(first?.set.pairs.map((p) => p.ratingId)).toEqual([win.id]);
-  expect(first?.set.thumbs.map((t) => [t.feedbackId, t.item.ratedAudioId])).toEqual([
-    [up.id, x.ratedAudioId],
+  expect(first?.set.pairs.map((p) => p.ratingId)).toEqual([win.id, heldRating.id]);
+  expect(first?.set.thumbs.map((t) => t.feedbackId)[0]).toBe(up.id);
+  expect(first?.set.thumbs[0]?.item.ratedAudioId).toBe(x.ratedAudioId);
+  // One entry per rating and excerpt: the tie's two halves make one.
+  expect(first?.unembedded).toEqual([
+    { ratingId: tie.id, ratedAudioId: z.ratedAudioId },
+    { ratingId: again.id, ratedAudioId: z.ratedAudioId },
   ]);
-  // One entry for the tie, though it is two half-weighted pairs.
-  expect(first?.unembedded).toEqual([{ ratingId: tie.id, ratedAudioId: z.ratedAudioId }]);
-  expect(second).toMatchObject({ vibeId: empty.id, unembedded: [] });
-  expect(second?.set.pairs).toEqual([]);
-  expect(plan.global.set.pairs.map((p) => p.ratingId)).toEqual([win.id]);
-  expect(plan.global.hyperparameters).toEqual(HYPERPARAMETERS);
+  expect(second).toMatchObject({ vibeId: other.id, unembedded: [] });
+  expect(third).toMatchObject({ vibeId: empty.id, unembedded: [] });
+  expect(third?.set.pairs).toEqual([]);
 });
 
-test("a vibe's key names the global model, so another vibe's rating changes it", async () => {
-  const { app, empty } = await setup();
-  const before = modelPlan(app.store, EMBEDDER.producer);
-  expect(before.vibes[1]?.hyperparameters).toEqual({
-    ...HYPERPARAMETERS,
-    globalModel: before.global.key,
-  });
-  // Removing the first vibe's thumbs changes the global set, so the second vibe's prior.
-  app.store.db.prepare("UPDATE feedback SET removedAt = 1, removedReason = 'test'").run();
-  const after = modelPlan(app.store, EMBEDDER.producer);
-  expect(after.global.key).not.toBe(before.global.key);
-  expect(after.vibes[1]?.vibeId).toBe(empty.id);
-  expect(after.vibes[1]?.key).not.toBe(before.vibes[1]?.key);
+test("each vibe's prior is fitted on every other vibe's ratings, under its own key", async () => {
+  const { app, vibe, win, heldRating, theirs } = await setup();
+  const [first, second, third] = plan(app).vibes;
+  expect(first?.prior.set.pairs.map((p) => p.ratingId)).toEqual([theirs.id]);
+  expect(second?.prior.set.pairs.map((p) => p.ratingId)).toEqual([win.id, heldRating.id]);
+  expect(third?.prior.set.pairs.map((p) => p.ratingId)).toEqual([win.id, heldRating.id, theirs.id]);
+  for (const planned of [first, second, third]) {
+    expect(planned?.hyperparameters).toEqual({
+      ...HYPERPARAMETERS,
+      modelCode: CODE.code,
+      globalModel: planned?.prior.key,
+    });
+  }
+  expect(new Set([first, second, third].map((p) => p?.prior.key)).size).toBe(3);
+  // The basis is every vibe's excerpts, so each prior reads the same items.
+  const basis = first?.prior.basisItems.map((item) => item.ratedAudioId);
+  expect(second?.prior.basisItems.map((item) => item.ratedAudioId)).toEqual(basis);
+  expect(basis).toHaveLength(5);
+  expect(vibe.id).toBe(first?.vibeId);
+});
+
+/** @param {TestApp["app"]} app @param {number} ratingId */
+const removeRating = (app, ratingId) =>
+  app.store.db
+    .prepare("UPDATE ratings SET removedAt = 1, removedReason = 'test' WHERE id = ?")
+    .run(ratingId);
+
+test("with one vibe holding every rating, its prior has no ratings but a basis", async () => {
+  const { app, sidecar, theirs, x } = await setup();
+  removeRating(app, theirs.id);
+  const [first] = plan(app).vibes;
+  expect(first?.prior.set.pairs).toEqual([]);
+  expect(first?.prior.set.thumbs).toEqual([]);
+  expect(first?.prior.basisItems.map((item) => item.ratedAudioId)).toContain(x.ratedAudioId);
+
+  sidecar.script(...start, ...Array(6).fill(fitted));
+  const result = await fitJob(app)(job());
+  expect(result.vibes[0]?.summary).toBe(
+    "Fitted on 2 A/B choices and 2 thumbs; no other brief has ratings, so it starts from the base prior; 1 rated excerpts left out because their sound isn't analyzed yet; run the embed job.",
+  );
+  expect(result.vibes[0]).toMatchObject({ priorRatings: 0, priorThumbs: 0, unembedded: 1 });
+});
+
+test("a fold leaves the held-out session out of every set and basis its fits read", async () => {
+  const { app, later, w, heldRating } = await setup();
+  const fold = plan(app, later.id);
+  for (const planned of fold.vibes) {
+    for (const set of [planned.set, planned.prior.set]) {
+      expect(set.pairs.map((p) => p.ratingId)).not.toContain(heldRating.id);
+      expect([...set.pairs, ...set.thumbs].map((row) => row.sessionId)).not.toContain(later.id);
+    }
+    const ids = planned.prior.basisItems.map((item) => item.ratedAudioId);
+    expect(ids).not.toContain(w.ratedAudioId);
+  }
+  const held = new Float32Array(HELD_OUT_VECTOR);
+  for (const { set, embeddings } of inputs(app, fold)) {
+    const floats = new Float32Array(embeddings.buffer);
+    for (let row = 0; row < floats.length; row += EMBEDDER.dimension) {
+      expect([...floats.slice(row, row + EMBEDDER.dimension)]).not.toEqual([...held]);
+    }
+    expect(centroids(set)).not.toContain(100 * w.ratedAudioId);
+  }
+  // Without the fold, the same files carry it.
+  const whole = inputs(app, plan(app)).flatMap(({ set }) => centroids(set));
+  expect(whole).toContain(100 * w.ratedAudioId);
+  expect(fold.vibes[0]?.key).not.toBe(plan(app).vibes[0]?.key);
 });
 
 test("the sidecar's input holds each excerpt once, by index, with its embedding row", async () => {
-  const { app, x, y } = await setup();
-  const plan = modelPlan(app.store, EMBEDDER.producer);
-  const planned = /** @type {NonNullable<typeof plan.vibes[0]>} */ (plan.vibes[0]);
-  const { set, embeddings } = fitInput(app.store, planned.set, {
+  const { app, x, y, later } = await setup();
+  const [planned] = plan(app, later.id).vibes;
+  const vibe = /** @type {NonNullable<typeof planned>} */ (planned);
+  const { set, embeddings } = fitInput(app.store, vibe.set, {
     embeddingProducer: EMBEDDER.producer,
     dimension: EMBEDDER.dimension,
-    hyperparameters: planned.hyperparameters,
-    prior: "/data/models/global.json",
+    hyperparameters: vibe.hyperparameters,
+    prior: "/data/models/prior.json",
     embeddingsPath: "/data/.fit-1/embeddings.f32",
   });
   expect(set).toMatchObject({
-    hyperparameters: planned.hyperparameters,
+    hyperparameters: vibe.hyperparameters,
     featureNames: FEATURE_NAMES.map(({ name }) => name),
     macroNames: Object.keys(MACROS),
     embeddingDimension: 4,
     embeddings: "/data/.fit-1/embeddings.f32",
-    prior: "/data/models/global.json",
+    prior: "/data/models/prior.json",
     // x won from the right, since the rating showed side b on the left.
     pairs: [{ winner: 0, loser: 1, weight: 1, winnerLeft: false }],
     thumbs: [{ item: 0, up: true }],
@@ -193,9 +337,25 @@ test("the sidecar's input holds each excerpt once, by index, with its embedding 
   expect([...new Float32Array(embeddings.buffer)]).toEqual([1, 0, 0, 0, 0, 1, 0, 0]);
 });
 
-test("fits the global model, then each vibe's on it, and stores each under its key", async () => {
-  const { app, sidecar, vibe, empty } = await setup();
-  sidecar.script({ do: "answer", result: EMBEDDER }, fitted, fitted, fitted);
+test("a prior's input lists every basis item first, whether or not its pairs name it", async () => {
+  const { app } = await setup();
+  const [planned] = plan(app).vibes;
+  const prior = /** @type {NonNullable<typeof planned>} */ (planned).prior;
+  const { set } = fitInput(app.store, prior.set, {
+    embeddingProducer: EMBEDDER.producer,
+    dimension: EMBEDDER.dimension,
+    hyperparameters: prior.hyperparameters,
+    prior: null,
+    embeddingsPath: "/data/.fit-1/embeddings.f32",
+    basisItems: prior.basisItems,
+  });
+  expect(/** @type {unknown[]} */ (set.items)).toHaveLength(prior.basisItems.length);
+  expect(set.pairs).toHaveLength(1);
+});
+
+test("fits each vibe's prior, then the vibe on it, and stores each under its key", async () => {
+  const { app, sidecar, vibe, other, empty } = await setup();
+  sidecar.script(...start, ...Array(6).fill(fitted));
   /** @type {[number, number, string | null][]} */
   const reports = [];
   const result = await fitJob(app)({
@@ -203,104 +363,112 @@ test("fits the global model, then each vibe's on it, and stores each under its k
     progress: (done, total, step) => reports.push([done, total, step]),
   });
 
-  const plan = modelPlan(app.store, EMBEDDER.producer);
-  const [asked] = (await sidecar.received()).map(({ request }) => request);
-  expect(asked).toMatchObject({ method: "embedder", params: { fetch: false } });
-  expect(await fits(sidecar)).toHaveLength(3);
-  for (const key of [plan.global.key, ...plan.vibes.map((v) => v.key)]) {
+  const planned = plan(app);
+  const asked = (await sidecar.received()).map(({ request }) => request);
+  expect(asked[0]).toMatchObject({ method: "embedder", params: { fetch: false } });
+  expect(asked[1]).toMatchObject({ method: "preference_code", params: {} });
+  expect(await fits(sidecar)).toHaveLength(6);
+  for (const { key, prior } of planned.vibes) {
     expect(existsSync(modelFile(app.paths, key))).toBe(true);
+    expect(existsSync(modelFile(app.paths, prior.key))).toBe(true);
   }
-  // The temp folders are gone, and only the model files remain.
-  expect((await readdir(app.config.dataRoot)).filter((name) => name.startsWith(".fit-"))).toEqual(
-    [],
+  expect(await temps(app)).toEqual([]);
+  expect(result.vibes.map((v) => v.vibeId)).toEqual([vibe.id, other.id, empty.id]);
+  expect(result.vibes[0]).toEqual({
+    vibeId: vibe.id,
+    key: planned.vibes[0]?.key,
+    kept: false,
+    priorKey: planned.vibes[0]?.prior.key,
+    priorKept: false,
+    ratings: 2,
+    ties: 0,
+    thumbs: 2,
+    priorRatings: 1,
+    priorThumbs: 0,
+    unembedded: 1,
+    missing: 0,
+    summary:
+      "Fitted on 2 A/B choices and 2 thumbs; 1 rated excerpts left out because their sound isn't analyzed yet; run the embed job.",
+  });
+  expect(result.vibes[2]?.summary).toBe(
+    "No ratings to fit, so it predicts from the model over the other briefs.",
   );
-  expect(result.global).toMatchObject({ key: plan.global.key, kept: false, ratings: 1 });
-  expect(result.vibes).toEqual([
-    {
-      vibeId: vibe.id,
-      key: plan.vibes[0]?.key,
-      kept: false,
-      ratings: 1,
-      ties: 0,
-      thumbs: 1,
-      unembedded: 1,
-      missing: 0,
-      summary:
-        "Fitted on 1 A/B choices and 1 thumbs; 1 rated excerpts left out because their sound isn't analyzed yet; run the embed job.",
-    },
-    {
-      vibeId: empty.id,
-      key: plan.vibes[1]?.key,
-      kept: false,
-      ratings: 0,
-      ties: 0,
-      thumbs: 0,
-      unembedded: 0,
-      missing: 0,
-      summary: "No ratings to fit, so it predicts from the model over every brief.",
-    },
-  ]);
   expect(reports).toEqual([
     [0, 0, "Checking that every rated excerpt's sound is analyzed"],
-    [0, 3, "Learning your taste across every brief"],
-    [1, 3, "Learning your taste for brief 1 of 2"],
-    [2, 3, "Learning your taste for brief 2 of 2"],
+    [0, 3, "Learning your taste for brief 1 of 3"],
+    [1, 3, "Learning your taste for brief 2 of 3"],
+    [2, 3, "Learning your taste for brief 3 of 3"],
     [3, 3, null],
   ]);
 });
 
-test("a vibe's set names the global model's file as its prior, and a cancel stops it", async () => {
+test("a vibe's set names its prior's file, and a cancel leaves no temp folder", async () => {
   const { app, sidecar } = await setup();
   // The job deletes each set once it is fitted, so the vibe's fit hangs to be read in flight.
-  sidecar.script({ do: "answer", result: EMBEDDER }, fitted, { do: "hang" });
+  sidecar.script(...start, fitted, { do: "hang" });
   const controller = new AbortController();
   const running = fitJob(app)({ signal: controller.signal, progress: () => undefined });
-  await sidecar.waitForReceived(3);
-  const [global, first] = await fits(sidecar);
+  await sidecar.waitForReceived(4);
+  const [prior, first] = await fits(sidecar);
   const read = async (/** @type {string | undefined} */ path) =>
     JSON.parse(await readFile(/** @type {string} */ (path), "utf8"));
-  const plan = modelPlan(app.store, EMBEDDER.producer);
-  expect((await read(first?.params.set)).prior).toBe(modelFile(app.paths, plan.global.key));
-  expect(global?.params.set).not.toBe(first?.params.set);
+  const [planned] = plan(app).vibes;
+  const priorKey = /** @type {string} */ (planned?.prior.key);
+  expect((await read(first?.params.set)).prior).toBe(modelFile(app.paths, priorKey));
+  expect(prior?.params.set).not.toBe(first?.params.set);
+  expect(await temps(app)).toHaveLength(1);
   controller.abort();
   await expect(running).rejects.toThrow("sidecar request fit was cancelled");
-  expect(existsSync(modelFile(app.paths, /** @type {string} */ (plan.vibes[0]?.key)))).toBe(false);
+  expect(existsSync(modelFile(app.paths, /** @type {string} */ (planned?.key)))).toBe(false);
+  expect(await temps(app)).toEqual([]);
 });
 
 test("a second run keeps every model whose key hasn't changed", async () => {
   const { app, sidecar } = await setup();
-  sidecar.script({ do: "answer", result: EMBEDDER }, fitted, fitted, fitted);
+  sidecar.script(...start, ...Array(6).fill(fitted));
   await fitJob(app)(job());
-  sidecar.script({ do: "answer", result: EMBEDDER });
+  sidecar.script(...start);
   const again = await fitJob(app)(job());
-  expect(await fits(sidecar)).toHaveLength(3);
-  expect(again.global.kept).toBe(true);
-  expect(again.vibes.map((v) => v.kept)).toEqual([true, true]);
+  expect(await fits(sidecar)).toHaveLength(6);
+  expect(again.vibes.map((v) => [v.kept, v.priorKept])).toEqual([
+    [true, true],
+    [true, true],
+    [true, true],
+  ]);
+});
+
+test("another model code changes every key", async () => {
+  const { app } = await setup();
+  const before = plan(app);
+  const after = modelPlan(app.store, EMBEDDER.producer, { modelCode: "preference-bb" });
+  for (const [i, planned] of before.vibes.entries()) {
+    expect(after.vibes[i]?.key).not.toBe(planned.key);
+    expect(after.vibes[i]?.prior.key).not.toBe(planned.prior.key);
+  }
 });
 
 test("a vibe with thumbs alone says the left/right lean stays at its prior", async () => {
-  const { app, sidecar, win } = await setup();
+  const { app, sidecar } = await setup();
   app.store.db.prepare("UPDATE ratings SET removedAt = 1, removedReason = 'test'").run();
-  expect(win.id).toBeGreaterThan(0);
-  sidecar.script({ do: "answer", result: EMBEDDER }, fitted, fitted, fitted);
+  sidecar.script(...start, ...Array(6).fill(fitted));
   const result = await fitJob(app)(job());
   expect(result.vibes[0]?.summary).toBe(
-    "Fitted on 0 A/B choices and 1 thumbs; with no A/B choices, the left/right lean stays at its prior.",
+    "Fitted on 0 A/B choices and 2 thumbs; with no A/B choices, the left/right lean stays at its prior; no other brief has ratings, so it starts from the base prior.",
   );
 });
 
 test("a sidecar failure fails the job naming the model, and leaves no file", async () => {
   const { app, sidecar } = await setup();
-  sidecar.script({ do: "answer", result: EMBEDDER }, fitted, {
+  sidecar.script(...start, fitted, {
     do: "error",
     error: "fit raised ArithmeticError: no step",
   });
+  const [planned] = plan(app).vibes;
   await expect(fitJob(app)(job())).rejects.toThrow(
-    "fitting brief 1 failed: sidecar request fit failed: fit raised ArithmeticError: no step",
+    `fitting brief ${planned?.vibeId} failed: sidecar request fit failed: fit raised ArithmeticError: no step`,
   );
-  const plan = modelPlan(app.store, EMBEDDER.producer);
-  expect(existsSync(modelFile(app.paths, plan.global.key))).toBe(true);
-  expect(existsSync(modelFile(app.paths, /** @type {string} */ (plan.vibes[0]?.key)))).toBe(false);
+  expect(existsSync(modelFile(app.paths, /** @type {string} */ (planned?.prior.key)))).toBe(true);
+  expect(existsSync(modelFile(app.paths, /** @type {string} */ (planned?.key)))).toBe(false);
 });
 
 test("with no checkpoint folder the job fails at once, asking the sidecar nothing", async () => {
