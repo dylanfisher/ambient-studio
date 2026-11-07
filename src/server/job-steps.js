@@ -27,4 +27,9 @@ export const JOB_STEP = Object.freeze({
   renderingNudge: (n, of) => `Rendering the excerpt for nudge ${n} of ${of}`,
   /** @param {number} n @param {number} of */
   renderingExcerpt: (n, of) => `Rendering excerpt ${n} of ${of}`,
+  /** @param {number} n @param {number} of */
+  embeddingCandidate: (n, of) => `Analyzing the sound of candidate ${n} of ${of}`,
+  fetchingEmbedder: "Loading the sound-analysis model; the first time, it downloads 0.8 GB",
+  /** @param {number} n @param {number} of */
+  embeddingExcerpt: (n, of) => `Analyzing the sound of excerpt ${n} of ${of}`,
 });

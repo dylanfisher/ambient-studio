@@ -2,7 +2,8 @@
 
 - **Date:** 2026-11-07
 - **Status:** accepted; amends [0019](0019-config-file-and-paths.md) (adds
-  `sidecar.requestTimeoutMs`)
+  `sidecar.requestTimeoutMs`); amended by [0042](0042-clap-embeddings.md) (the `path` type,
+  numpy at start-up)
 
 ## Context
 
@@ -53,8 +54,8 @@ raises, or a result `json.dumps` can't encode (NaN and infinities included, with
 its traceback to stderr. Then it reads the next line, so no request line stops the loop. The loop exits when
 stdin closes. Its answers go to a copy of stdout, and file descriptor 1 and `sys.stdout` are
 pointed at stderr, so a library that prints (torch and transformers do) can't put a line among
-the answers. The loop imports only the standard library; torch is imported by the methods that
-need it (4b), so `ping` answers in about 50 ms from a cold start, uv included.
+the answers. The loop imports the standard library and numpy; torch and transformers are imported by the
+methods that need them ([0042](0042-clap-embeddings.md)), so `ping` doesn't wait on them.
 
 **Timeouts.** Each request has `sidecar.requestTimeoutMs`, from writing it to its answer, on the
 server's injected clock. The example sets 120 000 ms: the loop answers `ping` in milliseconds,
@@ -132,3 +133,9 @@ subprocess for the stdout redirect.
 - If the server process itself is killed, the pipe closes and an idle loop exits; a loop stuck
   inside a method lives on until it finishes or is killed by hand.
 - A new config key: the owner's config fails to load until it has `sidecar.requestTimeoutMs`.
+
+## Amendments
+
+- 2026-11-07: from step 4b ([0042](0042-clap-embeddings.md)). The protocol has a fourth type,
+  `path`: an absolute file path, checked by both sides. The CLAP methods' module imports numpy
+  when the loop starts, so the loop no longer imports the standard library alone.

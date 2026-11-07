@@ -68,8 +68,8 @@ function causeOf(fn) {
   throw new Error("it didn't throw");
 }
 
-/** Tables that aren't irreplaceable: the migration log and the derived render cache. */
-const NOT_IRREPLACEABLE = ["migrations", "renders"];
+/** Tables that aren't irreplaceable: the migration log and the derived tables. */
+const NOT_IRREPLACEABLE = ["migrations", "renders", "embeddings"];
 
 describe("migrations", () => {
   test("build an empty database, and a second open applies nothing", async () => {

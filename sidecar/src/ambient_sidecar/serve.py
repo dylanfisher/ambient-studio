@@ -14,9 +14,8 @@ from collections.abc import Callable, Iterable
 from importlib.metadata import version as package_version
 from typing import Any
 
-from ambient_sidecar.protocol import Method, load_methods, mismatch
-
-Handler = Callable[[dict[str, Any]], dict[str, Any]]
+from ambient_sidecar.clap import ClapCheckpoint, clap_handlers
+from ambient_sidecar.protocol import Handler, Method, load_methods, mismatch
 
 
 def ping(params: dict[str, Any]) -> dict[str, Any]:
@@ -28,7 +27,11 @@ def version(params: dict[str, Any]) -> dict[str, Any]:
 
 
 # One per method in the protocol file; `serve` refuses to start when they differ.
-HANDLERS: dict[str, Handler] = {"ping": ping, "version": version}
+HANDLERS: dict[str, Handler] = {
+    "ping": ping,
+    "version": version,
+    **clap_handlers(ClapCheckpoint()),
+}
 
 
 def _error(id: int | None, message: str) -> str:

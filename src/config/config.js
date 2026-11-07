@@ -8,7 +8,9 @@ import { isAbsolute, join, resolve, sep } from "node:path";
  * @typedef {object} Config
  * @property {{ baseUrl: string, model: string, apiKey: string }} omlx
  * @property {QueueConfig} queue
- * @property {{ requestTimeoutMs: number }} sidecar each sidecar request's limit (0041)
+ * @property {{ requestTimeoutMs: number, checkpointCache: string | null }} sidecar each sidecar
+ *   request's limit (0041), and the folder the CLAP checkpoint is fetched into, absolute and `~`
+ *   expanded, or `null` until the owner sets one (0042)
  * @property {string} dataRoot absolute, `~` expanded
  * @property {string | null} fieldRecordings absolute, `~` expanded; `null` until the owner sets one
  * @property {{ host: string, port: number }} server
@@ -187,7 +189,7 @@ const SCHEMA = {
     sendResponseFormat: boolean,
     thinking: boolean,
   },
-  sidecar: { requestTimeoutMs: positiveInteger },
+  sidecar: { requestTimeoutMs: positiveInteger, checkpointCache: folderOrNull },
   dataRoot: folder,
   fieldRecordings: folderOrNull,
   server: { host: text, port },

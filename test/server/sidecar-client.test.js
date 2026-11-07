@@ -226,6 +226,15 @@ test("an unknown method or wrong params are refused before any process starts", 
   expect(await fake.starts()).toEqual([]);
 });
 
+test("a path param must be absolute, and is refused before any process starts", async () => {
+  const { fake, client } = await setup();
+  const params = { checkpointCache: "/cache", audio: "rated_audio/1.flac", out: "/tmp/1.f32" };
+  await expect(client.request("embed_audio", params)).rejects.toThrow(
+    'sidecar request embed_audio: params.audio must be a path, got "rated_audio/1.flac"',
+  );
+  expect(await fake.starts()).toEqual([]);
+});
+
 test("stop ends the process and fails what is in flight", async () => {
   const { fake, client } = await setup();
   fake.script({ do: "hang" });

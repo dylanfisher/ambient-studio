@@ -5,6 +5,7 @@ They are read from the one file the server imports too, so the two sides can't d
 
 import json
 import math
+import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, TypedDict
@@ -26,12 +27,17 @@ def _is_number(value: object) -> bool:
     return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
 
 
-# The types a field may have; the server's client checks the same three.
+# The types a field may have; the server's client checks the same four. A path is an absolute
+# file path, which is how audio and arrays pass, never inline.
 FIELD_TYPES: dict[str, Callable[[object], bool]] = {
     "string": lambda value: isinstance(value, str),
     "number": _is_number,
     "boolean": lambda value: isinstance(value, bool),
+    "path": lambda value: isinstance(value, str) and os.path.isabs(value),
 }
+
+# A method: its checked params in, its result out.
+Handler = Callable[[dict[str, Any]], dict[str, Any]]
 
 
 def load_methods() -> dict[str, Method]:

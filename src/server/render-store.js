@@ -70,6 +70,19 @@ export function findRender(store, key) {
 }
 
 /**
+ * Every render made under `producer`, in id order.
+ * @param {Store} store
+ * @param {string} producer
+ * @returns {Render[]}
+ */
+export function listRenders(store, producer) {
+  return store.db
+    .prepare("SELECT * FROM renders WHERE producer = ? ORDER BY id")
+    .all(producer)
+    .map((row) => decode(RENDERS, row));
+}
+
+/**
  * Stores a render, replacing any row for the same window. Returns the replaced row too, so the
  * caller can delete its file.
  * @param {Store} store

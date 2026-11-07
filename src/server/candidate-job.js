@@ -6,14 +6,18 @@
 /** @import { LintResult } from "../domain/lint-result.js" */
 /** @import { ExploreFrom, GenerationStep } from "./generate-candidates.js" */
 /** @import { Candidate } from "./generation-store.js" */
+/** @import { Embedder } from "./embed-audio.js" */
 /** @import { JobContext } from "./job-runner.js" */
 /** @import { RecordingEntry } from "./recording-index.js" */
 /** @import { ExcerptRequest } from "./render-excerpt.js" */
 /** @import { Render } from "./render-store.js" */
 /** @import { App } from "./routing.js" */
 
+import { join } from "node:path";
 import { excerptMisses } from "../domain/excerpt-misses.js";
 import { excerptRequest } from "./candidate-excerpt.js";
+import { embedAudio, readEmbedder } from "./embed-audio.js";
+import { findEmbedding } from "./embedding-store.js";
 import {
   checkRevision,
   EXPLORE_OPERATOR,
@@ -65,6 +69,8 @@ export async function jobRecordings(app) {
  * @property {string} requestGroup
  * @property {number[]} candidateIds every candidate made, rejected ones included, in order
  * @property {CandidateRender[]} excerpts one per valid candidate
+ * @property {string | null} notEmbedded why the excerpts weren't embedded, or null when they
+ *   were or none was rendered (decision 0042)
  */
 
 /**
@@ -121,7 +127,8 @@ export function generationStepText({ index, kind }, offset, total, asking = JOB_
  * cancels the omlx queue too, which is the job's alone while it runs, since the runner runs one
  * job at a time, and a cancel during a render stops the job before its next request. With
  * `explore`, the candidates are explore children of its base (decision 0038), revised like any
- * first try.
+ * first try. Each excerpt is embedded after its features when the sidecar is set up (0042), and
+ * the result says why not when it isn't.
  * @param {App} app
  * @param {{ vibeId: number, sessionId: number, count: number,
  *   explore?: ExploreFrom | undefined }} request
@@ -137,6 +144,10 @@ export function candidateJob(app, { vibeId, sessionId, count, explore }) {
     const candidateIds = [];
     let done = 0;
     let firstTries = 0;
+    /** @type {Promise<Embedder | string> | undefined} */
+    let embedder;
+    /** @type {string | null} */
+    let notEmbedded = null;
     const cancelRequests = () => app.queue.cancel();
     job.signal.addEventListener("abort", cancelRequests);
 
@@ -152,7 +163,29 @@ export function candidateJob(app, { vibeId, sessionId, count, explore }) {
       job.signal.throwIfAborted();
       const { render } = await renderExcerpt(app.store, app.paths.renderCache, request, recordings);
       excerpts.push({ candidateId: candidate.id, renderId: render.id });
+      await embed(render);
       return render;
+    };
+
+    /**
+     * Embeds the excerpt unless it has an embedding under the sidecar's producer. The sidecar is
+     * asked whether it is set up once, at the first excerpt, and never fetches the checkpoint.
+     * @param {Render} render
+     */
+    const embed = async (render) => {
+      embedder ??= readEmbedder(app, { fetch: false, signal: job.signal });
+      const ready = await embedder;
+      if (typeof ready === "string") {
+        if (notEmbedded === null) app.log(`candidates job: ${ready}`);
+        notEmbedded = ready;
+        return;
+      }
+      const source = { ratedAudioId: null, renderId: render.id };
+      if (findEmbedding(app.store, source, ready.producer)) return;
+      job.progress(done, count, JOB_STEP.embeddingCandidate(done + 1, count));
+      job.signal.throwIfAborted();
+      const file = join(app.paths.renderCache, render.file);
+      await embedAudio(app, ready, source, file, job.signal);
     };
 
     try {
@@ -217,7 +250,7 @@ export function candidateJob(app, { vibeId, sessionId, count, explore }) {
           job.signal.throwIfAborted();
         },
       });
-      return { requestGroup, candidateIds, excerpts };
+      return { requestGroup, candidateIds, excerpts, notEmbedded };
     } finally {
       job.signal.removeEventListener("abort", cancelRequests);
     }

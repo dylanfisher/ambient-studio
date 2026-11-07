@@ -64,7 +64,7 @@ unneeded stays unused rather than being given to another step.
 | 0039 | Lineage tree and the steering controls | 3g | [written](decisions/0039-lineage-and-steering-controls.md) |
 | 0040 | Revision evaluation against a control | 3h | [written](decisions/0040-revision-evaluation.md) |
 | 0041 | The sidecar process and protocol | 4a | — |
-| 0042 | CLAP packages, checkpoint and embeddings | 4b | — |
+| 0042 | CLAP packages, checkpoint and embeddings | 4b | [written](decisions/0042-clap-embeddings.md) |
 | 0043 | Training sets, ties, folds and the model key | 4c | — |
 | 0044 | Bayesian Bradley–Terry with a global prior | 4d | — |
 | 0045 | Held-out agreement, the minimum and the baselines | 4e | — |

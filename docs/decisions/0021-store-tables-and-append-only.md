@@ -47,7 +47,7 @@ table's columns as they are now: `<table>_no_delete` raises on any `DELETE`, and
 Setting `removedAt` back to null raises too.
 Dropping them first lets a migration rewrite rows; recreating them from the live schema covers a
 column a migration adds. Every table except `migrations` and the derived ones listed in
-`NOT_APPEND_ONLY` (now just `renders`) is irreplaceable, and must have `removedAt` and
+`NOT_APPEND_ONLY` (`renders` and `embeddings`) is irreplaceable, and must have `removedAt` and
 `removedReason`, or the migration fails. `recursive_triggers` is on because without it
 `INSERT OR REPLACE` deletes the row it replaces without firing the delete trigger.
 `markRemoved(store, table, id, reason)` is the one way to remove a row.
@@ -162,3 +162,8 @@ refused. The read-only connection neither migrates the source nor waits on its w
   rows with no generation stay null and the column is append-only like the rest. An index on it
   serves `listSessionCandidates`. A test in `generation-store.test.js` runs it over a database
   built with 0001 to 0004.
+- 2026-11-07: from step 4b ([0042](0042-clap-embeddings.md)). `0006-embeddings.sql` adds
+  `embeddings`, a derived table listed in `NOT_APPEND_ONLY`: one row per rated audio or render
+  (a CHECK holds exactly one), its `producer`, and the vector as a BLOB of little-endian
+  float32. A render's row is deleted with its render (`ON DELETE CASCADE`), since `putRender`
+  deletes the replaced row. `embedding-store.js` holds its functions.

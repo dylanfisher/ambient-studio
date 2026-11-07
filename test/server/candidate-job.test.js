@@ -1,7 +1,10 @@
 // The session's candidate job run directly with a signal the test controls (decision 0027), and
 // the excerpt it renders for each candidate as it is made (0031). No test reaches the real omlx.
 /** @import { JobContext } from "../../src/server/job-runner.js" */
+/** @import { Candidate } from "../../src/server/generation-store.js" */
+/** @import { Render } from "../../src/server/render-store.js" */
 /** @import { TestApp } from "../support/test-app.js" */
+import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { featuresText } from "../../src/domain/features-text.js";
 import { estimateTokens, promptText } from "../../src/domain/prompt-tokens.js";
@@ -9,6 +12,8 @@ import { canonicalGenome } from "../../src/engine/canonical-genome.js";
 import { currentExcerpt } from "../../src/server/candidate-excerpt.js";
 import { candidateJob, STREAM_SEEDS } from "../../src/server/candidate-job.js";
 import { candidatePairs } from "../../src/server/candidate-pair.js";
+import { NO_CHECKPOINT_CACHE } from "../../src/server/embed-audio.js";
+import { findEmbedding } from "../../src/server/embedding-store.js";
 import {
   requestGroupName,
   revisedGroupName,
@@ -66,7 +71,7 @@ const answer = (genome) => ({ tokens: [JSON.stringify({ intent: "a slow cold dro
 async function sessionApp(onReport, draft = VIBE) {
   const made = await testApp();
   apps.push(made);
-  const { app, omlx, clock } = made;
+  const { app, omlx, clock, sidecar } = made;
   const vibe = createVibe(app.store, draft);
   const session = startSession(app.store, vibe.id);
   /** @type {Report[]} */
@@ -91,7 +96,7 @@ async function sessionApp(onReport, draft = VIBE) {
       app.config.queue.minGapMs,
       candidateJob(app, { vibeId: vibe.id, sessionId: session.id, count, explore })(job),
     );
-  return { app, omlx, vibe, session, reports, run };
+  return { app, omlx, sidecar, vibe, session, reports, run };
 }
 
 test("renders each valid candidate before asking for the next, and says each step", async () => {
@@ -157,6 +162,94 @@ test("a candidate inside every range gets no revision", async () => {
   expect(listSessionCandidates(app.store, session.id)).toHaveLength(1);
   expect(result.excerpts).toHaveLength(1);
   expect(reports.map(({ step }) => step)).toContain("Measuring candidate 1 of 1");
+  expect(result.notEmbedded).toBe(NO_CHECKPOINT_CACHE);
+});
+
+// Embedding each excerpt (decision 0042), against the fake sidecar.
+const EMBEDDER = { producer: "fake-clap@1 clap-aa", dimension: 2 };
+
+/** @param {TestApp["app"]} app */
+function setCheckpointCache(app) {
+  const checkpointCache = join(app.config.dataRoot, "clap");
+  app.config = { ...app.config, sidecar: { ...app.config.sidecar, checkpointCache } };
+  return checkpointCache;
+}
+
+test("with the sidecar set up, each excerpt is embedded after its features", async () => {
+  const { app, omlx, sidecar, reports, run } = await sessionApp(undefined, INSIDE);
+  const checkpointCache = setCheckpointCache(app);
+  omlx.script(answer(GENOMES[0]));
+  sidecar.script(
+    { do: "answer", result: { ...EMBEDDER, ready: true } },
+    { do: "answer", result: { windows: 3 }, floats: [0.6, 0.8] },
+  );
+  const result = await run(1);
+  expect(result.notEmbedded).toBeNull();
+  expect(result.excerpts).toHaveLength(1);
+  const { renderId } = /** @type {{ renderId: number }} */ (result.excerpts[0]);
+  const render = /** @type {Render} */ (getRender(app.store, renderId));
+  const requests = (await sidecar.received()).map(({ request }) => request);
+  expect(requests).toMatchObject([
+    { method: "embedder", params: { checkpointCache, fetch: false } },
+    { method: "embed_audio", params: { audio: join(app.paths.renderCache, render.file) } },
+  ]);
+  const source = { ratedAudioId: null, renderId };
+  const row = findEmbedding(app.store, source, EMBEDDER.producer);
+  expect(row?.vector).toEqual(new Uint8Array(new Float32Array([0.6, 0.8]).buffer));
+  expect(reports.map(({ step }) => step).filter(Boolean)).toEqual([
+    "Asking the model for candidate 1 of 1",
+    "Rendering the excerpt for candidate 1 of 1",
+    "Analyzing the sound of candidate 1 of 1",
+    "Measuring candidate 1 of 1",
+  ]);
+});
+
+test("an excerpt that already has an embedding isn't embedded again", async () => {
+  const { app, omlx, sidecar, run } = await sessionApp(undefined, INSIDE);
+  setCheckpointCache(app);
+  omlx.script(answer(GENOMES[0]), answer(GENOMES[0]));
+  const ready = { do: /** @type {const} */ ("answer"), result: { ...EMBEDDER, ready: true } };
+  sidecar.script(ready, { do: "answer", result: { windows: 3 }, floats: [0.6, 0.8] }, ready);
+  const first = await run(1);
+  // An explore from the first, under the same stream seed, draws the same candidate seed in
+  // its own request group; answered with the same genome, it is the cached excerpt, which has
+  // its row.
+  const base = /** @type {Candidate} */ (getCandidate(app.store, first.candidateIds[0] ?? 0));
+  const second = await run(1, { base, genome: genomeOf(app, base), direction: null });
+  expect(second.excerpts.map(({ renderId }) => renderId)).toEqual(
+    first.excerpts.map(({ renderId }) => renderId),
+  );
+  expect((await sidecar.received()).map(({ request }) => request.method)).toEqual([
+    "embedder",
+    "embed_audio",
+    "embedder",
+  ]);
+});
+
+test("a sidecar failure while embedding fails the job, naming the file", async () => {
+  const { app, omlx, sidecar, run } = await sessionApp(undefined, INSIDE);
+  setCheckpointCache(app);
+  omlx.script(answer(GENOMES[0]));
+  sidecar.script(
+    { do: "answer", result: { ...EMBEDDER, ready: true } },
+    { do: "crash", stderr: "MemoryError\n", code: 3 },
+  );
+  await expect(run(1)).rejects.toThrow(
+    /^embedding .*\.(wav|mp3) failed: sidecar request embed_audio failed: the sidecar exited with code 3: MemoryError$/,
+  );
+});
+
+test("with the checkpoint not downloaded, the job skips embedding and says why", async () => {
+  const { app, omlx, sidecar, run } = await sessionApp(undefined, INSIDE);
+  const checkpointCache = setCheckpointCache(app);
+  omlx.script(answer(GENOMES[0]));
+  sidecar.script({ do: "answer", result: { ...EMBEDDER, ready: false } });
+  const result = await run(1);
+  expect(result.excerpts).toHaveLength(1);
+  expect(result.notEmbedded).toBe(
+    `the CLAP checkpoint isn't in ${checkpointCache} yet, so excerpts aren't embedded; start the embed job to download it`,
+  );
+  expect((await sidecar.received()).map(({ request }) => request.method)).toEqual(["embedder"]);
 });
 
 test("one outside a range is revised once, replaying its round-0 prompt with the measurements and the locks in force", async () => {
