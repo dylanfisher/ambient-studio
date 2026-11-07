@@ -32,7 +32,7 @@ import { genomeHash } from "../../src/server/genome-hash.js";
 import { locksInForce, setLock } from "../../src/server/lock-store.js";
 import { PRODUCER } from "../../src/server/producer.js";
 import { putRender } from "../../src/server/render-store.js";
-import { createVibe, getVibe } from "../../src/server/vibe-store.js";
+import { createVibe, getVibe, reviseVibe } from "../../src/server/vibe-store.js";
 import { driveGaps } from "../support/fake-clock.js";
 import { VIBE } from "../support/studio.js";
 import { testApp } from "../support/test-app.js";
@@ -132,12 +132,18 @@ const FITS = { ...droneGenome, delayLevel: -30 };
 const MISSES = { ...droneGenome, delayLevel: -31 };
 const FIXED = { ...droneGenome, delayLevel: -32 };
 const STILL = { ...droneGenome, delayLevel: -33 };
-/** Low-end share by genome hash: under the range's 0.5 is inside. */
-const LOW_END = new Map([
-  [genomeHash(FITS), 0.3],
-  [genomeHash(MISSES), 0.8],
-  [genomeHash(FIXED), 0.3],
-  [genomeHash(STILL), 0.8],
+/** Two genomes inside the range whose excerpts fail a render check. */
+const CLIPS = { ...droneGenome, delayLevel: -34 };
+const CLIPS_AGAIN = { ...droneGenome, delayLevel: -35 };
+const CLIPPING = { path: "$", rule: "clipping", message: "the excerpt clips 12 samples" };
+/** Low-end share and failed checks by genome hash: a share under the range's 0.5 is inside. */
+const MEASURES = new Map([
+  [genomeHash(FITS), { lowEndShare: 0.3, findings: [] }],
+  [genomeHash(MISSES), { lowEndShare: 0.8, findings: [] }],
+  [genomeHash(FIXED), { lowEndShare: 0.3, findings: [] }],
+  [genomeHash(STILL), { lowEndShare: 0.8, findings: [] }],
+  [genomeHash(CLIPS), { lowEndShare: 0.3, findings: [CLIPPING] }],
+  [genomeHash(CLIPS_AGAIN), { lowEndShare: 0.3, findings: [CLIPPING] }],
 ]);
 const MISS = "low-end share is 0.8";
 const MEASURED = "Measured on the excerpt: ";
@@ -149,7 +155,7 @@ const answer = (genome) => ({ tokens: [JSON.stringify({ intent: "a slow cold dro
 
 /**
  * Writes a render row, and an empty file for it, for every candidate with a genome and no
- * excerpt yet, measured by `LOW_END`.
+ * excerpt yet, measured by `MEASURES`.
  * @param {App} app
  */
 function seedExcerpts(app) {
@@ -162,8 +168,9 @@ function seedExcerpts(app) {
     const request = excerptRequest(store, candidate);
     if (!request || currentExcerpt(store, paths.renderCache, candidate)) continue;
     const row = /** @type {any} */ (getGenome(store, request.genomeId));
-    const lowEndShare = LOW_END.get(row.genomeHash);
-    if (lowEndShare === undefined) throw new Error(`no measurement scripted for candidate ${id}`);
+    const measured = MEASURES.get(row.genomeHash);
+    if (measured === undefined) throw new Error(`no measurement scripted for candidate ${id}`);
+    const { lowEndShare, findings } = measured;
     const duration = EXCERPT_SECONDS;
     const offset = excerptOffset(row.genome, request.seed, duration);
     const file = `seeded-${id}.wav`;
@@ -187,18 +194,18 @@ function seedExcerpts(app) {
           flatness: 0.01,
         },
       },
-      checks: { ok: true, findings: [] },
+      checks: { ok: findings.length === 0, findings },
     });
   }
 }
 
 /**
  * Runs a revision-mode evaluation over new `RANGED` vibes, seeding each excerpt before it is
- * read. `onStep` sees each step sentence with the job's controller.
+ * read. `onStep` sees each step sentence with the job's controller and the vibes' ids.
  * @param {TestApp} made
  * @param {number} vibes
  * @param {number} count
- * @param {(step: string, controller: AbortController) => void} [onStep]
+ * @param {(step: string, controller: AbortController, ids: number[]) => void} [onStep]
  */
 function runRevisionMode(made, vibes, count, onStep) {
   const { app, clock } = made;
@@ -213,7 +220,7 @@ function runRevisionMode(made, vibes, count, onStep) {
       seedExcerpts(app);
       if (step === null) return;
       steps.push(step);
-      onStep?.(step, controller);
+      onStep?.(step, controller, ids);
     },
   };
   const run = evaluationJob(app, { vibeIds: ids, count, revise: true });
@@ -402,4 +409,61 @@ test("a cancel during a revision's render stores the report, leaving the unfinis
   expect(report.stopped).toMatch(/cancelled/);
   expect(report.overall).toMatchObject({ made: 2 });
   expect(report.overall.revision).toMatchObject({ measured: 1, revised: 0 });
+});
+
+test("a vibe whose ranges change while an earlier vibe runs is scored and reported against the new ones", async () => {
+  const made = await testApp();
+  apps.push(made);
+  const { app, omlx } = made;
+  // MISSES measures 0.8: outside the first ranges, inside the edited ones.
+  omlx.script(answer(MISSES), answer(FIXED), answer(STILL), answer(MISSES));
+  const edited = { lowEndShare: [null, 0.9] };
+  const { ids, result } = runRevisionMode(made, 2, 1, (step, _controller, vibeIds) => {
+    if (step !== "Asking the model for candidate 1 of 2") return;
+    const vibeId = /** @type {number} */ (vibeIds[1]);
+    reviseVibe(app.store, vibeId, { ...RANGED, softTargets: { features: edited } });
+  });
+  await result;
+  expect(omlx.requests).toHaveLength(4);
+  const [, second] = /** @type {any} */ (listEvaluations(app.store)[0]).report.vibes;
+  expect(second.revisionId).toBe(getVibe(app.store, /** @type {number} */ (ids[1]))?.revision.id);
+  expect(second.ranges).toEqual(edited);
+  expect(second.revision).toMatchObject({ measured: 1, firstTries: { count: 1 }, revised: 0 });
+});
+
+test("a failed render check sends a first try back, and keeps a revision that fails one outside", async () => {
+  const made = await testApp();
+  apps.push(made);
+  const { app, omlx } = made;
+  // Pair 0: the treatment asks first; it clips again, and the control's answer fits.
+  omlx.script(answer(CLIPS), answer(CLIPS_AGAIN), answer(FIXED));
+  const { result } = runRevisionMode(made, 1, 1);
+  await result;
+  expect(omlx.requests).toHaveLength(3);
+  const treatmentAsk = omlx.requests[1]?.body.messages[3].content;
+  expect(treatmentAsk).toContain(`- $ (clipping): ${CLIPPING.message}`);
+  expect(omlx.requests[2]?.body.messages[3].content).not.toContain("clipping");
+  const { report } = /** @type {any} */ (listEvaluations(app.store)[0]);
+  expect(report.overall.revision).toMatchObject({
+    measured: 1,
+    firstTries: { count: 0, of: 1 },
+    revised: 1,
+    pairs: { treatmentOnly: 0, controlOnly: 1 },
+  });
+});
+
+test("a fault in a render stops the run with the report stored, and the job fails with it", async () => {
+  const made = await testApp();
+  apps.push(made);
+  const { app, omlx } = made;
+  omlx.script(answer(FITS), answer(FITS));
+  const { result } = runRevisionMode(made, 1, 2, (step) => {
+    if (step === "Rendering the excerpt for candidate 2 of 2")
+      throw new Error("the renderer broke");
+  });
+  await expect(result).rejects.toThrow("the renderer broke");
+  const { report } = /** @type {any} */ (listEvaluations(app.store)[0]);
+  expect(report.stopped).toBe("the renderer broke");
+  expect(report.overall).toMatchObject({ made: 2 });
+  expect(report.overall.revision).toMatchObject({ measured: 1 });
 });

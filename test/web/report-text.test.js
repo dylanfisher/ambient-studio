@@ -218,6 +218,9 @@ describe("the revision test in plain words", () => {
     expect(facts["Which revisions landed inside"]).toBe(
       "both: 5; only the one with the measurements: 9; only the one without: 1; neither: 5.",
     );
+    expect(facts["Paired test"]).toBe(
+      "p = 0.011: the chance of a split at least this lopsided toward the measurements if they made no difference",
+    );
   });
 
   test("a fix that doesn't beat the control says the gain comes from asking again", () => {

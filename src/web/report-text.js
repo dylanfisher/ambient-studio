@@ -215,7 +215,7 @@ export function revisionFacts(tally) {
       "Paired test",
       p === null
         ? `inconclusive, fewer than ${REVISION_TEST.minimumPairs} revised`
-        : `${pText(p)} that the measurements make no difference`,
+        : `${pText(p)}: the chance of a split at least this lopsided toward the measurements if they made no difference`,
     ],
     ["Came back unchanged", armsText(revision.unchanged)],
     ["Too long to send", armsText(revision.overBudget)],

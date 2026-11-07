@@ -52,7 +52,12 @@ export const EVALUATION_ROUTES = [
   {
     method: "GET",
     path: "/api/evaluations",
-    handle: ({ app }) => ({ evaluations: listEvaluations(app.store), job: unfinishedJob(app) }),
+    // `thinking` is what the page's time estimate needs: a request takes about 55 s with it on.
+    handle: ({ app }) => ({
+      evaluations: listEvaluations(app.store),
+      job: unfinishedJob(app),
+      thinking: app.config.queue.thinking,
+    }),
   },
   {
     method: "POST",

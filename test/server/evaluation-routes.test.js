@@ -197,7 +197,12 @@ describe("the evaluation job", () => {
   test("starts only from its route: the server and the seed vibes start nothing", async () => {
     const { omlx, server, ok, loadSeeds } = await setup();
     await loadSeeds();
-    expect(await ok("GET", "/api/evaluations")).toEqual({ evaluations: [], job: null });
+    // The page's time estimate reads whether the model thinks.
+    expect(await ok("GET", "/api/evaluations")).toEqual({
+      evaluations: [],
+      job: null,
+      thinking: true,
+    });
     expect(server.jobs.list()).toEqual([]);
     expect(omlx.requests).toHaveLength(0);
   });

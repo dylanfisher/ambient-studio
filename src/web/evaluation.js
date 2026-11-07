@@ -32,6 +32,7 @@ import {
   timeText,
 } from "./report-text.js";
 import { statusLine } from "./status-line.js";
+import { costText } from "./test-cost.js";
 
 const status = statusLine();
 const page = elementsById({
@@ -77,6 +78,8 @@ let evaluations = [];
 let shown = -1;
 /** @type {number | null} the id of the test job being followed */
 let following = null;
+/** @type {boolean | null} whether the model thinks before answering, from the server */
+let thinking = null;
 
 /**
  * @param {string} title
@@ -194,6 +197,7 @@ function showReport(index) {
 async function loadReports() {
   const listed = await getJson(EVALUATIONS_PATH);
   evaluations = listed.evaluations;
+  thinking = listed.thinking;
   page.noReports.hidden = evaluations.length > 0;
   // Newest first in the list; `evaluations` stays oldest first, as the server returns it.
   page.reportList.replaceChildren(
@@ -260,15 +264,8 @@ const startTest = oneAtATime(async () => {
   if (vibeIds.length === 0) throw new Error("Tick at least one brief to test.");
   const count = Number(page.countInput.value);
   const revise = page.reviseInput.checked;
-  const total = count * vibeIds.length;
-  const cost = revise
-    ? `With the revision test it renders each answer and asks again twice for each one that misses, so it sends up to three requests per candidate: about ${2 * total} minutes, at a minute a request.`
-    : `That takes about ${total} minutes, and makes no audio.`;
-  if (
-    !confirm(
-      `Ask the model for ${total} candidates (${count} for each of ${vibeIds.length} briefs)? ${cost}`,
-    )
-  ) {
+  if (thinking === null) throw new Error("The page is still loading; try again in a moment.");
+  if (!confirm(costText({ count, briefs: vibeIds.length, revise, thinking }))) {
     status.say("Not started.");
     return;
   }

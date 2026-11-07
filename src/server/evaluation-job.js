@@ -13,6 +13,7 @@
 /** @import { JobContext } from "./job-runner.js" */
 /** @import { RecordingEntry } from "./recording-index.js" */
 /** @import { App } from "./routing.js" */
+/** @import { VibeRevision } from "./vibe-store.js" */
 import { evaluationReport, RESPONSE_FORMAT_RESULT } from "../domain/evaluation-report.js";
 import { excerptMisses } from "../domain/excerpt-misses.js";
 import { excerptRequest } from "./candidate-excerpt.js";
@@ -30,10 +31,10 @@ import {
 } from "./generate-candidates.js";
 import { listRequestGroup } from "./generation-store.js";
 import { JOB_STEP } from "./job-steps.js";
-import { OmlxRequestError, RESPONSE_FORMAT_REFUSED } from "./omlx-queue.js";
+import { RESPONSE_FORMAT_REFUSED } from "./omlx-queue.js";
 import { renderExcerpt } from "./render-excerpt.js";
 import { isUnchanged, reviseCandidate } from "./revise-candidate.js";
-import { getVibe } from "./vibe-store.js";
+import { getRevision, getVibe } from "./vibe-store.js";
 
 /**
  * What the owner started the evaluation with, and the settings that shape its numbers.
@@ -85,22 +86,36 @@ const timingsOf = (group) =>
  * @property {readonly RecordingEntry[]} recordings
  * @property {number} seed the stream seed
  * @property {string} requestGroup the vibe's first tries'
- * @property {FeatureRanges} ranges
  * @property {(step: string | null) => void} say reports progress with the step sentence
  */
 
 /**
+ * The ranges of the vibe revision a candidate was made under, which its prompt stated and a
+ * revision of it shares.
+ * @param {App} app
+ * @param {Candidate} candidate
+ * @returns {{ revision: VibeRevision, ranges: FeatureRanges }}
+ */
+function madeUnder(app, candidate) {
+  const revision = getRevision(app.store, candidate.vibeRevisionId);
+  if (!revision) throw new Error(`there is no vibe revision ${candidate.vibeRevisionId}`);
+  return { revision, ranges: checkRevision(revision).ranges };
+}
+
+/**
+ * Renders the candidate's excerpt and lists its misses against the ranges it was made under.
  * @param {RevisionStep} context
  * @param {Candidate} candidate
  * @param {string} step
  */
-async function measure({ app, job, recordings, ranges, say }, candidate, step) {
+async function measure({ app, job, recordings, say }, candidate, step) {
   const request = excerptRequest(app.store, candidate);
   if (!request) throw new Error(`candidate ${candidate.id} has no genome to render`);
   say(step);
   job.signal.throwIfAborted();
   const { render } = await renderExcerpt(app.store, app.paths.renderCache, request, recordings);
   const features = /** @type {Features} */ (render.features);
+  const { ranges } = madeUnder(app, candidate);
   const misses = excerptMisses(features, /** @type {LintResult} */ (render.checks), ranges);
   return { features, misses };
 }
@@ -169,10 +184,11 @@ async function reviseBoth(context, firstTry, at) {
 }
 
 /**
- * The job that evaluates generation over `vibeIds`. A request that fails in the queue (busy past
- * the wait, a timeout, a refused `response_format`, a cancel) stops the run, and so does a
- * cancel between requests: the report of what was made is stored, saying why it stopped, and
- * the job then fails with the error. Cancelling the job cancels the omlx queue, which is the
+ * The job that evaluates generation over `vibeIds`. Any error once the vibes are read stops the
+ * run: a request that fails in the queue (busy past the wait, a timeout, a refused
+ * `response_format`, a cancel), a cancel between requests, or a fault in a render or a prompt.
+ * The report of what was made is stored, saying why it stopped, and the job then fails with the
+ * error. Cancelling the job cancels the omlx queue, which is the
  * job's alone while it runs. With `revise`, a first try is counted done once it is measured and,
  * when it missed, both its revisions are measured; a pair left unfinished is left out of the
  * report.
@@ -237,7 +253,6 @@ export function evaluationJob(app, { vibeIds, count, revise }) {
           recordings,
           seed: params.seed,
           requestGroup: run.requestGroup,
-          ranges: run.ranges,
           say: (step) => job.progress(done, total, step),
         };
         try {
@@ -249,6 +264,12 @@ export function evaluationJob(app, { vibeIds, count, revise }) {
             recordings,
             onCandidate: async (candidate, firstReason) => {
               const index = outcomes.length;
+              // The vibe's prompt read its revision when the vibe's turn came, which may be
+              // newer than the one the run started with: report the one its candidates used.
+              if (index === 0) {
+                const { revision: used, ranges } = madeUnder(app, candidate);
+                Object.assign(run, { revisionId: used.id, name: used.name, ranges });
+              }
               outcomes.push({
                 firstReason,
                 finalReason: /** @type {RejectReason | null} */ (candidate.rejectReason),
@@ -278,9 +299,9 @@ export function evaluationJob(app, { vibeIds, count, revise }) {
             onStep: (step) => job.progress(done, total, generationStepText(step, offset, total)),
           });
         } catch (error) {
-          // A cancel between requests throws the signal's reason rather than a queue error.
-          if (!(error instanceof OmlxRequestError) && !job.signal.aborted) throw error;
-          failure = /** @type {Error} */ (error);
+          // Any error stops the run with what was made stored: a failed request, a cancel
+          // between requests (the signal's reason), or a fault in a render.
+          failure = error instanceof Error ? error : new Error(String(error));
           break;
         }
       }

@@ -98,25 +98,42 @@ mode (`evaluationReport`, `src/domain/evaluation-report.js`):
 - `unchanged`, `overBudget` and `rejected`, each `{treatment, control}`; `unchanged` includes
   the over-budget ones.
 
-Each vibe's tally also gains `ranges`, the ranges its revision had when the run started, beside
-its `revisionId`, so a later edit to the ranges shows against the run. The report gains
+**Which ranges.** Each first try and its two revisions are checked against the ranges of the
+vibe revision the first try was made under, the one its prompt stated: a vibe's prompt reads
+the vibe's current revision when that vibe's turn comes, so an edit made while an earlier vibe
+runs applies to the edited vibe's whole turn. Each vibe's tally gains `ranges`, and its
+`revisionId` and `name` are those of its candidates' revision; a vibe the run never reached
+reports the revision current when the run started. A later edit to the ranges shows against
+the run. The report gains
 `revisionTiming`, each arm's round-0 latency and first-token percentiles, null outside revision
 mode: the treatment's first-token times against the first tries' say whether omlx's prefix
 cache reuses the replayed turns. `params` gains `revise`.
 
 The acceptance reads the overall verdict. Per vibe each tally gets its own p and verdict under
 the same minimum, so a vibe reads "inconclusive" until about 40 first tries of it are run.
+The plan's scripted check (24 first tries, 12 missing, 9 fixed by the treatment alone and 1 by
+the control alone) has only 12 revised, under its own minimum, so the job test runs that script
+on two vibes: each vibe reads the plan's counts and "inconclusive", and the pooled 24 pairs (18
+against 2) give p = 211/2^20. The plan's 9-against-1 value, 11/1024, is checked in the McNemar
+test and in a report of 20 pairs.
 
-**A partial report.** A cancel between requests (during a render, or before a revision) now
-stops the run the way a failed request does: the report of what was made is stored with
-`stopped`, then the job fails. A first try whose pair was left unfinished is left out of
+**A partial report.** Any error once the vibes are read stops the run the way a failed request
+does: a cancel between requests (during a render, or before a revision), a fault in a render,
+a prompt over budget. The report of what was made is stored with `stopped`, then the job fails
+with the error. A first try whose pair was left unfinished is left out of
 `revision`; its first-try outcome still counts in 0030's rates.
 
 **The page.** "Model test" gains "Also test the revision step"; ticking it changes the count
 from 16 to 32 a vibe (`EVALUATION_COUNT.revise`) unless the owner typed another. A report with
 `revision` shows "Does hearing the measurements help?" with the verdict in words, a revision
 section on each card, the ranges each brief used, and the arms' request times. A report stored
-before this record has no `revision`, `ranges` or `revisionTiming` and shows as before.
+before this record has no `revision`, `ranges` or `revisionTiming` and shows as before. The
+confirm before a start gives the requests per candidate and a range of minutes
+(`costText`, `src/web/test-cost.js`): 1 to 2 requests a candidate in a plain test, 2 to 3 in a
+revision test (at most 6 counting fixes) with 1.5 to 2 excerpts at about 2 s, at about 7 s a
+request with `queue.thinking` off and 55 s with it on, the figures from the logged model tests.
+`GET /api/evaluations` serves `thinking` for it. For the owner's run it reads about 27 to 40
+minutes.
 
 **The suggested count.** 32 a vibe over the three seed vibes is 96 first tries. If about half
 miss, as 0034's ranges aim for, that is about 48 revised first tries overall, over twice the
@@ -135,8 +152,8 @@ Three seed vibes at 32 each, `queue.thinking` false, about 7 s a request:
   (measured on the three seed genomes, the server at normal priority).
 
 That is about 25 to 32 minutes of omlx and 5 to 8 of renders: roughly 35 to 50 minutes, longer
-while the live site keeps omlx busy. The page's confirm counts a minute a request, which assumes
-thinking on, and overstates it with thinking off.
+while the live site keeps omlx busy. The page's confirm says about 27 to 40 minutes, from the
+typical 2 to 3 requests a candidate without the waits.
 
 ## Alternatives considered
 

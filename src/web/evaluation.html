@@ -36,23 +36,24 @@
       <section class="card stack" aria-labelledby="start-heading">
         <h2 id="start-heading">Start a model test</h2>
         <p class="small muted">
-          The model is shared with a live website, so a test of 48 candidates holds it for about
-          an hour; the studio waits whenever the site is busy.
+          The model is shared with a live website, so a test holds it from minutes to hours: about
+          7 s a request with thinking off and 55 s with it on. The confirm says how long this one
+          should take; the studio waits whenever the site is busy.
         </p>
         <fieldset class="stack">
           <legend>Briefs to test</legend>
           <div id="briefChoices" class="choices"></div>
         </fieldset>
         <label class="check small"
-          ><input id="reviseInput" type="checkbox" title="Also tests the revision step: renders each answer, and sends one that misses a feature range back twice, with and without its measurements. Suggests 32 candidates per brief and takes about three times as long." />
+          ><input id="reviseInput" type="checkbox" title="Also tests the revision step: renders each answer, and sends one that misses a feature range back twice, with and without its measurements. Sends 2 to 3 requests per candidate instead of 1 or 2, and suggests 32 candidates per brief." />
           Also test the revision step</label
         >
         <div class="row">
           <label class="small"
             >Candidates per brief
-            <input id="countInput" type="number" min="1" step="1" size="4" title="How many candidates to ask the model for, for each ticked brief. More gives a surer result but takes longer: about a minute per candidate." />
+            <input id="countInput" type="number" min="1" step="1" size="4" title="How many candidates to ask the model for, for each ticked brief. More gives a surer result but takes longer; the confirm says how long." />
           </label>
-          <button id="startButton" class="button primary" type="button" title="Asks you to confirm, then starts the test: the model is asked for this many candidates for each ticked brief. Without the revision test it takes about a minute per candidate and makes no audio.">Start the model test</button>
+          <button id="startButton" class="button primary" type="button" title="Asks you to confirm, then starts the test: the model is asked for this many candidates for each ticked brief. It first says how many requests that is and about how long it takes.">Start the model test</button>
         </div>
         <div id="jobBox" class="stack"></div>
       </section>

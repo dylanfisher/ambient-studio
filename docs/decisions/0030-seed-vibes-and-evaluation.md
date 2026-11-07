@@ -55,8 +55,10 @@ the candidate job does. Stopping a session leaves it running (0027).
 **A request that fails in the queue** (a cancel, a busy omlx past its wait, a timeout, an error
 status, a refused `response_format`) stops the run, as it stops a batch in 0024. The report of
 what was made is still stored, with `stopped` holding the error, and then the job fails with it,
-so the job line says what happened and the page still has the numbers. Any other error (an
-invalid vibe, a prompt over budget) fails the job and stores nothing.
+so the job line says what happened and the page still has the numbers. An invalid or missing
+vibe fails the job before anything runs and stores nothing; any other error once the run has
+begun (a prompt over budget, a fault in a render) stops it the same way, report stored
+(amended 2026-11-07).
 
 **What is stored.** `params`: `vibeIds`, `count`, `seed`, `model`, `sendResponseFormat`,
 `maxTokens`. `report` (`evaluationReport` in `src/domain/evaluation-report.js`):
@@ -165,6 +167,8 @@ unconstrained genomes. It never runs against omlx.
   turned down for plain runs, and revises each that misses twice, the treatment and the
   control; renders still run only between requests. Each vibe's tally gains `ranges`, and each
   tally `revision`, null outside revision mode; the report gains `revisionTiming`. A cancel
-  between requests now stores the report too, as a failed request does. The page offers "Also
+  between requests, or any other error once the run has begun, now stores the report too, as a
+failed request does. `GET /api/evaluations` also gives `thinking`, `queue.thinking`, for the
+page's time estimate. The page offers "Also
   test the revision step" and suggests 32 a vibe with it (`EVALUATION_COUNT.revise`). Reports
   stored before have none of these fields and display as before.
