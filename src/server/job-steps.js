@@ -5,6 +5,8 @@
 export const JOB_STEP = Object.freeze({
   /** @param {number} n @param {number} of */
   asking: (n, of) => `Asking the model for candidate ${n} of ${of}`,
+  /** @param {number} n @param {number} of */
+  exploring: (n, of) => `Asking the model for variation ${n} of ${of}`,
   /** @param {number} n */
   repairing: (n) => `Asking the model to fix candidate ${n}`,
   busy: "Waiting for the model: it is busy with another request",

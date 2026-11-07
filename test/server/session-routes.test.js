@@ -424,3 +424,133 @@ test("a malformed nudge is refused with a message naming the problem", async () 
   expect((await server.api("POST", path, good)).status).toBe(409);
   expect(server.jobs.list()).toEqual([]);
 });
+
+// Explore (decision 0038).
+test("an explore through its route asks for each child and lists it under its base", async () => {
+  const studio = await setup();
+  const { server, omlx, ok, openSession, generate, drive } = studio;
+  const { session } = await openSession();
+  const made = await generate(session.id, GENOMES.slice(0, 1));
+  const [baseId] = made.result.candidateIds;
+  omlx.script({
+    tokens: [JSON.stringify({ intent: "slower", genome: { ...GENOMES[0], reverbDecay: 5 } })],
+  });
+
+  const job = await ok("POST", `/api/sessions/${session.id}/explores`, {
+    candidateId: baseId,
+    direction: "slower",
+    count: 1,
+  });
+  expect(job).toMatchObject({ kind: "explore" });
+  await drive(server.jobs.settled(job.id));
+  const done = await ok("GET", `/api/jobs/${job.id}`);
+  expect(done).toMatchObject({ state: "done", error: null, progress: { done: 1, total: 1 } });
+
+  expect(omlx.requests).toHaveLength(2);
+  expect(omlx.requests[1]?.body.messages[1].content).toContain('JSON string: "slower"');
+  const { candidates } = await ok("GET", `/api/sessions/${session.id}/candidates`);
+  expect(candidates.map((/** @type {any} */ c) => c.id)).toEqual([
+    baseId,
+    ...done.result.candidateIds,
+  ]);
+  expect(candidates.at(-1)).toMatchObject({
+    rejectReason: null,
+    operator: "explore",
+    parentIds: [baseId],
+    intent: "slower",
+  });
+});
+
+test("a second identical explore while one is unfinished is a 409, and another base, direction or count queues", async () => {
+  const studio = await setup();
+  const { server, omlx, ok, openSession } = studio;
+  const { vibe, session } = await openSession();
+  const one = seedCandidate(studio, vibe, GENOMES[0]);
+  const two = seedCandidate(studio, vibe, GENOMES[1]);
+  // A held request in another session keeps every explore queued.
+  const blocker = await openSession();
+  omlx.script({ tokens: ["{"], holdAfter: 0 });
+  await ok("POST", `/api/sessions/${blocker.session.id}/candidates`, { count: 1 });
+
+  const path = `/api/sessions/${session.id}/explores`;
+  const body = { candidateId: one.id, direction: "slower", count: 2 };
+  const { id, refused } = oneAccepted(await postTwice(studio, path, body));
+  expect(refused).toEqual({
+    error: `This session is already making this explore (job ${id}). Wait for it to finish, or cancel it.`,
+    jobId: id,
+  });
+  // A blank direction is no direction, so these two are one action.
+  expect((await server.api("POST", path, { candidateId: one.id })).status).toBe(200);
+  const blank = await server.api("POST", path, { candidateId: one.id, direction: "  " });
+  expect(blank.status).toBe(409);
+  for (const other of [
+    { ...body, candidateId: two.id },
+    { ...body, direction: "less bell" },
+    { ...body, direction: null },
+    { ...body, count: 3 },
+  ]) {
+    expect((await server.api("POST", path, other)).status).toBe(200);
+  }
+  // Nor is an explore refused while the session asks for candidates or nudges; it queues.
+  expect((await server.api("POST", `/api/sessions/${session.id}/candidates`, {})).status).toBe(200);
+  const nudge = { candidateId: one.id, stepSize: "small", count: 2 };
+  expect((await server.api("POST", `/api/sessions/${session.id}/nudges`, nudge)).status).toBe(200);
+  expect((await server.api("POST", path, { ...body, count: 4 })).status).toBe(200);
+  expect(server.jobs.list().filter((job) => job.kind === "explore")).toHaveLength(7);
+  for (const job of server.jobs.list()) server.jobs.cancel(job.id);
+  await server.jobs.idle();
+});
+
+test("a malformed explore is refused with a message naming the problem", async () => {
+  const studio = await setup();
+  const { server, ok, openSession } = studio;
+  const { vibe, session } = await openSession();
+  const base = seedCandidate(studio, vibe, GENOMES[0]);
+  const never = seedCandidate(studio, vibe, null);
+  const path = `/api/sessions/${session.id}/explores`;
+  const good = { candidateId: base.id };
+  /** @type {[unknown, number, RegExp][]} */
+  const cases = [
+    [[], 400, /^the body must be a JSON object/],
+    [{ ...good, stepSize: "small" }, 400, /^unknown fields stepSize/],
+    [{}, 400, /^candidateId must be an integer/],
+    [{ ...good, direction: 3 }, 400, /^direction must be a string, "" for none, got 3/],
+    [
+      { ...good, direction: "d".repeat(201) },
+      400,
+      /^direction must be at most 200 characters, got 201/,
+    ],
+    [{ ...good, direction: "slower\nless bell" }, 400, /^direction must be one line/],
+    [{ ...good, direction: "slower less bell" }, 400, /^direction must be one line/],
+    [{ ...good, count: 0 }, 400, /^count must be an integer from 1 to 32, got 0/],
+    [{ ...good, count: 33 }, 400, /^count must be an integer from 1 to 32/],
+    [{ ...good, candidateId: 999 }, 400, /there is no candidate 999/],
+    [{ ...good, candidateId: never.id }, 400, /has no genome: it was rejected/],
+  ];
+  for (const [body, status, message] of cases) {
+    const reply = await server.api("POST", path, body);
+    expect(reply.status, JSON.stringify(body)).toBe(status);
+    expect(reply.json().error, JSON.stringify(body)).toMatch(message);
+  }
+  expect((await server.api("POST", "/api/sessions/999/explores", good)).status).toBe(404);
+  // A direction at the limit is taken.
+  const long = await server.api("POST", path, { ...good, direction: "d".repeat(200) });
+  expect(long.status).toBe(200);
+  for (const job of server.jobs.list()) server.jobs.cancel(job.id);
+  await server.jobs.idle();
+
+  // A lock on a voice the base lacks: the base can't take the vibe's locks.
+  const padded = seedCandidate(studio, vibe, SEED_GENOMES["cold-dorian"]);
+  await ok("POST", `/api/vibes/${vibe.id}/locks`, {
+    candidateId: padded.id,
+    path: "voices.pad.level",
+  });
+  const locked = await server.api("POST", path, good);
+  expect(locked.status).toBe(409);
+  expect(locked.json().error).toMatch(
+    new RegExp(`^candidate ${base.id} can't take the vibe's locks: .*voices\\.pad\\.level`),
+  );
+
+  await ok("POST", `/api/sessions/${session.id}/stop`, {});
+  expect((await server.api("POST", path, good)).status).toBe(409);
+});

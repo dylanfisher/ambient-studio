@@ -70,3 +70,4 @@ literal "features" | files src/domain/target-schema.js src/server/render-store.j
 literal "function" | files src/engine/render.js src/server/generate-candidates.js | the JavaScript typeof tag: a context method in render.js, an origin given as a function of the verdict in generate-candidates
 literal "vibeId" | files src/server/generate-candidates.js src/server/vibe-routes.js | a Batch field `keep` reads, named in its Pick type in generate-candidates, and the vibe routes' path parameter
 literal "sessionId" | files src/server/generate-candidates.js src/server/session-routes.js | a Batch field `keep` reads, named in its Pick type in generate-candidates, and the session routes' path parameter
+literal "direction" | files src/server/rating-routes.js src/server/session-routes.js | a feedback body's more-or-less field in rating-routes, an explore body's one-line direction for the model in session-routes

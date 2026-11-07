@@ -23,6 +23,7 @@ import { buildRepairPrompt } from "../domain/build-repair-prompt.js";
 import { ANSWER_KEY, extractGenome } from "../domain/extract-genome.js";
 import { lintGenome } from "../domain/lint-genome.js";
 import { lintResult, SCHEMA_RULE } from "../domain/lint-result.js";
+import { lockRefusal } from "../domain/nudge.js";
 import { estimateTokens, promptText } from "../domain/prompt-tokens.js";
 import { REJECT_REASON } from "../domain/reject-reason.js";
 import { validateConstraints } from "../domain/validate-constraints.js";
@@ -51,6 +52,8 @@ const CANDIDATE_SEEDS = 2 ** 32;
 
 /** The source of every candidate the model wrote. */
 export const LLM_SOURCE = "llm";
+/** The operator an explore child stores (decision 0038). */
+export const EXPLORE_OPERATOR = "explore";
 /** The rule a finding takes for an answer-shape error. */
 const ANSWER_RULE = "answer";
 const REPAIR_OVER_BUDGET_RULE = "repairOverBudget";
@@ -75,11 +78,14 @@ const RESPONSE_FORMAT = Object.freeze({
 
 /**
  * The request group of a vibe's candidates drawn from one stream seed (decision 0024): named
- * per vibe, so one seed can serve several vibes, and refused when it exists.
+ * per vibe, so one seed can serve several vibes, and refused when it exists. An explore's
+ * children name their operator in place of `stream` (0038).
  * @param {number} vibeId
  * @param {number} seed
+ * @param {string | null} [operator] the first tries' operator; null or omitted for a root
  */
-export const requestGroupName = (vibeId, seed) => `vibe-${vibeId}-stream-${seed}`;
+export const requestGroupName = (vibeId, seed, operator = null) =>
+  `vibe-${vibeId}-${operator ?? "stream"}-${seed}`;
 
 /**
  * The request group of the revisions made in one job (decision 0036), named from its first
@@ -122,6 +128,15 @@ export const playableHashes = (recordings) =>
  */
 
 /**
+ * The candidate an explore varies, as the owner asked for it (decision 0038).
+ * @typedef {object} ExploreFrom
+ * @property {Candidate} base
+ * @property {Genome} genome the base's, as stored; the vibe's live locks go in before the prompt
+ *   shows it
+ * @property {string | null} direction the owner's one line, or null for none
+ */
+
+/**
  * @typedef {object} GenerateOptions
  * @property {Config} config
  * @property {number} seed the stream seed, an integer in [0, 2^32): sampling and candidate seeds
@@ -132,9 +147,24 @@ export const playableHashes = (recordings) =>
  *   0035)
  * @property {readonly RecordingListing[]} recordings the recordings folder's index, empty when the
  *   config sets no folder: the prompt lists them, and a genome naming another is repaired
+ * @property {ExploreFrom | undefined} [explore] makes the candidates explore children of its
+ *   base: the prompt holds the base, and each child stores it as its parent
  * @property {CandidateHook} [onCandidate]
  * @property {StepHook} [onStep]
  */
+
+/**
+ * The prompt's view of an explore's base, with the locks in force applied, since the base may
+ * predate one. Throws when the base can't take them, as a nudge does (decision 0037).
+ * @param {ExploreFrom} explore
+ * @param {readonly Lock[]} locks
+ */
+function promptBase({ base, genome, direction }, locks) {
+  const applied = applyLocks(genome, locks);
+  const refused = lockRefusal(applied);
+  if (refused !== null) throw new Error(`the base, candidate ${base.id}, ${refused}`);
+  return { genome: applied.genome, direction };
+}
 
 /**
  * Called as each candidate is stored, with the reason its first answer was rejected (null when
@@ -530,10 +560,11 @@ export async function requestCandidate(batch, index, prompt, sampling, origin) {
 }
 
 /**
- * Generates `n` candidates for the vibe's current revision and stores every LLM call and every
- * candidate. When a request fails in the queue (a cancel, a busy omlx past its wait, a timeout,
- * an error status) the batch stops and rethrows it, after storing the failed request as a
- * generation, if it was sent, and the candidate it was for, so every generation has a candidate.
+ * Generates `n` candidates for the vibe's current revision, or `n` explore children of a base,
+ * and stores every LLM call and every candidate. When a request fails in the queue (a cancel, a
+ * busy omlx past its wait, a timeout, an error status) the batch stops and rethrows it, after
+ * storing the failed request as a generation, if it was sent, and the candidate it was for, so
+ * every generation has a candidate.
  * @param {number} vibeId
  * @param {number} n
  * @param {Store} store
@@ -546,17 +577,17 @@ export async function generateCandidates(
   n,
   store,
   queue,
-  { config, seed, sessionId, locks, recordings, onCandidate, onStep },
+  { config, seed, sessionId, locks, recordings, explore, onCandidate, onStep },
 ) {
   if (!Number.isInteger(n) || n < 1) throw new Error(`n must be a positive integer, got ${n}`);
   const { revision, constraints, ranges } = currentRevision(store, vibeId);
   const draws = samplingStream(seed, n);
-  const requestGroup = requestGroupName(vibeId, seed);
+  const requestGroup = requestGroupName(vibeId, seed, explore && EXPLORE_OPERATOR);
   if (listRequestGroup(store, requestGroup).length > 0) {
     throw new Error(`request group ${requestGroup} already exists; draw a new stream seed`);
   }
   const { method, examples } = retrieveExamples(store, vibeId);
-  const { messages, exampleIds } = buildPrompt(
+  const { messages, exampleIds, baseTrimmed } = buildPrompt(
     { ...revision, constraints, ranges },
     {
       notes: listNotes(store, vibeId).map((note) => note.text),
@@ -564,6 +595,7 @@ export async function generateCandidates(
       examples,
       budgetTokens: config.queue.contextBudgetTokens,
       recordings,
+      base: explore ? promptBase(explore, locks) : null,
     },
   );
   /** @type {Batch} */
@@ -589,9 +621,9 @@ export async function generateCandidates(
     const origin = {
       seed: candidateSeed,
       source: LLM_SOURCE,
-      parentIds: [],
-      operator: null,
-      operatorParams: null,
+      parentIds: explore ? [explore.base.id] : [],
+      operator: explore ? EXPLORE_OPERATOR : null,
+      operatorParams: explore ? { direction: explore.direction, baseTrimmed } : null,
     };
     candidates.push(await requestCandidate(batch, index, messages, sampling, origin));
   }

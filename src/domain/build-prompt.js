@@ -1,7 +1,7 @@
 // The generation prompt: a system message with the answer format and the genome schema, and a
 // user message with the vibe, its constraints and feature ranges, the locks, the owner's notes
-// and rated examples, under the context budget (decisions 0024 and 0034). Examples go first
-// when it doesn't fit.
+// and rated examples, and for an explore the base to vary, under the context budget (decisions
+// 0024, 0034 and 0038). Examples go first when it doesn't fit, then the base.
 /** @import { Constraints } from "./constraint-schema.js" */
 /** @import { ChatMessage } from "./prompt-tokens.js" */
 /** @import { RecordingListing } from "./recordings-text.js" */
@@ -33,6 +33,13 @@ import { targetsText } from "./targets-text.js";
  */
 
 /**
+ * The candidate an explore varies (decision 0038).
+ * @typedef {object} PromptBase
+ * @property {unknown} genome a valid genome, with the vibe's locks applied
+ * @property {string | null} direction the owner's line as written, or null for none
+ */
+
+/**
  * @typedef {object} PromptParts
  * @property {string[]} notes the owner's notes, oldest first
  * @property {readonly Lock[]} locks
@@ -40,9 +47,14 @@ import { targetsText } from "./targets-text.js";
  * @property {number} budgetTokens the queue's `contextBudgetTokens`
  * @property {readonly RecordingListing[]} recordings the recordings folder's index, empty when
  *   the config sets no folder; the system message lists the playable ones
+ * @property {PromptBase | null} [base] an explore's base; a prompt without one asks for a new
+ *   genome
  */
 
-/** @typedef {{ messages: ChatMessage[], exampleIds: number[] }} Prompt */
+/**
+ * `baseTrimmed` is true when a base was given and left out to fit the budget.
+ * @typedef {{ messages: ChatMessage[], exampleIds: number[], baseTrimmed: boolean }} Prompt
+ */
 
 /** The answer format, written the way the model should write it. */
 export const ANSWER_FORMAT = `{"${ANSWER_KEY.intent}": "<one line: what this genome is going for>", "${ANSWER_KEY.genome}": {<the genome>}}`;
@@ -78,11 +90,36 @@ export const locksText = (locks) =>
   );
 
 /**
+ * The base section and the ask that goes with it, or the first try's ask alone. The direction is
+ * written as a JSON string, so its quotes and line breaks are escaped and it can't end the
+ * section or start one of its own.
+ * @param {PromptBase | null} base
+ * @param {readonly Lock[]} locks
+ * @returns {string[]}
+ */
+function baseAndAsk(base, locks) {
+  if (base === null) return ["Write one new genome for this vibe."];
+  const { genome, direction } = base;
+  const heard =
+    direction === null
+      ? []
+      : [
+          `The owner's direction for this variation, as a JSON string: ${JSON.stringify(direction)}`,
+        ];
+  const keep = locks.length === 0 ? "" : ": keep the locked values exactly and change the rest";
+  const follow = direction === null ? "" : " Follow the owner's direction.";
+  return [
+    ["The base genome to vary:", canonicalGenome(genome), ...heard].join("\n"),
+    `Write one variation of the base genome for this vibe${keep}.${follow}`,
+  ];
+}
+
+/**
  * @param {PromptRevision} revision
- * @param {Omit<PromptParts, "budgetTokens">} parts
+ * @param {Omit<PromptParts, "budgetTokens" | "base"> & { base: PromptBase | null }} parts
  * @returns {ChatMessage[]}
  */
-function messages(revision, { notes, locks, examples, recordings }) {
+function messages(revision, { notes, locks, examples, recordings, base }) {
   const offered = recordingsText(recordings);
   const targets = targetsText(revision.ranges);
   const user = [
@@ -100,7 +137,7 @@ function messages(revision, { notes, locks, examples, recordings }) {
         ({ liked, genome }) => `${liked ? "Liked" : "Disliked"}: ${canonicalGenome(genome)}`,
       ),
     ),
-    "Write one new genome for this vibe.",
+    ...baseAndAsk(base, locks),
   ].join("\n\n");
   return [
     { role: ROLE.system, content: offered === "" ? SYSTEM : `${SYSTEM}\n\n${offered}` },
@@ -109,25 +146,28 @@ function messages(revision, { notes, locks, examples, recordings }) {
 }
 
 /**
- * The prompt for one generation request. Throws when it doesn't fit the budget even with every
- * example trimmed.
+ * The prompt for one generation request. Examples are trimmed from the end until it fits the
+ * budget, then the base. Throws when it doesn't fit with both trimmed.
  * @param {PromptRevision} revision
  * @param {PromptParts} parts
  * @returns {Prompt}
  */
-export function buildPrompt(revision, { budgetTokens, examples, ...rest }) {
-  const tokens = (/** @type {PromptExample[]} */ kept) =>
-    estimateTokens(promptText(messages(revision, { ...rest, examples: kept })));
-  const bare = tokens([]);
+export function buildPrompt(revision, { budgetTokens, examples, base = null, ...rest }) {
+  const tokens = (/** @type {PromptExample[]} */ kept, /** @type {PromptBase | null} */ keptBase) =>
+    estimateTokens(promptText(messages(revision, { ...rest, examples: kept, base: keptBase })));
+  const keptBase = base !== null && tokens([], base) > budgetTokens ? null : base;
+  const bare = tokens([], keptBase);
   if (bare > budgetTokens) {
+    const none = base === null ? "no examples" : "no examples and no base";
     throw new Error(
-      `the prompt is about ${bare} tokens with no examples, over the ${budgetTokens}-token budget; shorten the vibe's brief or notes`,
+      `the prompt is about ${bare} tokens with ${none}, over the ${budgetTokens}-token budget; shorten the vibe's brief or notes`,
     );
   }
   let kept = examples;
-  while (kept.length > 0 && tokens(kept) > budgetTokens) kept = kept.slice(0, -1);
+  while (kept.length > 0 && tokens(kept, keptBase) > budgetTokens) kept = kept.slice(0, -1);
   return {
-    messages: messages(revision, { ...rest, examples: kept }),
+    messages: messages(revision, { ...rest, examples: kept, base: keptBase }),
     exampleIds: kept.map((e) => e.id),
+    baseTrimmed: keptBase !== base,
   };
 }

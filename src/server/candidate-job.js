@@ -4,7 +4,7 @@
 // Each runs only when the owner's request adds it to the job runner.
 /** @import { Features } from "../domain/extract-features.js" */
 /** @import { LintResult } from "../domain/lint-result.js" */
-/** @import { GenerationStep } from "./generate-candidates.js" */
+/** @import { ExploreFrom, GenerationStep } from "./generate-candidates.js" */
 /** @import { Candidate } from "./generation-store.js" */
 /** @import { JobContext } from "./job-runner.js" */
 /** @import { RecordingEntry } from "./recording-index.js" */
@@ -16,6 +16,7 @@ import { excerptMisses } from "../domain/excerpt-misses.js";
 import { excerptRequest } from "./candidate-excerpt.js";
 import {
   checkRevision,
+  EXPLORE_OPERATOR,
   GENERATION_STEP,
   generateCandidates,
   playableHashes,
@@ -32,6 +33,8 @@ import { getRevision } from "./vibe-store.js";
 
 /** How many candidates one request asks for when it doesn't say. */
 export const DEFAULT_CANDIDATES = 8;
+/** How many children one explore makes when the request doesn't say (decision 0038). */
+export const DEFAULT_EXPLORES = 4;
 /** The most one request may ask for: 32 is a few minutes of omlx and of renders. */
 export const MAX_CANDIDATES = 32;
 /** Stream seeds are integers in [0, 2^32) (decision 0024). */
@@ -118,12 +121,15 @@ export function generationStepText({ index, kind }, offset, total, asking = JOB_
  * shares the event loop with a request's first-token timer. Progress counts first tries: one is
  * done once it is stored and, when valid, rendered, measured and revised. Cancelling the job
  * cancels the omlx queue too, which is the job's alone while it runs, since the runner runs one
- * job at a time, and a cancel during a render stops the job before its next request.
+ * job at a time, and a cancel during a render stops the job before its next request. With
+ * `explore`, the candidates are explore children of its base (decision 0038), revised like any
+ * first try.
  * @param {App} app
- * @param {{ vibeId: number, sessionId: number, count: number }} request
+ * @param {{ vibeId: number, sessionId: number, count: number,
+ *   explore?: ExploreFrom | undefined }} request
  * @returns {(job: JobContext) => Promise<CandidateJobResult>}
  */
-export function candidateJob(app, { vibeId, sessionId, count }) {
+export function candidateJob(app, { vibeId, sessionId, count, explore }) {
   return async (job) => {
     const recordings = await jobRecordings(app);
     const playable = playableHashes(recordings);
@@ -155,7 +161,10 @@ export function candidateJob(app, { vibeId, sessionId, count }) {
       // A cancel while the folder was indexed fired before the listener was added.
       job.signal.throwIfAborted();
       const seed = Math.floor(app.random() * STREAM_SEEDS);
-      const revisions = revisedGroupName(requestGroupName(vibeId, seed));
+      const revisions = revisedGroupName(
+        requestGroupName(vibeId, seed, explore && EXPLORE_OPERATOR),
+      );
+      const asking = explore ? JOB_STEP.exploring : JOB_STEP.asking;
 
       /**
        * Measures the first try's excerpt and revises the first try when it misses anything.
@@ -198,7 +207,8 @@ export function candidateJob(app, { vibeId, sessionId, count }) {
         sessionId,
         locks: locksInForce(app.store, vibeId),
         recordings,
-        onStep: (step) => job.progress(done, count, generationStepText(step, 0, count)),
+        explore,
+        onStep: (step) => job.progress(done, count, generationStepText(step, 0, count, asking)),
         onCandidate: async (candidate) => {
           const index = firstTries++;
           candidateIds.push(candidate.id);

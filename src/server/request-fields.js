@@ -17,6 +17,8 @@ export const MAX_CHARS = Object.freeze({
   tag: 64,
   // A lock path: `voices.`, a 16-character voice id and a parameter name fit with room to spare.
   lockPath: 64,
+  // An explore's direction is one line, as "slower" or "less bell" (decision 0038).
+  direction: 200,
 });
 /** The most tags one sketch may carry. */
 export const MAX_TAGS = 32;

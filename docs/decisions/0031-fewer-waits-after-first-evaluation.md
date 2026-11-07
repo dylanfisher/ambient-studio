@@ -10,8 +10,9 @@
   feedback states and removal) and
   [0030](0030-seed-vibes-and-evaluation.md) (the evaluation's params and report, and its 409 body).
   Amended by [0036](0036-revision-pass.md) (the candidates job's revision steps, and the
-  candidates route's `pair` field) and [0037](0037-nudge-and-branch.md) (the nudge's conflict
-  rule and progress step).
+  candidates route's `pair` field), [0037](0037-nudge-and-branch.md) (the nudge's conflict
+  rule and progress step) and [0038](0038-explore.md) (explore's conflict rule and progress
+  step).
 
 ## Context
 
@@ -64,6 +65,8 @@ made by an older server.
 |---|---|
 | `POST /api/sessions/:id/candidates` | the session has a candidates job unfinished |
 | `POST /api/sessions/:id/excerpts` | the session has an excerpts job unfinished, or a candidates job, which renders them itself |
+| `POST /api/sessions/:id/nudges` | the session has a nudge unfinished with the same base, step size and count |
+| `POST /api/sessions/:id/explores` | the session has an explore unfinished with the same base, direction and count |
 | `POST /api/evaluations` | any evaluation is unfinished |
 
 "Unfinished" is queued or running. Another session's job is another action and is accepted. The
@@ -81,6 +84,8 @@ when a job finishes, however it finishes, so a stopped job never shows a stale s
 |---|---|---|
 | candidates | candidates finished (stored, and rendered when valid) / asked for | "Asking the model for candidate 3 of 8", "Asking the model to fix candidate 3", "Rendering the excerpt for candidate 3 of 8", "Waiting for the model: it is busy with another request" |
 | excerpts | excerpts rendered / to render | "Rendering excerpt 2 of 8" |
+| nudge | children finished / asked for | "Rendering the excerpt for nudge 3 of 8" |
+| explore | children finished (stored, rendered, measured and revised when needed) / asked for | "Asking the model for variation 2 of 4", then the candidates job's fixing, rendering, measuring, revising and waiting steps |
 | evaluation | candidates stored, across every vibe / vibes × count | "Asking the model for candidate 19 of 48", fixing and waiting as above, numbered across every vibe |
 
 The waiting step comes from a per-request `onRetry` the queue now calls after its own, which
@@ -169,3 +174,10 @@ identity. No rated audio is removed when a rating is.
   id; a kind added without one, as candidates and excerpts, matches any job of its kind. The
   progress table gains: nudge, children finished / asked for, "Rendering the excerpt for nudge
   3 of 8".
+- 2026-11-07: from step 3f ([0038](0038-explore.md)). The conflict table gains explore's row:
+  `POST /api/sessions/:id/explores` is refused while the session has an unfinished explore with
+  the same base, direction and count; anything else queues, including an explore while a
+  candidates or nudge job runs. Its action string is the JSON of `[candidateId, direction,
+  count]`. The nudge's row, until now only in the 3e amendment, is written into the table too.
+  The progress table gains nudge and explore; explore is the candidates job with "Asking the
+  model for variation 2 of 4" as its asking step.

@@ -1,7 +1,7 @@
 // The session and job routes (decision 0027): a session's state and stop, asking for
-// candidates, re-rendering missing excerpts, the candidates with their excerpts and revised
-// pairs (0036), and job status and cancel. Stopping a session cancels its jobs, and with them
-// their omlx requests.
+// candidates, nudging (0037) and exploring (0038) from one, re-rendering missing excerpts, the
+// candidates with their excerpts and revised pairs (0036), and job status and cancel. Stopping a
+// session cancels its jobs, and with them their omlx requests.
 /** @import { JobStatus } from "./job-runner.js" */
 /** @import { Feedback } from "./rating-store.js" */
 /** @import { App, Route } from "./routing.js" */
@@ -9,14 +9,21 @@
 import { applyLocks } from "../domain/apply-locks.js";
 import { lockRefusal, STEP_SIZE } from "../domain/nudge.js";
 import { currentExcerpt } from "./candidate-excerpt.js";
-import { candidateJob, DEFAULT_CANDIDATES, excerptJob, MAX_CANDIDATES } from "./candidate-job.js";
+import {
+  candidateJob,
+  DEFAULT_CANDIDATES,
+  DEFAULT_EXPLORES,
+  excerptJob,
+  MAX_CANDIDATES,
+} from "./candidate-job.js";
 import { candidatePairs } from "./candidate-pair.js";
+import { EXPLORE_OPERATOR } from "./generate-candidates.js";
 import { getGenome, listSessionCandidates } from "./generation-store.js";
 import { CANDIDATE_ID, vibeCandidate } from "./lock-routes.js";
 import { locksInForce } from "./lock-store.js";
 import { DEFAULT_NUDGES, NUDGE_OPERATOR, nudgeJob } from "./nudge-job.js";
 import { FEEDBACK_KIND, listSessionFeedback } from "./rating-store.js";
-import { fields, idParam, integer, oneOf, rowId } from "./request-fields.js";
+import { fields, idParam, integer, MAX_CHARS, oneOf, rowId, text } from "./request-fields.js";
 import { duplicateJob, HttpError } from "./routing.js";
 import { getSession, stopSession } from "./session-store.js";
 
@@ -99,6 +106,7 @@ const CANDIDATES = "candidates";
 const EXCERPTS = "excerpts";
 /** A nudge job is named for the operator its children store. */
 const NUDGE = NUDGE_OPERATOR;
+const EXPLORE = EXPLORE_OPERATOR;
 const STEP_SIZES = /** @type {(keyof typeof STEP_SIZE)[]} */ (Object.keys(STEP_SIZE));
 
 /** What a refused second job of each kind tells the owner, naming the unfinished one. */
@@ -112,7 +120,39 @@ const DUPLICATE = Object.freeze({
   /** @param {number} id */
   [NUDGE]: (id) =>
     `This session is already making this nudge (job ${id}). Wait for it to finish, or cancel it.`,
+  /** @param {number} id */
+  [EXPLORE]: (id) =>
+    `This session is already making this explore (job ${id}). Wait for it to finish, or cancel it.`,
 });
+
+/** A line break in any form, which a one-line direction may not hold. */
+const LINE_BREAK = /[\n\r\u2028\u2029]/;
+
+/**
+ * An explore's direction, or null when the body gives none or only white space (decision 0038).
+ * @param {Record<string, unknown>} given
+ * @returns {string | null}
+ */
+function direction(given) {
+  if (given.direction === undefined || given.direction === null) return null;
+  const line = text(given, "direction", MAX_CHARS.direction, { allowEmpty: true });
+  if (LINE_BREAK.test(line)) throw new HttpError(400, "direction must be one line");
+  return line.trim() === "" ? null : line;
+}
+
+/**
+ * The candidate a job starts from, checked to take the vibe's locks: a 409 otherwise, so the
+ * owner hears now. The job applies the locks live when it starts.
+ * @param {App} app
+ * @param {Session} session
+ * @param {number} candidateId
+ */
+function baseCandidate(app, session, candidateId) {
+  const found = vibeCandidate(app.store, session.vibeId, candidateId);
+  const refused = lockRefusal(applyLocks(found.genome, locksInForce(app.store, session.vibeId)));
+  if (refused !== null) throw new HttpError(409, `candidate ${candidateId} ${refused}`);
+  return found;
+}
 
 /**
  * What each app's jobs were asked to do beyond their kind, by job id: a nudge's base, step size
@@ -227,10 +267,7 @@ export const SESSION_ROUTES = [
         given.count === undefined
           ? DEFAULT_NUDGES
           : integer(given, "count", { min: 1, max: MAX_CANDIDATES });
-      const { candidate, genome } = vibeCandidate(app.store, session.vibeId, candidateId);
-      // Checked here so the owner hears now; the job applies the locks live when it starts.
-      const refused = lockRefusal(applyLocks(genome, locksInForce(app.store, session.vibeId)));
-      if (refused !== null) throw new HttpError(409, `candidate ${candidateId} ${refused}`);
+      const { candidate, genome } = baseCandidate(app, session, candidateId);
       const run = nudgeJob(app, {
         vibeId: session.vibeId,
         sessionId: session.id,
@@ -240,6 +277,29 @@ export const SESSION_ROUTES = [
         count,
       });
       return addSessionJob(app, session, NUDGE, run, `${candidateId} ${stepSize} ${count}`);
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/sessions/:sessionId/explores",
+    handle: async ({ app, params, body }) => {
+      const session = requireOpenSession(app, params);
+      const given = fields(await body(), [CANDIDATE_ID, "direction", "count"]);
+      const candidateId = rowId(given, CANDIDATE_ID);
+      const line = direction(given);
+      const count =
+        given.count === undefined
+          ? DEFAULT_EXPLORES
+          : integer(given, "count", { min: 1, max: MAX_CANDIDATES });
+      const { candidate, genome } = baseCandidate(app, session, candidateId);
+      const run = candidateJob(app, {
+        vibeId: session.vibeId,
+        sessionId: session.id,
+        count,
+        explore: { base: candidate, genome, direction: line },
+      });
+      // A direction may hold spaces, so the action is written as JSON.
+      return addSessionJob(app, session, EXPLORE, run, JSON.stringify([candidateId, line, count]));
     },
   },
   {

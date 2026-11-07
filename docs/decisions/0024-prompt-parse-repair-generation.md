@@ -5,6 +5,7 @@
   lock shape and its line, locks applied to each answer) and
   [0034](0034-feature-ranges-as-soft-targets.md) (the vibe's feature ranges in the user turn)
   and [0036](0036-revision-pass.md) (the request helpers, `followUp`, and revision candidates)
+  and [0038](0038-explore.md) (the base section, its trimming, and explore children)
 
 ## Context
 
@@ -187,3 +188,13 @@ which 2l settles.
   too, and quotes errors with `quotedErrors`. The locks' prompt paragraph is `locksText`. A
   revision is a `revise` candidate with its first try in `parentIds`, in its own request group
   `<group>-revisions`, with its render seed from slot 3 of the stream.
+- 2026-11-07: from step 3f ([0038](0038-explore.md)). `buildPrompt` takes an optional `base`
+  (`{genome, direction}`), written after the rated examples as "The base genome to vary:", the
+  base's canonical genome with the locks applied, and the direction as a JSON string, with an ask
+  for a variation in place of "Write one new genome for this vibe." Over the budget the examples
+  are trimmed first, then the base, and the examples that fit without it come back; the result's
+  `baseTrimmed` says so, and the error says "with no examples and no base" when even that
+  doesn't fit. `generateCandidates` takes an optional `explore` (`{base, genome, direction}`):
+  its candidates store the base in `parentIds`, operator `explore` and `{direction,
+  baseTrimmed}`, in the request group `vibe-<vibeId>-explore-<seed>`, which
+  `requestGroupName(vibeId, seed, operator)` names.
