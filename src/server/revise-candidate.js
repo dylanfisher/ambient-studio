@@ -14,6 +14,7 @@
 import { ANSWER_KEY } from "../domain/extract-genome.js";
 import { followUp } from "../domain/follow-up.js";
 import { lintResult } from "../domain/lint-result.js";
+import { OPERATOR } from "../domain/operator.js";
 import { estimateTokens, promptText } from "../domain/prompt-tokens.js";
 import { revisionAsk } from "../domain/revision-ask.js";
 import { checkRevision, keep, LLM_SOURCE, requestCandidate } from "./generate-candidates.js";
@@ -22,7 +23,9 @@ import { genomeHash } from "./genome-hash.js";
 import { getRevision } from "./vibe-store.js";
 
 /** The operator of a revision. */
-export const REVISE = "revise";
+export const REVISE = OPERATOR.revise;
+/** The operator of 3h's control-arm revision, never shown in a session or its lineage. */
+export const REVISE_CONTROL = OPERATOR.reviseControl;
 const REVISION_OVER_BUDGET_RULE = "revisionOverBudget";
 
 /**

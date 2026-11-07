@@ -24,6 +24,7 @@ import { ANSWER_KEY, extractGenome } from "../domain/extract-genome.js";
 import { lintGenome } from "../domain/lint-genome.js";
 import { lintResult, SCHEMA_RULE } from "../domain/lint-result.js";
 import { lockRefusal } from "../domain/nudge.js";
+import { OPERATOR } from "../domain/operator.js";
 import { estimateTokens, promptText } from "../domain/prompt-tokens.js";
 import { REJECT_REASON } from "../domain/reject-reason.js";
 import { validateConstraints } from "../domain/validate-constraints.js";
@@ -53,7 +54,7 @@ const CANDIDATE_SEEDS = 2 ** 32;
 /** The source of every candidate the model wrote. */
 export const LLM_SOURCE = "llm";
 /** The operator an explore child stores (decision 0038). */
-export const EXPLORE_OPERATOR = "explore";
+export const EXPLORE_OPERATOR = OPERATOR.explore;
 /** The rule a finding takes for an answer-shape error. */
 const ANSWER_RULE = "answer";
 const REPAIR_OVER_BUDGET_RULE = "repairOverBudget";

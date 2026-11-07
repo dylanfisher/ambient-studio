@@ -11,6 +11,7 @@
 /** @import { ExcerptRequest } from "./render-excerpt.js" */
 /** @import { App } from "./routing.js" */
 import { nudge } from "../domain/nudge.js";
+import { OPERATOR } from "../domain/operator.js";
 import { excerptRequest } from "./candidate-excerpt.js";
 import { jobRecordings, STREAM_SEEDS } from "./candidate-job.js";
 import { currentRevision, keep } from "./generate-candidates.js";
@@ -21,7 +22,7 @@ import { renderExcerpt } from "./render-excerpt.js";
 /** How many children one nudge makes when the request doesn't say. */
 export const DEFAULT_NUDGES = 8;
 /** The operator a nudge child stores, and the source its row gives. */
-export const NUDGE_OPERATOR = "nudge";
+export const NUDGE_OPERATOR = OPERATOR.nudge;
 const SOURCE = "mutation";
 
 /**
