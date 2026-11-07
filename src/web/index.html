@@ -8,48 +8,91 @@
     <script type="module" src="./index.js"></script>
   </head>
   <body>
-    <header>
-      <h1>Ambient Studio</h1>
-      <a href="./evaluation.html">Evaluations</a>
-      <p id="status" role="status" aria-live="polite">Loading the vibes…</p>
+    <header class="topbar">
+      <nav class="nav" aria-label="Pages">
+        <a class="brand" href="./" aria-current="page" title="Opens this page, the dashboard: how the studio works, and every brief.">Ambient Studio</a>
+        <a href="./#briefs" title="Jumps to the list of briefs on the dashboard, where you open one or write a new one.">Briefs</a>
+        <a href="./evaluation.html" title="Opens the model test page, which checks how often the model follows your briefs. It makes no audio.">Model test</a>
+      </nav>
     </header>
-    <main class="layout">
-      <section aria-labelledby="vibes-heading">
-        <div class="row">
-          <h2 id="vibes-heading">Vibes</h2>
-          <a href="./vibe.html">New vibe</a>
-        </div>
-        <ul id="vibeList" class="list"></ul>
-        <p id="noVibes" class="muted" hidden>No vibes yet. Press <kbd>n</kbd> to make one.</p>
-      </section>
-      <section aria-labelledby="seeds-heading">
-        <h2 id="seeds-heading">Seed vibes</h2>
-        <p class="muted">
-          Starting points to load as vibes of your own, then edit. Each loads once while its vibe
-          is kept.
+    <main class="page">
+      <div class="page-head">
+        <h1>Dashboard</h1>
+        <p class="help muted">
+          This is where you start. Write a brief, or add one of the starting points below, then
+          open it and start a session to get candidates to listen to. The card below walks
+          through the whole process.
         </p>
-        <ul id="seedList" class="list"></ul>
+        <p id="status" class="status" role="status" aria-live="polite">Loading the briefs…</p>
+      </div>
+
+      <section class="card" aria-labelledby="how-heading">
+        <h2 id="how-heading">How the studio works</h2>
+        <ol class="steps">
+          <li>
+            <strong>Write a brief.</strong> Give it a name, describe the music in a few
+            sentences, and set any rules every candidate must follow, such as a key or a
+            length.
+            <a href="./brief.html" title="Opens an empty brief to fill in and save.">Write a new brief</a>
+          </li>
+          <li>
+            <strong>Start a session.</strong> On the brief's page, press Start a session. The
+            studio asks the local model for candidates and renders a 25-second excerpt of each
+            by itself. This takes about a minute or two per candidate.
+            <a href="./#briefs" title="Jumps to the list of briefs, where you open one to start a session.">Choose a brief</a>
+          </li>
+          <li>
+            <strong>Listen and rate.</strong> On the session page, play each excerpt and press
+            thumbs up or down. You can also say a candidate should be brighter, denser and so on,
+            or compare two side by side.
+          </li>
+          <li>
+            <strong>Keep the ones you like.</strong> Press Keep as sketch on a candidate to save
+            it, with a note and tags. The brief's page lists every rating and sketch.
+          </li>
+          <li>
+            <strong>Check the model now and then.</strong> A model test asks the model for many
+            candidates without making audio, and reports how often it followed the brief.
+            <a href="./evaluation.html" title="Opens the model test page.">Open the model test</a>
+          </li>
+        </ol>
       </section>
-      <aside aria-label="Keys">
-        <dl id="keys-list" class="keys"></dl>
-      </aside>
+
+      <section id="briefs" aria-labelledby="briefs-heading">
+        <div class="section-head">
+          <h2 id="briefs-heading">Briefs</h2>
+          <a class="button primary" href="./brief.html" title="Opens an empty brief to fill in and save. Nothing is asked of the model until you start a session.">New brief</a>
+        </div>
+        <p class="muted small">Newest edit first. Open a brief to change it, start a session, or read its ratings.</p>
+        <ul id="briefList" class="list"></ul>
+        <p id="noBriefs" class="muted" hidden>No briefs yet. Write one, or add a starting point below.</p>
+      </section>
+
+      <section aria-labelledby="seeds-heading">
+        <h2 id="seeds-heading">Starting points</h2>
+        <p class="muted small">
+          Three example briefs. Adding one makes it a brief of your own, which you can then edit.
+          Each can be added once while its brief is kept.
+        </p>
+        <ul id="seedList" class="grid"></ul>
+      </section>
     </main>
-    <footer class="muted" id="engineVersion"></footer>
+    <footer class="page muted small" id="engineVersion"></footer>
     <template id="seed-item">
       <li class="card">
-        <h3 data-part="name">seed</h3>
-        <p data-part="brief"></p>
+        <h3 data-part="name">starting point</h3>
+        <p class="muted small" data-part="description"></p>
         <p>
-          <button type="button" data-part="load">Load it as a vibe</button>
-          <a href="./" data-part="loaded" hidden>Loaded</a>
+          <button class="button secondary" type="button" data-part="add" title="Adds this starting point as a new brief of your own. Nothing is asked of the model.">Add as a brief</button>
+          <a href="./" data-part="added" title="Opens the brief this starting point was added as." hidden>Added</a>
         </p>
       </li>
     </template>
-    <template id="vibe-item">
+    <template id="brief-item">
       <li class="card">
-        <h3><a href="./" data-part="link">vibe</a></h3>
-        <p data-part="brief"></p>
-        <p class="muted" data-part="edited"></p>
+        <h3><a href="./" data-part="link" title="Opens this brief, to edit it, start a session or read its ratings.">brief</a></h3>
+        <p class="small" data-part="description"></p>
+        <p class="muted small" data-part="edited"></p>
       </li>
     </template>
   </body>

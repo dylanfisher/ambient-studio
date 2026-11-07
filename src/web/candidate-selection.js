@@ -1,16 +1,13 @@
-// Which candidate the session view rates, and the clock its time taken runs on (decisions 0027
-// and 0028). No DOM: the page asks whether a selection may move the focus, and it may only when
-// the owner chose it and isn't typing, so a grid reload never turns a note into key presses.
+// Which candidate the session view rates, and the clock its time taken runs on (decisions 0027,
+// 0028 and 0032). No DOM: choosing a candidate never moves the focus, so a reload or a click
+// never takes it from a note being typed.
 
 /**
  * @template K
  * @typedef {object} Selection
  * @property {() => K | null} current
- * @property {(key: K, context: { inField: boolean }) => { focus: boolean }} choose the owner
- *   picked `key`: it is selected and its clock starts, unless it already was. Focus moves to it
- *   only when it is new and no form control has the focus.
- * @property {(from: K, to: K) => void} carry a reload replaced `from` with `to`; the selection
- *   and its clock follow, and the focus stays where it is
+ * @property {(key: K) => void} choose the owner picked `key`, by playing it or by using one of
+ *   its controls: it is selected and its clock starts, unless it already was
  * @property {() => void} restart starts the clock again, after a rating or the A/B view closing
  * @property {() => number} elapsedMs since the candidate was chosen or the clock restarted
  */
@@ -26,14 +23,10 @@ export function createSelection(now) {
   let since = now();
   return {
     current: () => selected,
-    choose(key, { inField }) {
-      if (key === selected) return { focus: false };
+    choose(key) {
+      if (key === selected) return;
       selected = key;
       since = now();
-      return { focus: !inField };
-    },
-    carry(from, to) {
-      if (selected === from) selected = to;
     },
     restart() {
       since = now();

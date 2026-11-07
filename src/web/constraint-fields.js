@@ -120,3 +120,25 @@ export function fieldValues(constraints) {
   }
   return values;
 }
+
+/**
+ * A field's title: what it limits, the values it takes, and what leaving it empty does.
+ * @param {ConstraintField} field
+ */
+export function fieldTitle({ name, form, description, options, min, max, unit }) {
+  const range = min === null ? "" : `, from ${min} to ${max}${unit ? ` ${unit}` : ""}`;
+  const what = `${name} (${description}${range})`;
+  if (form === FORM.voices) {
+    return `Tick each voice type for the ${name} list. With no box ticked there is no such list, and the model chooses freely.`;
+  }
+  if (form === FORM.range) {
+    return `Every candidate's ${what} must stay between these two values. Leave both empty to let the model choose.`;
+  }
+  if (form === FORM.ceiling) {
+    return `The most ${what} a candidate may have. Leave it empty for no limit.`;
+  }
+  if (options) {
+    return `The ${what} every candidate must use. Leave it on "free" to let the model choose.`;
+  }
+  return `The ${what} every candidate must have, exactly. Leave it empty to let the model choose.`;
+}

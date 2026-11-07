@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Brief · Ambient Studio</title>
+    <link rel="stylesheet" href="./studio.css" />
+    <script type="module" src="./brief.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <nav class="nav" aria-label="Pages">
+        <a class="brand" href="./" title="Opens the dashboard: how the studio works, and every brief.">Ambient Studio</a>
+        <a href="./#briefs" aria-current="page" title="Opens the list of briefs on the dashboard, where you open one or write a new one.">Briefs</a>
+        <a href="./evaluation.html" title="Opens the model test page, which checks how often the model follows your briefs. It makes no audio.">Model test</a>
+      </nav>
+    </header>
+    <main class="page">
+      <div class="page-head">
+        <p class="crumbs small muted"><a href="./#briefs" title="Goes back to the list of briefs.">Briefs</a> /</p>
+        <h1 id="pageTitle">Brief</h1>
+        <p class="help muted">
+          A brief tells the model what to make. Write a name and a description, set any rules
+          every candidate must follow, and save. Then press Start a session: the studio asks the
+          model for candidates and renders an excerpt of each, and you listen and rate them on
+          the session page. Your ratings and sketches are listed further down.
+        </p>
+        <p id="status" class="status" role="status" aria-live="polite">Loading…</p>
+      </div>
+
+      <div class="columns">
+        <form id="draft" class="card stack" novalidate>
+          <h2>The brief</h2>
+          <label class="field"
+            >Name
+            <input name="name" id="briefName" required size="40" title="The brief's name, shown in lists and on the session page. Saved when you press Save." />
+          </label>
+          <label class="field" for="briefDescription">Description</label>
+          <textarea id="briefDescription" name="brief" rows="6" title="Describe the music in plain sentences: mood, sounds, how it moves. The model reads this with every request for candidates."></textarea>
+          <fieldset class="stack">
+            <legend>Rules every candidate must follow (leave a field empty to leave it free)</legend>
+            <div id="constraintBox" class="constraints"></div>
+          </fieldset>
+          <p class="small muted" id="constraintsText"></p>
+          <details>
+            <summary title="Shows or hides the advanced soft targets field.">Advanced: soft targets</summary>
+            <label class="field" for="softTargets">Soft targets, as JSON (<code>{}</code> for none). These are stored with the brief; nothing checks them yet.</label>
+            <textarea id="softTargets" name="softTargets" rows="2" title="Optional targets as a JSON object, stored with the brief for later steps to measure against. Leave it as {} for none.">{}</textarea>
+          </details>
+          <ul id="draftErrors" class="errors"></ul>
+          <div class="row">
+            <button id="saveButton" class="button primary" type="submit" title="Saves the name, description and rules as a new version of the brief. Nothing is asked of the model.">Save</button>
+          </div>
+        </form>
+
+        <div id="savedOnly" class="stack">
+          <section class="card stack" aria-labelledby="sessions-heading">
+            <div class="section-head">
+              <h2 id="sessions-heading">Sessions</h2>
+              <button id="startButton" class="button primary" type="button" title="Starts a session for this brief and opens it. On the session page, ask for candidates to have the model write them and the studio render a 25-second excerpt of each.">Start a session</button>
+            </div>
+            <p class="small muted">A session is one sitting of listening and rating. Open sessions can take more candidates.</p>
+            <ul id="sessionList" class="list"></ul>
+          </section>
+
+          <section class="card stack" aria-labelledby="notes-heading">
+            <h2 id="notes-heading">Notes for the model</h2>
+            <p class="small muted">Every note is added to each request for candidates of this brief, after the description.</p>
+            <ul id="noteList" class="list"></ul>
+            <form id="noteForm" class="stack">
+              <label class="field" for="noteText">New note</label>
+              <textarea id="noteText" name="text" rows="2" title="A note to add to every request for candidates of this brief, such as what to avoid next time."></textarea>
+              <div class="row">
+                <button id="noteButton" class="button secondary" type="submit" title="Adds the note to this brief. Notes are kept and sent with every later request for candidates.">Add the note</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="card stack" aria-labelledby="ratings-heading">
+            <h2 id="ratings-heading">Ratings and sketches, newest first</h2>
+            <ul id="ratingList" class="list"></ul>
+            <p id="noRatings" class="muted small">No ratings yet. Rate candidates on a session page.</p>
+          </section>
+
+          <section class="card stack" aria-labelledby="revisions-heading">
+            <h2 id="revisions-heading">Earlier versions, newest first</h2>
+            <ul id="revisionList" class="list"></ul>
+          </section>
+        </div>
+      </div>
+    </main>
+
+    <template id="choice-field">
+      <label class="field">
+        <span class="field-name" data-part="label">rule</span>
+        <select data-part="input" title="Chooses a value every candidate must use."><option value="">free</option></select>
+      </label>
+    </template>
+    <template id="number-field">
+      <label class="field">
+        <span class="field-name" data-part="label">rule</span>
+        <input data-part="input" type="number" inputmode="decimal" title="Sets a number every candidate must keep to." />
+      </label>
+    </template>
+    <template id="range-field">
+      <div>
+        <span class="field-name" data-part="label">rule</span>
+        <div class="row">
+          <label class="small">from <input data-part="min" type="number" inputmode="decimal" title="Sets the lowest value every candidate may use." /></label>
+          <label class="small">to <input data-part="max" type="number" inputmode="decimal" title="Sets the highest value every candidate may use." /></label>
+        </div>
+      </div>
+    </template>
+    <template id="voices-field">
+      <div>
+        <span class="field-name" data-part="label">rule</span>
+        <div class="row" data-part="options"></div>
+      </div>
+    </template>
+    <template id="voice-option">
+      <label class="check small"><input data-part="input" type="checkbox" title="Adds this voice type to the list." /> <span data-part="type">voice</span></label>
+    </template>
+    <template id="line-item">
+      <li class="item small">
+        <span data-part="line"></span>
+        <span class="muted" data-part="time"></span>
+      </li>
+    </template>
+    <template id="session-item">
+      <li class="item small">
+        <a href="./" data-part="link" title="Opens this session, to listen to and rate its candidates.">session</a>
+        <span class="badge" data-part="state">open</span>
+        <span class="muted" data-part="time"></span>
+      </li>
+    </template>
+    <template id="revision-item">
+      <li class="item small">
+        <details>
+          <summary data-part="summary" title="Shows or hides this version's description and rules.">version</summary>
+          <p data-part="description"></p>
+          <pre data-part="constraints"></pre>
+        </details>
+      </li>
+    </template>
+  </body>
+</html>

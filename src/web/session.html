@@ -8,110 +8,159 @@
     <script type="module" src="./session.js"></script>
   </head>
   <body>
-    <header>
-      <a id="vibeLink" href="./">Vibe</a>
-      <h1 id="pageTitle">Session</h1>
-      <p id="status" role="status" aria-live="polite">Loading…</p>
+    <header class="topbar">
+      <nav class="nav" aria-label="Pages">
+        <a class="brand" href="./" title="Opens the dashboard: how the studio works, and every brief.">Ambient Studio</a>
+        <a href="./#briefs" aria-current="page" title="Opens the list of briefs on the dashboard, where you open one or write a new one.">Briefs</a>
+        <a href="./evaluation.html" title="Opens the model test page, which checks how often the model follows your briefs. It makes no audio.">Model test</a>
+      </nav>
     </header>
-    <main class="layout">
-      <div>
-        <div class="row" data-view="session">
-          <label
-            >Candidates to ask for
-            <input id="countInput" type="number" min="1" step="1" placeholder="default" size="6"
-          /></label>
-          <button data-action="askCandidates" type="button">Ask for candidates</button>
-          <button data-action="renderExcerpts" type="button">Render missing excerpts</button>
-          <button data-action="cancelJob" type="button">Cancel the job</button>
-          <button data-action="stopSession" type="button">Stop the session</button>
-        </div>
-        <p id="jobLine" class="readout muted">No job running.</p>
-
-        <div id="gridView" data-view="session">
-          <section aria-labelledby="candidates-heading">
-            <h2 id="candidates-heading">Candidates</h2>
-            <p id="noCandidates" class="muted">
-              None yet. Press <kbd>g</kbd> to ask for candidates.
-            </p>
-            <div id="candidateGrid" class="grid"></div>
-          </section>
-
-          <section class="card panel" aria-labelledby="ratingHeading">
-            <h2 id="ratingHeading">No candidate selected</h2>
-            <p id="selectedReadout" class="readout muted"></p>
-            <label for="noteText">Note, sent with thumbs or kept with a sketch</label>
-            <textarea id="noteText" rows="2"></textarea>
-            <label>Sketch tags, separated by commas <input id="tagsInput" size="40" /></label>
-            <div class="row">
-              <label>Macro <select id="macroSelect"></select></label>
-              <button data-action="moreLikeThis" type="button">More like this</button>
-              <button data-action="lessLikeThis" type="button">Less like this</button>
-            </div>
-            <div class="row">
-              <button data-action="thumbsUp" type="button">Thumbs up</button>
-              <button data-action="thumbsDown" type="button">Thumbs down</button>
-              <button data-action="keepSketch" type="button">Keep as sketch</button>
-              <button data-action="markAb" type="button">Mark for A/B</button>
-            </div>
-          </section>
-
-          <details id="rejectedBox" hidden>
-            <summary id="rejectedSummary">Rejected candidates</summary>
-            <ul id="rejectedList" class="list"></ul>
-          </details>
-        </div>
-
-        <section id="abView" aria-labelledby="ab-heading" data-view="ab" hidden>
-          <h2 id="ab-heading">Which is better?</h2>
-          <div class="ab">
-            <div id="abLeft" class="card">
-              <h3>Left <kbd>1</kbd></h3>
-              <p class="muted" id="abLeftName"></p>
-              <!-- biome-ignore lint/a11y/useMediaCaption: instrumental excerpts have no speech to caption -->
-              <audio id="abLeftAudio" controls preload="auto"></audio>
-              <p class="readout" id="abLeftReadout"></p>
-            </div>
-            <div id="abRight" class="card">
-              <h3>Right <kbd>2</kbd></h3>
-              <p class="muted" id="abRightName"></p>
-              <!-- biome-ignore lint/a11y/useMediaCaption: instrumental excerpts have no speech to caption -->
-              <audio id="abRightAudio" controls preload="auto"></audio>
-              <p class="readout" id="abRightReadout"></p>
-            </div>
-          </div>
-          <div class="row panel">
-            <button data-action="leftWins" type="button">Left is better</button>
-            <button data-action="tiePair" type="button">Tie</button>
-            <button data-action="rightWins" type="button">Right is better</button>
-            <button data-action="skipPair" type="button">Skip</button>
-            <button data-action="closePair" type="button">Close without rating</button>
-          </div>
-        </section>
+    <main class="page">
+      <div class="page-head">
+        <p class="crumbs small muted">
+          <a href="./#briefs" title="Goes back to the list of briefs.">Briefs</a> /
+          <a id="briefLink" href="./" title="Opens this session's brief, to edit it or read every rating.">Brief</a> /
+        </p>
+        <h1 id="pageTitle">Session</h1>
+        <p class="help muted">
+          Press Ask for new candidates and wait: the model writes each candidate and the studio
+          renders a 25-second excerpt of it, which appears below as soon as it is ready. Play
+          each one, then rate it with the buttons on its card. Thumbs and the Less / More choices
+          can be changed or cleared at any time. Keep as sketch saves a candidate you want to
+          come back to.
+        </p>
+        <p id="status" class="status" role="status" aria-live="polite">Loading…</p>
       </div>
-      <aside aria-label="Keys">
-        <dl id="keys-session" class="keys"></dl>
-        <dl id="keys-ab" class="keys" hidden></dl>
-      </aside>
+
+      <section class="card stack" aria-labelledby="ask-heading">
+        <h2 id="ask-heading">Candidates</h2>
+        <div class="row">
+          <label class="small"
+            >How many
+            <input id="countInput" type="number" min="1" max="32" step="1" placeholder="8" size="4" title="How many candidates to ask the model for. Empty asks for 8. Each takes about a minute or two." />
+          </label>
+          <button id="askButton" class="button primary" type="button" title="Asks the local model for new candidates for this brief and renders a 25-second excerpt of each as it arrives. Takes about 1–2 minutes per candidate.">Ask for new candidates</button>
+          <button id="excerptsButton" class="button outline" type="button" hidden title="Renders the excerpts that are missing, such as after a restart or a failed render. No model is asked; each excerpt takes a few seconds.">Render missing excerpts</button>
+          <span class="spacer"></span>
+          <button id="stopButton" class="button destructive" type="button" title="Stops this session after you confirm: any running job is cancelled, and it takes no more candidates or ratings. Your ratings so far are kept.">Stop the session</button>
+        </div>
+        <div id="jobBox" class="stack"></div>
+      </section>
+
+      <div id="gridView">
+        <p id="noCandidates" class="muted">No candidates yet. Press Ask for new candidates.</p>
+        <div id="candidateGrid" class="grid"></div>
+
+        <details id="rejectedBox" class="card" hidden>
+          <summary id="rejectedSummary" title="Shows or hides the candidates that failed the format or the brief's rules, with why.">Rejected candidates</summary>
+          <ul id="rejectedList" class="list"></ul>
+        </details>
+      </div>
+
+      <section id="abView" class="card stack" aria-labelledby="ab-heading" hidden>
+        <h2 id="ab-heading">Which is better?</h2>
+        <p class="help muted small">Play both, then choose. The sides are in a random order, so which is on the left tells you nothing.</p>
+        <div class="ab">
+          <div id="abLeft" class="card">
+            <h3>Left</h3>
+            <p class="muted small" id="abLeftName"></p>
+            <!-- biome-ignore lint/a11y/useMediaCaption: instrumental excerpts have no speech to caption -->
+            <audio id="abLeftAudio" controls preload="auto" title="Plays the left excerpt. Starting it pauses the right one."></audio>
+            <p class="small" id="abLeftReadout"></p>
+          </div>
+          <div id="abRight" class="card">
+            <h3>Right</h3>
+            <p class="muted small" id="abRightName"></p>
+            <!-- biome-ignore lint/a11y/useMediaCaption: instrumental excerpts have no speech to caption -->
+            <audio id="abRightAudio" controls preload="auto" title="Plays the right excerpt. Starting it pauses the left one."></audio>
+            <p class="small" id="abRightReadout"></p>
+          </div>
+        </div>
+        <div class="row">
+          <button id="abLeftWins" class="button primary" type="button" title="Saves that the left excerpt is better, and closes the comparison.">Left is better</button>
+          <button id="abTie" class="button secondary" type="button" title="Saves that the two are about as good as each other, and closes the comparison.">About the same</button>
+          <button id="abRightWins" class="button primary" type="button" title="Saves that the right excerpt is better, and closes the comparison.">Right is better</button>
+          <button id="abSkip" class="button outline" type="button" title="Saves that you couldn't choose, and closes the comparison.">Skip</button>
+          <button id="abClose" class="button outline" type="button" title="Closes the comparison without saving anything.">Close without rating</button>
+        </div>
+      </section>
+
+      <div id="abUndoBox" class="card row small" hidden>
+        <span id="abUndoLine"></span>
+        <button id="abUndo" class="button outline" type="button" title="Removes the comparison you just saved, as if you had never made it.">Undo</button>
+      </div>
     </main>
 
+    <template id="job-progress">
+      <div class="job">
+        <div class="row">
+          <strong data-part="title">job</strong>
+          <span class="badge" data-part="state">state</span>
+          <span class="muted small" data-part="elapsed"></span>
+          <span class="spacer"></span>
+          <button class="button outline small" type="button" data-part="cancel" title="Cancels this job. Candidates and excerpts it already made are kept.">Cancel</button>
+        </div>
+        <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" data-part="bar"><div class="progress-fill" data-part="fill"></div></div>
+        <p class="small" data-part="step"></p>
+        <p class="small errors" data-part="error" hidden></p>
+      </div>
+    </template>
+
     <template id="candidate-card">
-      <article class="card" tabindex="-1">
-        <h3 data-part="heading">Candidate</h3>
-        <p data-part="intent"></p>
+      <article class="card candidate" tabindex="-1">
+        <div class="row">
+          <h3 data-part="heading">Candidate</h3>
+          <span class="badge" data-part="thumbsBadge" hidden>thumbs</span>
+          <span class="badge" data-part="sketchBadge" hidden>Kept as sketch</span>
+        </div>
+        <p class="small" data-part="intent"></p>
         <!-- biome-ignore lint/a11y/useMediaCaption: instrumental excerpts have no speech to caption -->
-        <audio data-part="audio" controls preload="metadata" tabindex="-1"></audio>
-        <p class="readout muted" data-part="missing" hidden>
-          No current excerpt. Press <kbd>e</kbd> to render it.
-        </p>
-        <p class="readout" data-part="played"></p>
-        <p class="readout" data-part="features"></p>
-        <p class="readout" data-part="lint"></p>
-        <ul class="findings" data-part="findings"></ul>
-        <p class="readout muted" data-part="rated"></p>
+        <audio data-part="audio" controls preload="metadata" title="Plays this candidate's 25-second excerpt. Starting it pauses any other excerpt."></audio>
+        <p class="small muted" data-part="missing" hidden>The excerpt is not ready yet. It is rendered right after the model answers.</p>
+        <p class="small muted" data-part="played"></p>
+
+        <div class="row">
+          <div class="segmented">
+            <button type="button" data-part="up" aria-pressed="false" title="Says you like this candidate. Press again to clear it; thumbs down replaces it.">Thumbs up</button>
+            <button type="button" data-part="down" aria-pressed="false" title="Says you don't like this candidate. Press again to clear it; thumbs up replaces it.">Thumbs down</button>
+          </div>
+          <button class="button outline" type="button" data-part="compare" title="Marks this candidate to compare with another. Then press Compare on a second candidate to hear the two side by side.">Compare</button>
+        </div>
+
+        <div class="macros" data-part="macros"></div>
+
+        <label class="field small"
+          >Note
+          <textarea data-part="note" rows="2" title="A note about this candidate. It is saved with the next thumbs choice or with Keep as sketch, then cleared."></textarea>
+        </label>
+        <label class="field small"
+          >Sketch tags, separated by commas
+          <input data-part="tags" title="Words to file the sketch under, such as dark, slow. Saved only with Keep as sketch." />
+        </label>
+        <div class="row">
+          <button class="button secondary" type="button" data-part="sketch" title="Keeps this candidate as a sketch, with the note and tags, so you can find it on the brief page later.">Keep as sketch</button>
+        </div>
+
+        <details class="small">
+          <summary title="Shows or hides the measurements and rule checks of this excerpt.">Details</summary>
+          <p class="muted" data-part="features"></p>
+          <p data-part="lint"></p>
+          <ul class="findings" data-part="findings"></ul>
+        </details>
       </article>
     </template>
+    <template id="macro-choice">
+      <div class="macro row small">
+        <span class="macro-name" data-part="name">macro</span>
+        <div class="segmented">
+          <button type="button" data-part="less" aria-pressed="false" title="Tells the studio this candidate should have less of this.">Less</button>
+          <button class="neutral" type="button" data-part="clear" aria-pressed="true" title="Clears your choice for this, so it counts neither way.">—</button>
+          <button type="button" data-part="more" aria-pressed="false" title="Tells the studio this candidate should have more of this.">More</button>
+        </div>
+      </div>
+    </template>
     <template id="rejected-item">
-      <li class="card">
+      <li class="item small">
         <span data-part="line"></span>
         <ul class="findings" data-part="findings"></ul>
       </li>
