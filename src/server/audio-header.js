@@ -19,6 +19,15 @@
 const tagAt = (bytes, at, id) => bytes.toString("latin1", at, at + id.length) === id;
 
 /**
+ * Whether a chunk of `size` bytes at `at`, after its 8-byte id and size, lies inside `bytes`. A
+ * chunk that claims to run past the file is not read.
+ * @param {Buffer} bytes
+ * @param {number} at
+ * @param {number} size
+ */
+const fits = (bytes, at, size) => at + 8 + size <= bytes.length;
+
+/**
  * A RIFF WAVE file: its `fmt ` chunk, and the `data` chunk's size over the frame size.
  * @param {Buffer} bytes
  * @returns {AudioHeader | undefined}
@@ -29,7 +38,7 @@ function wavHeader(bytes) {
   let blockAlign = 0;
   for (let at = 12; at + 8 <= bytes.length; ) {
     const size = bytes.readUInt32LE(at + 4);
-    if (tagAt(bytes, at, "fmt ") && at + 22 <= bytes.length) {
+    if (tagAt(bytes, at, "fmt ") && size >= 16 && fits(bytes, at, size)) {
       channels = bytes.readUInt16LE(at + 10);
       sampleRate = bytes.readUInt32LE(at + 12);
       blockAlign = bytes.readUInt16LE(at + 20);
@@ -61,7 +70,7 @@ function extended(bytes, at) {
 function aiffHeader(bytes) {
   for (let at = 12; at + 8 <= bytes.length; ) {
     const size = bytes.readUInt32BE(at + 4);
-    if (tagAt(bytes, at, "COMM") && at + 26 <= bytes.length) {
+    if (tagAt(bytes, at, "COMM") && size >= 18 && fits(bytes, at, size)) {
       return {
         format: "aiff",
         channels: bytes.readUInt16BE(at + 8),
@@ -106,7 +115,9 @@ export function readAudioHeader(bytes, name) {
     header = aiffHeader(bytes);
   else if (tagAt(bytes, 0, "fLaC")) header = flacHeader(bytes);
   else throw new Error(`${name} isn't a WAV, AIFF or FLAC file`);
-  if (!header || !(header.channels > 0 && header.sampleRate > 0 && header.frames > 0)) {
+  const usable = (/** @type {AudioHeader} */ h) =>
+    h.channels > 0 && h.sampleRate > 0 && Number.isFinite(h.sampleRate) && h.frames > 0;
+  if (!header || !usable(header)) {
     throw new Error(`${name}: can't read its channels, sample rate and length from the header`);
   }
   return header;

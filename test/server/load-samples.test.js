@@ -1,6 +1,7 @@
 // Decoding the synthetic fixtures through node-web-audio-api, and loading a genome's recordings
 // from an index (decision 0029). The fixtures are 44.1 kHz, so every decode resamples to 48 kHz.
-import { copyFile, mkdtemp, readFile, rm } from "node:fs/promises";
+/** @import { RecordingEntry } from "../../src/server/recording-index.js" */
+import { copyFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
@@ -13,6 +14,33 @@ import { FIXTURE_RECORDINGS } from "../support/golden.js";
 
 const RATE = 48000;
 const golden = requireGenome(recordingGenome, "the field-recording golden genome");
+
+/**
+ * An 8-bit mono AIFF of a sine whose COMM chunk says `stated` frames while its SSND chunk holds
+ * `frames`.
+ * @param {{ stated: number; frames: number; rate: number }} shape
+ */
+function aiff({ stated, frames, rate }) {
+  const comm = Buffer.alloc(8 + 18);
+  comm.write("COMM", 0, "latin1");
+  comm.writeUInt32BE(18, 4);
+  comm.writeUInt16BE(1, 8);
+  comm.writeUInt32BE(stated, 10);
+  comm.writeUInt16BE(8, 14);
+  // The rate as an 80-bit extended float: exponent, then the mantissa with its top bit set.
+  const exponent = Math.floor(Math.log2(rate));
+  comm.writeUInt16BE(16383 + exponent, 16);
+  comm.writeBigUInt64BE(BigInt(rate) << BigInt(63 - exponent), 18);
+  const ssnd = Buffer.alloc(16 + frames);
+  ssnd.write("SSND", 0, "latin1");
+  ssnd.writeUInt32BE(8 + frames, 4);
+  for (let i = 0; i < frames; i++) ssnd.writeInt8(Math.round(40 * Math.sin(i / 7)), 16 + i);
+  const form = Buffer.alloc(12);
+  form.write("FORM", 0, "latin1");
+  form.writeUInt32BE(4 + comm.length + ssnd.length, 4);
+  form.write("AIFF", 8, "latin1");
+  return Buffer.concat([form, comm, ssnd]);
+}
 
 /** @param {Float32Array[]} channels */
 const hashChannels = (channels) =>
@@ -72,6 +100,22 @@ describe("loadSamples", () => {
     await copyFile(join(FIXTURE_RECORDINGS, "tones.aiff"), join(folder, "brown-mono.flac"));
     await expect(loadSamples(golden, index)).rejects.toThrow(
       /brown-mono\.flac changed since it was indexed/,
+    );
+  });
+
+  test("a file whose header understates its length fails, decoded, naming the file", async () => {
+    // The COMM chunk says 1 s; the SSND chunk holds 1,201 s, which the decoder reads.
+    const rate = 8000;
+    await writeFile(join(folder, "long.aiff"), aiff({ stated: rate, frames: 1201 * rate, rate }));
+    const index = await indexRecordings(folder);
+    const entry = /** @type {RecordingEntry} */ (index.find((e) => e.file === "long.aiff"));
+    expect(entry.duration).toBe(1);
+    const genome = requireGenome(
+      { voices: [{ id: "long", type: "recording", recording: entry.hash }] },
+      "a voice playing the long file",
+    );
+    await expect(loadSamples(genome, index)).rejects.toThrow(
+      /long\.aiff: decoded, it is 1201 s long, over the 1200 s/,
     );
   });
 

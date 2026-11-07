@@ -4,12 +4,15 @@
 /** @import { Genome } from "../engine/genome-schema.js" */
 /** @import { Recording, Samples } from "../engine/render.js" */
 /** @import { RecordingEntry } from "./recording-index.js" */
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { OfflineAudioContext } from "node-web-audio-api";
 import { unplayable } from "../engine/field-recording.js";
 import { recordingRefs } from "../engine/recording-refs.js";
 import { SAMPLE_RATE } from "../engine/render-plan.js";
 import { sha256Hex } from "./sha256-hex.js";
+
+/** The largest file `readFile` reads: above it, it throws ERR_FS_FILE_TOO_LARGE. */
+const MAX_FILE_BYTES = 2 ** 31 - 1;
 
 /**
  * Decodes a WAV, FLAC or AIFF file's bytes at the render's sample rate. `decodeAudioData`
@@ -59,6 +62,12 @@ export async function loadSamples(genome, index, names = {}) {
     }
     const problem = unplayable(entry);
     if (problem) throw new Error(`${path}: can't play ${entry.path}: ${problem}`);
+    const { size } = await stat(entry.path);
+    if (size > MAX_FILE_BYTES) {
+      throw new Error(
+        `${path}: can't play ${entry.path}: it is ${size} bytes, over the ${MAX_FILE_BYTES} a file may be read in`,
+      );
+    }
     const bytes = await readFile(entry.path);
     const now = sha256Hex(bytes);
     if (now !== hash) {
@@ -66,7 +75,15 @@ export async function loadSamples(genome, index, names = {}) {
         `${path}: ${entry.path} changed since it was indexed: its sha256 is ${now}, and the genome names ${hash}`,
       );
     }
-    samples[hash] = await decodeRecording(bytes);
+    const decoded = await decodeRecording(bytes);
+    // The header can understate the data: the decoder reads every frame the data chunk holds.
+    const frames = /** @type {Float32Array} */ (decoded.channels[0]).length;
+    const shape = { channels: decoded.channels.length, duration: frames / decoded.sampleRate };
+    const decodedProblem = unplayable(shape);
+    if (decodedProblem) {
+      throw new Error(`${path}: can't play ${entry.path}: decoded, ${decodedProblem}`);
+    }
+    samples[hash] = decoded;
     files[hash] = entry.file;
   }
   return { samples, files };

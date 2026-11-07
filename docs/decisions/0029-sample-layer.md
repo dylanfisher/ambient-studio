@@ -24,12 +24,16 @@ nothing, and a file whose bytes change is a different recording.
 **The index.** `indexRecordings(folder, previous)` in `src/server/recording-index.js` lists every
 `.wav`, `.flac`, `.aif` and `.aiff` file (any case) in the folder and its subfolders, skipping
 hidden files and folders, sorted by path. Each entry holds the path, the SHA-256 of the bytes,
-and the duration, channels and sample rate from the header (`src/server/audio-header.js`). An
-entry from `previous` whose file has the same size and modification time is kept without reading
-it again. A file whose header can't be read fails the index, naming the file. Nothing watches the
+hashed as a stream so a file of any size is listed, and the duration, channels and sample rate
+from the header in the file's first MiB (`src/server/audio-header.js`). The reader reads a
+`fmt ` or `COMM` chunk only when its stated size fits the bytes. An entry from `previous` whose
+file has the same size and modification time is kept without reading it again. A file whose
+header can't be read (truncated, a chunk running past the file, zero channels or rate) fails
+the index, naming the file. Nothing watches the
 folder: a caller indexes it when it needs to, and the server keeps the last index to pass back in.
 
-**Decoding.** The server reads each file a genome names, hashes the bytes again, and decodes them
+**Decoding.** The server refuses a file over 2 GiB by name (`readFile`'s limit), reads each file
+a genome names, hashes the bytes again, and decodes them
 with node-web-audio-api's `decodeAudioData` on an `OfflineAudioContext` at 48 kHz
 (`loadSamples` in `src/server/load-samples.js`). It passes the result to `render()` as `samples`:
 `{[hash]: {sampleRate, channels}}`. Measured on mbp2021 with node-web-audio-api 2.2.0:
@@ -63,13 +67,20 @@ a stereo panner's balance, −1 to 1, which may be a trajectory. Both filters ar
   same in both channels.
 - **Limits.** The voice plays files of 1 or 2 channels, 0.1 s to 1,200 s long (`unplayable`). A
   render holds each file decoded, 384 kB a second in stereo, so 20 minutes is 461 MB beside
-  0010's 1.5 GiB ceiling.
+  0010's 1.5 GiB ceiling. The limits are checked on the header before decoding and on the
+  decoded buffer after, naming the file: the decoder reads every frame the data chunk holds, so
+  an AIFF whose `COMM` says 1 s decodes for as long as its `SSND` runs.
 - **Cost.** The low-pass on the control grid (`SWEPT_FILTER_WEIGHT`, 21), the high-pass and the
-  panner (1 each), a buffer source a window (4), and 16 node-seconds for the JS: 2.0 ms a
-  timeline second with two passes always overlapping at rate 2, measured on mbp2021 over 120 s.
+  panner (1 each), a buffer source a window (4), and 16 node-seconds for the JS: 1.95 ms a
+  timeline second with two passes always overlapping at rate 1.99, measured on mbp2021 over
+  60 s. That is the worst case: at a rate just under 2 every frame interpolates and the most
+  file is read, while at exactly 1 or 2 every frame lands on a file frame and skips the
+  interpolation (1.46 ms at 2).
   The voice costs 43, 559 beside the longest reverb, under the budget of 560. Measured with a
-  drone, an 8 s reverb and the voice over 120 s: 5.7 ms a timeline second more than the drone
-  alone, about 46 node-seconds against the 45 `cost()` adds.
+  drone, an 8 s reverb and the voice at rate 2 over 120 s: 5.7 ms a timeline second more than
+  the drone alone, about 46 node-seconds against the 45 `cost()` adds; at 1.99 that run measured
+  50, before the frame loop computed each frame's gain and position once for both channels,
+  which took the JS at 1.99 from 2.57 to 1.95 ms.
 
 **What the schema, `randomGenome` and the prompt see.** `schemaText()` lists only the voice types
 that play no recording, so its text is byte-identical to before (2,931 characters) and every

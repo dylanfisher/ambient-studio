@@ -2,10 +2,10 @@
 // and its subfolders, with the SHA-256 that genomes name it by and the shape its header gives.
 // It runs when a caller asks; nothing watches the folder.
 /** @import { RecordingListing } from "../domain/recordings-text.js" */
-import { readdir, readFile, stat } from "node:fs/promises";
+import { open, readdir, stat } from "node:fs/promises";
 import { extname, join, relative, sep } from "node:path";
 import { readAudioHeader } from "./audio-header.js";
-import { sha256Hex } from "./sha256-hex.js";
+import { sha256HexOfFile } from "./sha256-hex.js";
 
 /** Extensions the index reads, lowercase. */
 const EXTENSIONS = Object.freeze([".wav", ".flac", ".aif", ".aiff"]);
@@ -14,6 +14,28 @@ const EXTENSIONS = Object.freeze([".wav", ".flac", ".aif", ".aiff"]);
  * @typedef {RecordingListing & { path: string; size: number; mtimeMs: number }} RecordingEntry
  *   `path` absolute; `size` and `mtimeMs` tell a later index the file is unchanged
  */
+
+/**
+ * Bytes read from the start of a file for its header. The chunks before a WAV's `data` or an
+ * AIFF's `COMM` are metadata of a few kB; a file whose header lies past this fails by name.
+ */
+const HEADER_BYTES = 1 << 20;
+
+/**
+ * The file's first `HEADER_BYTES`, or all of it when shorter.
+ * @param {string} path
+ * @returns {Promise<Buffer>}
+ */
+async function headerBytes(path) {
+  const handle = await open(path, "r");
+  try {
+    const buffer = Buffer.alloc(HEADER_BYTES);
+    const { bytesRead } = await handle.read(buffer, 0, HEADER_BYTES, 0);
+    return buffer.subarray(0, bytesRead);
+  } finally {
+    await handle.close();
+  }
+}
 
 /**
  * @param {string} file relative to the folder
@@ -25,8 +47,8 @@ const listed = (file) =>
 
 /**
  * Indexes `folder`. An entry of `previous` whose file has the same size and modification time
- * is kept without reading the file again; every other file is read, hashed and its header
- * parsed, one at a time. Hidden files and folders are skipped. Throws, naming the file, on one
+ * is kept without reading the file again; every other file is hashed as a stream and its
+ * header parsed from its first MiB, one at a time. Hidden files and folders are skipped. Throws, naming the file, on one
  * whose header can't be read.
  * @param {string} folder absolute
  * @param {readonly RecordingEntry[]} [previous] an earlier index of the same folder
@@ -50,11 +72,10 @@ export async function indexRecordings(folder, previous = []) {
       entries.push(old);
       continue;
     }
-    const bytes = await readFile(path);
-    const { channels, sampleRate, frames } = readAudioHeader(bytes, path);
+    const { channels, sampleRate, frames } = readAudioHeader(await headerBytes(path), path);
     entries.push({
       file,
-      hash: sha256Hex(bytes),
+      hash: await sha256HexOfFile(path),
       duration: frames / sampleRate,
       channels,
       sampleRate,

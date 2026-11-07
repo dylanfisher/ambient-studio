@@ -123,9 +123,10 @@ const POSITION_SLOT = 1;
 const BUTTERWORTH_Q_DB = 20 * Math.log10(Math.SQRT1_2);
 
 /**
- * Computing the passes in JS costs render time the node count doesn't show: 2.0 ms a timeline
- * second with two passes always overlapping at rate 2, measured on mbp2021 over 120 s, about 16
- * node-seconds at 1.24e-4 s each (decision 0029).
+ * Computing the passes in JS costs render time the node count doesn't show: 1.95 ms a timeline
+ * second with two passes always overlapping at rate 1.99, the worst case (at exactly 1 or 2
+ * every frame lands on a file frame and skips the interpolation), measured on mbp2021 over 60 s,
+ * about 16 node-seconds at 1.24e-4 s each (decision 0029).
  */
 const PASS_WEIGHT = 16;
 
@@ -174,32 +175,44 @@ function passLayout(voice, fileFrames, sampleRate) {
 }
 
 /**
- * Adds `gain(i) × file(from + i × rate)` to `sum` at `out + i` for i in [lo, hi), the file read
- * by 4-point Catmull-Rom interpolation, holding its end samples past either end. A whole frame
- * reads the sample itself.
- * @param {Float64Array} sum
+ * File sample `data` at fractional frame `x + t`, by 4-point Catmull-Rom interpolation, holding
+ * the end samples past either end. A whole frame (`t` 0) reads the sample itself.
  * @param {Float32Array} data
+ * @param {number} x
+ * @param {number} t
+ */
+function sampleAt(data, x, t) {
+  const last = data.length - 1;
+  const y1 = /** @type {number} */ (data[Math.min(Math.max(x, 0), last)]);
+  if (t === 0) return y1;
+  const y0 = /** @type {number} */ (data[Math.min(Math.max(x - 1, 0), last)]);
+  const y2 = /** @type {number} */ (data[Math.min(x + 1, last)]);
+  const y3 = /** @type {number} */ (data[Math.min(x + 2, last)]);
+  const c1 = 0.5 * (y2 - y0);
+  const c2 = y0 - 2.5 * y1 + 2 * y2 - 0.5 * y3;
+  const c3 = 0.5 * (y3 - y0) + 1.5 * (y1 - y2);
+  return ((c3 * t + c2) * t + c1) * t + y1;
+}
+
+/**
+ * Adds `gain(i) × file(from + i × rate)` to each channel's sum at `out + i` for i in [lo, hi).
+ * The gain and the file position are computed once a frame for every channel.
+ * @param {Float64Array[]} sums
+ * @param {readonly Float32Array[]} sources one a sum
  * @param {{ from: number; rate: number; lo: number; hi: number; out: number;
  *   gain: (i: number) => number }} pass
  */
-function addPass(sum, data, { from, rate, lo, hi, out, gain }) {
-  const last = data.length - 1;
+function addPass(sums, sources, { from, rate, lo, hi, out, gain }) {
   for (let i = lo; i < hi; i++) {
     const at = from + i * rate;
     const x = Math.floor(at);
     const t = at - x;
-    const y1 = /** @type {number} */ (data[Math.min(Math.max(x, 0), last)]);
-    let value = y1;
-    if (t !== 0) {
-      const y0 = /** @type {number} */ (data[Math.min(Math.max(x - 1, 0), last)]);
-      const y2 = /** @type {number} */ (data[Math.min(x + 1, last)]);
-      const y3 = /** @type {number} */ (data[Math.min(x + 2, last)]);
-      const c1 = 0.5 * (y2 - y0);
-      const c2 = y0 - 2.5 * y1 + 2 * y2 - 0.5 * y3;
-      const c3 = 0.5 * (y3 - y0) + 1.5 * (y1 - y2);
-      value = ((c3 * t + c2) * t + c1) * t + y1;
+    const g = gain(i);
+    for (let c = 0; c < sums.length; c++) {
+      const sum = /** @type {Float64Array} */ (sums[c]);
+      const value = sampleAt(/** @type {Float32Array} */ (sources[c]), x, t);
+      sum[out + i] = /** @type {number} */ (sum[out + i]) + g * value;
     }
-    sum[out + i] = /** @type {number} */ (sum[out + i]) + gain(i) * value;
   }
 }
 
@@ -243,9 +256,7 @@ export function recordingChunk({ recording: file, voice, seed, first, frames, sa
       out: start - first,
       gain,
     };
-    for (const [c, data] of sources.entries()) {
-      addPass(/** @type {Float64Array} */ (sums[c]), data, pass);
-    }
+    addPass(sums, sources, pass);
   }
   // A mono file plays the same in both channels.
   if (sources.length === 1) sums.push(/** @type {Float64Array} */ (sums[0]));
