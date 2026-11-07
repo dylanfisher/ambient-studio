@@ -12,7 +12,7 @@ describe("the seed vibes", () => {
   test("every file in src/domain/vibes/ is listed, and there are three", () => {
     const files = readdirSync(new URL("../../src/domain/vibes/", import.meta.url));
     expect(Object.keys(SEED_VIBES).sort()).toEqual(
-      files.map((file) => file.replace(/\.js$/, "")).sort(),
+      files.map((file) => file.replace(/\.json$/, "")).sort(),
     );
     expect(seeds).toHaveLength(3);
   });
@@ -29,7 +29,7 @@ describe("the seed vibes", () => {
   });
 
   test.each(seeds)("%s can be met: a genome passes the schema and its linter", (id, seed) => {
-    const genome = requireGenome(SEED_GENOMES[id]);
+    const genome = requireGenome(SEED_GENOMES[id], `the genome for ${id}`);
     expect(lintGenome(genome, seed.constraints)).toEqual({ ok: true, findings: [] });
   });
 

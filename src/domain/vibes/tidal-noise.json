@@ -1,0 +1,20 @@
+{
+  "name": "Warm tidal noise",
+  "brief": "A warm bed of noise that swells and recedes like a tide coming in and going out, on cycles of tens of seconds. Brown and pink noise, filtered dark, with the highs rolled off. A low drone or a thin haze of grains may sit inside it, but no bells, no chords and no melody. No beat. It should be calm enough to sleep to.",
+  "constraints": {
+    "pulse": "none",
+    "duration": {
+      "min": 480,
+      "max": 900
+    },
+    "loudness": -16,
+    "bannedVoices": ["bell", "pad"],
+    "grains": 6,
+    "brightness": {
+      "min": 0.1,
+      "max": 0.4
+    },
+    "cost": 300
+  },
+  "softTargets": {}
+}
