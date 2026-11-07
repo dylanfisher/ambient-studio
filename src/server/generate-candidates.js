@@ -68,6 +68,14 @@ const RESPONSE_FORMAT = Object.freeze({
   },
 });
 
+/**
+ * The request group of a vibe's candidates drawn from one stream seed (decision 0024): named
+ * per vibe, so one seed can serve several vibes, and refused when it exists.
+ * @param {number} vibeId
+ * @param {number} seed
+ */
+export const requestGroupName = (vibeId, seed) => `vibe-${vibeId}-stream-${seed}`;
+
 /** @typedef {{ temperature: number, top_p: number, seed: number }} Sampling */
 
 /**
@@ -90,6 +98,9 @@ const RESPONSE_FORMAT = Object.freeze({
  * @property {Lock[]} locks
  * @property {readonly RecordingListing[]} recordings the recordings folder's index, empty when the
  *   config sets no folder: the prompt lists them, and a genome naming another is repaired
+ * @property {(candidate: Candidate, firstReason: RejectReason | null) => void} [onCandidate]
+ *   called as each candidate is stored, with the reason its first answer was rejected (null when
+ *   it was valid), which the candidate row no longer holds once a repair replaced it
  */
 
 /**
@@ -194,7 +205,7 @@ export async function generateCandidates(
   n,
   store,
   queue,
-  { config, seed, sessionId, locks, recordings },
+  { config, seed, sessionId, locks, recordings, onCandidate },
 ) {
   if (!Number.isInteger(n) || n < 1) throw new Error(`n must be a positive integer, got ${n}`);
   const vibe = getVibe(store, vibeId);
@@ -208,7 +219,7 @@ export async function generateCandidates(
   }
   const { constraints } = checked;
   const draws = samplingStream(seed, n);
-  const requestGroup = `vibe-${vibeId}-stream-${seed}`;
+  const requestGroup = requestGroupName(vibeId, seed);
   if (listRequestGroup(store, requestGroup).length > 0) {
     throw new Error(`request group ${requestGroup} already exists; draw a new stream seed`);
   }
@@ -299,26 +310,27 @@ export async function generateCandidates(
    * @param {Generation} generation the last generation made for the candidate
    * @param {Verdict} verdict
    * @param {number} candidateSeed
+   * @param {RejectReason | null} firstReason
    */
-  const keep = (generation, verdict, candidateSeed) => {
+  const keep = (generation, verdict, candidateSeed, firstReason) => {
     const genomeId = verdict.genome === null ? null : putGenome(store, vibeId, verdict.genome).id;
-    candidates.push(
-      addCandidate(store, {
-        vibeRevisionId: revision.id,
-        generationId: generation.id,
-        genomeId,
-        seed: candidateSeed,
-        source: SOURCE,
-        parentIds: [],
-        locks,
-        operator: null,
-        operatorParams: null,
-        intent: verdict.intent,
-        rejectReason: verdict.reason,
-        lint: verdict.lint,
-        rejectedGenome: verdict.reason === null ? null : verdict.written,
-      }),
-    );
+    const candidate = addCandidate(store, {
+      vibeRevisionId: revision.id,
+      generationId: generation.id,
+      genomeId,
+      seed: candidateSeed,
+      source: SOURCE,
+      parentIds: [],
+      locks,
+      operator: null,
+      operatorParams: null,
+      intent: verdict.intent,
+      rejectReason: verdict.reason,
+      lint: verdict.lint,
+      rejectedGenome: verdict.reason === null ? null : verdict.written,
+    });
+    candidates.push(candidate);
+    onCandidate?.(candidate, firstReason);
   };
   /**
    * The verdict for a candidate whose last request failed, keeping what an earlier try found.
@@ -348,10 +360,16 @@ export async function generateCandidates(
     const first = await ask(messages, sampling, null);
     if (first.failure !== null) {
       if (first.generation)
-        keep(first.generation, failedVerdict(first.failure, null), candidateSeed);
+        keep(
+          first.generation,
+          failedVerdict(first.failure, null),
+          candidateSeed,
+          REJECT_REASON.requestFailed,
+        );
       throw first.failure;
     }
     let { generation, verdict } = first;
+    const firstReason = verdict.reason;
     if (verdict.answer !== null) {
       const repair = buildRepairPrompt({ messages, answer: verdict.answer }, verdict.lint.findings);
       const tokens = estimateTokens(promptText(repair));
@@ -362,17 +380,27 @@ export async function generateCandidates(
         const repaired = await ask(repair, sampling, generation.id);
         if (repaired.failure !== null) {
           if (repaired.generation) {
-            keep(repaired.generation, failedVerdict(repaired.failure, verdict), candidateSeed);
+            keep(
+              repaired.generation,
+              failedVerdict(repaired.failure, verdict),
+              candidateSeed,
+              firstReason,
+            );
           } else {
             const message = `the repair was not sent: ${repaired.failure.message}`;
-            keep(generation, noted(verdict, REPAIR_NOT_SENT_RULE, message), candidateSeed);
+            keep(
+              generation,
+              noted(verdict, REPAIR_NOT_SENT_RULE, message),
+              candidateSeed,
+              firstReason,
+            );
           }
           throw repaired.failure;
         }
         ({ generation, verdict } = repaired);
       }
     }
-    keep(generation, verdict, candidateSeed);
+    keep(generation, verdict, candidateSeed, firstReason);
   }
   return { requestGroup, candidates };
 }

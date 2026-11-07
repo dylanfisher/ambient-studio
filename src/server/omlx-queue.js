@@ -8,6 +8,9 @@ import { request as httpsRequest } from "node:https";
 /** @import { ChatMessage } from "../domain/prompt-tokens.js" */
 import { CHARS_PER_TOKEN, estimateTokens, promptText } from "../domain/prompt-tokens.js";
 
+/** How the message of a request omlx refused for its `response_format` starts. */
+export const RESPONSE_FORMAT_REFUSED = "omlx refused the JSON-schema response_format";
+
 /**
  * The timers the queue uses for its gap, backoff and timeouts; the server passes the real ones,
  * tests a fake.
@@ -220,7 +223,7 @@ export function createOmlxQueue({ omlx, queue, clock, jitter, onRetry }) {
         const text = await readText(response);
         if (status === 400 && /response_format|json_schema/.test(text)) {
           throw new Error(
-            `omlx refused the JSON-schema response_format (HTTP 400: ${text}); ` +
+            `${RESPONSE_FORMAT_REFUSED} (HTTP 400: ${text}); ` +
               "set queue.sendResponseFormat to false in the config",
           );
         }

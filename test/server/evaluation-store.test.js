@@ -1,6 +1,11 @@
 // Evaluation reports (decision 0021).
 import { afterEach, expect, test } from "vitest";
-import { addEvaluation, getEvaluation } from "../../src/server/evaluation-store.js";
+import {
+  addEvaluation,
+  getEvaluation,
+  listEvaluations,
+} from "../../src/server/evaluation-store.js";
+import { markRemoved, TABLE } from "../../src/server/store.js";
 import { tempStore } from "../support/temp-store.js";
 
 /** @type {(() => Promise<void>)[]} */
@@ -17,4 +22,14 @@ test("an evaluation reads back after a reopen", async () => {
     report: { valid: { before: 40, after: 45, of: 48 } },
   });
   expect(getEvaluation(made.reopen(), evaluation.id)).toEqual(evaluation);
+});
+
+test("the evaluations not removed are listed oldest first", async () => {
+  const made = await tempStore();
+  cleanups.push(made.remove);
+  const first = addEvaluation(made.store, { params: { count: 1 }, report: { n: 1 } });
+  const removed = addEvaluation(made.store, { params: { count: 2 }, report: { n: 2 } });
+  const third = addEvaluation(made.store, { params: { count: 3 }, report: { n: 3 } });
+  markRemoved(made.store, TABLE.evaluations, removed.id, "a test run");
+  expect(listEvaluations(made.store)).toEqual([first, third]);
 });

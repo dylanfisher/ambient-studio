@@ -148,3 +148,8 @@ which 2l settles.
   the retries, a failed request's error and a rejected candidate's genome; failed requests and a
   repair cancelled before it was sent are stored with a candidate; a stray brace in prose is
   rescanned, a listed answer is refused, and request groups are named per vibe.
+- 2026-11-06: from step 2l ([0030](0030-seed-vibes-and-evaluation.md)). `generateCandidates`
+  takes an optional `onCandidate(candidate, firstReason)`, called as each candidate is stored
+  with the reason its first answer was rejected, which a repaired candidate's row no longer
+  holds; the evaluation's before-repair rates read it. `requestGroupName(vibeId, seed)` is
+  exported, so a caller can name a group before generation returns.

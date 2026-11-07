@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Evaluations · Ambient Studio</title>
+    <link rel="stylesheet" href="./studio.css" />
+    <script type="module" src="./evaluation.js"></script>
+  </head>
+  <body>
+    <header>
+      <a href="./">Vibes</a>
+      <h1>Evaluations</h1>
+      <p id="status" role="status" aria-live="polite">Loading…</p>
+    </header>
+    <main class="layout">
+      <div>
+        <section class="panel" aria-labelledby="start-heading" data-view="evaluation">
+          <h2 id="start-heading">Start an evaluation</h2>
+          <p class="muted">
+            Asks omlx for candidates for each checked vibe, through the same queue as a session,
+            and stores the report. omlx is shared with the live site, so a run of 48 holds it for
+            a long while; the queue backs off whenever the site is busy.
+          </p>
+          <fieldset>
+            <legend>Vibes</legend>
+            <div id="vibeChoices" class="constraints"></div>
+          </fieldset>
+          <div class="row">
+            <label
+              >Candidates per vibe
+              <input id="countInput" type="number" min="1" step="1" size="6"
+            /></label>
+            <button data-action="startEvaluation" type="button">Start the evaluation</button>
+            <button data-action="cancelEvaluation" type="button">Cancel it</button>
+          </div>
+          <p id="jobLine" class="readout muted">No evaluation running.</p>
+        </section>
+
+        <section aria-labelledby="reports-heading">
+          <h2 id="reports-heading">Reports</h2>
+          <p id="noReports" class="muted">No evaluation has finished yet.</p>
+          <ul id="reportList" class="list"></ul>
+        </section>
+
+        <section id="reportView" class="panel" aria-labelledby="reportHeading" hidden>
+          <h2 id="reportHeading">Report</h2>
+          <p id="reportParams" class="muted"></p>
+          <p id="reportStopped" class="findings" hidden></p>
+          <p class="muted">
+            Valid means the schema and the vibe's linter both pass; schema means the schema alone.
+            Truncated answers and failed requests are counted apart from the other reasons.
+          </p>
+          <div class="grid" id="reportTallies"></div>
+          <h3>Latency</h3>
+          <p id="latencyFirst" class="readout"></p>
+          <p id="latencyRepair" class="readout"></p>
+          <h3>Time to first token</h3>
+          <p id="firstTokenFirst" class="readout"></p>
+          <p id="firstTokenRepair" class="readout"></p>
+          <p id="responseFormat"></p>
+        </section>
+      </div>
+      <aside aria-label="Keys">
+        <dl id="keys-evaluation" class="keys"></dl>
+      </aside>
+    </main>
+    <template id="vibe-choice">
+      <label><input data-part="input" type="checkbox" /> <span data-part="name">vibe</span></label>
+    </template>
+    <template id="report-item">
+      <li class="card">
+        <button type="button" data-part="open">report</button>
+        <span class="muted" data-part="summary"></span>
+      </li>
+    </template>
+    <template id="tally">
+      <div class="card">
+        <h3 data-part="title">vibe</h3>
+        <dl class="readout">
+          <dt>Valid, first try</dt>
+          <dd data-part="validBefore"></dd>
+          <dt>Valid, after repair</dt>
+          <dd data-part="validAfter"></dd>
+          <dt>Schema, first try</dt>
+          <dd data-part="schemaBefore"></dd>
+          <dt>Schema, after repair</dt>
+          <dd data-part="schemaAfter"></dd>
+          <dt>Truncated</dt>
+          <dd data-part="truncated"></dd>
+          <dt>Failed requests</dt>
+          <dd data-part="failed"></dd>
+          <dt>Rejected, first try</dt>
+          <dd data-part="rejectsFirst"></dd>
+          <dt>Rejected, after repair</dt>
+          <dd data-part="rejectsAfter"></dd>
+        </dl>
+      </div>
+    </template>
+  </body>
+</html>

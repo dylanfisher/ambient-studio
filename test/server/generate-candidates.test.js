@@ -175,6 +175,33 @@ describe("generateCandidates", () => {
     expect(candidates[2]?.genomeId).toBe(null);
   });
 
+  test("onCandidate gets each stored candidate with its first answer's reason", async () => {
+    const { omlx, config, queue, store, vibe, drive } = await setup();
+    const { generateCandidates } = await load();
+    omlx.script(says(answer(valid)), says(answer(tooQuiet)), says(answer(quieterDelay)), {
+      tokens: ["{"],
+      finishReason: "length",
+    });
+    /** @type {[number, string | null, string | null][]} */
+    const seen = [];
+    const { candidates } = await drive(
+      generateCandidates(vibe.id, 3, store, queue, {
+        config,
+        seed: 8,
+        sessionId: null,
+        locks: [],
+        recordings: [],
+        onCandidate: (candidate, firstReason) =>
+          seen.push([candidate.id, firstReason, candidate.rejectReason]),
+      }),
+    );
+    expect(seen).toEqual([
+      [candidates[0]?.id, null, null],
+      [candidates[1]?.id, REJECT_REASON.lintErrors, null],
+      [candidates[2]?.id, REJECT_REASON.truncated, REJECT_REASON.truncated],
+    ]);
+  });
+
   test("every first request of a group carries the identical prompt, with sampling varied and logged", async () => {
     const { omlx, config, queue, store, vibe, drive } = await setup();
     const { generateCandidates } = await load();

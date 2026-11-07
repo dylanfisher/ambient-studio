@@ -20,7 +20,7 @@ const press = (key, rest = {}) => ({
 
 describe("KEY_MAP", () => {
   test("every page has its keys, and no key does two things on one page", () => {
-    expect(Object.keys(KEY_MAP).sort()).toEqual(["ab", "list", "session", "vibe"]);
+    expect(Object.keys(KEY_MAP).sort()).toEqual(["ab", "evaluation", "list", "session", "vibe"]);
     for (const [view, bindings] of Object.entries(KEY_MAP)) {
       const keys = bindings.flatMap((binding) => binding.keys);
       expect(new Set(keys).size, view).toBe(keys.length);
@@ -70,6 +70,15 @@ describe("KEY_MAP", () => {
       ]),
     );
   });
+});
+
+test("the vibe list opens the evaluations; the evaluation page starts one only with Shift+S", () => {
+  expect(actionFor("list", press("e"))).toBe("toEvaluations");
+  expect(actionFor("evaluation", press("S"))).toBe("startEvaluation");
+  expect(actionFor("evaluation", press("s"))).toBeUndefined();
+  expect(actionFor("evaluation", press("c"))).toBe("cancelEvaluation");
+  expect(actionFor("evaluation", press("j"))).toBe("nextReport");
+  expect(actionFor("evaluation", press("l"))).toBe("toList");
 });
 
 describe("actionFor", () => {

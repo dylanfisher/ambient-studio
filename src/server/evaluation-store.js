@@ -1,6 +1,6 @@
 // Evaluation jobs' parameters and reports, written once the job finishes (decision 0021).
 /** @import { Removable, Store } from "./store.js" */
-import { insertRow, selectRow, TABLE } from "./store.js";
+import { insertRow, selectRow, selectRows, TABLE } from "./store.js";
 
 /**
  * @typedef {object} EvaluationDraft
@@ -28,4 +28,13 @@ export function addEvaluation(store, { params, report }) {
  */
 export function getEvaluation(store, id) {
   return selectRow(store, TABLE.evaluations, EVALUATIONS, id);
+}
+
+/**
+ * The evaluations not removed, oldest first.
+ * @param {Store} store
+ * @returns {Evaluation[]}
+ */
+export function listEvaluations(store) {
+  return /** @type {Evaluation[]} */ (selectRows(store, TABLE.evaluations, EVALUATIONS, {}));
 }
