@@ -188,5 +188,5 @@ so one number at one time would misstate what was heard.
   model request, as a nudge child, is listed. `POST /api/sessions/:sessionId/nudges` takes
   `{candidateId, stepSize, count?}` (`small`, `medium` or `large`; 1 to 32, default 8) and
   returns the nudge job's status; the base may come from any session of the vibe. A body field
-  outside the list or a bad value is a 400 naming it, a candidate missing, without a genome or of
-  another vibe a 400, and a base that can't take the vibe's locks a 409.
+  outside the list or a bad value is a 400 naming it, a candidate missing, removed, without a
+  genome or of another vibe a 400 (the lock route refuses a removed candidate too), and a base that can't take the vibe's locks a 409.

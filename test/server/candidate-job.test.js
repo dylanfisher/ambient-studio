@@ -7,6 +7,7 @@ import { featuresText } from "../../src/domain/features-text.js";
 import { estimateTokens, promptText } from "../../src/domain/prompt-tokens.js";
 import { currentExcerpt } from "../../src/server/candidate-excerpt.js";
 import { candidateJob, STREAM_SEEDS } from "../../src/server/candidate-job.js";
+import { candidatePairs } from "../../src/server/candidate-pair.js";
 import {
   requestGroupName,
   revisedGroupName,
@@ -274,6 +275,16 @@ test("a follow-up over the context budget isn't sent, and the skip is noted", as
     lint: { findings: [expect.objectContaining({ rule: "revisionOverBudget" })] },
   });
   expect(result.excerpts).toHaveLength(1);
+  // The skip has no generation, so the session finds it by its own sessionId, and the
+  // candidates route folds it like any unchanged revision.
+  const listed = listSessionCandidates(app.store, session.id);
+  expect(listed.map(({ id }) => id)).toEqual(result.candidateIds);
+  const { pairs, folded } = candidatePairs(
+    app.store,
+    listed.map((candidate) => ({ candidate, excerpt: null })),
+  );
+  expect([...folded]).toEqual([skipped?.id]);
+  expect(pairs.size).toBe(0);
 });
 
 test("a cancel between the render and the revision stops the job with every row stored", async () => {

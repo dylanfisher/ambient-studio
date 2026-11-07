@@ -89,6 +89,7 @@ async function setup() {
     const candidate = addCandidate(store, {
       vibeRevisionId: vibe.revision.id,
       generationId: generation.id,
+      sessionId: session.id,
       genomeId,
       seed,
       source: "llm",

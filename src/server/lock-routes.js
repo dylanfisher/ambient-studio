@@ -17,7 +17,8 @@ import { requireVibe } from "./vibe-routes.js";
 export const CANDIDATE_ID = "candidateId";
 
 /**
- * The candidate a body names and its genome, checked to be one of the vibe's: a 400 otherwise.
+ * The candidate a body names and its genome, checked to be a live candidate of the vibe that
+ * became a genome: a 400 otherwise. A lock takes its value from it and a nudge starts from it.
  * @param {Store} store
  * @param {number} vibeId
  * @param {number} candidateId
@@ -31,11 +32,14 @@ export function vibeCandidate(store, vibeId, candidateId) {
       `candidateId names candidate ${candidateId}, and there is no candidate ${candidateId}`,
     );
   }
+  if (candidate.removedAt !== null) {
+    throw new HttpError(400, `candidate ${candidateId} was removed (${candidate.removedReason})`);
+  }
   const row = candidate.genomeId === null ? undefined : getGenome(store, candidate.genomeId);
   if (!row) {
     throw new HttpError(
       400,
-      `candidate ${candidateId} has no genome to lock a value from: it was rejected before it became one`,
+      `candidate ${candidateId} has no genome: it was rejected before it became one`,
     );
   }
   if (row.vibeId !== vibeId) {

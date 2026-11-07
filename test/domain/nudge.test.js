@@ -91,6 +91,49 @@ describe("nudge", () => {
     expect(children).toBeGreaterThan(4000);
   });
 
+  test("a base that predates the locks gives children that carry every lock's value", () => {
+    // Locks taken from another candidate: a voice parameter and a choice the base holds otherwise.
+    const other = requireGenome(
+      {
+        ...droneGenome,
+        duration: 300,
+        scale: "aeolian",
+        voices: [{ ...droneGenome.voices[0], detune: 9 }],
+      },
+      "the drone with another scale and detune",
+    );
+    const locks = locksOn(other, ["voices.drone.detune", "scale"]);
+    expect(drone.scale).not.toBe("aeolian");
+    expect(drone.voices[0]?.detune).not.toBe(9);
+    /** @type {string[]} */
+    const wrong = [];
+    for (let seed = 0; seed < 50; seed++) {
+      for (const draws of nudge({
+        base: drone,
+        baseId: 1,
+        locks,
+        constraints: {},
+        stepSize: sizes[seed % sizes.length] ?? "small",
+        seed,
+        count: 4,
+      })) {
+        const child = draws.at(-1)?.genome;
+        if (!child) continue;
+        if (child.scale !== "aeolian") wrong.push(`seed ${seed}: scale ${child.scale}`);
+        const detune = child.voices.find((v) => v.id === "drone")?.detune;
+        if (detune !== 9) wrong.push(`seed ${seed}: detune ${detune}`);
+        // The draw started from the locked base, so the locks restored nothing.
+        if (
+          sortedJson(draws.at(-1)?.lockChanges) !==
+          sortedJson({ locksChanged: [], locksFilled: [] })
+        ) {
+          wrong.push(`seed ${seed}: drawn over ${draws.at(-1)?.lockChanges?.locksChanged}`);
+        }
+      }
+    }
+    expect(wrong).toEqual([]);
+  });
+
   test("moves every free path and the macros, and holds the values the vibe fixes", () => {
     const [draws] = nudge({
       base,

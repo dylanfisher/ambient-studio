@@ -69,7 +69,15 @@ base's genome, the base's with the locks applied, or an earlier sibling's (`repe
 reject reason, as when an int rounds back). A rejected draw is stored as a rejected candidate
 with its findings and the genome as drawn in `rejectedGenome`, and the child is drawn again, at
 most 4 draws a child. A child whose 4 draws all fail is listed in the job result's
-`failedChildren` and has no excerpt. So no unlinted or repeated genome is rendered or shown.
+`failedChildren` as `{child, findings}`, with its last draw's findings, and has no excerpt. So
+no unlinted or repeated genome is rendered or shown.
+
+**A base that breaks a value the vibe fixes** (made under an earlier revision, before the vibe
+fixed `key` to another value, say) can't be nudged into a child: the nudge holds the fixed value
+at the base's, so every draw fails on it. The job still stores the draws and gives each failed
+child's findings, such as `$.key: must be 5, which the vibe fixes; got 2`, so the owner sees why
+and can work from a candidate made under the current brief. Writing the vibe's value into the
+child was rejected: a new key or loudness changes the whole sound, which isn't a nudge.
 
 Measured over the acceptance test's 1,000 nudges (cold-dorian seed genome and constraints,
 locks on `macros.brightness`, `voices.drone.cutoff` and `voices.pad`, 8 children each, the step
@@ -90,11 +98,12 @@ but the revision pass (0036) needs a conversation to follow up, and a nudge chil
 
 **The job and route.** `POST /api/sessions/:sessionId/nudges` takes
 `{candidateId, stepSize, count?}`: `stepSize` one of `small`, `medium`, `large`, `count` 1 to
-32, default 8. A malformed body is a 400 naming the field; a candidate that doesn't exist, has
-no genome, or belongs to another vibe is a 400; a stopped session is a 409. It returns the job's
+32, default 8. A malformed body is a 400 naming the field; a candidate that doesn't exist, was
+removed, has no genome, or belongs to another vibe is a 400, as for a lock's candidate; a
+stopped session is a 409. It returns the job's
 status, `kind: "nudge"`. The job reads the vibe's current revision and live locks when it
 starts, stores each child's draws, renders the child's excerpt, and goes on. Its `result` is
-`{seed, candidateIds, excerpts: [{candidateId, renderId}], failedChildren}`, `candidateIds`
+`{seed, candidateIds, excerpts: [{candidateId, renderId}], failedChildren: [{child, findings}]}`, `candidateIds`
 holding every draw stored, rejected ones included. Children store the base in `parentIds`, the
 locks in force in `locks`, and `{stepSize, seed}` in `operatorParams`, beside the lock paths
 restored when a lock is in force, as an answer's are (always empty for a nudge: the free paths
@@ -136,6 +145,9 @@ drawing takes milliseconds and has no step.
 - A rejected draw is a rejected candidate, so the session page's rejected list counts nudge
   draws beside model answers until 3g labels them. A nudge child has no intent, and the page
   currently shows "The model gave no intent." on its card; 3g's card shows the operator.
+- A nudge child has no `pair` and is never folded: `candidatePairs` (0036) pairs only `revise`
+  candidates. The revision pass's over-budget skip, which has no generation, is now listed in
+  its session through `sessionId` and folded as an unchanged revision.
 - Children of one base share its render seed, so two children can be compared by A/B as
   genomes alone; a child and a different first try cannot.
 - Phase 5's optimizers can take the step and the free-path rule from `nudge.js`.

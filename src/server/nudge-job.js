@@ -1,6 +1,7 @@
 // The nudge job (decision 0037): children of a base candidate drawn in the vector view with no
 // model request, every draw stored as a candidate, and each child's excerpt rendered as it is
 // stored. It runs only when the owner's request adds it to the job runner.
+/** @import { Finding } from "../domain/lint-result.js" */
 /** @import { NudgeDraw, StepSize } from "../domain/nudge.js" */
 /** @import { Genome } from "../engine/genome-schema.js" */
 /** @import { CandidateRender } from "./candidate-job.js" */
@@ -39,8 +40,13 @@ const SOURCE = "mutation";
  * @property {number} seed the nudge seed, drawn when the job starts
  * @property {number[]} candidateIds every draw stored, rejected ones included, in order
  * @property {CandidateRender[]} excerpts one per child made
- * @property {number[]} failedChildren the children, numbered from 1, whose every draw was
- *   rejected
+ * @property {FailedChild[]} failedChildren the children whose every draw was rejected
+ */
+
+/**
+ * A child given up, numbered from 1, with its last draw's findings, which say why: a base that
+ * breaks a value the vibe fixes fails every draw on it, since nudges hold fixed values.
+ * @typedef {{ child: number, findings: Finding[] }} FailedChild
  */
 
 /**
@@ -96,7 +102,7 @@ export function nudgeJob(app, { vibeId, sessionId, base, genome, stepSize, count
     const candidateIds = [];
     /** @type {CandidateRender[]} */
     const excerpts = [];
-    /** @type {number[]} */
+    /** @type {FailedChild[]} */
     const failedChildren = [];
     for (const [index, draws] of children.entries()) {
       /** @type {Candidate | null} */
@@ -107,7 +113,8 @@ export function nudgeJob(app, { vibeId, sessionId, base, genome, stepSize, count
         if (draw.genome) child = candidate;
       }
       if (child === null) {
-        failedChildren.push(index + 1);
+        const last = /** @type {NudgeDraw} */ (draws.at(-1));
+        failedChildren.push({ child: index + 1, findings: last.lint.findings });
       } else {
         // A child that passed has a genome row, so it has an excerpt to render.
         const request = /** @type {ExcerptRequest} */ (excerptRequest(app.store, child));

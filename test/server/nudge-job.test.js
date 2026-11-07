@@ -5,6 +5,8 @@
 import { afterEach, expect, test } from "vitest";
 import { NUDGE_DRAWS } from "../../src/domain/nudge.js";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
+import { currentExcerpt } from "../../src/server/candidate-excerpt.js";
+import { candidatePairs } from "../../src/server/candidate-pair.js";
 import {
   addCandidate,
   getCandidate,
@@ -29,13 +31,18 @@ afterEach(async () => {
 /**
  * A test app with a vibe, a session on it and a base candidate made in that session, and a job
  * context that records each progress report.
- * @param {{ constraints?: Record<string, unknown>, genome?: Record<string, unknown> }} [options]
+ * @param {{ constraints?: Record<string, unknown>, genome?: Record<string, unknown>,
+ *   softTargets?: Record<string, unknown> }} [options]
  */
-async function nudgeApp({ constraints = VIBE.constraints, genome = droneGenome } = {}) {
+async function nudgeApp({
+  constraints = VIBE.constraints,
+  genome = droneGenome,
+  softTargets = VIBE.softTargets,
+} = {}) {
   const made = await testApp();
   apps.push(made);
   const { app, omlx } = made;
-  const vibe = createVibe(app.store, { ...VIBE, constraints });
+  const vibe = createVibe(app.store, { ...VIBE, constraints, softTargets });
   const session = startSession(app.store, vibe.id);
   const row = putGenome(app.store, vibe.id, genome);
   const base = addCandidate(app.store, {
@@ -122,7 +129,9 @@ test("a child whose draws all fail lint is reported, every draw kept rejected, n
   const { app, session, base, run } = await nudgeApp({ constraints, genome });
   const result = await run(session.id, 1);
 
-  expect(result.failedChildren).toEqual([1]);
+  expect(result.failedChildren).toEqual([
+    { child: 1, findings: [expect.objectContaining({ rule: "duration" })] },
+  ]);
   expect(result.excerpts).toEqual([]);
   expect(result.candidateIds).toHaveLength(NUDGE_DRAWS);
   for (const id of result.candidateIds) {
@@ -148,4 +157,46 @@ test("nudging from a candidate of an earlier session puts the children in the cu
   expect(listSessionCandidates(app.store, session.id).map(({ id }) => id)).toEqual([base.id]);
   const child = getCandidate(app.store, /** @type {number} */ (result.candidateIds.at(-1)));
   expect(child?.parentIds).toEqual([base.id]);
+});
+
+test("a child that misses a range is measured but never revised, and makes no pair", async () => {
+  // The drone's low end is about 0.8 of its power, so every child misses this range.
+  const softTargets = { features: { lowEndShare: [null, 0.5] } };
+  const { app, omlx, session, run } = await nudgeApp({ softTargets });
+  const result = await run(session.id, 1);
+
+  const listed = listSessionCandidates(app.store, session.id).map((candidate) => ({
+    candidate,
+    excerpt: currentExcerpt(app.store, app.paths.renderCache, candidate),
+  }));
+  const child = listed.find(({ candidate }) => candidate.id === result.excerpts[0]?.candidateId);
+  const heard = /** @type {{ heard: { lowEndShare: number } } | undefined} */ (
+    child?.excerpt?.features
+  )?.heard;
+  expect(heard?.lowEndShare).toBeGreaterThan(0.5);
+  expect(listed.filter(({ candidate }) => candidate.operator === "revise")).toEqual([]);
+  const { pairs, folded } = candidatePairs(app.store, listed);
+  expect(pairs.size).toBe(0);
+  expect(folded.size).toBe(0);
+  expect(omlx.requests).toHaveLength(0);
+});
+
+test("a base that breaks a value the vibe fixes fails every draw, and the result says why", async () => {
+  // The drone's key is 2; the vibe now fixes 5, and a nudge holds fixed values.
+  const constraints = { ...VIBE.constraints, key: 5 };
+  const { session, run } = await nudgeApp({ constraints });
+  const result = await run(session.id, 2);
+
+  expect(result.excerpts).toEqual([]);
+  expect(result.candidateIds).toHaveLength(2 * NUDGE_DRAWS);
+  expect(result.failedChildren.map(({ child }) => child)).toEqual([1, 2]);
+  for (const { findings } of result.failedChildren) {
+    expect(findings).toContainEqual(
+      expect.objectContaining({
+        path: "$.key",
+        rule: "key",
+        message: expect.stringMatching(/fixes/),
+      }),
+    );
+  }
 });

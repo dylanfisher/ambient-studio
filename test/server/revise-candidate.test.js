@@ -22,6 +22,7 @@ test("refuses a candidate that is itself a revision, before sending anything", a
   const revision = addCandidate(app.store, {
     vibeRevisionId: vibe.revision.id,
     generationId: null,
+    sessionId: null,
     genomeId: putGenome(app.store, vibe.id, droneGenome).id,
     seed: 7,
     source: "llm",

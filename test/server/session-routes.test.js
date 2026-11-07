@@ -10,6 +10,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { addCandidate, putGenome } from "../../src/server/generation-store.js";
 import { getRender } from "../../src/server/render-store.js";
 import { sha256Hex } from "../../src/server/sha256-hex.js";
+import { markRemoved, TABLE } from "../../src/server/store.js";
 import { FIXTURE_RECORDINGS } from "../support/golden.js";
 import { SEED_GENOMES } from "../support/seed-genomes.js";
 import { GENOMES, removeStudio, startStudio } from "../support/studio.js";
@@ -318,7 +319,13 @@ test("a nudge through its route puts its children in the session's candidate lis
   const ids = candidates.map((/** @type {any} */ c) => c.id);
   expect(ids).toEqual([baseId, ...done.result.candidateIds]);
   const child = candidates.at(-1);
-  expect(child).toMatchObject({ rejectReason: null, seed: candidates[0].seed });
+  expect(child).toMatchObject({
+    rejectReason: null,
+    seed: candidates[0].seed,
+    operator: "nudge",
+    parentIds: [baseId],
+    pair: null,
+  });
   expect(child.excerpt.url).toBe(`/audio/${done.result.excerpts[0].renderId}`);
   // One request made the base; the nudge sent none.
   expect(omlx.requests).toHaveLength(1);
@@ -369,6 +376,8 @@ test("a malformed nudge is refused with a message naming the problem", async () 
   const { vibe, session } = await openSession();
   const base = seedCandidate(studio, vibe, GENOMES[0]);
   const never = seedCandidate(studio, vibe, null);
+  const gone = seedCandidate(studio, vibe, GENOMES[1]);
+  markRemoved(server.store, TABLE.candidates, gone.id, "test");
   const elsewhere = await openSession();
   const foreign = seedCandidate(studio, elsewhere.vibe, GENOMES[0]);
   const path = `/api/sessions/${session.id}/nudges`;
@@ -388,7 +397,8 @@ test("a malformed nudge is refused with a message naming the problem", async () 
     [{ ...good, count: 0 }, 400, /^count must be an integer from 1 to 32, got 0/],
     [{ ...good, count: 33 }, 400, /^count must be an integer from 1 to 32/],
     [{ ...good, candidateId: 999 }, 400, /there is no candidate 999/],
-    [{ ...good, candidateId: never.id }, 400, /has no genome/],
+    [{ ...good, candidateId: never.id }, 400, /has no genome: it was rejected/],
+    [{ ...good, candidateId: gone.id }, 400, /was removed \(test\)/],
     [{ ...good, candidateId: foreign.id }, 400, /is not a candidate of vibe/],
   ];
   for (const [body, status, message] of cases) {
