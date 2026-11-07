@@ -58,8 +58,8 @@ Non-negotiable, regardless of stack. Rationale: [docs/principles.md](docs/princi
   no version fields or migrations; data that doesn't match is discarded and rebuilt.
   **Irreplaceable data** (vibes, genomes, ratings, sketches, tracks, albums, notes) is append-only:
   mark rows removed, never delete, and a shape change ships with a migration.
-- The app's one secret is the studio's omlx key, kept only in the owner's config file (mode 600)
-  and never committed, logged, stored or printed. If another appears, stop and ask.
+- The one secret is the studio's omlx key, in the owner's config only; never log or commit it.
+  Another secret? Stop and ask.
 
 ## Definition of done
 
