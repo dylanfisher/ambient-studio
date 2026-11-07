@@ -44,11 +44,12 @@ const answer = (genome) => ({
  */
 
 /**
- * @param {{ random?: () => number }} [options] `random` gives stream and order seeds; a fixed
- *   sequence when omitted
+ * @param {{ random?: () => number, fieldRecordings?: string }} [options] `random` gives stream
+ *   and order seeds, a fixed sequence when omitted; `fieldRecordings` is the config's recordings
+ *   folder, none when omitted
  * @returns {Promise<Studio>}
  */
-export async function startStudio({ random } = {}) {
+export async function startStudio({ random, fieldRecordings } = {}) {
   const clock = fakeClock();
   const omlx = await fakeOmlx(clock);
   let draws = 0;
@@ -56,6 +57,7 @@ export async function startStudio({ random } = {}) {
     omlxBaseUrl: omlx.baseUrl,
     clock,
     random: random ?? (() => (0.1 + 0.37 * draws++) % 1),
+    ...(fieldRecordings !== undefined && { fieldRecordings }),
   });
   // The temp root's config copies example.json, so this is the gap the queue waits.
   const gap = example.queue.minGapMs;

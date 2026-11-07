@@ -137,9 +137,11 @@ ffmpeg from seeded noise and sine tones (`anoisesrc`, `sine`, `-fflags +bitexact
 
 ## Consequences
 
-- The server's session and evaluation code (2i, 2l) passes the index to `generateCandidates` and
-  `renderExcerpts`; `indexRecordings(config.fieldRecordings)` when the folder is set, `[]` when
-  it is `null`.
+- The session's candidate and excerpt jobs (`src/server/candidate-job.js`) index the folder once
+  when a job starts, `[]` when `fieldRecordings` is `null`, and pass that index to
+  `generateCandidates` and `renderExcerpts`, so every candidate and excerpt in a job sees one
+  index. Each app keeps its last index, so a later job re-reads only changed files. 2l's
+  evaluation does the same.
 - A corrupt file in the folder stops indexing until the owner removes or fixes it; the error names
   it.
 - A recording longer than 20 minutes or with more than two channels isn't offered or played.

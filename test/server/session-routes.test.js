@@ -2,16 +2,22 @@
 // fake clock: asking for candidates renders playable excerpts, and stopping a session cancels
 // its jobs and their omlx requests.
 /** @import { Studio } from "../support/studio.js" */
-import { rm } from "node:fs/promises";
+import { copyFile, mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { getRender } from "../../src/server/render-store.js";
+import { sha256Hex } from "../../src/server/sha256-hex.js";
+import { FIXTURE_RECORDINGS } from "../support/golden.js";
 import { GENOMES, removeStudio, startStudio } from "../support/studio.js";
 
 /** @type {Studio[]} */
 const studios = [];
+/** @type {(() => Promise<void>)[]} */
+const cleanups = [];
 afterEach(async () => {
   for (const studio of studios.splice(0)) await removeStudio(studio);
+  for (const cleanup of cleanups.splice(0)) await cleanup();
 });
 
 async function setup() {
@@ -54,6 +60,31 @@ test("asking for candidates runs a job that generates them and renders playable 
   const view = await ok("GET", `/api/sessions/${session.id}`);
   expect(view).toMatchObject({ id: session.id, stoppedAt: null });
   expect(view.jobs.map((/** @type {any} */ j) => j.id)).toEqual([job.id]);
+});
+
+test("a candidate that plays a field recording from the configured folder gets a playable excerpt", async () => {
+  const folder = await mkdtemp(join(tmpdir(), "session-recordings-"));
+  cleanups.push(() => rm(folder, { recursive: true }));
+  await copyFile(join(FIXTURE_RECORDINGS, "noise-tone.wav"), join(folder, "walk.wav"));
+  const hash = sha256Hex(await readFile(join(folder, "walk.wav")));
+  const studio = await startStudio({ fieldRecordings: folder });
+  studios.push(studio);
+  const { server, omlx, ok, openSession, generate } = studio;
+  const { session } = await openSession();
+  const [drone] = GENOMES;
+  const field = { id: "field", type: "recording", recording: hash, level: -18, mode: "scatter" };
+  const genome = { ...drone, voices: [.../** @type {any} */ (drone).voices, field] };
+
+  const job = await generate(session.id, [genome]);
+  expect(job).toMatchObject({ state: "done", error: null });
+  expect(omlx.requests[0]?.body.messages[0].content).toContain(`${hash} 2 2 "walk.wav"`);
+  const [candidate] = (await ok("GET", `/api/sessions/${session.id}/candidates`)).candidates;
+  expect(candidate).toMatchObject({ rejectReason: null });
+  expect(candidate.genome.voices.map((/** @type {any} */ v) => v.type)).toContain("recording");
+  expect(candidate.excerpt).toMatchObject({ duration: 25, checks: { ok: true } });
+  const audio = await server.request("GET", candidate.excerpt.url);
+  expect(audio.status).toBe(200);
+  expect(audio.body.subarray(0, 4).toString("latin1")).toBe("RIFF");
 });
 
 test("stopping a session cancels its running and queued jobs and the omlx request in flight", async () => {
