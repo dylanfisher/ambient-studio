@@ -1,6 +1,7 @@
 // The session's candidate job run directly with a signal the test controls (decision 0027), and
 // the excerpt it renders for each candidate as it is made (0031). No test reaches the real omlx.
 /** @import { JobContext } from "../../src/server/job-runner.js" */
+/** @import { Candidate } from "../../src/server/generation-store.js" */
 /** @import { Render } from "../../src/server/render-store.js" */
 /** @import { TestApp } from "../support/test-app.js" */
 import { join } from "node:path";
@@ -201,6 +202,41 @@ test("with the sidecar set up, each excerpt is embedded after its features", asy
     "Analyzing the sound of candidate 1 of 1",
     "Measuring candidate 1 of 1",
   ]);
+});
+
+test("an excerpt that already has an embedding isn't embedded again", async () => {
+  const { app, omlx, sidecar, run } = await sessionApp(undefined, INSIDE);
+  setCheckpointCache(app);
+  omlx.script(answer(GENOMES[0]), answer(GENOMES[0]));
+  const ready = { do: /** @type {const} */ ("answer"), result: { ...EMBEDDER, ready: true } };
+  sidecar.script(ready, { do: "answer", result: { windows: 3 }, floats: [0.6, 0.8] }, ready);
+  const first = await run(1);
+  // An explore from the first, under the same stream seed, draws the same candidate seed in
+  // its own request group; answered with the same genome, it is the cached excerpt, which has
+  // its row.
+  const base = /** @type {Candidate} */ (getCandidate(app.store, first.candidateIds[0] ?? 0));
+  const second = await run(1, { base, genome: genomeOf(app, base), direction: null });
+  expect(second.excerpts.map(({ renderId }) => renderId)).toEqual(
+    first.excerpts.map(({ renderId }) => renderId),
+  );
+  expect((await sidecar.received()).map(({ request }) => request.method)).toEqual([
+    "embedder",
+    "embed_audio",
+    "embedder",
+  ]);
+});
+
+test("a sidecar failure while embedding fails the job, naming the file", async () => {
+  const { app, omlx, sidecar, run } = await sessionApp(undefined, INSIDE);
+  setCheckpointCache(app);
+  omlx.script(answer(GENOMES[0]));
+  sidecar.script(
+    { do: "answer", result: { ...EMBEDDER, ready: true } },
+    { do: "crash", stderr: "MemoryError\n", code: 3 },
+  );
+  await expect(run(1)).rejects.toThrow(
+    /^embedding .*\.(wav|mp3) failed: sidecar request embed_audio failed: the sidecar exited with code 3: MemoryError$/,
+  );
 });
 
 test("with the checkpoint not downloaded, the job skips embedding and says why", async () => {

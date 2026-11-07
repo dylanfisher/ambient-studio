@@ -22,3 +22,17 @@ test("POST /api/embeddings starts the embed job, which says when no folder is se
     error: NO_CHECKPOINT_CACHE,
   });
 });
+
+test("a second POST while an embed job is unfinished is refused with its id", async () => {
+  const studio = await startStudio();
+  studios.push(studio);
+  // A job that runs until it is cancelled, as stopping the server does.
+  const running = studio.server.jobs.add(
+    "embed",
+    ({ signal }) =>
+      new Promise((_, reject) => signal.addEventListener("abort", () => reject(signal.reason))),
+  );
+  const reply = await studio.server.api("POST", "/api/embeddings", {});
+  expect(reply.status).toBe(409);
+  expect(reply.json()).toMatchObject({ jobId: running.id });
+});
