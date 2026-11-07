@@ -4,6 +4,7 @@
 // other (0036). Played fraction and time taken are measured here as decision 0027 defines them.
 /** @import { LintResult } from "../domain/lint-result.js" */
 /** @import { AbCandidate } from "./ab-view.js" */
+/** @import { CardHold } from "./card-hold.js" */
 /** @import { JobStatus } from "./job-progress.js" */
 /** @import { PlayedTracker } from "./played-tracker.js" */
 import { featuresText } from "../domain/features-text.js";
@@ -13,6 +14,7 @@ import { abView } from "./ab-view.js";
 import { getJson, jobPath, postJson, sessionPath, startJob, VIBES_PATH } from "./api.js";
 import { trackAudio } from "./audio-player.js";
 import { createSelection } from "./candidate-selection.js";
+import { createCardHold } from "./card-hold.js";
 import { cloneTemplate } from "./clone-template.js";
 import { elementsById } from "./element-by-id.js";
 import { followJob } from "./follow-job.js";
@@ -102,6 +104,7 @@ const CARD_PARTS = Object.freeze({
  * @property {PlayedTracker | null} tracker null without an excerpt
  * @property {AbortController} wiring unwires the audio element from the tracker
  * @property {boolean} busy whether a rating of it is being sent
+ * @property {CardHold} hold whether it is in use, which holds its pair's swap
  */
 
 /** @type {any} */
@@ -476,12 +479,8 @@ function showPairs() {
     editing: (id) => {
       const card = byId.get(id);
       if (!card) return false;
-      const { root, note, tags } = card.parts;
-      return (
-        root.contains(document.activeElement) ||
-        note.value.trim() !== "" ||
-        tags.value.trim() !== ""
-      );
+      const { note, tags } = card.parts;
+      return card.hold.held(note.value.trim() !== "" || tags.value.trim() !== "");
     },
   };
   for (const card of cards) {
@@ -531,6 +530,7 @@ function makeCard(candidate, number, revised) {
     macros,
     tracker: null,
     wiring: new AbortController(),
+    hold: createCardHold(),
     busy: false,
   };
   parts.heading.textContent = card.label;
@@ -559,9 +559,14 @@ function makeCard(candidate, number, revised) {
   const compareOnce = oneAtATime(() => compare(card));
   parts.compare.onclick = () => status.run(compareOnce);
   parts.pairLink.onclick = () => showOther(card);
-  // The focus has not moved on yet when focusout fires, so the swap waits a turn to see where
-  // it went. A sent note is cleared before the candidates reload, which runs the swap too.
-  parts.root.addEventListener("focusout", () => setTimeout(showPairs));
+  // A swap held by the card runs again once it is free: a turn after the focus leaves, so the
+  // focus has landed, and after a press ends (below), so the click lands first.
+  parts.root.addEventListener("focusin", () => card.hold.focusIn());
+  parts.root.addEventListener("focusout", () => {
+    card.hold.focusOut();
+    setTimeout(showPairs);
+  });
+  parts.root.addEventListener("pointerdown", () => card.hold.pointerDown());
   showExcerpt(card);
   return card;
 }
@@ -739,6 +744,14 @@ async function loadCandidates() {
 page.askButton.onclick = () => status.run(askCandidates);
 page.excerptsButton.onclick = () => status.run(renderExcerpts);
 page.stopButton.onclick = () => status.run(stopSession);
+// A press ends wherever the pointer is released, so the page listens, not the card. The click
+// that follows a pointerup is dispatched before the deferred swap runs.
+for (const type of ["pointerup", "pointercancel"]) {
+  document.addEventListener(type, () => {
+    for (const card of cards) card.hold.pointerUp();
+    setTimeout(showPairs);
+  });
+}
 
 status.run(async () => {
   session = await getJson(SESSION);
