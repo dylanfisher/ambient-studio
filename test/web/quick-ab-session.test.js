@@ -84,13 +84,26 @@ function server({ ids = [1, 2, 3], ratings = [], more = () => undefined } = {}) 
   });
 }
 
-async function started() {
-  const session = createQuickAbSession({
+/**
+ * @param {{ onChange?: () => void, onError?: (error: Error) => void }} [hooks]
+ */
+function made({
+  onChange = () => {},
+  onError = (error) => {
+    throw error;
+  },
+} = {}) {
+  return createQuickAbSession({
     sessionId: 5,
     random: () => 0,
     now: () => 1000,
-    onChange: () => {},
+    onChange,
+    onError,
   });
+}
+
+async function started() {
+  const session = made();
   await session.load();
   return session;
 }
@@ -140,7 +153,7 @@ test("a failed save stays on screen past the next choice, blocks leaving, and Re
   await flush();
   const view = session.view();
   expect(view.message).toMatch(/^Chose /);
-  expect(view.failed).toEqual([
+  expect(view.failed).toMatchObject([
     {
       said: expect.stringMatching(/^Candidate #\d over Candidate #\d$/),
       error: "the session has stopped",
@@ -160,14 +173,17 @@ test("a failed save stays on screen past the next choice, blocks leaving, and Re
   expect(sent[2]?.body).toEqual(sent[0]?.body);
 });
 
-test("a pair whose rating failed to save doesn't count as rated", async () => {
+test("a pair whose rating failed to save doesn't count as rated once discarded", async () => {
   server({ more: (call) => (call.path.endsWith("/ab-ratings") ? fail("down") : undefined) });
   const session = await started();
   await session.setMode("random");
   expect(session.view().remaining).toBe(3);
   await session.choose("a", PLAYED);
   await flush();
-  // Saved, it would leave 2; failed, its pair can be drawn again.
+  // Held out while its save waits for Retry or Discard.
+  expect(session.view().remaining).toBe(2);
+  await session.discard(/** @type {{ id: number }} */ (session.view().failed[0]).id);
+  // Discarded, it was never saved, so its pair can be drawn again.
   expect(session.view().remaining).toBe(3);
 });
 
@@ -251,4 +267,95 @@ test("random mode leaves out pairs the session already has live ratings for", as
   const session = await started();
   await session.setMode("random");
   expect(session.view().remaining).toBe(2);
+});
+
+test("a pair whose save failed isn't drawn again until it is retried or discarded", async () => {
+  const calls = server({
+    ids: [1, 2],
+    more: (call) => (call.path.endsWith("/ab-ratings") ? fail("down") : undefined),
+  });
+  const session = await started();
+  await session.setMode("random");
+  await session.choose("a", PLAYED);
+  await flush();
+  // A switch on a run-out pool draws again; the only pair has a failed save, so it is held out
+  // rather than offered to be rated a second time.
+  await session.setMode("champion");
+  await session.setMode("random");
+  expect(session.view()).toMatchObject({ phase: "done", remaining: 0 });
+  const [failed] = session.view().failed;
+  await session.discard(/** @type {{ id: number }} */ (failed).id);
+  expect(session.view()).toMatchObject({ failed: [] });
+  expect(session.unsaved()).toBe(false);
+  await session.setMode("champion");
+  await session.setMode("random");
+  expect(session.view().phase).toBe("pair");
+  expect(posts(calls, "/ab-ratings")).toHaveLength(1);
+});
+
+test("undo of a save still sending says it is waiting", async () => {
+  const sending = held();
+  server({
+    more: (call) =>
+      call.path.endsWith("/remove")
+        ? ok({})
+        : call.path.endsWith("/ab-ratings")
+          ? sending.reply
+          : undefined,
+  });
+  const session = await started();
+  await session.choose("a", PLAYED);
+  const undone = session.undo();
+  await flush();
+  expect(session.view().message).toMatch(/^Waiting for the last save/);
+  sending.release(ok({ id: 77 }));
+  await undone;
+  expect(session.view().message).toMatch(/^Took back/);
+});
+
+test("a fault in the page's render during a save leaves no save stuck, and is reported", async () => {
+  /** @type {Error[]} */
+  const reported = [];
+  let throwing = false;
+  const sending = held();
+  let n = 0;
+  server({
+    more: (call) => (call.path.endsWith("/ab-ratings") && n++ === 0 ? sending.reply : undefined),
+  });
+  const session = made({
+    onChange: () => {
+      if (throwing) throw new Error("render broke");
+    },
+    onError: (error) => reported.push(error),
+  });
+  await session.load();
+  await session.choose("a", PLAYED);
+  await session.choose("b", PLAYED);
+  throwing = true;
+  sending.release(ok({ id: 77 }));
+  await flush();
+  throwing = false;
+  expect(reported.map(({ message }) => message)).toContain("render broke");
+  // The second save was still sent after the first one's render threw.
+  expect(session.view().saving).toBe(0);
+  expect(session.unsaved()).toBe(false);
+});
+
+test("a mode switch made while the pool loads is kept", async () => {
+  const candidates = held();
+  stubServer((call) => {
+    if (call.path === SESSION) return ok({ id: 5, vibeId: 9 });
+    if (call.path === `${SESSION}/candidates`) return candidates.reply;
+    if (call.path === "/api/vibes/9/ratings") return ok({ ratings: [] });
+    if (call.path === `${SESSION}/ab-pairs`)
+      return ok({ ...call.body, orderSeed: 1, leftSide: "a" });
+    return undefined;
+  });
+  const session = made();
+  const loading = session.load();
+  await flush();
+  await session.setMode("random");
+  candidates.release(ok({ candidates: [1, 2, 3].map(candidate) }));
+  await loading;
+  expect(session.view().mode).toBe("random");
 });

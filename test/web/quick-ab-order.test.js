@@ -114,15 +114,18 @@ test("switching mode keeps the pair shown, and applies from the next one", () =>
   expect(order.pair()).toEqual(shown);
 });
 
-test("a rating that wasn't saved doesn't count as rated, and undo doesn't bring it back", () => {
+test("a rating that wasn't saved isn't rated, is held out of the draw, and undo doesn't bring it back", () => {
   const order = createQuickAbOrder([1, 2, 3], { mode: "random", random: draws(0) });
   const failed = /** @type {[number, number]} */ (order.pair());
   order.rate("a");
   order.rate("a");
   order.forget(failed);
   order.undo();
-  // All three are left: the one undone, the one that failed to save, and the last.
+  // The failed pair is held out while its save waits: the one undone and the last are left.
+  expect(order.remaining()).toBe(2);
+  order.release(failed);
   expect(order.remaining()).toBe(3);
+  order.forget(failed);
   order.remember(failed);
   expect(order.remaining()).toBe(2);
 });

@@ -60,6 +60,7 @@ const messageOf = (error) => (error instanceof Error ? error.message : String(er
 /**
  * A rating made on the page.
  * @typedef {object} Save
+ * @property {number} id
  * @property {Pair} ids
  * @property {Record<string, unknown>} body what `POST …/ab-ratings` takes
  * @property {string} said
@@ -77,7 +78,7 @@ const messageOf = (error) => (error instanceof Error ? error.message : String(er
  * @property {{ pair: AbPair, ids: Pair, left: Playable, right: Playable } | null} shown
  * @property {string | null} pairError
  * @property {number} saving ratings queued or being sent
- * @property {{ said: string, error: string }[]} failed ratings that didn't save
+ * @property {{ id: number, said: string, error: string }[]} failed ratings that didn't save
  * @property {string | null} undoError
  * @property {string} message what the last action did
  * @property {OrderMode} mode
@@ -87,14 +88,18 @@ const messageOf = (error) => (error instanceof Error ? error.message : String(er
  */
 
 /**
- * @param {{ sessionId: number, random: () => number, now: () => number, onChange: () => void }} options
- *   `now` is the page's monotonic clock in ms, for time taken
+ * @param {{ sessionId: number, random: () => number, now: () => number, onChange: () => void, onError: (error: Error) => void }} options
+ *   `now` is the page's monotonic clock in ms, for time taken; `onError` reports a fault the
+ *   page should show
  */
-export function createQuickAbSession({ sessionId, random, now, onChange }) {
+export function createQuickAbSession({ sessionId, random, now, onChange, onError }) {
   const SESSION = sessionPath(sessionId);
   /** @type {Map<number, Playable>} */
   const pool = new Map();
-  let order = createQuickAbOrder([], { mode: CHAMPION, random });
+  /** @type {OrderMode} the mode the switch asks for, kept across a load */
+  let mode = CHAMPION;
+  let order = createQuickAbOrder([], { mode, random });
+  let nextSaveId = 1;
   /** @type {QuickAbView["phase"]} */
   let phase = PHASE.loading;
   /** @type {{ pair: AbPair, ids: Pair, shownAt: number } | null} */
@@ -139,33 +144,55 @@ export function createQuickAbSession({ sessionId, random, now, onChange }) {
     onChange();
   }
 
+  /** Tells the page, reporting a throw instead of letting it stop the save queue. */
+  const notify = () => {
+    try {
+      onChange();
+    } catch (error) {
+      onError(/** @type {Error} */ (error));
+    }
+  };
+
+  /**
+   * Sends one save. Whatever throws, the save ends saved or failed and its `settled` resolves,
+   * so undo never waits on it forever; a throw outside the request is reported too.
+   * @param {Save} save
+   */
+  async function send(save) {
+    try {
+      save.state = "sending";
+      notify();
+      save.row = await postJson(`${SESSION}/ab-ratings`, save.body);
+      save.state = "saved";
+      save.error = null;
+      order.remember(save.ids);
+    } catch (error) {
+      save.state = "failed";
+      save.error = messageOf(error);
+      order.forget(save.ids);
+    } finally {
+      if (save.state === "sending") save.state = "failed";
+      save.settle();
+      notify();
+    }
+  }
+
   /** Sends the queued ratings one after another, so the server captures one at a time. */
   async function drain() {
     if (draining) return;
     draining = true;
     try {
       for (let next = saves.find(({ state }) => state === "queued"); next; ) {
-        const save = next;
-        save.state = "sending";
-        onChange();
-        try {
-          save.row = await postJson(`${SESSION}/ab-ratings`, save.body);
-          save.state = "saved";
-          save.error = null;
-          order.remember(save.ids);
-        } catch (error) {
-          save.state = "failed";
-          save.error = messageOf(error);
-          order.forget(save.ids);
-        }
-        save.settle();
-        onChange();
+        await send(next);
         next = saves.find(({ state }) => state === "queued");
       }
     } finally {
       draining = false;
     }
   }
+  const startDrain = () => {
+    drain().catch(onError);
+  };
 
   /** @param {Save} save */
   const queue = (save) => {
@@ -206,7 +233,7 @@ export function createQuickAbSession({ sessionId, random, now, onChange }) {
         saving: saves.filter(({ state }) => state === "queued" || state === "sending").length,
         failed: saves
           .filter(({ state }) => state === "failed")
-          .map(({ said, error }) => ({ said, error: /** @type {string} */ (error) })),
+          .map(({ id, said, error }) => ({ id, said, error: /** @type {string} */ (error) })),
         undoError,
         message,
         mode: order.mode(),
@@ -235,7 +262,8 @@ export function createQuickAbSession({ sessionId, random, now, onChange }) {
         const b = byWindow.get(`${rating.b.genomeId}:${rating.b.seed}`);
         if (a !== undefined && b !== undefined && a !== b) prior.push(pairKey([a, b]));
       }
-      order = createQuickAbOrder([...pool.keys()], { mode: CHAMPION, random, prior });
+      // `mode`, not the default: the switch may have changed while the pool was read.
+      order = createQuickAbOrder([...pool.keys()], { mode, random, prior });
       message =
         pool.size < 2
           ? "Nothing to compare yet."
@@ -256,6 +284,7 @@ export function createQuickAbSession({ sessionId, random, now, onChange }) {
         const said = choiceText(outcome, ids);
         /** @type {Save} */
         const save = {
+          id: nextSaveId++,
           ids,
           body: abRatingBody(pair, outcome, played, now() - shownAt),
           said,
@@ -270,7 +299,7 @@ export function createQuickAbSession({ sessionId, random, now, onChange }) {
         order.rate(outcome);
         message = `Chose ${said}.`;
         undoError = null;
-        drain();
+        startDrain();
         await showPair();
       }),
 
@@ -278,7 +307,7 @@ export function createQuickAbSession({ sessionId, random, now, onChange }) {
     retry: () =>
       exclusive(async () => {
         for (const save of saves) if (save.state === "failed") queue(save);
-        drain();
+        startDrain();
         if (phase === PHASE.pairFailed) await showPair();
         else onChange();
       }),
@@ -295,6 +324,10 @@ export function createQuickAbSession({ sessionId, random, now, onChange }) {
           onChange();
           return;
         }
+        if (last.state === "queued" || last.state === "sending") {
+          message = `Waiting for the last save (${last.said}) before taking it back…`;
+          onChange();
+        }
         await last.settled;
         if (last.state === "saved" && last.row) {
           try {
@@ -306,6 +339,7 @@ export function createQuickAbSession({ sessionId, random, now, onChange }) {
           }
         }
         saves.pop();
+        if (last.state === "failed") order.release(last.ids);
         order.undo();
         undoError = null;
         message = `Took back ${last.said}. Choose again.`;
@@ -313,12 +347,29 @@ export function createQuickAbSession({ sessionId, random, now, onChange }) {
       }),
 
     /**
-     * Switches the order from the next pair on; the pair shown stays.
-     * @param {OrderMode} mode
+     * Gives up on a rating that failed to save: it leaves the list, and its pair can be drawn
+     * again.
+     * @param {number} id
      */
-    setMode: (mode) =>
+    discard: (id) =>
       exclusive(async () => {
-        order.setMode(mode);
+        const at = saves.findIndex((save) => save.id === id && save.state === "failed");
+        const save = saves[at];
+        if (!save) return;
+        saves.splice(at, 1);
+        order.release(save.ids);
+        message = `Dropped ${save.said}; it was never saved.`;
+        onChange();
+      }),
+
+    /**
+     * Switches the order from the next pair on; the pair shown stays.
+     * @param {OrderMode} next
+     */
+    setMode: (next) =>
+      exclusive(async () => {
+        mode = next;
+        order.setMode(next);
         if (phase === PHASE.done) await showPair();
         else onChange();
       }),

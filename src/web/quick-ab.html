@@ -49,6 +49,7 @@
           <p id="saveLine" class="small" role="status" aria-live="polite"></p>
           <button id="retry" class="button outline small" type="button" hidden title="Sends the choices that weren't saved again, and draws the next pair again if that failed.">Retry</button>
         </div>
+        <ul id="failedList" class="list small"></ul>
         <div id="pairView" class="ab" hidden>
           <div id="leftBox" class="card stack">
             <h3>Left</h3>
@@ -82,5 +83,12 @@
         </div>
       </section>
     </main>
+
+    <template id="failed-save">
+      <li class="item row errors">
+        <span data-part="line"></span>
+        <button class="button outline small" type="button" data-part="discard" title="Gives up on this choice: it is never saved, and its pair can come up again.">Discard</button>
+      </li>
+    </template>
   </body>
 </html>

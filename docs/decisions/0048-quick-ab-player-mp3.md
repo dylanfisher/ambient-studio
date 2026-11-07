@@ -93,7 +93,8 @@ draws injected):
   live rating of this session from before (read from `GET /api/vibes/:vibeId/ratings`, matched
   to candidates by genome and seed).
 - Neither mode draws a pair already rated on the page. A rating that failed to save doesn't
-  count as rated until it is saved, so random mode can draw that pair again.
+  count as rated, but its pair is held out of every draw until Retry saves it or Discard drops
+  it, so a pair can't end up with two live ratings; once discarded it can be drawn again.
 - Switching mode applies from the next pair: the pair shown stays, half heard or not.
   Switching to champion starts a new round of every other candidate against the champion so
   far, skipping pairs already rated.
@@ -109,14 +110,17 @@ unchanged, so 4c's training sets read them as they read any other.
 **Saving in the background** (`quick-ab-session.js`, no DOM, tested over a fake fetch). Because
 capture takes a second or two, the page shows the next pair at once and queues each rating; the
 queue sends one at a time. A line under the progress says how many are saving and lists each
-that failed, with its error, until a Retry saves it; a later choice doesn't clear it. Leaving
+that failed, with its error and a Discard button, until a Retry saves it or Discard gives it
+up; a later choice doesn't clear it. A fault in the page's render while a save is sent is
+reported and never leaves a save queued, sending or unsettled. Leaving
 the page while any rating is queued, sending or failed asks first (`beforeunload`). Undo waits
-for the last rating's send, then asks the server to remove it, and only when that succeeds
+for the last rating's send, saying so on the status line, then asks the server to remove it, and only when that succeeds
 takes it off the page and restores the order; a failed remove leaves everything in place and
 shows why. Undo of a rating that never saved removes nothing on the server. When a pair's
 sides can't be drawn (`POST …/ab-pairs` fails), the pair stays the order's current pair, the
 choice buttons and keys do nothing, and Retry draws it again. One action runs at a time, so a
-key pressed while the next pair loads does nothing. The page doesn't start the next pair
+key pressed while the next pair loads does nothing. A mode switch made while the pool loads is
+kept. The page doesn't start the next pair
 playing by itself.
 
 **Keys, on this page only** (`quick-ab-keys.js`, the one table): ← and → play the left or right
@@ -176,3 +180,7 @@ owner asked for keys here; every other page stays as 0032 has it.
   failed pair draw waits for Retry; a mode switch keeps the pair shown and undo keeps the mode;
   plays ignore AbortError; keys are read by `code`; random mode leaves out the session's earlier
   live ratings; a failed capture cleanup no longer hides the capture's error.
+- 2026-11-07: from the step's second review, before merge. A pair with a failed save is held
+  out of the draw until Retry or Discard, so it can't be rated twice; each failed save has a
+  Discard. Undo says it waits for a save still sending; a render fault during a save can't
+  leave a save stuck; the mode set during a load is kept.

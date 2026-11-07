@@ -11,6 +11,7 @@ import { chosenOutcome, SCREEN_SIDES } from "./ab-rating.js";
 import { ACTIVE_SIDE } from "./ab-view.js";
 import { getJson, VIBES_PATH } from "./api.js";
 import { trackAudio } from "./audio-player.js";
+import { cloneTemplate } from "./clone-template.js";
 import { elementById, elementsById } from "./element-by-id.js";
 import { mountPlayer, playAudio, switchPlayback } from "./excerpt-player.js";
 import { createPlayedTracker } from "./played-tracker.js";
@@ -32,6 +33,7 @@ const page = elementsById({
   progressLine: HTMLElement,
   saveLine: HTMLElement,
   retry: HTMLButtonElement,
+  failedList: HTMLUListElement,
   pairView: HTMLElement,
   leftBox: HTMLElement,
   leftName: HTMLElement,
@@ -103,6 +105,7 @@ const session = createQuickAbSession({
   random: Math.random,
   now: () => performance.now(),
   onChange: render,
+  onError: status.fail,
 });
 
 /** @param {Side} side */
@@ -186,15 +189,22 @@ function render() {
         ? `Every pair has been rated.${best} Undo takes the last choice back.`
         : `Every candidate has had a turn.${best} Turn on Random pairs to keep comparing.`;
 
-  const problems = [
-    view.pairError,
-    ...view.failed.map(({ said, error }) => `${said} wasn't saved: ${error}`),
-    view.undoError,
-  ].filter(Boolean);
+  const problems = [view.pairError, view.undoError].filter(Boolean);
   const saving =
     view.saving > 0 ? `Saving ${view.saving} choice${view.saving === 1 ? "" : "s"}…` : "";
   page.saveLine.textContent = [saving, ...problems].filter(Boolean).join(" ");
   page.saveLine.classList.toggle("errors", problems.length > 0);
+  page.failedList.replaceChildren(
+    ...view.failed.map(({ id, said, error }) => {
+      const item = cloneTemplate("failed-save", {
+        line: HTMLElement,
+        discard: HTMLButtonElement,
+      });
+      item.line.textContent = `${said} wasn't saved: ${error}`;
+      item.discard.onclick = () => status.run(() => session.discard(id));
+      return item.root;
+    }),
+  );
   page.retry.hidden = view.failed.length === 0 && view.pairError === null;
   // Only a new message replaces the status line, so a player's error stays until the next one.
   if (view.message !== said) {

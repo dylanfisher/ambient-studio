@@ -21,8 +21,11 @@ const [CHAMPION, RANDOM] = ORDER_MODES;
  * @property {(outcome: (typeof OUTCOMES)[number]) => void} rate the owner rated the pair, `a`
  *   being its first id
  * @property {(pair: Pair) => void} forget a rating of `pair` wasn't saved, so it doesn't count
- *   as rated
+ *   as rated; it is held out of the draw while that save waits for Retry, so the pair can't
+ *   be rated twice
  * @property {(pair: Pair) => void} remember it was saved after all
+ * @property {(pair: Pair) => void} release the failed save was dropped, so the pair can be
+ *   drawn again
  * @property {(mode: OrderMode) => void} setMode switches order from the next pair on; the pair
  *   shown stays. The champion mode starts a new round with the champion so far kept
  * @property {() => OrderMode} mode
@@ -57,6 +60,8 @@ export function createQuickAbOrder(ids, { mode: startMode, random, prior = [] })
   const before = new Set(prior);
   /** Pairs whose rating failed to save since they were rated, which undo must not bring back. */
   const forgotten = new Set();
+  /** Pairs with a failed save waiting for Retry or Discard, which no draw offers. */
+  const held = new Set();
   let mode = startMode;
 
   /** @param {readonly number[]} list */
@@ -76,7 +81,7 @@ export function createQuickAbOrder(ids, { mode: startMode, random, prior = [] })
     for (const [i, x] of ids.entries()) {
       for (const y of ids.slice(i + 1)) {
         const key = pairKey([x, y]);
-        if (!at.rated.has(key) && !before.has(key)) pairs.push([x, y]);
+        if (!at.rated.has(key) && !before.has(key) && !held.has(key)) pairs.push([x, y]);
       }
     }
     return pairs;
@@ -101,7 +106,8 @@ export function createQuickAbOrder(ids, { mode: startMode, random, prior = [] })
       }
       /** @type {Pair} */
       const pair = [at.champion, challenger];
-      if (challenger === at.champion || at.rated.has(pairKey(pair))) continue;
+      const key = pairKey(pair);
+      if (challenger === at.champion || at.rated.has(key) || held.has(key)) continue;
       at.current = pair;
       return;
     }
@@ -142,10 +148,15 @@ export function createQuickAbOrder(ids, { mode: startMode, random, prior = [] })
     forget(pair) {
       state.rated.delete(pairKey(pair));
       forgotten.add(pairKey(pair));
+      held.add(pairKey(pair));
     },
     remember(pair) {
       state.rated.add(pairKey(pair));
       forgotten.delete(pairKey(pair));
+      held.delete(pairKey(pair));
+    },
+    release(pair) {
+      held.delete(pairKey(pair));
     },
     setMode(next) {
       if (next === mode) return;
