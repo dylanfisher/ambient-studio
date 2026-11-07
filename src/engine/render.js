@@ -26,6 +26,16 @@ const GATE_RAMP = 0.02;
 /** @typedef {(params: EffectiveParams, time: number) => number} ControlValue */
 
 /**
+ * A decoded field recording. The engine reads no files: the server decodes them at the
+ * render's sample rate and passes them in (decision 0029).
+ * @typedef {object} Recording
+ * @property {number} sampleRate
+ * @property {readonly Float32Array[]} channels
+ */
+
+/** @typedef {Readonly<Record<string, Recording>>} Samples recordings by the SHA-256 of their file */
+
+/**
  * What a voice type's `build` gets.
  * @typedef {object} VoiceSetup
  * @property {BaseAudioContext} ctx
@@ -44,6 +54,7 @@ const GATE_RAMP = 0.02;
  *   grid and ramped between samples. Call it inside `build` only: `render` sets every
  *   automated parameter's start value after `build` returns, and a parameter added later from
  *   a window would miss it and the ramps of the windows before.
+ * @property {Samples} samples the recordings the render was given
  */
 
 /**
@@ -142,6 +153,17 @@ function selectVoices(genome, ids) {
 }
 
 /**
+ * @typedef {object} RenderOptions
+ * @property {number} seed
+ * @property {number} duration seconds
+ * @property {number} [offset] timeline seconds, 0 when omitted
+ * @property {readonly string[]} [voices] limits the render to the voices with these ids, for
+ *   stems
+ * @property {Samples | undefined} [samples] every recording the genome's voices play; a voice whose
+ *   recording is missing throws, naming its hash
+ */
+
+/**
  * Schedules the timeline from `offset` minus the pre-roll to `offset + duration` on `ctx`,
  * whose current time (0 for an offline context) is the plan's first frame. Nodes for events are
  * created in windows: on an OfflineAudioContext each window in a `suspend` one second ahead,
@@ -149,14 +171,13 @@ function selectVoices(genome, ids) {
  * @param {Genome} genome
  * @param {BaseAudioContext} ctx at 48 kHz with 2 channels; an offline one is
  *   `renderPlan(genome, {duration, offset}).length` frames long
- * @param {{ seed: number; duration: number; offset?: number; voices?: readonly string[] }} options
- *   `voices` limits the render to the voices with these ids, for stems
+ * @param {RenderOptions} options
  * @returns {Promise<void>} settles once every window is created. On an offline context, await it
  *   together with `startRendering()`. A window created in a `suspend` that throws resumes the
  *   render and then rejects the promise; a window created at once (the first second, or every
  *   window on a live context) throws out of `render()` itself.
  */
-export function render(genome, ctx, { seed, duration, offset = 0, voices }) {
+export function render(genome, ctx, { seed, duration, offset = 0, voices, samples = {} }) {
   const normalized = requireGenome(genome, "render: invalid genome");
   if (ctx.sampleRate !== SAMPLE_RATE) {
     throw new Error(`render: the context must run at ${SAMPLE_RATE} Hz, got ${ctx.sampleRate}`);
@@ -199,6 +220,7 @@ export function render(genome, ctx, { seed, duration, offset = 0, voices }) {
       startFrame: plan.startFrame,
       at,
       automate: (param, value) => automate(param, (params, time) => value(self(params), time)),
+      samples,
     });
   });
 

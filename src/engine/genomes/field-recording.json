@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "duration": 60,
+  "tuning": "12-tet",
+  "scale": "aeolian",
+  "key": 9,
+  "fadeIn": 1,
+  "fadeOut": 20,
+  "width": -3,
+  "reverbDecay": 2,
+  "reverbLevel": -18,
+  "delayTime": 0.5,
+  "delayFeedback": 0.2,
+  "delayLevel": -30,
+  "macros": { "brightness": 0.7 },
+  "voices": [
+    {
+      "id": "brook",
+      "type": "recording",
+      "level": -9,
+      "recording": "810ab2357cb6dd62882afd92502fc013609b1bb326a5ff50873513b125fb0d3f",
+      "mode": "loop",
+      "position": 0,
+      "span": 1,
+      "fade": 0.3,
+      "rate": 0.8,
+      "lowcut": 60,
+      "cutoff": { "points": [[0, 800], [2, 6000, "smooth"]] },
+      "pan": -0.4
+    },
+    {
+      "id": "field",
+      "type": "recording",
+      "level": -12,
+      "recording": "d5b8145b3639bd1c0891315ece68c9ec5fa0e23924e485d94467ac0fbed4faa5",
+      "mode": "scatter",
+      "span": 1,
+      "fade": 0.4,
+      "rate": 1.25,
+      "lowcut": 120,
+      "cutoff": 9000,
+      "pan": { "points": [[0, 0.5], [2, -0.2, "linear"]] }
+    }
+  ]
+}

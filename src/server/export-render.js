@@ -1,6 +1,7 @@
 // Export: render offline, normalize, and write a WAV, a FLAC and the sidecar JSON that
 // re-renders them (decisions 0009, 0011, 0012, 0015).
 /** @import { Genome } from "../engine/genome-schema.js" */
+/** @import { RecordingEntry } from "./recording-index.js" */
 import { lstatSync } from "node:fs";
 import { link, mkdir, mkdtemp, readFile, rm, rmdir, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
@@ -11,6 +12,7 @@ import { isObject } from "../engine/is-object.js";
 import { requireGenome } from "../engine/validate-genome.js";
 import { encodePcm24 } from "./encode-pcm24.js";
 import { genomeHash } from "./genome-hash.js";
+import { loadSamples } from "./load-samples.js";
 import { renderOffline } from "./render-offline.js";
 import { rendererVersions } from "./renderer-versions.js";
 import { sha256Hex } from "./sha256-hex.js";
@@ -29,6 +31,10 @@ const NAME_HASH_CHARS = 12;
  *   genome's, so there is no default
  * @property {string} outDir created when missing
  * @property {boolean} [flac] writes the FLAC too; true when omitted
+ * @property {readonly RecordingEntry[] | undefined} [recordings] the recordings folder's index, which a
+ *   genome that plays a field recording needs; the export decodes the files it names
+ * @property {Readonly<Record<string, string>> | undefined} [names] file names by hash, for the message when
+ *   a recording is gone from the index; `rerender` passes the sidecar's
  */
 
 /**
@@ -55,6 +61,8 @@ const NAME_HASH_CHARS = 12;
  * @property {number} sampleRate
  * @property {string} node
  * @property {string} nodeWebAudioApi
+ * @property {Record<string, string>} [recordings] each field recording's file in the recordings
+ *   folder, by its SHA-256; only when the genome plays one
  * @property {Genome} genome normalized
  */
 
@@ -118,7 +126,10 @@ export function requireFinite(channels) {
  * @param {ExportOptions} options
  * @returns {Promise<PreparedExport>}
  */
-async function prepareExport(genome, { seed, duration, offset = 0, target, outDir, flac = true }) {
+async function prepareExport(
+  genome,
+  { seed, duration, offset = 0, target, outDir, flac = true, recordings, names },
+) {
   const normalized = requireGenome(genome, "exportRender: invalid genome");
   if (typeof seed !== "number") {
     throw new TypeError(`exportRender: seed must be a number, got ${JSON.stringify(seed)}`);
@@ -131,7 +142,8 @@ async function prepareExport(genome, { seed, duration, offset = 0, target, outDi
   const name = `${hash.slice(0, NAME_HASH_CHARS)}-seed${seed}-${offset}s-${duration}s`;
   const paths = outputPaths(outDir, name, flac);
 
-  const rendered = await renderOffline(normalized, { seed, duration, offset });
+  const { samples, files } = await loadSamples(normalized, recordings, names);
+  const rendered = await renderOffline(normalized, { seed, duration, offset, samples });
   requireFinite(rendered.channels);
   const result = normalize(rendered.channels, rendered.sampleRate, {
     target,
@@ -159,6 +171,7 @@ async function prepareExport(genome, { seed, duration, offset = 0, target, outDi
       schemaVersion: SCHEMA_VERSION,
       sampleRate: rendered.sampleRate,
       ...rendererVersions(),
+      ...(Object.keys(files).length > 0 && { recordings: files }),
       genome: normalized,
     },
   };
@@ -255,6 +268,13 @@ function requireSidecar(value, path) {
   if (!isObject(value.loudness) || typeof value.loudness.target !== "number") {
     throw new Error(`${path}: loudness.target must be a number`);
   }
+  const { recordings } = value;
+  if (
+    recordings !== undefined &&
+    !(isObject(recordings) && Object.values(recordings).every((f) => typeof f === "string"))
+  ) {
+    throw new Error(`${path}: recordings must map each sha256 to a file name`);
+  }
   return /** @type {Sidecar} */ (/** @type {unknown} */ (value));
 }
 
@@ -278,9 +298,11 @@ function rendererDifferences(recorded) {
  * export did.
  * @param {string} sidecarPath
  * @param {string} outDir
+ * @param {readonly RecordingEntry[]} [recordings] the recordings folder's index, which a sidecar
+ *   whose genome plays a field recording needs
  * @returns {Promise<Export>}
  */
-export async function rerender(sidecarPath, outDir) {
+export async function rerender(sidecarPath, outDir, recordings) {
   const text = await readFile(sidecarPath, "utf8");
   /** @type {unknown} */
   let parsed;
@@ -309,6 +331,8 @@ export async function rerender(sidecarPath, outDir) {
     offset,
     target: loudness.target,
     outDir,
+    recordings,
+    names: recorded.recordings,
   });
   const { pcmSha256 } = prepared.sidecar;
   if (pcmSha256 !== recorded.pcmSha256) {

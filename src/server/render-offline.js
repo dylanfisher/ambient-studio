@@ -3,6 +3,7 @@
 // src/engine can't import node-web-audio-api, so the context is built here.
 /** @import { Genome } from "../engine/genome-schema.js" */
 /** @import { RenderResult } from "../engine/render-plan.js" */
+/** @import { RenderOptions } from "../engine/render.js" */
 import { OfflineAudioContext } from "node-web-audio-api";
 import { render } from "../engine/render.js";
 import { renderPlan, trimToResult } from "../engine/render-plan.js";
@@ -54,7 +55,7 @@ export async function retryOnSuspendRace(attemptRender, wait = sleep) {
 
 /**
  * @param {Genome} genome
- * @param {{ seed: number; duration: number; offset?: number; voices?: string[] }} options
+ * @param {RenderOptions} options
  * @param {(ctx: OfflineAudioContext) => void} [prepare] changes the context before `render()`;
  *   tests use it to add nodes or wrap `suspend`
  * @param {(ms: number) => Promise<void>} [wait] replaces the real-time wait before

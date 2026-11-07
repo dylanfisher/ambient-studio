@@ -4,14 +4,14 @@
 /** @import { Genome } from "./genome-schema.js" */
 /** @import { Curve, Trajectory } from "./trajectory.js" */
 import { COST_BUDGET, cost } from "./cost.js";
-import { allowsTrajectory, choices, decode, encode, isNumeric } from "./descriptor.js";
+import { allowsTrajectory, choices, decode, encode, isNumeric, isRecording } from "./descriptor.js";
 import { GLOBAL_PARAMS, MACROS } from "./genome-schema.js";
 import { draw, GENOME_SLOT } from "./prng.js";
 import { CURVES } from "./trajectory.js";
 import { isAbsolute } from "./tuning.js";
 import { getTuning } from "./tuning-registry.js";
 import { requireGenome } from "./validate-genome.js";
-import { voiceParams, voiceTypeIds } from "./voice-registry.js";
+import { selfContainedVoiceTypeIds, voiceParams } from "./voice-registry.js";
 
 const MOST_VOICES = 4;
 /** Draws `randomGenome` makes before it gives up on meeting a cost cap. */
@@ -75,6 +75,9 @@ function valueFor(next, descriptor, duration) {
   if (isNumeric(descriptor)) {
     const drawn = allowsTrajectory(descriptor) && next() < TRAJECTORY_CHANCE;
     return drawn ? trajectory(next, descriptor, duration) : numberIn(next, descriptor);
+  }
+  if (isRecording(descriptor)) {
+    throw new Error("randomGenome has no recording to draw; it draws no voice that plays one");
   }
   return pick(next, choices(descriptor));
 }
@@ -144,7 +147,8 @@ function drawGenome(next, types, seed) {
  * @returns {Genome}
  */
 export function randomGenome(seed, { costCap = COST_BUDGET } = {}) {
-  const types = voiceTypeIds();
+  // A voice that plays a recording has none to name here (decision 0029).
+  const types = selfContainedVoiceTypeIds();
   if (types.length === 0) throw new Error("randomGenome: no voice type is registered");
   let counter = 0;
   /** @type {Source} */

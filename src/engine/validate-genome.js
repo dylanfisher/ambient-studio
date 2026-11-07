@@ -3,7 +3,7 @@
 /** @import { DescriptorTable } from "./descriptor.js" */
 /** @import { Genome } from "./genome-schema.js" */
 /** @import { ValidationError } from "./validation-error.js" */
-import { checkValue } from "./descriptor.js";
+import { checkValue, isRecording } from "./descriptor.js";
 import {
   GENOME_KEY,
   GLOBAL_PARAMS,
@@ -54,10 +54,19 @@ function checkTable(table, input, path, errors, otherKeys = []) {
       }
       continue;
     }
-    const value =
-      given === undefined
-        ? descriptor.default
-        : checkValue(descriptor, given, `${path}.${name}`, errors);
+    /** @type {unknown} */
+    let value;
+    if (given !== undefined) {
+      value = checkValue(descriptor, given, `${path}.${name}`, errors);
+    } else if (isRecording(descriptor)) {
+      // A recording has no default to write out.
+      errors.push({
+        path: `${path}.${name}`,
+        message: "missing; give a listed recording's sha256",
+      });
+    } else {
+      value = descriptor.default;
+    }
     if (value !== undefined) out[name] = value;
   }
   return out;
