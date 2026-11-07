@@ -51,6 +51,8 @@ import { decode, insertRow, selectRow, selectRows, TABLE } from "./store.js";
  * @typedef {object} CandidateDraft
  * @property {number} vibeRevisionId
  * @property {number | null} generationId null for a candidate no LLM call made
+ * @property {number | null} sessionId the session it was made in; null outside one, as in an
+ *   evaluation
  * @property {number | null} genomeId null when the output never parsed into a genome
  * @property {number} seed
  * @property {string} source llm, mutation, crossover, optimizer, breeding or random
@@ -163,18 +165,14 @@ export function getCandidate(store, id) {
 }
 
 /**
- * The candidates the session's generations made and not removed, oldest first.
+ * The candidates made in the session and not removed, oldest first, those made without a model
+ * request included.
  * @param {Store} store
  * @param {number} sessionId
  * @returns {Candidate[]}
  */
 export function listSessionCandidates(store, sessionId) {
-  return store.db
-    .prepare(
-      `SELECT c.* FROM ${TABLE.candidates} c JOIN ${TABLE.generations} g ON g.id = c.generationId
-        WHERE g.sessionId = ? AND c.removedAt IS NULL
-        ORDER BY c.id`,
-    )
-    .all(sessionId)
-    .map((row) => decode(CANDIDATES, row));
+  return /** @type {Candidate[]} */ (
+    selectRows(store, TABLE.candidates, CANDIDATES, { sessionId })
+  );
 }

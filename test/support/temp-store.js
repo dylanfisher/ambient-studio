@@ -105,6 +105,7 @@ export function fillStore(store) {
   const candidate = addCandidate(store, {
     vibeRevisionId,
     generationId: generation.id,
+    sessionId: session.id,
     genomeId: genome.id,
     seed: 7,
     source: "llm",

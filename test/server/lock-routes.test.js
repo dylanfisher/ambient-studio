@@ -27,6 +27,7 @@ function seedCandidate({ server }, vibe, genome) {
   return addCandidate(server.store, {
     vibeRevisionId: vibe.revision.id,
     generationId: null,
+    sessionId: null,
     genomeId,
     seed: 7,
     source: "llm",

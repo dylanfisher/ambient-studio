@@ -10,6 +10,7 @@ import {
   getGenome,
   listGenomes,
   listRequestGroup,
+  listSessionCandidates,
   putGenome,
 } from "../../src/server/generation-store.js";
 import { genomeHash } from "../../src/server/genome-hash.js";
@@ -38,6 +39,7 @@ const vibeDraft = { name: "v", brief: "b", constraints: {}, softTargets: {} };
 const candidate = (vibeRevisionId, genomeId) => ({
   vibeRevisionId,
   generationId: null,
+  sessionId: null,
   genomeId,
   seed: 5,
   source: "mutation",
@@ -193,4 +195,69 @@ test("a generation's reasoning, request and error, and a candidate's rejected ge
   expect(getGeneration(reopened, ids.generations)).toEqual(generation);
   expect(generation.reasoning).toBe("thinking about a drone");
   expect(getCandidate(reopened, rejected.id)?.rejectedGenome).toEqual({ voices: [] });
+});
+
+test("migration 0005 over a 0004 database fills sessionId from each candidate's generation", async () => {
+  const { paths, now } = await made();
+  const file = `${paths.database}-0004`;
+  const migrations = readMigrations();
+  const old = openStore(file, { now, migrations: migrations.slice(0, 4) });
+  // Rows in 0004's shape, written by hand since the store's functions write 0005's.
+  const run = (/** @type {string} */ sql) => old.db.prepare(sql).run();
+  run("INSERT INTO vibes (id, createdAt) VALUES (1, 0)");
+  run(
+    `INSERT INTO vibe_revisions (id, vibeId, name, brief, constraints, softTargets, createdAt)
+     VALUES (1, 1, 'v', 'b', '{}', '{}', 0)`,
+  );
+  run("INSERT INTO session_events (id, vibeId, kind, createdAt) VALUES (1, 1, 'start', 0)");
+  run("INSERT INTO session_events (id, vibeId, kind, createdAt) VALUES (2, 1, 'start', 0)");
+  /** @param {number} id @param {string} sessionId */
+  const generation = (id, sessionId) =>
+    run(
+      `INSERT INTO generations (id, vibeRevisionId, sessionId, requestGroup, prompt, exampleIds,
+         retrievalMethod, model, sampling, response, finishReason, repairRound, latencyMs,
+         createdAt)
+       VALUES (${id}, 1, ${sessionId}, 'g', '[]', '[]', 'r', 'm', '{}', 'text', 'stop', 0, 5, 0)`,
+    );
+  generation(1, "1");
+  generation(2, "2");
+  // An evaluation's request has no session.
+  generation(3, "NULL");
+  /** @param {number} id @param {string} generationId */
+  const candidateRow = (id, generationId) =>
+    run(
+      `INSERT INTO candidates (id, vibeRevisionId, generationId, seed, source, parentIds, locks,
+         createdAt)
+       VALUES (${id}, 1, ${generationId}, 3, 'llm', '[]', '[]', 0)`,
+    );
+  candidateRow(1, "1");
+  candidateRow(2, "2");
+  candidateRow(3, "1");
+  candidateRow(4, "3");
+  candidateRow(5, "NULL");
+  old.close();
+
+  const store = openStore(file, { now, migrations });
+  cleanups.push(async () => store.close());
+  const sessions = [1, 2, 3, 4, 5].map((id) => getCandidate(store, id)?.sessionId);
+  expect(sessions).toEqual([1, 2, 1, null, null]);
+  expect(listSessionCandidates(store, 1).map(({ id }) => id)).toEqual([1, 3]);
+  // The filled column is as unchangeable as the rest of the row.
+  const update = "UPDATE candidates SET sessionId = 2 WHERE id = 1";
+  expect(() => store.db.prepare(update).run()).toThrow(/append-only/);
+});
+
+test("a candidate made without a model request is found by its session", async () => {
+  const { store } = await made();
+  const ids = fillStore(store);
+  const sessionId = getGeneration(store, ids.generations)?.sessionId ?? null;
+  if (sessionId === null) throw new Error("fillStore wrote no session generation");
+  const child = addCandidate(store, {
+    ...candidate(ids.vibe_revisions, ids.genomes),
+    sessionId,
+  });
+  expect(listSessionCandidates(store, sessionId).map(({ id }) => id)).toEqual([
+    ids.candidates,
+    child.id,
+  ]);
 });

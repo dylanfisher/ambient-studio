@@ -408,7 +408,8 @@ export async function ask(batch, index, prompt, sampling, repairsId) {
 
 /**
  * Stores a verdict as a candidate, and its genome when it has one.
- * @param {Batch} batch
+ * @param {Pick<Batch, "store" | "vibeId" | "vibeRevisionId" | "sessionId" | "locks">} batch an
+ *   operator that makes no model request, as a nudge, passes these alone
  * @param {Generation | null} generation the last generation made for the candidate; null for
  *   one no LLM call made
  * @param {Verdict} verdict
@@ -426,6 +427,7 @@ export function keep(batch, generation, verdict, origin) {
   return addCandidate(store, {
     vibeRevisionId: batch.vibeRevisionId,
     generationId: generation?.id ?? null,
+    sessionId: batch.sessionId,
     genomeId,
     seed: origin.seed,
     source: origin.source,
