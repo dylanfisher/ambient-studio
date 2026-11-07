@@ -1,7 +1,7 @@
 // Where the session page was scrolled, kept across a trip to Quick A/B or the A/B view
 // (decision 0049), over a fake storage.
 import { expect, test } from "vitest";
-import { scrollMemory } from "../../src/web/scroll-memory.js";
+import { keepOnClick, scrollMemory } from "../../src/web/scroll-memory.js";
 
 function fakeStorage() {
   /** @type {Map<string, string>} */
@@ -44,4 +44,18 @@ test("a saved value that isn't a scroll position throws", () => {
   const storage = fakeStorage();
   storage.setItem("session 5", "the top");
   expect(() => scrollMemory(storage, "session 5").take()).toThrow(/the top/);
+});
+
+test("only a plain click on the way out keeps the scroll; leaving any other way keeps nothing", () => {
+  const storage = fakeStorage();
+  const memory = scrollMemory(storage, "session 5");
+  const link = new EventTarget();
+  let y = 640;
+  keepOnClick(link, memory, () => y);
+  // A new tab, or leaving by another link, keeps nothing, so the next load starts at the top.
+  link.dispatchEvent(Object.assign(new Event("click"), { button: 0, metaKey: true }));
+  expect(storage.items.size).toBe(0);
+  link.dispatchEvent(Object.assign(new Event("click"), { button: 0 }));
+  y = 10;
+  expect(scrollMemory(storage, "session 5").take()).toBe(640);
 });

@@ -650,3 +650,44 @@ test("a malformed hide, or one naming another session's candidate, is refused an
   const body = { candidateIds: [mine.id], hidden: true };
   expect((await server.api("POST", "/api/sessions/999/hidden", body)).status).toBe(404);
 });
+
+test("hiding either member of a revised pair hides both, and showing either shows both", async () => {
+  const studio = await setup();
+  const { server, ok, openSession } = studio;
+  const { vibe, session } = await openSession();
+  const [drone, variant] = GENOMES;
+  const firstTry = seedCandidate(studio, vibe, drone, session.id);
+  const revision = addCandidate(server.store, {
+    vibeRevisionId: vibe.revision.id,
+    generationId: null,
+    sessionId: session.id,
+    genomeId: putGenome(server.store, vibe.id, variant).id,
+    seed: 7,
+    source: "llm",
+    parentIds: [firstTry.id],
+    locks: [],
+    operator: "revise",
+    operatorParams: null,
+    intent: null,
+    rejectReason: null,
+    lint: null,
+    rejectedGenome: null,
+  });
+  const path = `/api/sessions/${session.id}/hidden`;
+  const hiddenOf = async () =>
+    (await ok("GET", `/api/sessions/${session.id}/candidates`)).candidates.map(
+      (/** @type {any} */ c) => [c.id, c.hidden],
+    );
+
+  expect(await ok("POST", path, { candidateIds: [revision.id], hidden: true })).toEqual({
+    hidden: [firstTry.id, revision.id],
+  });
+  expect(await hiddenOf()).toEqual([
+    [firstTry.id, true],
+    [revision.id, true],
+  ]);
+  expect(await ok("POST", path, { candidateIds: [firstTry.id], hidden: false })).toEqual({
+    hidden: [],
+  });
+  expect(listHides(server.store, revision.id).map((row) => row.hidden)).toEqual([true, false]);
+});

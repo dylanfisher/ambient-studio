@@ -8,7 +8,7 @@ const OTHER = { genomeId: 11, seed: 7 };
 
 /**
  * @param {string} outcome
- * @param {{ genomeId: number, seed: number }} a
+ * @param {{ genomeId: number | null, seed: number }} a
  * @param {{ genomeId: number, seed: number }} b
  * @param {{ sessionId?: number, removedAt?: number | null }} [extra]
  */
@@ -43,6 +43,11 @@ test("ties, skips, undone ratings, other sessions and another seed of the genome
   ];
   expect(abMarks(ratings, 5, ME)).toEqual({ wins: 0, losses: 0, compared: 2 });
   expect(abMarks([], 5, ME)).toEqual({ wins: 0, losses: 0, compared: 0 });
+});
+
+test("a candidate with no genome has no excerpt to match, and throws", () => {
+  const nothing = { genomeId: null, seed: 7 };
+  expect(() => abMarks([rating("a", nothing, OTHER)], 5, nothing)).toThrow(/no genome/);
 });
 
 test("an outcome the page doesn't know throws", () => {

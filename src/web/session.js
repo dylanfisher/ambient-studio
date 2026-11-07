@@ -41,7 +41,7 @@ import { intentText, originText, rejectText } from "./origin-text.js";
 import { createPairSwap } from "./pair-swap.js";
 import { createPlayedTracker } from "./played-tracker.js";
 import { rangesReadout } from "./ranges-readout.js";
-import { scrollMemory } from "./scroll-memory.js";
+import { keepOnClick, scrollMemory } from "./scroll-memory.js";
 import { statusLine } from "./status-line.js";
 import { steerControls } from "./steer-controls.js";
 
@@ -681,7 +681,9 @@ function hideIds({ candidate: { id, pair } }) {
  * @param {Card} card
  */
 async function toggleHidden(card) {
-  if (card.busy) return;
+  if (card.busy) {
+    throw new Error(`${card.label}'s last change is still being saved; try again when it is.`);
+  }
   const hidden = !card.candidate.hidden;
   const ids = hideIds(card);
   card.busy = true;
@@ -1211,11 +1213,7 @@ page.stopButton.onclick = () => status.run(stopSession);
 // that follows a pointerup is dispatched before the deferred swap runs.
 // The page restores its own scroll once the rows are loaded; the browser's would land before them.
 history.scrollRestoration = "manual";
-window.addEventListener("pagehide", () => {
-  // With the A/B view open, the place kept when it opened stands.
-  if (page.gridView.hidden) return;
-  status.run(async () => scrollKept().save(window.scrollY));
-});
+keepOnClick(page.quickAbLink, scrollKept(), () => window.scrollY);
 window.addEventListener("pageshow", (event) => {
   // A page brought back from the back-forward cache is where it was; drop the place kept.
   if (event.persisted) status.run(async () => scrollKept().take());

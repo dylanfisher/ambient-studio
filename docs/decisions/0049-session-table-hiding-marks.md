@@ -44,7 +44,11 @@ never taken out of the page while it plays.
 ratings in this session, matched by genome and seed: a win when the candidate's side was chosen,
 a loss when the other was, and every rating as compared. Ties and skips count only as compared;
 an undone rating counts nothing (the ratings route already leaves it out, and the count skips a
-row with `removedAt` set too). The row shows "Not compared" or "Compared N", then one ▲ per win
+row with `removedAt` set too). A rating names only what was heard (genome, seed and window, 0021),
+never a candidate, so the marks are the excerpt's: two candidates of one session with the same
+genome and seed render the same excerpt and share their marks. Matching through `rated_audio`
+adds nothing, since its row holds the same genome, seed and window. A candidate with no genome
+has no excerpt, and counting its marks throws. The row shows "Not compared" or "Compared N", then one ▲ per win
 and one ▼ per loss, green and red, each group with a title and label in words ("Chosen 4 times
 in A/B."). Above `MAX_MARKS` (5) a group shows one mark and the count (`▲×12`). The page reads
 the ratings again after each rating, as it did for the old "Compared N times".
@@ -56,21 +60,26 @@ a row, so the history stays. `setHidden` (`src/server/hide-store.js`) appends ro
 candidates whose state changes, in one transaction. `POST /api/sessions/:id/hidden` takes
 `{candidateIds, hidden}`, 1 to 64 ids each of the session (a 400 otherwise, storing nothing), and
 answers the session's hidden ids. It works on a stopped session, since hiding is not a rating.
-`GET …/candidates` gives each candidate `hidden`.
+Hiding is a fact about a revised pair, which takes one place on the page: the route expands an
+id of either member to both, written in the one transaction, and `GET …/candidates` gives each
+candidate `hidden`, true for both members of a pair when either is hidden. The page's Hide and
+Show again, and Quick A/B's `poolOf`, read that.
 
 - The page's Hide moves the row into the Hidden candidates panel at the foot of the page, where
-  it can be played and rated and has Show again. Hiding one of a revised pair hides both, in one
-  request, and a pair is hidden whole when either member is, so the table never holds half a
-  pair. Hiding pauses the row and unmarks it if it was marked for A/B.
+  it can be played and rated and has Show again. A pair is hidden whole, so the table never
+  holds half a pair. Hiding pauses the row and unmarks it if it was marked for A/B. A Hide
+  pressed while the row's last change is still saving is an error on the status line.
 - Hidden candidates leave the table, the session page's Compare (off on a hidden row, with a
   title saying why), and Quick A/B (`poolOf`).
 - They stay in the lineage page and in training sets: hiding says nothing about how good a
   candidate is, so it is not a rating and nothing that learns reads it.
 
 **Scroll.** `scrollMemory` (`src/web/scroll-memory.js`) keeps the page's `scrollY` in
-`sessionStorage`, per tab and per session: a per-viewer convenience, not data. It is saved when
-the A/B view opens and on `pagehide` while the table shows, and taken once: when the A/B view
-closes, and after the candidates and locks load. `history.scrollRestoration` is `manual`, since
+`sessionStorage`, per tab and per session: a per-viewer convenience, not data. It is saved only
+on the way out to a comparison: when the A/B view opens, and on a plain click of the Quick A/B
+link (`keepOnClick`; a click that opens another tab keeps nothing). It is taken once: when the
+A/B view closes, and after the candidates and locks load. The page opened from any other link,
+or reloaded, starts at the top. `history.scrollRestoration` is `manual`, since
 the browser's own restore would land before the rows exist. A page brought back from the
 back-forward cache is already where it was, so `pageshow` with `persisted` drops the kept
 place. More controls opened before leaving are closed on a reload, so the place can be off by
@@ -103,7 +112,10 @@ used is newer than what 0028 lists, and CSS custom properties in `calc()`, `:not
   candidates rows can't change (0021), and removing the hide would lose when it was hidden.
   An event per change keeps the whole history in one table.
 - **One hide per member of a pair** — rejected: two requests could leave half a pair hidden,
-  and the pair swap could then show the hidden one in the table.
+  and the pair swap could then show the hidden one in the table. The route expands the hide,
+  so a request from any client hides the whole pair.
+- **Keeping the scroll on every `pagehide`** — rejected in review: the page opened later from
+  the brief page would land mid-table; only a trip to compare comes back to the same row.
 - **Counting marks on the server** — rejected for now: the page already reads the brief's
   ratings for the badges and the old compared count, and a pure function is tested on its own.
 - **Showing every mark however many** — rejected: twenty marks push the row wide; past five the
@@ -116,3 +128,10 @@ used is newer than what 0028 lists, and CSS custom properties in `calc()`, `:not
 - A new irreplaceable table needs a row in `fillStore`, which now hides its candidate.
 - Phase 5's optimizer runs (4j's table "folded under them") nest under their base by this rule.
 - A change to the `steer-controls` template is still made in both pages (0039).
+
+## Amendments
+
+- 2026-11-07: from the step's review, before merge. The scroll is kept only on the way to the
+  A/B view or Quick A/B; the hide route expands a hide to the whole revised pair and the
+  candidates route reports the pair's state; marks are the excerpt's, and a candidate with no
+  genome throws; a Hide pressed while the row is saving is an error, not ignored.

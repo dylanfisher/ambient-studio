@@ -34,13 +34,18 @@ const same = (side, heard) => side.genomeId === heard.genomeId && side.seed === 
 
 /**
  * Counts the candidate's marks from its session's live A/B ratings, matched by genome and seed.
- * Ties and skips count as compared only; an undone rating counts nothing.
+ * A rating names only what was heard, so the marks are the excerpt's: two candidates of one
+ * genome and seed render the same excerpt and share them. Ties and skips count as compared
+ * only; an undone rating counts nothing.
  * @param {readonly AbRatingRow[]} ratings
  * @param {number} sessionId
  * @param {Heard} heard the candidate's genome and seed
  * @returns {AbMarks}
  */
 export function abMarks(ratings, sessionId, heard) {
+  if (heard.genomeId === null) {
+    throw new Error("a candidate with no genome has no excerpt, so it has no A/B marks to count");
+  }
   const marks = { wins: 0, losses: 0, compared: 0 };
   for (const { sessionId: session, outcome, a, b, removedAt } of ratings) {
     if (session !== sessionId || removedAt !== null) continue;

@@ -347,7 +347,19 @@ export const SESSION_ROUTES = [
           `hidden must be true or false, got ${JSON.stringify(given.hidden)}`,
         );
       }
-      setHidden(app.store, hideIds(app, session, given), given.hidden);
+      // A revised pair takes one place on the page, so hiding is a fact about the pair.
+      const { pairs } = candidatePairs(
+        app.store,
+        listSessionCandidates(app.store, session.id).map((candidate) => ({
+          candidate,
+          excerpt: null,
+        })),
+      );
+      const ids = hideIds(app, session, given).flatMap((id) => {
+        const pair = pairs.get(id);
+        return pair ? [pair.firstTryId, pair.revisionId] : [id];
+      });
+      setHidden(app.store, ids, given.hidden);
       return { hidden: [...hiddenInSession(app.store, session.id)].sort((a, b) => a - b) };
     },
   },
@@ -379,6 +391,7 @@ export const SESSION_ROUTES = [
           const genome =
             genomeId === null ? null : (getGenome(app.store, genomeId)?.genome ?? null);
           const feedback = feedbackState(live, candidate);
+          const pair = pairs.get(id);
           return {
             id,
             genomeId,
@@ -392,10 +405,13 @@ export const SESSION_ROUTES = [
             operator: candidate.operator,
             operatorParams: candidate.operatorParams,
             parentIds: candidate.parentIds,
-            pair: pairs.get(id) ?? null,
+            pair: pair ?? null,
             excerpt,
             feedback,
-            hidden: hidden.has(id),
+            // A pair is hidden when either member is: rows from before a hide named both.
+            hidden: [id, pair?.firstTryId, pair?.revisionId].some(
+              (member) => member !== undefined && hidden.has(member),
+            ),
           };
         });
       return { candidates };

@@ -1,5 +1,6 @@
 // Where the session page was scrolled when the owner left it for Quick A/B or opened the A/B
-// view, so the return lands on the same row (decision 0049). The page passes `sessionStorage`,
+// view, so the return lands on the same row (decision 0049). Nothing else keeps it, so the page
+// opened from any other link starts at the top. The page passes `sessionStorage`,
 // which is per tab and per viewer: a convenience, not data. No DOM, so a test passes a fake.
 
 /** @typedef {Pick<Storage, "getItem" | "setItem" | "removeItem">} ScrollStorage */
@@ -29,4 +30,21 @@ export function scrollMemory(storage, key) {
       return y;
     },
   };
+}
+
+/**
+ * Keeps the scroll when `link` is followed by a plain click; a click that opens another tab or
+ * window leaves this page where it is, so it keeps nothing.
+ * @param {EventTarget} link
+ * @param {ReturnType<typeof scrollMemory>} memory
+ * @param {() => number} scrollY the page's scroll now
+ */
+export function keepOnClick(link, memory, scrollY) {
+  link.addEventListener("click", (event) => {
+    const click = /** @type {MouseEvent} */ (event);
+    if (click.button !== 0 || click.metaKey || click.ctrlKey || click.shiftKey || click.altKey) {
+      return;
+    }
+    memory.save(scrollY());
+  });
 }
