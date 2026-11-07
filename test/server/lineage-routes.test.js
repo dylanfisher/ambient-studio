@@ -80,7 +80,7 @@ async function setup() {
   async function render({ genomeId, seed }, genome) {
     const duration = EXCERPT_SECONDS;
     const offset = excerptOffset(/** @type {any} */ (genome), seed, duration);
-    const file = `seeded-${genomeId}-${seed}.wav`;
+    const file = `seeded-${genomeId}-${seed}.mp3`;
     await mkdir(paths.renderCache, { recursive: true });
     await writeFile(join(paths.renderCache, file), "");
     const key = {

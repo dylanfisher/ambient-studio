@@ -5,13 +5,11 @@
 /** @import { ExcerptRequest } from "./render-excerpt.js" */
 /** @import { Render } from "./render-store.js" */
 /** @import { Store } from "./store.js" */
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { EXCERPT_SECONDS } from "../domain/excerpt-seconds.js";
 import { excerptOffset } from "../engine/excerpt-offset.js";
 import { getGenome } from "./generation-store.js";
 import { PRODUCER } from "./producer.js";
-import { vibeLoudness } from "./render-excerpt.js";
+import { cachedFile, vibeLoudness } from "./render-excerpt.js";
 import { findRender } from "./render-store.js";
 import { getRevision } from "./vibe-store.js";
 
@@ -32,7 +30,8 @@ export function excerptRequest(store, { genomeId, seed, vibeRevisionId }) {
 
 /**
  * The candidate's cached excerpt under this server's producer, or null when it has no genome or
- * its excerpt hasn't been rendered under this producer and target, or its file is gone.
+ * its excerpt hasn't been rendered under this producer and target, or its file is gone or is a
+ * WAV from before excerpts were MP3s.
  * @param {Store} store
  * @param {string} folder the render-cache folder
  * @param {Candidate} candidate
@@ -46,5 +45,5 @@ export function currentExcerpt(store, folder, candidate) {
   const duration = EXCERPT_SECONDS;
   const offset = excerptOffset(row.genome, request.seed, duration);
   const found = findRender(store, { ...request, offset, duration, producer: PRODUCER });
-  return found && existsSync(join(folder, found.file)) ? found : null;
+  return found && cachedFile(folder, found) ? found : null;
 }

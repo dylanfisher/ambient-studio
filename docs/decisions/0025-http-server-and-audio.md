@@ -1,7 +1,7 @@
 # 0025. A node:http server with a route table, static tiers and ranged WAVs
 
 - **Date:** 2026-11-06
-- **Status:** accepted
+- **Status:** accepted; amended by [0048](0048-quick-ab-player-mp3.md) (audio is MP3)
 
 ## Context
 
@@ -136,3 +136,9 @@ to `allowed-host.js` first.
 - Anyone on the LAN can use the studio, including starting generation, which queues requests to
   omlx. If the studio is ever reachable from outside the home network, it needs auth first.
 - A render-cache file is served only through its row; a WAV with no row can't be fetched.
+
+## Amendments
+
+- 2026-11-07: from step 4i ([0048](0048-quick-ab-player-mp3.md)). `/audio/:renderId` serves
+  render-cache MP3s as `audio/mpeg`, with the same byte ranges; a row whose file is not an MP3
+  is a 404 saying to render the excerpt again.

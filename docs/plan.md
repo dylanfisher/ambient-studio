@@ -70,7 +70,7 @@ unneeded stays unused rather than being given to another step.
 | 0045 | Held-out agreement, the minimum and the baselines | 4e | — |
 | 0046 | Ranking, wildcards and the pair picker | 4f | — |
 | 0047 | The "what you like" summary | 4g | — |
-| 0048 | Quick A/B, the excerpt player and MP3 playback audio | 4i | — |
+| 0048 | Quick A/B, the excerpt player and MP3 playback audio | 4i | [written](decisions/0048-quick-ab-player-mp3.md) |
 | 0049 | The session table, hiding and rating marks | 4j | — |
 | 0050 | Reference uploads: formats, files, regions, ffmpeg decoding | 5a | — |
 | 0051 | Region analysis and ranges from a region | 5b | — |

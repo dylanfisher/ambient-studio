@@ -173,7 +173,7 @@ function seedExcerpts(app) {
     const { lowEndShare, findings } = measured;
     const duration = EXCERPT_SECONDS;
     const offset = excerptOffset(row.genome, request.seed, duration);
-    const file = `seeded-${id}.wav`;
+    const file = `seeded-${id}.mp3`;
     mkdirSync(paths.renderCache, { recursive: true });
     writeFileSync(join(paths.renderCache, file), "");
     putRender(store, {

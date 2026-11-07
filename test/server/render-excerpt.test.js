@@ -1,7 +1,8 @@
 // Excerpt renders (decision 0026): a window at the candidate's seed and excerpt offset (0007),
-// normalized to the vibe's target, measured, checked and cached as a WAV with a renders row.
+// normalized to the vibe's target, measured, checked and cached as an MP3 (0048) with a renders
+// row.
 import { existsSync } from "node:fs";
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, rename } from "node:fs/promises";
 import { join } from "node:path";
 import v8 from "node:v8";
 import vm from "node:vm";
@@ -26,7 +27,9 @@ import {
 } from "../../src/server/render-excerpt.js";
 import { putRender } from "../../src/server/render-store.js";
 import { createVibe } from "../../src/server/vibe-store.js";
-import { decodeWav, FIXTURE_RECORDINGS } from "../support/golden.js";
+import { MP3_KBPS } from "../../src/server/write-mp3.js";
+import { FIXTURE_RECORDINGS } from "../support/golden.js";
+import { decodeMp3, mp3Frames } from "../support/mp3.js";
 import { tempStore } from "../support/temp-store.js";
 
 v8.setFlagsFromString("--expose-gc");
@@ -65,7 +68,7 @@ async function setup() {
 }
 
 /** @param {string} folder */
-const wavsIn = async (folder) => (await readdir(folder)).filter((name) => name.endsWith(".wav"));
+const filesIn = (folder) => readdir(folder);
 
 test("an excerpt's target is the vibe's fixed loudness, or the schema's default", () => {
   expect(vibeLoudness({ loudness: -14 })).toBe(-14);
@@ -91,7 +94,10 @@ describe("renderExcerpt", () => {
       producer: PRODUCER,
       checks: { ok: true, findings: [] },
     });
-    const channels = decodeWav(await readFile(join(cache, render.file)));
+    expect(render.file).toMatch(/\.mp3$/);
+    const frames = mp3Frames(await readFile(join(cache, render.file)));
+    expect(frames.every(({ kbps }) => kbps === MP3_KBPS)).toBe(true);
+    const channels = await decodeMp3(join(cache, render.file));
     expect(channels[0]?.length).toBe(EXCERPT_SECONDS * 48000);
     expect(Math.abs(integratedLoudness(channels, 48000) - TARGET)).toBeLessThanOrEqual(0.5);
     expect(render.features).toMatchObject({
@@ -111,7 +117,7 @@ describe("renderExcerpt", () => {
     const recordings = await indexRecordings(FIXTURE_RECORDINGS);
     const { render } = await renderExcerpt(store, cache, request, recordings);
     expect(render.checks).toEqual({ ok: true, findings: [] });
-    const channels = decodeWav(await readFile(join(cache, render.file)));
+    const channels = await decodeMp3(join(cache, render.file));
     expect(Math.abs(integratedLoudness(channels, 48000) - TARGET)).toBeLessThanOrEqual(0.5);
   });
 
@@ -125,7 +131,7 @@ describe("renderExcerpt", () => {
     const { render: stale } = putRender(store, {
       ...first.render,
       producer: "engine-1 features-old",
-      file: "stale.wav",
+      file: "stale.mp3",
     });
     const fresh = await renderExcerpt(store, cache, excerpt);
     expect(fresh.cached).toBe(false);
@@ -135,7 +141,7 @@ describe("renderExcerpt", () => {
     const louder = await renderExcerpt(store, cache, { ...excerpt, target: -14 });
     expect(louder.cached).toBe(false);
     expect(louder.render.target).toBe(-14);
-    expect(await wavsIn(cache)).toEqual([louder.render.file]);
+    expect(await filesIn(cache)).toEqual([louder.render.file]);
   });
 
   test("renders again when the cached file is missing", async () => {
@@ -143,12 +149,23 @@ describe("renderExcerpt", () => {
     const excerpt = { genomeId: drone, seed: SEED, target: TARGET };
     const { render } = putRender(store, {
       ...(await renderExcerpt(store, cache, excerpt)).render,
-      file: "gone.wav",
+      file: "gone.mp3",
     });
     const again = await renderExcerpt(store, cache, excerpt);
     expect(again.cached).toBe(false);
     expect(again.render.createdAt).toBeGreaterThan(render.createdAt);
     expect(existsSync(join(cache, again.render.file))).toBe(true);
+  });
+
+  test("renders again over a row whose file is a WAV from before MP3, and deletes the WAV", async () => {
+    const { store, cache, drone } = await setup();
+    const excerpt = { genomeId: drone, seed: SEED, target: TARGET };
+    const { render } = await renderExcerpt(store, cache, excerpt);
+    await rename(join(cache, render.file), join(cache, "old.wav"));
+    putRender(store, { ...render, file: "old.wav" });
+    const again = await renderExcerpt(store, cache, excerpt);
+    expect(again.cached).toBe(false);
+    expect(await filesIn(cache)).toEqual([again.render.file]);
   });
 
   test("is identical rendered twice in one process with forced collection between", async () => {
@@ -165,9 +182,9 @@ describe("renderExcerpt", () => {
       seed: 3,
       target: -16,
     });
-    const wavA = await readFile(join(one.cache, a.render.file));
-    const wavB = await readFile(join(two.cache, b.render.file));
-    expect(wavA.equals(wavB)).toBe(true);
+    const mp3A = await readFile(join(one.cache, a.render.file));
+    const mp3B = await readFile(join(two.cache, b.render.file));
+    expect(mp3A.equals(mp3B)).toBe(true);
     expect(b.render.features).toEqual(a.render.features);
   });
 });
@@ -276,6 +293,6 @@ describe("renderExcerpts as a job", () => {
       state: "cancelled",
       progress: { done: 1, total: 3 },
     });
-    expect(await wavsIn(cache)).toHaveLength(1);
+    expect(await filesIn(cache)).toHaveLength(1);
   });
 });

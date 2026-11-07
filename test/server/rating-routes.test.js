@@ -8,8 +8,10 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from "vitest";
 import { AB_ORDER_SEEDS, abOrder } from "../../src/domain/ab-order.js";
 import { ENGINE_VERSION } from "../../src/engine/engine-version.js";
 import { addFeedback, listRatedAudio, listRatedGenomes } from "../../src/server/rating-store.js";
+import { readTrainingSet } from "../../src/server/read-training-set.js";
 import { getRender, putRender } from "../../src/server/render-store.js";
 import { MAX_CHARS, MAX_TAGS } from "../../src/server/request-fields.js";
+import { abRatingBody, chosenOutcome } from "../../src/web/ab-rating.js";
 import { GENOMES, removeStudio, startStudio } from "../support/studio.js";
 
 /** @type {Studio[]} */
@@ -134,6 +136,29 @@ describe("ratings", () => {
     }
     const pair = { a: one.excerpt.renderId, b: one.excerpt.renderId };
     expect((await server.api("POST", `${at}/ab-pairs`, pair)).status).toBe(400);
+  });
+
+  test("a rating as Quick A/B sends it stores the session and the order shown, for the training set", async () => {
+    const { server, ok, vibe, session, one, two } = await setup();
+    const at = `/api/sessions/${session.id}`;
+    const pair = await ok("POST", `${at}/ab-pairs`, {
+      a: one.excerpt.renderId,
+      b: two.excerpt.renderId,
+    });
+    const outcome = chosenOutcome(pair, "left");
+    const played = { left: 0.75, right: 0.5 };
+    const rating = await ok("POST", `${at}/ab-ratings`, abRatingBody(pair, outcome, played, 2500));
+    expect(rating).toMatchObject({
+      sessionId: session.id,
+      orderSeed: pair.orderSeed,
+      leftSide: pair.leftSide,
+      outcome: pair.leftSide,
+    });
+    expect(rating[pair.leftSide].playedFraction).toBe(0.75);
+    const { pairs } = readTrainingSet(server.store, vibe.id);
+    expect(pairs).toEqual([
+      expect.objectContaining({ ratingId: rating.id, sessionId: session.id, winnerLeft: true }),
+    ]);
   });
 
   test("a rating writes one rated_audio row whose file exists, reused by the next", async () => {

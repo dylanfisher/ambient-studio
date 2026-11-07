@@ -8,6 +8,7 @@
 import { getJson, jobPath, postJson, sessionPath, startJob, VIBES_PATH } from "./api.js";
 import { cloneTemplate } from "./clone-template.js";
 import { elementsById } from "./element-by-id.js";
+import { mountPlayer } from "./excerpt-player.js";
 import { followJob } from "./follow-job.js";
 import { endedText, JOB_STATE } from "./job-progress.js";
 import { jobBox, TONE } from "./job-view.js";
@@ -209,6 +210,7 @@ async function start(control, path, body) {
  */
 function makeNode(node) {
   const parts = cloneTemplate("lineage-node", NODE_PARTS);
+  mountPlayer(parts.audio, status.fail);
   const steer =
     node.rejectReason === null
       ? steerControls({ candidateId: node.id, sessionId: () => target, start, run: status.run })

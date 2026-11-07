@@ -12,6 +12,7 @@ import { AB_ORDER_SEEDS, abOrder } from "../domain/ab-order.js";
 import { macroWindow } from "../domain/macro-window.js";
 import { MACROS } from "../engine/genome-schema.js";
 import { requireGenome } from "../engine/validate-genome.js";
+import { jobRecordings } from "./candidate-job.js";
 import { captureRatedAudio } from "./capture-rated-audio.js";
 import { getCandidate, getGenome } from "./generation-store.js";
 import { PRODUCER } from "./producer.js";
@@ -90,7 +91,7 @@ function heardRender(app, session, body, key) {
  * @returns {Promise<HeardExcerpt & { ratedAudioId: number }>}
  */
 async function keepHeard(app, renderId) {
-  const rated = await captureRatedAudio(app.store, app.paths, renderId);
+  const rated = await captureRatedAudio(app.store, app.paths, renderId, () => jobRecordings(app));
   const { genomeId, seed, offset, duration, engineVersion } = rated;
   return { genomeId, seed, offset, duration, engineVersion, ratedAudioId: rated.id };
 }

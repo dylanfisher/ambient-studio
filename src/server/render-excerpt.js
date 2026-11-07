@@ -1,7 +1,10 @@
 // Excerpt renders (decision 0026): the window a candidate is rated on, at its seed and excerpt
 // offset (0007), normalized to the vibe's loudness target so an A/B choice isn't won by the
-// louder side, measured raw and heard (0023), and cached as a WAV with a renders row (0021).
+// louder side, measured raw and heard (0023), and cached as an MP3 for playback (0048) with a
+// renders row (0021). The cache keeps no lossless copy: rating an excerpt renders it again for
+// the FLAC it keeps (`renderHeardAgain`).
 /** @import { Constraints } from "../domain/constraint-schema.js" */
+/** @import { Features } from "../domain/extract-features.js" */
 /** @import { LintResult } from "../domain/lint-result.js" */
 /** @import { Normalized } from "../domain/normalize.js" */
 /** @import { Genome } from "../engine/genome-schema.js" */
@@ -13,6 +16,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { EXCERPT_SECONDS } from "../domain/excerpt-seconds.js";
 import { extractFeatures } from "../domain/extract-features.js";
 import { lintResult } from "../domain/lint-result.js";
@@ -30,7 +34,7 @@ import { PRODUCER } from "./producer.js";
 import { renderOffline } from "./render-offline.js";
 import { findRender, putRender } from "./render-store.js";
 import { sha256Hex } from "./sha256-hex.js";
-import { writeWav } from "./write-wav.js";
+import { MP3_EXTENSION, writeMp3 } from "./write-mp3.js";
 
 /** Hex characters of the producer's hash in a cached file's name. */
 const PRODUCER_NAME_CHARS = 12;
@@ -61,7 +65,17 @@ export function vibeLoudness(constraints) {
  */
 function cacheFile({ genomeId, seed, target, duration }) {
   const producer = sha256Hex(PRODUCER).slice(0, PRODUCER_NAME_CHARS);
-  return `${genomeId}-seed${seed}-${duration}s-${target}LUFS-${producer}.wav`;
+  return `${genomeId}-seed${seed}-${duration}s-${target}LUFS-${producer}${MP3_EXTENSION}`;
+}
+
+/**
+ * Whether the render's file is in the cache as a playback MP3. A row whose file is missing, or
+ * is a WAV cached before excerpts were MP3s, is rendered again (0048).
+ * @param {string} folder the render-cache folder
+ * @param {Render} render
+ */
+export function cachedFile(folder, { file }) {
+  return file.endsWith(MP3_EXTENSION) && existsSync(join(folder, file));
 }
 
 /** The rule of the finding a render gets when normalize throws on it and near-silence passed. */
@@ -91,7 +105,20 @@ function heardAudio(raw, genome, target, checks) {
 }
 
 /**
- * Writes the WAV into a temp folder inside `folder` and renames it into place, so a reader never
+ * Renders the window and normalizes it as the owner hears it, with the render checks.
+ * @param {Genome} genome
+ * @param {{ seed: number, offset: number, duration: number, target: number }} window
+ * @param {readonly RecordingEntry[] | undefined} recordings
+ */
+async function renderHeard(genome, { seed, offset, duration, target }, recordings) {
+  const { samples } = await loadSamples(genome, recordings);
+  const raw = await renderOffline(genome, { seed, duration, offset, samples });
+  requireFinite(raw.channels);
+  return { raw, ...heardAudio(raw, genome, target, renderChecks(raw, genome)) };
+}
+
+/**
+ * Writes the MP3 into a temp folder inside `folder` and renames it into place, so a reader never
  * sees half a file. A file already of that name is replaced: it was made for the same window,
  * target and producer, and is left only when a render's row was lost.
  * @param {string} folder
@@ -104,7 +131,7 @@ async function writeCached(folder, file, channels, sampleRate) {
   const temp = await mkdtemp(join(folder, ".excerpt-"));
   try {
     const staged = join(temp, file);
-    await writeWav(staged, encodePcm24(channels), { channelCount: channels.length, sampleRate });
+    await writeMp3(staged, encodePcm24(channels), { channelCount: channels.length, sampleRate });
     await rename(staged, join(folder, file));
   } finally {
     await rm(temp, { recursive: true });
@@ -131,12 +158,9 @@ export async function renderExcerpt(store, folder, { genomeId, seed, target }, r
   const offset = excerptOffset(genome, seed, duration);
   const key = { genomeId, seed, offset, duration, target, producer: PRODUCER };
   const found = findRender(store, key);
-  if (found && existsSync(join(folder, found.file))) return { render: found, cached: true };
+  if (found && cachedFile(folder, found)) return { render: found, cached: true };
 
-  const { samples } = await loadSamples(genome, recordings);
-  const raw = await renderOffline(genome, { seed, duration, offset, samples });
-  requireFinite(raw.channels);
-  const { heard, checks } = heardAudio(raw, genome, target, renderChecks(raw, genome));
+  const { raw, heard, checks } = await renderHeard(genome, key, recordings);
   const features = extractFeatures(raw, heard);
   const file = cacheFile({ genomeId, seed, target, duration });
   await writeCached(folder, file, (heard ?? raw).channels, raw.sampleRate);
@@ -144,6 +168,32 @@ export async function renderExcerpt(store, folder, { genomeId, seed, target }, r
   // force: a replaced row's file may already be gone, which is the state this asks for.
   if (replaced && replaced.file !== file) await rm(join(folder, replaced.file), { force: true });
   return { render, cached: false };
+}
+
+/**
+ * The audio a render's MP3 was encoded from, rendered again: the exact normalized samples, which
+ * a rated excerpt's FLAC keeps (0026). Renders are reproducible under one producer (0009), and
+ * a genome's recordings are found by their hash (0029), so this is what was heard. Throws if the
+ * gain or the checks come out other than the row recorded, which would mean they are not.
+ * @param {Store} store
+ * @param {Render} render made under this server's producer
+ * @param {readonly RecordingEntry[]} [recordings] as `renderExcerpt` takes it
+ * @returns {Promise<{ channels: Float32Array[], sampleRate: number, gainDb: number }>} `gainDb`
+ *   is 0 for a render normalize couldn't lift, which was cached as rendered
+ */
+export async function renderHeardAgain(store, render, recordings) {
+  const row = getGenome(store, render.genomeId);
+  if (!row) throw new Error(`there is no genome ${render.genomeId} to render`);
+  const genome = requireGenome(row.genome, `genome ${render.genomeId}`);
+  const { raw, heard, checks } = await renderHeard(genome, render, recordings);
+  const recorded = /** @type {Features} */ (render.features).heard?.gainDb ?? null;
+  const gainDb = heard?.gainDb ?? null;
+  if (gainDb !== recorded || !isDeepStrictEqual(checks, render.checks)) {
+    throw new Error(
+      `render ${render.id} came out different when rendered again (gain ${gainDb} dB, its row says ${recorded} dB), so it can't be kept as what was heard; render the excerpt again`,
+    );
+  }
+  return { channels: (heard ?? raw).channels, sampleRate: raw.sampleRate, gainDb: gainDb ?? 0 };
 }
 
 /**

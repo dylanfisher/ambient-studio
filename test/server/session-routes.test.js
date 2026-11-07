@@ -7,6 +7,7 @@ import { copyFile, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
+import { checkRatedAudio } from "../../src/server/check-rated-audio.js";
 import { addCandidate, putGenome } from "../../src/server/generation-store.js";
 import { getRender } from "../../src/server/render-store.js";
 import { sha256Hex } from "../../src/server/sha256-hex.js";
@@ -58,8 +59,19 @@ test("asking for candidates runs a job that generates them and renders playable 
       headers: { range: "bytes=0-11" },
     });
     expect(audio.status).toBe(206);
-    expect(audio.headers["content-type"]).toBe("audio/wav");
-    expect(audio.body.subarray(0, 4).toString("latin1")).toBe("RIFF");
+    expect(audio.headers["content-type"]).toBe("audio/mpeg");
+    // An MPEG audio frame starts the file: 11 sync bits.
+    expect(audio.body[0]).toBe(0xff);
+    expect((audio.body[1] ?? 0) & 0xe0).toBe(0xe0);
+    // A seek asks for a range in the middle, as Safari does.
+    const size = Number(/\/(\d+)$/.exec(audio.headers["content-range"] ?? "")?.[1]);
+    const from = Math.floor(size / 2);
+    const middle = await server.request("GET", candidate.excerpt.url, {
+      headers: { range: `bytes=${from}-` },
+    });
+    expect(middle.status).toBe(206);
+    expect(middle.headers["content-range"]).toBe(`bytes ${from}-${size - 1}/${size}`);
+    expect(middle.body).toHaveLength(size - from);
   }
   const view = await ok("GET", `/api/sessions/${session.id}`);
   expect(view).toMatchObject({ id: session.id, stoppedAt: null });
@@ -88,7 +100,15 @@ test("a candidate that plays a field recording from the configured folder gets a
   expect(candidate.excerpt).toMatchObject({ duration: 25, checks: { ok: true } });
   const audio = await server.request("GET", candidate.excerpt.url);
   expect(audio.status).toBe(200);
-  expect(audio.body.subarray(0, 4).toString("latin1")).toBe("RIFF");
+  expect(audio.body[0]).toBe(0xff);
+  // Rating it renders it again for the rated FLAC, which needs the recordings folder too.
+  await ok("POST", `/api/sessions/${session.id}/thumbs`, {
+    renderId: candidate.excerpt.renderId,
+    direction: "up",
+    playedFraction: 1,
+    timeTakenMs: 1000,
+  });
+  expect(await checkRatedAudio(server.store, server.paths.ratedAudio)).toBe(1);
 });
 
 test("stopping a session cancels its running and queued jobs and the omlx request in flight", async () => {

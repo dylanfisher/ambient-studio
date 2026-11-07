@@ -3,7 +3,8 @@
 - **Date:** 2026-11-06
 - **Status:** accepted; provisional: owner to confirm. Amended by
   [0039](0039-lineage-and-steering-controls.md) (the lineage page, and each session card's
-  ranges, locks, explore and nudge)
+  ranges, locks, explore and nudge) and [0048](0048-quick-ab-player-mp3.md) (keys on the Quick
+  A/B page, and the excerpt player)
 
 ## Context
 
@@ -143,3 +144,11 @@ structure follows shadcn/ui; no code is taken from it. Still no nesting, `:has()
   one-line direction) and Nudge from here (with a step size). Those buttons follow 0032's one
   job per action. A nudge child says it has no intent of its own, and rejected nudge draws are
   counted apart from model answers. `jobProgress` knows the nudge and explore kinds.
+- 2026-11-07 (step 4i, [0048](0048-quick-ab-player-mp3.md)): a sixth page, `quick-ab.html`,
+  opened from the session page's Quick A/B link, has keys, because the owner asked for them
+  there: "use wasd and left/right keys to allow playing one vs the other and choose left or
+  right". ← and → play the left or right excerpt, A, D, S and W choose left, right, about the
+  same or skip, Space pauses or plays, and Z undoes. Every key has a button beside it that shows
+  the key, and no key fires while a field you type in has the focus. Every other page still has
+  no keys. Every page plays excerpts through one player with a full-width seek bar in place of
+  the native `<audio>` controls; its button and seek bar have titles from `PLAYER_TITLES`.
