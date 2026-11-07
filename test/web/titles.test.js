@@ -3,13 +3,13 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import { DEFAULT_EXPLORES } from "../../src/domain/explore-direction.js";
+import { macroTitles } from "../../src/domain/macro-words.js";
 import { DEFAULT_NUDGES } from "../../src/domain/nudge.js";
 import { RANGE_ENDS } from "../../src/domain/target-schema.js";
 import { MACROS } from "../../src/engine/genome-schema.js";
 import { constraintFields, fieldTitle } from "../../src/web/constraint-fields.js";
 import { PLAYER_TITLES } from "../../src/web/excerpt-player.js";
 import { jobControl } from "../../src/web/job-control.js";
-import { macroTitles } from "../../src/web/macro-words.js";
 import { steerTitles } from "../../src/web/steer-controls.js";
 import { targetFields, targetTitle } from "../../src/web/target-fields.js";
 

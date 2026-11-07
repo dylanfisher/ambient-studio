@@ -3,7 +3,8 @@
 - **Date:** 2026-11-07
 - **Status:** accepted; amends [0019](0019-config-file-and-paths.md) (adds
   `sidecar.requestTimeoutMs`); amended by [0042](0042-clap-embeddings.md) (the `path` type,
-  numpy at start-up) and [0044](0044-bayesian-bradley-terry.md) (`fit` and `predict`)
+  numpy at start-up), [0044](0044-bayesian-bradley-terry.md) (`fit` and `predict`) and
+  [0047](0047-what-you-like.md) (a route asks `embedder` and `preference_code`)
 
 ## Context
 

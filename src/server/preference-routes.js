@@ -1,7 +1,10 @@
-// The preference model's route (decision 0044): start the fit job. Nothing else starts it.
+// The preference model's routes: start the fit job (decision 0044), which nothing else starts,
+// and read a vibe's taste summary (0047).
 /** @import { App, Route } from "./routing.js" */
 import { fitJob } from "./fit-job.js";
+import { readPreferenceSummary } from "./preference-summary.js";
 import { duplicateJob } from "./routing.js";
+import { requireVibe } from "./vibe-routes.js";
 
 const FIT_JOB = "fit";
 
@@ -27,6 +30,17 @@ export const PREFERENCE_ROUTES = [
         );
       }
       return app.jobs.add(FIT_JOB, fitJob(app));
+    },
+  },
+  {
+    method: "GET",
+    path: "/api/vibes/:vibeId/preference",
+    handle: ({ app, params }) => {
+      const vibe = requireVibe(app.store, params);
+      // Never cancelled, even when the page closes: cancelling a sidecar request stops the
+      // process, which would fail a job's request in flight beside it. The client's timeout
+      // still bounds the wait.
+      return readPreferenceSummary(app, vibe.id, new AbortController().signal);
     },
   },
 ];
