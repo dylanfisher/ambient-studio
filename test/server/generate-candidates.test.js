@@ -19,6 +19,7 @@ import {
 } from "../../src/server/generation-store.js";
 import { createOmlxQueue } from "../../src/server/omlx-queue.js";
 import { RETRIEVAL_METHOD } from "../../src/server/retrieve-examples.js";
+import { TABLE } from "../../src/server/store.js";
 import { addNote, createVibe, reviseVibe } from "../../src/server/vibe-store.js";
 import { driveGaps, fakeClock } from "../support/fake-clock.js";
 import { fakeOmlx } from "../support/fake-omlx.js";
@@ -277,6 +278,36 @@ describe("generateCandidates", () => {
         recordings: [],
       }),
     ).rejects.toThrow(`revision ${revision.id} has invalid soft targets: $.features.flatness`);
+    for (const table of [TABLE.generations, TABLE.candidates]) {
+      expect(store.db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get()).toEqual({ n: 0 });
+    }
+  });
+
+  test("soft targets with no ranges, empty or with another key, leave the prompt as it was", async () => {
+    const { omlx, config, queue, store, vibe, drive } = await setup();
+    const { generateCandidates } = await load();
+    reviseVibe(store, vibe.id, { ...revisionDraft, softTargets: { clap: { toward: "rain" } } });
+    omlx.script(says(answer(valid)));
+    await drive(
+      generateCandidates(vibe.id, 1, store, queue, {
+        config,
+        seed: 37,
+        sessionId: null,
+        locks: [],
+        recordings: [],
+      }),
+    );
+    const bare = buildPrompt(
+      { ...revisionDraft, ranges: {} },
+      {
+        notes: [],
+        locks: [],
+        examples: [],
+        budgetTokens: config.queue.contextBudgetTokens,
+        recordings: [],
+      },
+    );
+    expect(omlx.requests[0]?.body.messages).toEqual(bare.messages);
   });
 
   test("onCandidate gets each stored candidate with its first answer's reason", async () => {

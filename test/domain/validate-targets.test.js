@@ -66,6 +66,18 @@ describe("validateTargets", () => {
       /low 0\.6 is above high 0\.4/,
     ],
     ["a share above 1", { features: { stereoWidth: [0, 1.5] } }, "$.features.stereoWidth[1]", /1/],
+    [
+      "an infinite end, as JSON.parse reads 1e999",
+      { features: { onsetRate: [JSON.parse("1e999"), null] } },
+      "$.features.onsetRate[0]",
+      /must be a number.*Infinity/,
+    ],
+    [
+      "a NaN end",
+      { features: { centroidMean: [null, Number.NaN] } },
+      "$.features.centroidMean[1]",
+      /must be a number/,
+    ],
     ["a negative rate", { features: { onsetRate: [-1, 2] } }, "$.features.onsetRate[0]", /0/],
   ];
 

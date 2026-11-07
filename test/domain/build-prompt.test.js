@@ -129,6 +129,13 @@ describe("buildPrompt", () => {
     expect(text).not.toMatch(/field recording|"recording"/);
   });
 
+  test("no ranges leaves the prompt byte for byte as it is without the ranges section", () => {
+    const parts = { notes, locks, examples: [], budgetTokens: BUDGET, recordings: [] };
+    const without = promptText(buildPrompt({ ...revision, ranges: {} }, parts).messages);
+    const withRanges = promptText(buildPrompt(revision, parts).messages);
+    expect(withRanges.replace(`${targetsText(revision.ranges)}\n\n`, "")).toBe(without);
+  });
+
   test("offers the recording voice and lists the playable recordings, when there are some", () => {
     const listing = (/** @type {number} */ i, /** @type {object} */ shape = {}) => ({
       file: `walks/take ${i}.wav`,

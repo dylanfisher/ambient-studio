@@ -37,6 +37,31 @@ export const FEATURE_NAMES = Object.freeze(
 );
 
 /**
+ * Text followed by its unit, as in `1244 Hz`; a share has no unit.
+ * @param {string | number} text
+ * @param {string | null} unit
+ * @returns {string}
+ */
+export const unitText = (text, unit) => (unit ? `${text} ${unit}` : String(text));
+
+/**
+ * A measured value at the digits the prompt writes, so a check reads the number the model reads.
+ * @param {number} value
+ * @param {number} digits
+ */
+export const roundFeature = (value, digits) => Number(value.toFixed(digits));
+
+/**
+ * A measured value as the prompt writes it, or "none measurable" for null.
+ * @param {number | null} value
+ * @param {number} digits
+ * @param {string | null} unit
+ * @returns {string}
+ */
+export const featureText = (value, digits, unit) =>
+  value === null ? "none measurable" : unitText(value.toFixed(digits), unit);
+
+/**
  * One named feature's value; null when it wasn't measurable, or was heard and nothing was.
  * @param {Features} features
  * @param {FeatureName} entry

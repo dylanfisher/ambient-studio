@@ -3,7 +3,7 @@
 /** @import { Features } from "./extract-features.js" */
 /** @import { Finding, LintResult } from "./lint-result.js" */
 /** @import { FeatureRanges } from "./target-schema.js" */
-import { featureValue } from "./feature-names.js";
+import { featureText, featureValue, roundFeature } from "./feature-names.js";
 import { lintResult } from "./lint-result.js";
 import { RANGES_KEY, rangeWords, TARGET_FEATURES } from "./target-schema.js";
 
@@ -26,7 +26,7 @@ export function checkTargets(features, ranges) {
     const range = ranges[name];
     if (range === undefined) continue;
     const value = featureValue(features, feature);
-    const shown = value === null ? null : Number(value.toFixed(feature.digits));
+    const shown = value === null ? null : roundFeature(value, feature.digits);
     const [low, high] = range;
     if (shown !== null && (low === null || shown >= low) && (high === null || shown <= high)) {
       continue;
@@ -34,7 +34,7 @@ export function checkTargets(features, ranges) {
     const what =
       shown === null
         ? `${feature.label} couldn't be measured`
-        : `${feature.label} is ${shown.toFixed(feature.digits)}${feature.unit ? ` ${feature.unit}` : ""}`;
+        : `${feature.label} is ${featureText(shown, feature.digits, feature.unit)}`;
     findings.push({
       path: `${RANGES_KEY}.${name}`,
       rule: TARGET_RULE,

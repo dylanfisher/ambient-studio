@@ -3,7 +3,7 @@
 // prompt, the checks and the brief page read. `validateTargets`, `targetsText` and
 // `checkTargets` all read this table.
 /** @import { FeatureName } from "./feature-names.js" */
-import { FEATURE_NAMES } from "./feature-names.js";
+import { FEATURE_NAMES, unitText } from "./feature-names.js";
 
 /** Where the ranges sit in a vibe revision's `softTargets`. */
 export const RANGES_KEY = "features";
@@ -75,8 +75,7 @@ export const TARGET_FEATURES = Object.freeze(
  * @returns {string}
  */
 export function rangeWords([low, high], unit) {
-  const after = unit ? ` ${unit}` : "";
-  if (low === null) return `at most ${high}${after}`;
-  if (high === null) return `at least ${low}${after}`;
-  return `from ${low} to ${high}${after}`;
+  if (low === null) return `at most ${unitText(`${high}`, unit)}`;
+  if (high === null) return `at least ${unitText(`${low}`, unit)}`;
+  return `from ${low} to ${unitText(`${high}`, unit)}`;
 }
