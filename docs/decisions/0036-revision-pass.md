@@ -81,9 +81,12 @@ excerpts are measured it is the first try. A rejected revision makes no pair, so
 stays shown and the revision is listed with the rejected ones. The session page shows one card
 of each pair, headed "Candidate 3, revised" for the revision, with "Show the first try" or
 "Show the revision" linking the other. `createPairSwap` (`src/web/pair-swap.js`) holds the
-swap rule: the page moves to the server's pick, but not while the visible card's excerpt plays.
-It swaps once that excerpt pauses or ends. After the owner picks with the link, the pair stays
-as picked.
+swap rule: the page moves to the server's pick, but not while the visible card is held: its
+excerpt plays, it holds the focus, or its note or tags hold text not yet sent. A swap that waits
+runs again when the excerpt pauses or ends, when the focus leaves the card, and when the
+candidates reload after a rating, so a note being typed keeps its text and the focus. After the
+owner picks with the link, the pair stays as picked. The A/B view and the status line name a
+revision "Candidate 3, revised", as its heading does. `reviseCandidate` refuses a revision.
 
 **Steps.** The job says "Measuring candidate 3 of 8" after a first try's render, "Revising
 candidate 3 of 8" while its revision is asked for, the repair and busy steps as for a first try,

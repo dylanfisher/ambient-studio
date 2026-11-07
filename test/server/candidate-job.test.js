@@ -289,3 +289,45 @@ test("a cancel between the render and the revision stops the job with every row 
     currentExcerpt(app.store, app.paths.renderCache, /** @type {any} */ (first)),
   ).not.toBeNull();
 });
+
+test("a revision request that fails in the queue stops the job with its rows stored", async () => {
+  const { app, omlx, session, run } = await sessionApp(undefined, MISSED);
+  omlx.script(answer(GENOMES[0]), { status: 500, body: "boom" });
+  await expect(run(1)).rejects.toThrow(/500/);
+  expect(omlx.requests).toHaveLength(2);
+  const [first, revised] = listSessionCandidates(app.store, session.id);
+  expect(first).toMatchObject({ operator: null, rejectReason: null });
+  expect(revised).toMatchObject({
+    operator: "revise",
+    parentIds: [first?.id],
+    rejectReason: "requestFailed",
+  });
+  const generation = getGeneration(app.store, /** @type {number} */ (revised?.generationId));
+  expect(generation).toMatchObject({
+    finishReason: "error",
+    error: expect.stringContaining("500"),
+  });
+});
+
+test("a first try too quiet to normalize is revised, with its unmeasured features said", async () => {
+  const { app, omlx, session, run } = await sessionApp(undefined, INSIDE);
+  // Every voice starts after the excerpt's window, so the excerpt is silent.
+  const silent = {
+    ...GENOMES[0],
+    voices: /** @type {any} */ (GENOMES[0]).voices.map((/** @type {any} */ v) => ({
+      ...v,
+      start: 55,
+    })),
+  };
+  omlx.script(answer(silent), answer(GENOMES[0]));
+  const result = await run(1);
+  expect(omlx.requests).toHaveLength(2);
+  const first = getRender(app.store, /** @type {any} */ (result.excerpts[0]).renderId);
+  expect(first?.features).toMatchObject({ heard: null });
+  const ask = omlx.requests[1]?.body.messages.at(-1).content;
+  expect(ask).toContain("too quiet to normalize");
+  expect(ask).toContain("low-end share couldn't be measured");
+  expect(ask).toContain("(nearSilence)");
+  const [, revised] = listSessionCandidates(app.store, session.id);
+  expect(revised).toMatchObject({ operator: "revise", rejectReason: null });
+});

@@ -94,8 +94,9 @@ const CARD_PARTS = Object.freeze({
  * it keeps its text and the focus.
  * @typedef {object} Card
  * @property {Candidate} candidate
- * @property {number} number its place among the session's first tries, from 1; a revision
- *   has its first try's
+ * @property {string} label "Candidate 3", numbered among the session's first tries from 1, or
+ *   "Candidate 3, revised" for first try 3's revision, as its heading, the A/B view and the
+ *   status line name it
  * @property {ReturnType<typeof cloneTemplate<typeof CARD_PARTS>>} parts
  * @property {Record<string, MacroButtons>} macros
  * @property {PlayedTracker | null} tracker null without an excerpt
@@ -301,7 +302,7 @@ async function rateCard(card, work) {
 function measured(/** @type {Card} */ card) {
   const { excerpt } = card.candidate;
   if (!excerpt || !card.tracker) {
-    throw new Error(`Candidate ${card.number} has no excerpt yet; wait for it to render.`);
+    throw new Error(`${card.label} has no excerpt yet; wait for it to render.`);
   }
   return {
     renderId: excerpt.renderId,
@@ -324,7 +325,7 @@ function thumbs(card, direction) {
     const live = choicesOf(card).thumbs;
     if (live?.direction === direction) {
       await removeFeedback(live.id);
-      status.say(`Thumbs ${direction} cleared for candidate ${card.number}.`);
+      status.say(`Thumbs ${direction} cleared for ${card.label.toLowerCase()}.`);
       return;
     }
     card.parts.up.setAttribute("aria-pressed", String(direction === UP));
@@ -336,7 +337,7 @@ function thumbs(card, direction) {
     card.parts.note.value = "";
     selection.restart();
     status.say(
-      `Thumbs ${direction}${note ? " with the note" : ""} saved for candidate ${card.number}: ` +
+      `Thumbs ${direction}${note ? " with the note" : ""} saved for ${card.label.toLowerCase()}: ` +
         `played ${percent(how.playedFraction)}, ${(how.timeTakenMs / 1000).toFixed(1)} s.`,
     );
   });
@@ -359,13 +360,13 @@ function macroChoice(card, macro, direction) {
     buttons.more.setAttribute("aria-pressed", String(direction === MORE));
     if (direction === null) {
       await removeFeedback(/** @type {any} */ (live).id);
-      status.say(`The ${macro} choice for candidate ${card.number} is cleared.`);
+      status.say(`The ${macro} choice for ${card.label.toLowerCase()} is cleared.`);
       return;
     }
     const how = measured(card);
     await postJson(`${SESSION}/macro-feedback`, { ...how, macro, direction });
     selection.restart();
-    status.say(`Saved for candidate ${card.number}: ${direction} ${macro}.`);
+    status.say(`Saved for ${card.label.toLowerCase()}: ${direction} ${macro}.`);
   });
 }
 
@@ -386,7 +387,7 @@ function keepSketch(card) {
     card.parts.note.value = "";
     card.parts.tags.value = "";
     selection.restart();
-    status.say(`Candidate ${card.number} kept as a sketch. The brief page lists it.`);
+    status.say(`${card.label} kept as a sketch. The brief page lists it.`);
   });
 }
 
@@ -413,7 +414,7 @@ const ab = abView({
 /** @param {Card} card */
 const abCandidate = (card) =>
   /** @type {AbCandidate} */ ({
-    label: `Candidate ${card.number}`,
+    label: card.label,
     excerpt: card.candidate.excerpt,
   });
 
@@ -422,19 +423,19 @@ async function compare(card) {
   measured(card);
   if (marked === card) {
     unmark();
-    status.say(`Candidate ${card.number} is no longer marked to compare.`);
+    status.say(`${card.label} is no longer marked to compare.`);
     return;
   }
   if (!marked) {
     marked = card;
     card.parts.root.classList.add("marked");
     card.parts.compare.textContent = "Marked; choose another";
-    status.say(`Candidate ${card.number} marked. Press Compare on another candidate.`);
+    status.say(`${card.label} marked. Press Compare on another candidate.`);
     return;
   }
   const first = marked;
   const firstExcerpt = first.candidate.excerpt;
-  if (!firstExcerpt) throw new Error(`Candidate ${first.number} has lost its excerpt; mark again.`);
+  if (!firstExcerpt) throw new Error(`${first.label} has lost its excerpt; mark again.`);
   const pair = await postJson(`${SESSION}/ab-pairs`, {
     a: measured(card).renderId,
     b: firstExcerpt.renderId,
@@ -461,14 +462,27 @@ const PAIR_LINK = Object.freeze({
 
 /**
  * Shows one card of each revised pair, as `pairSwap` picks, with a link to the other. A card
- * whose excerpt plays isn't replaced until it stops.
+ * isn't replaced while its excerpt plays, it holds the focus, or its note or tags are unsent,
+ * so a note being typed keeps its text and the focus; the swap runs again when that ends.
  */
 function showPairs() {
   const byId = new Map(cards.map((card) => [card.candidate.id, card]));
-  /** @param {number} id */
-  const playing = (id) => {
-    const card = byId.get(id);
-    return Boolean(card && !card.parts.audio.paused);
+  /** @type {import("./pair-swap.js").Held} */
+  const held = {
+    playing: (id) => {
+      const card = byId.get(id);
+      return Boolean(card && !card.parts.audio.paused);
+    },
+    editing: (id) => {
+      const card = byId.get(id);
+      if (!card) return false;
+      const { root, note, tags } = card.parts;
+      return (
+        root.contains(document.activeElement) ||
+        note.value.trim() !== "" ||
+        tags.value.trim() !== ""
+      );
+    },
   };
   for (const card of cards) {
     const { pair, id } = card.candidate;
@@ -477,7 +491,7 @@ function showPairs() {
       card.parts.root.hidden = false;
       continue;
     }
-    card.parts.root.hidden = pairSwap.show(pair.firstTryId, pair.shownId, playing) !== id;
+    card.parts.root.hidden = pairSwap.show(pair.firstTryId, pair.shownId, held) !== id;
     const link = id === pair.revisionId ? PAIR_LINK.revision : PAIR_LINK.firstTry;
     card.parts.pairLink.textContent = link.text;
     card.parts.pairLink.title = link.title;
@@ -512,14 +526,14 @@ function makeCard(candidate, number, revised) {
   /** @type {Card} */
   const card = {
     candidate,
-    number,
+    label: `Candidate ${number}${revised ? ", revised" : ""}`,
     parts,
     macros,
     tracker: null,
     wiring: new AbortController(),
     busy: false,
   };
-  parts.heading.textContent = `Candidate ${number}${revised ? ", revised" : ""}`;
+  parts.heading.textContent = card.label;
   parts.intent.textContent = candidate.intent ?? "The model gave no intent.";
   for (const macro of MACRO_NAMES) {
     const choice = cloneTemplate("macro-choice", {
@@ -545,6 +559,9 @@ function makeCard(candidate, number, revised) {
   const compareOnce = oneAtATime(() => compare(card));
   parts.compare.onclick = () => status.run(compareOnce);
   parts.pairLink.onclick = () => showOther(card);
+  // The focus has not moved on yet when focusout fires, so the swap waits a turn to see where
+  // it went. A sent note is cleared before the candidates reload, which runs the swap too.
+  parts.root.addEventListener("focusout", () => setTimeout(showPairs));
   showExcerpt(card);
   return card;
 }

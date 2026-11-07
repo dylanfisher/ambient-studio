@@ -71,12 +71,15 @@ function roundZero(store, generationId) {
  * that fails in the queue is rethrown after its rows are stored, as for a first try.
  * @param {Store} store
  * @param {OmlxQueue} queue
- * @param {Candidate} firstTry a valid candidate the model wrote
+ * @param {Candidate} firstTry a valid candidate the model wrote, not itself a revision
  * @param {ReviseOptions} options
  * @returns {Promise<Candidate>}
  */
 export async function reviseCandidate(store, queue, firstTry, options) {
   const { config, locks, seed, index } = options;
+  if (firstTry.operator === REVISE) {
+    throw new Error(`candidate ${firstTry.id} is a revision, and a revision is never revised`);
+  }
   if (firstTry.genomeId === null || firstTry.generationId === null) {
     throw new Error(`candidate ${firstTry.id} has no genome or no generation to revise`);
   }

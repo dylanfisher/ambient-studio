@@ -1,6 +1,7 @@
 // The session and job routes (decision 0027): a session's state and stop, asking for
 // candidates, re-rendering missing excerpts, the candidates with their excerpts and revised
-// pairs (0036), and job status and cancel. Stopping a session cancels its jobs, and with them their omlx requests.
+// pairs (0036), and job status and cancel. Stopping a session cancels its jobs, and with them
+// their omlx requests.
 /** @import { JobStatus } from "./job-runner.js" */
 /** @import { Feedback } from "./rating-store.js" */
 /** @import { App, Route } from "./routing.js" */
