@@ -61,16 +61,24 @@ const NO_OMLX = "http://omlx.invalid";
  * @property {Clock} [clock] the queue's and the job runner's clock; the real one when omitted
  * @property {() => number} [random]
  * @property {string} [fieldRecordings] the config's recordings folder; `null` when omitted
+ * @property {boolean} [sendResponseFormat] the config's `queue.sendResponseFormat`; the example
+ *   config's when omitted
  */
 
 /**
  * @param {TestServerOptions} [options]
  * @returns {Promise<TestServer>}
  */
-export async function startTestServer({ omlxBaseUrl = NO_OMLX, fieldRecordings, ...options } = {}) {
+export async function startTestServer({
+  omlxBaseUrl = NO_OMLX,
+  fieldRecordings,
+  sendResponseFormat,
+  ...options
+} = {}) {
   const root = await tempRoot((raw) => {
     raw.omlx.baseUrl = omlxBaseUrl;
     if (fieldRecordings !== undefined) raw.fieldRecordings = fieldRecordings;
+    if (sendResponseFormat !== undefined) raw.queue.sendResponseFormat = sendResponseFormat;
   });
   const config = loadConfig(root.configPath);
   /** @type {string[]} */

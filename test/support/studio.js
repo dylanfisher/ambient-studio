@@ -44,12 +44,13 @@ const answer = (genome) => ({
  */
 
 /**
- * @param {{ random?: () => number, fieldRecordings?: string }} [options] `random` gives stream
- *   and order seeds, a fixed sequence when omitted; `fieldRecordings` is the config's recordings
- *   folder, none when omitted
+ * @param {{ random?: () => number, fieldRecordings?: string, sendResponseFormat?: boolean }}
+ *   [options] `random` gives stream and order seeds, a fixed sequence when omitted;
+ *   `fieldRecordings` is the config's recordings folder, none when omitted; `sendResponseFormat`
+ *   is the config's queue setting, the example config's when omitted
  * @returns {Promise<Studio>}
  */
-export async function startStudio({ random, fieldRecordings } = {}) {
+export async function startStudio({ random, fieldRecordings, sendResponseFormat } = {}) {
   const clock = fakeClock();
   const omlx = await fakeOmlx(clock);
   let draws = 0;
@@ -58,6 +59,7 @@ export async function startStudio({ random, fieldRecordings } = {}) {
     clock,
     random: random ?? (() => (0.1 + 0.37 * draws++) % 1),
     ...(fieldRecordings !== undefined && { fieldRecordings }),
+    ...(sendResponseFormat !== undefined && { sendResponseFormat }),
   });
   // The temp root's config copies example.json, so this is the gap the queue waits.
   const gap = example.queue.minGapMs;

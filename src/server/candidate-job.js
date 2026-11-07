@@ -16,7 +16,7 @@ export const DEFAULT_CANDIDATES = 8;
 /** The most one request may ask for: 32 is a few minutes of omlx and of renders. */
 export const MAX_CANDIDATES = 32;
 /** Stream seeds are integers in [0, 2^32) (decision 0024). */
-const STREAM_SEEDS = 2 ** 32;
+export const STREAM_SEEDS = 2 ** 32;
 
 /**
  * @typedef {{ candidateId: number, renderId: number }} CandidateRender
@@ -32,7 +32,7 @@ const lastIndex = new WeakMap();
  * @param {App} app
  * @returns {Promise<RecordingEntry[]>}
  */
-async function jobRecordings(app) {
+export async function jobRecordings(app) {
   const folder = app.config.fieldRecordings;
   if (folder === null) return [];
   const index = await indexRecordings(folder, lastIndex.get(app) ?? []);
