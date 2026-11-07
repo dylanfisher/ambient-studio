@@ -1711,6 +1711,12 @@ data" is an allowed result.
   reference, matching its melody or harmony, and sending its audio to omlx.
 - **Uploads and regions are irreplaceable**: a migration, append-only rows, files in backups.
 
+**Settled by the owner on 2026-11-07:** `cma` is approved for 5e. A brief's attached regions,
+directions and axes live in their own append-only table keyed by vibe, not in `softTargets`, so
+changing them makes no new brief revision; each generation still records which ones it read.
+Where a step below says `softTargets.references`, `.directions` or `.axes`, read that table.
+5c is the step that adds it, and asks the orchestrator for its migration number.
+
 **Waiting on the owner before 5e and 5f** (AGENTS.md reserves both):
 
 - **CMA-ES (5e).** Recommended: `cma` (pycma), Hansen's reference implementation, pure Python on
@@ -3250,3 +3256,7 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   merged as 05f2ffc and 83dce79). Owner's choices: reference uploads used to set a brief's
   targets, guide generation and steer by sound, never rendered; phase 5 before 6; tracks are an
   LLM proposal the owner edits on a timeline; at an owner gate, keep building and batch the asks.
+- 2026-11-07: owner chose: try `laion/larger_clap_general` and `laion/clap-htsat-unfused` and
+  keep whichever passes, after 4b found `laion/larger_clap_music`'s text side collapsed (every
+  text at cosine 0.999); `cma` approved for 5e; regions, directions and axes in their own table
+  rather than `softTargets`. 4b reviewed (PASS, fix round asked); 4i built and in review.
