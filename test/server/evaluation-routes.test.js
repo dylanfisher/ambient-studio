@@ -9,6 +9,7 @@ import { listRequestGroup } from "../../src/server/generation-store.js";
 import { randomGenomeScript } from "../support/random-genome-baseline.js";
 import { SEED_GENOMES } from "../support/seed-genomes.js";
 import { removeStudio, startStudio } from "../support/studio.js";
+import { TEST_OMLX_KEY } from "../support/temp-root.js";
 
 /** @type {Studio[]} */
 const studios = [];
@@ -189,6 +190,23 @@ describe("the evaluation job", () => {
       requestFailed: 1,
     });
     expect(evaluation.report.overall.valid).toEqual({ beforeRepair: null, afterRepair: null });
+  });
+
+  test("a 401 stops the run after one request, and the key is kept out of what is stored", async () => {
+    const { omlx, ok, loadSeeds, evaluate } = await setup();
+    const vibeIds = await loadSeeds();
+    omlx.script({ status: 401, body: '{"error":{"message":"invalid api key"}}' });
+
+    const job = await evaluate(vibeIds, 2);
+    expect(job.state).toBe("failed");
+    expect(omlx.requests).toHaveLength(1);
+    expect(omlx.requests[0]?.authorization).toBe(`Bearer ${TEST_OMLX_KEY}`);
+    const [evaluation] = (await ok("GET", "/api/evaluations")).evaluations;
+    expect(evaluation.report.stopped).toBe(job.error);
+    expect(evaluation.report.overall).toMatchObject({ requested: 6, made: 1, requestFailed: 1 });
+    for (const stored of [evaluation, job]) {
+      expect(JSON.stringify(stored)).not.toContain(TEST_OMLX_KEY);
+    }
   });
 
   test("a response_format omlx answers is reported accepted", async () => {
