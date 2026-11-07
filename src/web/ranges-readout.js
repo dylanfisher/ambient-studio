@@ -1,7 +1,9 @@
 // A card's features against its brief's ranges (decision 0039), one row per range with each
-// miss marked. The miss is `checkTargets`'s, so the card marks what the revision pass and the
-// shown-card rule count (0036), at the prompt's rounding. No DOM.
+// miss marked, and the render checks it fails. The misses are `excerptMisses`'s, so the card
+// counts what the revision pass and the shown-card rule count (0036), at the prompt's rounding.
+// No DOM.
 /** @import { Features } from "../domain/extract-features.js" */
+/** @import { LintResult } from "../domain/lint-result.js" */
 /** @import { FeatureRanges } from "../domain/target-schema.js" */
 import { checkTargets } from "../domain/check-targets.js";
 import { featureText, featureValue, roundFeature } from "../domain/feature-names.js";
@@ -19,10 +21,12 @@ import { RANGES_KEY, rangeWords, TARGET_FEATURES } from "../domain/target-schema
 /**
  * @param {Features} features the excerpt's
  * @param {FeatureRanges} ranges validated, as the brief version stores them
- * @returns {{ rows: RangeRow[], misses: number, text: string }}
+ * @param {LintResult} checks the excerpt's render checks
+ * @returns {{ rows: RangeRow[], failed: string[], misses: number, text: string }} `failed`
+ *   names each failed check's rule; `misses` counts ranges missed and checks failed
  */
-export function rangesReadout(features, ranges) {
-  const missed = new Set(checkTargets(features, ranges).findings.map(({ path }) => path));
+export function rangesReadout(features, ranges, checks) {
+  const missedPaths = new Set(checkTargets(features, ranges).findings.map(({ path }) => path));
   const rows = Object.entries(TARGET_FEATURES).flatMap(([name, { feature }]) => {
     const range = ranges[name];
     if (range === undefined) return [];
@@ -34,16 +38,21 @@ export function rangesReadout(features, ranges) {
         label: feature.label,
         value: featureText(shown, feature.digits, feature.unit),
         range: rangeWords(range, feature.unit),
-        miss: missed.has(`${RANGES_KEY}.${name}`),
+        miss: missedPaths.has(`${RANGES_KEY}.${name}`),
       },
     ];
   });
-  const misses = rows.filter((row) => row.miss).length;
-  const text =
+  const missed = rows.filter((row) => row.miss).length;
+  const failed = checks.findings.map(({ rule }) => rule);
+  const rangesText =
     rows.length === 0
       ? "The brief sets no ranges to aim for."
-      : misses === 0
+      : missed === 0
         ? `Inside all ${rows.length} of the brief's ranges.`
-        : `Misses ${misses} of the brief's ${rows.length} range${rows.length === 1 ? "" : "s"}.`;
-  return { rows, misses, text };
+        : `Misses ${missed} of the brief's ${rows.length} range${rows.length === 1 ? "" : "s"}.`;
+  const checksText =
+    failed.length === 0
+      ? ""
+      : ` Fails ${failed.length} render check${failed.length === 1 ? "" : "s"}: ${failed.join(", ")}.`;
+  return { rows, failed, misses: missed + failed.length, text: rangesText + checksText };
 }

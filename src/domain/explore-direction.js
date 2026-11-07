@@ -1,5 +1,9 @@
-// What an explore's direction may be (decision 0038): one line of at most `DIRECTION_CHARS`
-// characters. The server refuses any other, and the pages check before they send.
+// What an explore request holds by default and what its direction may be (decision 0038): one
+// line of at most `DIRECTION_CHARS` characters. The server refuses any other, and the pages
+// check before they send.
+
+/** How many children one explore makes when the request doesn't say; the pages send it too. */
+export const DEFAULT_EXPLORES = 4;
 
 /** The most characters a direction may hold, as "slower" or "less bell". */
 export const DIRECTION_CHARS = 200;

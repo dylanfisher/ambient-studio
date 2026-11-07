@@ -1,6 +1,10 @@
 import { describe, expect, test } from "vitest";
 import { checkTargets } from "../../src/domain/check-targets.js";
+import { excerptMisses } from "../../src/domain/excerpt-misses.js";
 import { rangesReadout } from "../../src/web/ranges-readout.js";
+
+/** Render checks that all pass. */
+const PASSING = { ok: true, findings: [] };
 
 /**
  * @param {Partial<Record<string, number | null>>} heard
@@ -27,7 +31,7 @@ describe("rangesReadout", () => {
       centroidMean: [null, 1200],
       loudnessRange: [1, 2],
     });
-    const readout = rangesReadout(features({ centroidMean: 1244.4 }), ranges);
+    const readout = rangesReadout(features({ centroidMean: 1244.4 }), ranges, PASSING);
     expect(readout.rows).toEqual([
       {
         name: "loudnessRange",
@@ -61,11 +65,11 @@ describe("rangesReadout", () => {
     for (const lowEndShare of [0.404, 0.406]) {
       const measured = features({ lowEndShare });
       const missed = checkTargets(measured, ranges).findings.length;
-      const readout = rangesReadout(measured, ranges);
+      const readout = rangesReadout(measured, ranges, PASSING);
       expect(readout.misses).toBe(missed);
       expect(readout.rows.filter((row) => row.miss)).toHaveLength(missed);
     }
-    expect(rangesReadout(features({ lowEndShare: 0.404 }), ranges).text).toBe(
+    expect(rangesReadout(features({ lowEndShare: 0.404 }), ranges, PASSING).text).toBe(
       "Inside all 2 of the brief's ranges.",
     );
   });
@@ -74,15 +78,30 @@ describe("rangesReadout", () => {
     const readout = rangesReadout(
       features({ onsetRate: null }),
       /** @type {any} */ ({ onsetRate: [0.1, 0.3] }),
+      PASSING,
     );
     expect(readout.rows[0]).toMatchObject({ value: "none measurable", miss: true });
   });
 
   test("a brief with no ranges says so and gives no rows", () => {
-    expect(rangesReadout(features({}), {})).toEqual({
+    expect(rangesReadout(features({}), {}, PASSING)).toEqual({
       rows: [],
+      failed: [],
       misses: 0,
       text: "The brief sets no ranges to aim for.",
     });
+  });
+
+  test("counts failed render checks with the ranges, as the shown-card rule does", () => {
+    const ranges = /** @type {any} */ ({ lowEndShare: [null, 0.3] });
+    const clipping = {
+      ok: false,
+      findings: [{ path: "$", rule: "clipping", message: "the excerpt clips" }],
+    };
+    const measured = features({});
+    const readout = rangesReadout(measured, ranges, clipping);
+    expect(readout.misses).toBe(excerptMisses(measured, clipping, ranges).length);
+    expect(readout.failed).toEqual(["clipping"]);
+    expect(readout.text).toBe("Misses 1 of the brief's 1 range. Fails 1 render check: clipping.");
   });
 });

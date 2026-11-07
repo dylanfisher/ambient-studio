@@ -28,11 +28,24 @@ const page = elementsById({
   tree: HTMLUListElement,
 });
 const query = new URLSearchParams(location.search);
-const idText = query.get("id");
-if (idText === null) throw new Error("lineage.html needs ?id=<brief id>");
-const vibeId = Number(idText);
+
+/**
+ * A row id from the query, shown on the status line and thrown when it isn't one.
+ * @param {string} name
+ * @param {string} what what the id names, for the message
+ */
+function queryId(name, what) {
+  const text = query.get(name);
+  if (text !== null && /^[1-9]\d{0,15}$/.test(text)) return Number(text);
+  const error = new Error(
+    `This page's address needs ?${name}= and ${what} id, got ${JSON.stringify(text)}.`,
+  );
+  status.fail(error);
+  throw error;
+}
+const vibeId = queryId("id", "a brief");
 /** The session the page was opened from, which new candidates go to while it is open. */
-const fromSession = query.has("session") ? Number(query.get("session")) : null;
+const fromSession = query.has("session") ? queryId("session", "a session") : null;
 
 /**
  * A node as `GET /api/vibes/:id/lineage` gives it.
@@ -232,7 +245,7 @@ function place(branches, list) {
     }
     showNode(entry);
     if (parentMissing !== null) {
-      entry.parts.origin.textContent += ` Candidate #${parentMissing} isn't in this tree: it was removed, or made outside a session.`;
+      entry.parts.origin.textContent += ` Candidate #${parentMissing} isn't shown: it is rejected (see the switch above), was removed, or was made outside a session.`;
     }
     place(children, entry.parts.children);
   }

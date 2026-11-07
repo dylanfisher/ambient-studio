@@ -19,6 +19,9 @@ import { lintResult, SCHEMA_RULE } from "./lint-result.js";
 import { lockedPaths } from "./locked-paths.js";
 import { REJECT_REASON } from "./reject-reason.js";
 
+/** How many children one nudge makes when the request doesn't say; the pages send it too. */
+export const DEFAULT_NUDGES = 8;
+
 /** Each step size's spread: the standard deviation of a step, in vector positions from 0 to 1. */
 export const STEP_SIZE = Object.freeze({ small: 0.05, medium: 0.12, large: 0.25 });
 

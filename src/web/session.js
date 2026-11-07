@@ -284,7 +284,7 @@ function choose(card) {
 
 /**
  * The card's features against the ranges of the brief version it was made under, each miss
- * marked in words as well as color.
+ * marked in words as well as color, and the render checks it fails.
  * @param {Card} card
  */
 function showRanges(card) {
@@ -293,9 +293,11 @@ function showRanges(card) {
   if (!ranges) {
     throw new Error(`${card.label} names brief version ${candidate.vibeRevisionId}, not loaded`);
   }
-  parts.rangesBox.hidden = !candidate.excerpt || Object.keys(ranges).length === 0;
-  if (!candidate.excerpt) return;
-  const readout = rangesReadout(candidate.excerpt.features, ranges);
+  const { excerpt } = candidate;
+  parts.rangesBox.hidden =
+    !excerpt || (Object.keys(ranges).length === 0 && excerpt.checks.findings.length === 0);
+  if (!excerpt) return;
+  const readout = rangesReadout(excerpt.features, ranges, excerpt.checks);
   parts.rangesLine.textContent = readout.text;
   parts.ranges.replaceChildren(
     ...readout.rows.map((row) => {
@@ -380,6 +382,8 @@ async function lockWork(card, work) {
   } finally {
     card.locking = false;
     await loadLocks();
+    // The card was held while the request and any offer were pending; it may swap now.
+    showPairs();
   }
 }
 
@@ -516,6 +520,7 @@ async function rateCard(card, work) {
   } finally {
     card.busy = false;
     showCardControls();
+    showPairs();
   }
 }
 
@@ -698,9 +703,10 @@ function showPairs() {
       const card = byId.get(id);
       if (!card) return false;
       const { note, tags } = card.parts;
-      return card.hold.held(
-        note.value.trim() !== "" || tags.value.trim() !== "" || card.steer.unsent(),
-      );
+      return card.hold.held({
+        unsentText: note.value.trim() !== "" || tags.value.trim() !== "" || card.steer.unsent(),
+        pending: card.busy || card.locking || card.offered.length > 0,
+      });
     },
   };
   for (const card of cards) {
@@ -785,6 +791,7 @@ function makeCard(candidate, number, revised) {
   parts.offerNo.onclick = () => {
     card.offered = [];
     showLocks(card);
+    showPairs();
     status.say("The macros stay free, so the locked value still moves when they change.");
   };
   showLocks(card);

@@ -2,11 +2,14 @@
 // templates included, and the titles the modules set on what they build.
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
+import { DEFAULT_EXPLORES } from "../../src/domain/explore-direction.js";
+import { DEFAULT_NUDGES } from "../../src/domain/nudge.js";
 import { RANGE_ENDS } from "../../src/domain/target-schema.js";
 import { MACROS } from "../../src/engine/genome-schema.js";
 import { constraintFields, fieldTitle } from "../../src/web/constraint-fields.js";
 import { jobControl } from "../../src/web/job-control.js";
 import { macroTitles } from "../../src/web/macro-words.js";
+import { steerTitles } from "../../src/web/steer-controls.js";
 import { targetFields, targetTitle } from "../../src/web/target-fields.js";
 
 const PAGES = readdirSync("src/web").filter((name) => name.endsWith(".html"));
@@ -54,6 +57,13 @@ describe("titles the modules set", () => {
         expect(isSentence(targetTitle(field, end)), field.name).toBe(true);
       }
     }
+  });
+
+  test("the explore and nudge buttons' titles name the counts they send", () => {
+    const { explore, nudge } = steerTitles();
+    expect(isSentence(explore) && isSentence(nudge)).toBe(true);
+    expect(explore).toContain(`for ${DEFAULT_EXPLORES} variations`);
+    expect(nudge).toContain(`Makes ${DEFAULT_NUDGES} children`);
   });
 
   test("each macro's three choices have a title", () => {

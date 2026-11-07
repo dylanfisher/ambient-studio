@@ -33,8 +33,6 @@ import { getRevision } from "./vibe-store.js";
 
 /** How many candidates one request asks for when it doesn't say. */
 export const DEFAULT_CANDIDATES = 8;
-/** How many children one explore makes when the request doesn't say (decision 0038). */
-export const DEFAULT_EXPLORES = 4;
 /** The most one request may ask for: 32 is a few minutes of omlx and of renders. */
 export const MAX_CANDIDATES = 32;
 /** Stream seeds are integers in [0, 2^32) (decision 0024). */

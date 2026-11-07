@@ -19,8 +19,6 @@ import { JOB_STEP } from "./job-steps.js";
 import { locksInForce } from "./lock-store.js";
 import { renderExcerpt } from "./render-excerpt.js";
 
-/** How many children one nudge makes when the request doesn't say. */
-export const DEFAULT_NUDGES = 8;
 /** The operator a nudge child stores, and the source its row gives. */
 export const NUDGE_OPERATOR = OPERATOR.nudge;
 const SOURCE = "mutation";
