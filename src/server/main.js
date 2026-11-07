@@ -3,6 +3,8 @@
 // no secrets.
 /** @import { IncomingMessage, Server, ServerResponse } from "node:http" */
 /** @import { Config } from "../config/config.js" */
+/** @import { JobRunner } from "./job-runner.js" */
+/** @import { Clock } from "./omlx-queue.js" */
 /** @import { App, Route } from "./routing.js" */
 /** @import { Store } from "./store.js" */
 import { mkdir } from "node:fs/promises";
@@ -11,6 +13,8 @@ import { networkInterfaces } from "node:os";
 import { loadConfig } from "../config/config.js";
 import { paths } from "../config/paths.js";
 import { allowedHost } from "./allowed-host.js";
+import { createJobRunner } from "./job-runner.js";
+import { createOmlxQueue } from "./omlx-queue.js";
 import { ROUTES } from "./routes.js";
 import { HttpError, matchRoute, parseTarget, readJson, sendJson } from "./routing.js";
 import { serveStatic } from "./serve-static.js";
@@ -21,15 +25,29 @@ import { openStore } from "./store.js";
  * @property {string} origin `http://<address>:<port>` as bound; port 0 in the config binds an
  *   ephemeral one
  * @property {Store} store
- * @property {() => Promise<void>} stop closes every connection, waits for the requests in flight
- *   to settle and the server to close, then closes the store
+ * @property {JobRunner} jobs
+ * @property {() => Promise<void>} stop cancels every job and waits for them to end, closes every
+ *   connection, waits for the requests in flight to settle and the server to close, then closes
+ *   the store
  */
 
 /**
  * @typedef {object} ServerOptions
  * @property {Route[]} [routes] the app's table when omitted; tests add routes of their own
- * @property {(line: string) => void} [log] where 5xx stacks go; stderr when omitted
+ * @property {(line: string) => void} [log] where 5xx stacks and omlx retries go; stderr when
+ *   omitted
+ * @property {Clock} [clock] the omlx queue's timers and the job runner's clock; the real ones
+ *   when omitted
+ * @property {() => number} [random] a draw in [0, 1) for the queue's jitter and for stream and
+ *   order seeds; `Math.random` when omitted
  */
+
+/** @type {Clock} */
+const REAL_CLOCK = {
+  now: Date.now,
+  setTimeout: (callback, ms) => setTimeout(callback, ms),
+  clearTimeout: (handle) => clearTimeout(handle),
+};
 
 /**
  * Answers one request. Never rejects: an `HttpError` is sent as its status, anything else is
@@ -115,12 +133,25 @@ async function listen(server, { host, port }) {
  * @param {ServerOptions} [options]
  * @returns {Promise<RunningServer>}
  */
-export async function startServer(config, { routes = ROUTES, log = console.error } = {}) {
+export async function startServer(
+  config,
+  { routes = ROUTES, log = console.error, clock = REAL_CLOCK, random = Math.random } = {},
+) {
   const dataPaths = paths(config.dataRoot);
   await mkdir(config.dataRoot, { recursive: true });
   const store = openStore(dataPaths.database, { now: Date.now });
+  // Making the queue sends nothing: a request goes out only when a job the owner started asks.
+  const queue = createOmlxQueue({
+    omlx: config.omlx,
+    queue: config.queue,
+    clock,
+    jitter: random,
+    onRetry: ({ attempt, reason, delayMs }) =>
+      log(`omlx was busy on attempt ${attempt} (${reason}); retrying in ${delayMs / 1000} s`),
+  });
+  const jobs = createJobRunner({ now: clock.now });
   /** @type {App} */
-  const app = { config, paths: dataPaths, store, log };
+  const app = { config, paths: dataPaths, store, log, queue, jobs, random, sessionJobs: new Map() };
   /** @type {Set<Promise<void>>} */
   const inFlight = new Set();
   // A request without Host reaches `answer`, which refuses it like a foreign one.
@@ -141,6 +172,7 @@ export async function startServer(config, { routes = ROUTES, log = console.error
   return {
     origin,
     store,
+    jobs,
     async stop() {
       /** @type {Promise<void>} */
       const closed = new Promise((resolve, reject) =>
@@ -148,6 +180,10 @@ export async function startServer(config, { routes = ROUTES, log = console.error
       );
       server.closeAllConnections();
       await Promise.all(inFlight);
+      // A job left running would write to the closed store, and its omlx request or render
+      // would hold the process open. Cancelling a finished job leaves it as it is.
+      for (const { id } of jobs.list()) jobs.cancel(id);
+      await jobs.idle();
       await closed;
       store.close();
     },

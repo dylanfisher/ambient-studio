@@ -46,9 +46,16 @@ import { decode, insertRow, selectRow, selectRows, TABLE } from "./store.js";
  * @property {RatingSide} b
  * @property {"a" | "b"} leftSide the side shown on the left
  * @property {number} orderSeed the seed the order was drawn from
- * @property {"a" | "b" | "tie" | "skip"} outcome
+ * @property {(typeof OUTCOMES)[number]} outcome
  * @property {number} timeTakenMs
  */
+
+/** What an A/B rating comes to: a side won, a tie, or the owner skipped the pair. */
+export const OUTCOMES = /** @type {const} */ (["a", "b", "tie", "skip"]);
+/** The feedback kinds, and the directions each takes. */
+export const FEEDBACK_KIND = /** @type {const} */ ({ thumbs: "thumbs", macro: "macro" });
+export const THUMBS = /** @type {const} */ (["up", "down"]);
+export const MACRO_DIRECTIONS = /** @type {const} */ (["more", "less"]);
 
 /** @typedef {RatingDraft & Removable & { id: number, createdAt: number }} Rating */
 
@@ -61,12 +68,17 @@ import { decode, insertRow, selectRow, selectRows, TABLE } from "./store.js";
  *   ratedAudioId: number,
  *   playedFraction: number,
  *   timeTakenMs: number,
- *   kind: "thumbs" | "macro",
- *   direction: "up" | "down" | "more" | "less",
- *   note: string | null,
- *   macro: string | null,
- *   macroValue: unknown,
- * }} FeedbackDraft
+ * } & FeedbackKindFields} FeedbackDraft
+ */
+
+/**
+ * The columns that differ by feedback kind.
+ * @typedef {object} FeedbackKindFields
+ * @property {(typeof FEEDBACK_KIND)[keyof typeof FEEDBACK_KIND]} kind
+ * @property {(typeof THUMBS)[number] | (typeof MACRO_DIRECTIONS)[number]} direction
+ * @property {string | null} note
+ * @property {string | null} macro
+ * @property {unknown} macroValue
  */
 
 /** @typedef {FeedbackDraft & Removable & { id: number, createdAt: number }} Feedback */
@@ -82,7 +94,14 @@ import { decode, insertRow, selectRow, selectRows, TABLE } from "./store.js";
 
 const RATED_AUDIO = {};
 const FEEDBACK = { json: ["macroValue"] };
-const SKETCHES = { json: ["tags"] };
+
+/** The fields of a `SketchDraft`, by name. */
+export const SKETCH_FIELD = Object.freeze({
+  candidateId: "candidateId",
+  notes: "notes",
+  tags: "tags",
+});
+const SKETCHES = { json: [SKETCH_FIELD.tags] };
 
 /**
  * Each side's fields are columns in `ratings` with the side's letter in front: side a's
@@ -274,4 +293,56 @@ export function addSketch(store, draft) {
  */
 export function getSketch(store, id) {
   return selectRow(store, TABLE.sketches, SKETCHES, id);
+}
+
+/**
+ * Rows of `table` made under any revision of the vibe and not removed, oldest first. `revisionOf`
+ * is the SQL that names the row's revision, with the row as `r`.
+ * @param {Store} store
+ * @param {string} table
+ * @param {string} revisionOf
+ * @param {number} vibeId
+ * @returns {Row[]}
+ */
+function rowsOfVibe(store, table, revisionOf, vibeId) {
+  return store.db
+    .prepare(
+      `SELECT r.* FROM ${table} r JOIN ${TABLE.vibeRevisions} v ON v.id = ${revisionOf}
+        WHERE v.vibeId = ? AND r.removedAt IS NULL
+        ORDER BY r.id`,
+    )
+    .all(vibeId);
+}
+
+/**
+ * The vibe's A/B ratings not removed, oldest first.
+ * @param {Store} store
+ * @param {number} vibeId
+ * @returns {Rating[]}
+ */
+export function listRatings(store, vibeId) {
+  return rowsOfVibe(store, TABLE.ratings, "r.vibeRevisionId", vibeId).map(ratingFromRow);
+}
+
+/**
+ * The vibe's thumbs and macro feedback not removed, oldest first.
+ * @param {Store} store
+ * @param {number} vibeId
+ * @returns {Feedback[]}
+ */
+export function listFeedback(store, vibeId) {
+  return rowsOfVibe(store, TABLE.feedback, "r.vibeRevisionId", vibeId).map((row) =>
+    decode(FEEDBACK, row),
+  );
+}
+
+/**
+ * The sketches kept from the vibe's candidates and not removed, oldest first.
+ * @param {Store} store
+ * @param {number} vibeId
+ * @returns {Sketch[]}
+ */
+export function listSketches(store, vibeId) {
+  const revisionOf = `(SELECT vibeRevisionId FROM ${TABLE.candidates} WHERE id = r.candidateId)`;
+  return rowsOfVibe(store, TABLE.sketches, revisionOf, vibeId).map((row) => decode(SKETCHES, row));
 }

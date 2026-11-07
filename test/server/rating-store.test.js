@@ -8,11 +8,15 @@ import {
   addRatedAudio,
   addRating,
   addSketch,
+  FEEDBACK_KIND,
   getFeedback,
   getRating,
   getSketch,
   listRatedAudio,
   listRatedGenomes,
+  MACRO_DIRECTIONS,
+  OUTCOMES,
+  THUMBS,
 } from "../../src/server/rating-store.js";
 import { startSession } from "../../src/server/session-store.js";
 import { markRemoved } from "../../src/server/store.js";
@@ -100,6 +104,49 @@ test("feedback whose kind and direction don't fit together is refused", async ()
     macroValue: null,
   };
   expect(() => addFeedback(store, thumbsMore)).toThrow(/CHECK constraint/);
+});
+
+// The JS lists the routes check against and the CHECKs in migration 0001 must name the same
+// values: every listed value is stored, and one outside each list is refused.
+test("every value of OUTCOMES, THUMBS, MACRO_DIRECTIONS and FEEDBACK_KIND is stored, one outside is refused", async () => {
+  const { store, heard, audio, common, block } = await setup();
+  const side = { ...heard, ratedAudioId: audio.id, playedFraction: 1, ...unranked };
+  /** @param {string} outcome */
+  const rate = (outcome) =>
+    addRating(store, {
+      ...common,
+      a: side,
+      b: side,
+      leftSide: "a",
+      orderSeed: 1,
+      outcome: /** @type {any} */ (outcome),
+      timeTakenMs: 1,
+    });
+  for (const outcome of OUTCOMES) expect(rate(outcome).outcome).toBe(outcome);
+  expect(() => rate("draw")).toThrow(/CHECK constraint/);
+
+  /** @param {string} kind @param {string} direction */
+  const feedback = (kind, direction) => {
+    const isMacro = kind === FEEDBACK_KIND.macro;
+    return addFeedback(store, {
+      ...block,
+      kind: /** @type {any} */ (kind),
+      direction: /** @type {any} */ (direction),
+      note: null,
+      macro: isMacro ? "brightness" : null,
+      macroValue: isMacro ? { min: 0.5, max: 0.5, mean: 0.5 } : null,
+    });
+  };
+  expect(Object.values(FEEDBACK_KIND).sort()).toEqual(["macro", "thumbs"]);
+  for (const direction of THUMBS) {
+    expect(feedback(FEEDBACK_KIND.thumbs, direction).direction).toBe(direction);
+  }
+  for (const direction of MACRO_DIRECTIONS) {
+    expect(feedback(FEEDBACK_KIND.macro, direction).direction).toBe(direction);
+  }
+  expect(() => feedback(FEEDBACK_KIND.thumbs, "sideways")).toThrow(/CHECK constraint/);
+  expect(() => feedback(FEEDBACK_KIND.macro, "sideways")).toThrow(/CHECK constraint/);
+  expect(() => feedback("slider", THUMBS[0])).toThrow(/CHECK constraint/);
 });
 
 test("a second rated_audio row for one heard identity is refused", async () => {

@@ -1,0 +1,50 @@
+// Which excerpt a candidate is heard as (decisions 0026 and 0027): its genome at its seed,
+// normalized to the loudness target of the revision it was made under.
+/** @import { Constraints } from "../domain/constraint-schema.js" */
+/** @import { Candidate } from "./generation-store.js" */
+/** @import { ExcerptRequest } from "./render-excerpt.js" */
+/** @import { Render } from "./render-store.js" */
+/** @import { Store } from "./store.js" */
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { EXCERPT_SECONDS } from "../domain/excerpt-seconds.js";
+import { excerptOffset } from "../engine/excerpt-offset.js";
+import { getGenome } from "./generation-store.js";
+import { PRODUCER } from "./producer.js";
+import { vibeLoudness } from "./render-excerpt.js";
+import { findRender } from "./render-store.js";
+import { getRevision } from "./vibe-store.js";
+
+/**
+ * What to render for the candidate, or null when it has no genome to render.
+ * @param {Store} store
+ * @param {Candidate} candidate
+ * @returns {ExcerptRequest | null}
+ */
+export function excerptRequest(store, { genomeId, seed, vibeRevisionId }) {
+  if (genomeId === null) return null;
+  const revision = getRevision(store, vibeRevisionId);
+  if (!revision) throw new Error(`there is no vibe revision ${vibeRevisionId}`);
+  // A revision's constraints were checked by 2b's validator when the route stored them.
+  const target = vibeLoudness(/** @type {Constraints} */ (revision.constraints));
+  return { genomeId, seed, target };
+}
+
+/**
+ * The candidate's cached excerpt under this server's producer, or null when it has no genome or
+ * its excerpt hasn't been rendered under this producer and target, or its file is gone.
+ * @param {Store} store
+ * @param {string} folder the render-cache folder
+ * @param {Candidate} candidate
+ * @returns {Render | null}
+ */
+export function currentExcerpt(store, folder, candidate) {
+  const request = excerptRequest(store, candidate);
+  if (!request) return null;
+  const row = getGenome(store, request.genomeId);
+  if (!row) throw new Error(`there is no genome ${request.genomeId}`);
+  const duration = EXCERPT_SECONDS;
+  const offset = excerptOffset(row.genome, request.seed, duration);
+  const found = findRender(store, { ...request, offset, duration, producer: PRODUCER });
+  return found && existsSync(join(folder, found.file)) ? found : null;
+}

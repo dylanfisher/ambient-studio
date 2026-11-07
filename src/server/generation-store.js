@@ -161,3 +161,20 @@ export function addCandidate(store, draft) {
 export function getCandidate(store, id) {
   return selectRow(store, TABLE.candidates, CANDIDATES, id);
 }
+
+/**
+ * The candidates the session's generations made and not removed, oldest first.
+ * @param {Store} store
+ * @param {number} sessionId
+ * @returns {Candidate[]}
+ */
+export function listSessionCandidates(store, sessionId) {
+  return store.db
+    .prepare(
+      `SELECT c.* FROM ${TABLE.candidates} c JOIN ${TABLE.generations} g ON g.id = c.generationId
+        WHERE g.sessionId = ? AND c.removedAt IS NULL
+        ORDER BY c.id`,
+    )
+    .all(sessionId)
+    .map((row) => decode(CANDIDATES, row));
+}

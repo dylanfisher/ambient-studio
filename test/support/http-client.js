@@ -4,6 +4,8 @@
 /** @import { IncomingHttpHeaders, OutgoingHttpHeaders } from "node:http" */
 /** @import { Socket } from "node:net" */
 /** @import { Paths } from "../../src/config/paths.js" */
+/** @import { JobRunner } from "../../src/server/job-runner.js" */
+/** @import { Clock } from "../../src/server/omlx-queue.js" */
 /** @import { Route } from "../../src/server/routing.js" */
 /** @import { Store } from "../../src/server/store.js" */
 import { once } from "node:events";
@@ -12,6 +14,13 @@ import { loadConfig } from "../../src/config/config.js";
 import { paths } from "../../src/config/paths.js";
 import { startServer } from "../../src/server/main.js";
 import { tempRoot } from "./temp-root.js";
+
+/**
+ * The omlx base URL a test server gets unless the test passes a fake's. `.invalid` never
+ * resolves (RFC 6761), so a server that tried to reach omlx would fail rather than reach the
+ * real one, which serves a live site.
+ */
+const NO_OMLX = "http://omlx.invalid";
 
 /**
  * @typedef {object} Reply
@@ -30,31 +39,47 @@ import { tempRoot } from "./temp-root.js";
 
 /**
  * @typedef {object} TestServer
- * @property {string} origin `http://127.0.0.1:<port>`
+ * @property {string} origin `http://127.0.0.1:<port>`; a restart binds a new port
  * @property {Paths} paths the temp root's folders
- * @property {Store} store the server's open store
+ * @property {Store} store the running server's open store
+ * @property {JobRunner} jobs the running server's job runner
  * @property {string[]} logged every line the server logged
  * @property {(method: string, path: string, options?: RequestOptions) => Promise<Reply>} request
  *   `path` is sent exactly as given
+ * @property {(method: string, path: string, value?: unknown) => Promise<Reply>} api sends
+ *   `value`, when given, as an application/json body
  * @property {() => Promise<void>} stop stops the server and closes the client's sockets, waiting
  *   for each to close
+ * @property {() => Promise<void>} restart stops the server and starts a new one on the same root
  * @property {() => Promise<void>} remove stops the server if it is running and deletes the root
  */
 
 /**
- * @param {{ routes?: Route[] }} [options] the routes to serve instead of the app's table
+ * @typedef {object} TestServerOptions
+ * @property {Route[]} [routes] the routes to serve instead of the app's table
+ * @property {string} [omlxBaseUrl] a fake omlx's; one that never resolves when omitted
+ * @property {Clock} [clock] the queue's and the job runner's clock; the real one when omitted
+ * @property {() => number} [random]
+ */
+
+/**
+ * @param {TestServerOptions} [options]
  * @returns {Promise<TestServer>}
  */
-export async function startTestServer(options = {}) {
-  const root = await tempRoot();
+export async function startTestServer({ omlxBaseUrl = NO_OMLX, ...options } = {}) {
+  const root = await tempRoot((raw) => {
+    raw.omlx.baseUrl = omlxBaseUrl;
+  });
   const config = loadConfig(root.configPath);
   /** @type {string[]} */
   const logged = [];
-  const server = await startServer(
-    { ...config, server: { host: "127.0.0.1", port: 0 } },
-    { log: (line) => logged.push(line), ...options },
-  );
-  const address = new URL(server.origin);
+  const start = () =>
+    startServer(
+      { ...config, server: { host: "127.0.0.1", port: 0 } },
+      { log: (line) => logged.push(line), ...options },
+    );
+  let server = await start();
+  let address = new URL(server.origin);
   const agent = new Agent({ keepAlive: true });
   /** @type {Set<Socket>} */
   const sockets = new Set();
@@ -95,16 +120,33 @@ export async function startTestServer(options = {}) {
     );
   };
 
-  return {
+  /** @type {TestServer} */
+  const made = {
     origin: server.origin,
     paths: paths(config.dataRoot),
     store: server.store,
+    jobs: server.jobs,
     logged,
     request,
+    api: (method, path, value) =>
+      value === undefined
+        ? request(method, path)
+        : request(method, path, {
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(value),
+          }),
     stop,
+    async restart() {
+      if (running) await stop();
+      server = await start();
+      running = true;
+      address = new URL(server.origin);
+      Object.assign(made, { origin: server.origin, store: server.store, jobs: server.jobs });
+    },
     async remove() {
       if (running) await stop();
       await root.remove();
     },
   };
+  return made;
 }
