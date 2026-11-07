@@ -58,8 +58,8 @@ unneeded stays unused rather than being given to another step.
 | 0033 | Phase 3 features: low end, stereo width, flatness | 3a | [written](decisions/0033-low-end-width-flatness.md) |
 | 0034 | Feature ranges as soft targets, and their calibration | 3b | [written](decisions/0034-feature-ranges-as-soft-targets.md) |
 | 0035 | Locks: paths, storage, enforcement, locks and macros | 3c (settles 0006's open question) | [written](decisions/0035-locks.md) |
-| 0036 | The revision pass ("ears") | 3d | — |
-| 0037 | `sessionId` on candidates, nudge and branch | 3e | — |
+| 0036 | The revision pass ("ears") | 3d | [written](decisions/0036-revision-pass.md) |
+| 0037 | `sessionId` on candidates, nudge and branch | 3e | [written](decisions/0037-nudge-and-branch.md) |
 | 0038 | Explore | 3f | — |
 | 0039 | Lineage tree and the steering controls | 3g | — |
 | 0040 | Revision evaluation against a control | 3h | — |
@@ -2074,3 +2074,36 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   five-minute cap on two vibes and was reported as measured. No rule changes. The checkers'
   configuration hasn't changed this phase (only `scripts/dupes-allow.txt`), so they still skip
   `tmp/`, `.claude/worktrees/`, `node_modules/` and `.venv/`.
+- 2026-11-07: 3d merged as a18fbc0 (Opus: 84k tokens, 26 calls, 6.1 min for the helper move,
+  then 245k, 104 calls, 32.5 min; two fix rounds of 4.4 and 1.5 min; reviewer Sonnet: 120k
+  tokens, 25 calls, 4.6 min, FAIL; second reviewer Sonnet: 50k tokens, 7 calls, 2.8 min, PASS
+  with one finding taken before merge). The shared helpers (`currentRevision`, `ask`, `keep`,
+  `failedVerdict`, `requestCandidate`) moved out of `generateCandidates` with no test edited.
+  `followUp` builds both the repair and the revision. A valid first try whose excerpt misses a
+  range or fails a render check gets one revision: the round-0 messages replayed byte for byte,
+  the locked genome as the assistant turn, then the locks in force, the ranges, the features
+  line and the misses; its own seed (stream slot 3) and request group (`<group>-revisions`); an
+  unchanged answer stored on the first try's genome and seed and never shown; an over-budget
+  follow-up stored as a skip. The candidates route gives each pair `{firstTryId, revisionId,
+  shownId}`: fewer misses (failed checks counted), the revision on a tie. The first review
+  failed the step: a poll could hide the card whose note was being typed. The swap now waits
+  while the card holds the focus, unsent text or a pressed pointer; the pointer was the second
+  reviewer's finding, since Safari doesn't focus a clicked button, so a swap on the blur hid the
+  card before the click landed and the rating was lost. 1225 tests. Pending owner checks: revised
+  cards and their link on a seed vibe with ranges, swaps waiting while an excerpt plays or a note
+  is typed, the ask's wording in a stored prompt, and whether omlx's prefix cache reuses the
+  replayed turns (revisions' first-token times against first tries').
+- 2026-11-07: 3e merged as ab87a15 (Opus: 254k tokens, 101 calls, 38.2 min, then a rebase onto 3d
+  and fix round of 9.1 min; reviewer Sonnet: 93k tokens, 21 calls, 7.7 min, PASS, with a dry-run
+  merge against 3d). Migration 0005 adds `candidates.sessionId`, filled from each row's
+  generation, and `listSessionCandidates` reads it. Nudge: N children of a base by seeded normal
+  steps of 0.05, 0.12 or 0.25 in the vector view over the paths the locks and the vibe's fixed
+  values leave free, at most 4 draws a child, a lint failure or repeated genome stored rejected;
+  children keep the base's seed and are never revised. `POST /api/sessions/:id/nudges` is a job;
+  an identical one queued or running is a 409. Over 1,000 nudges on cold-dorian, draws rejected:
+  7.5% small, 26.6% medium, 39.1% large, mostly the 300 s duration floor; children given up 1, 16
+  and 60 of about 2,670. The review found the acceptance test took its locks from the base, so
+  it couldn't fail without `applyLocks`; a base predating the locks now proves it. Acceptance 3
+  passes. 1245 tests. Pending owner checks: small, medium and large against their names; whether
+  60 failed children in 2,664 at large is acceptable (0037 records clipping into ranges as the
+  alternative).
