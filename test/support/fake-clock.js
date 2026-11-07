@@ -74,3 +74,29 @@ export function fakeClock() {
     waitForTimer: (delay) => waitFor((list) => list.some((timer) => timer.delay === delay)),
   };
 }
+
+/**
+ * Runs `work` to its end, moving `clock` past each `gap` the omlx queue waits between requests.
+ * @template T
+ * @param {FakeClock} clock
+ * @param {number} gap the queue's `minGapMs`
+ * @param {Promise<T>} work
+ * @returns {Promise<T>}
+ */
+export async function driveGaps(clock, gap, work) {
+  let done = false;
+  const settled = work.finally(() => {
+    done = true;
+  });
+  while (!done) {
+    const gapWaiting = await Promise.race([
+      settled.then(
+        () => false,
+        () => false,
+      ),
+      clock.waitForTimer(gap).then(() => true),
+    ]);
+    if (gapWaiting) clock.advance(gap);
+  }
+  return settled;
+}

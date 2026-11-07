@@ -18,7 +18,7 @@ import {
 import { createOmlxQueue } from "../../src/server/omlx-queue.js";
 import { RETRIEVAL_METHOD } from "../../src/server/retrieve-examples.js";
 import { addNote, createVibe } from "../../src/server/vibe-store.js";
-import { fakeClock } from "../support/fake-clock.js";
+import { driveGaps, fakeClock } from "../support/fake-clock.js";
 import { fakeOmlx } from "../support/fake-omlx.js";
 import { tempRoot } from "../support/temp-root.js";
 import { tempStore } from "../support/temp-store.js";
@@ -78,29 +78,10 @@ async function setup(queueEdits = {}) {
   const gap = config.queue.minGapMs;
 
   /**
-   * Runs `work` to its end, moving the fake clock past each gap the queue waits between
-   * requests.
    * @template T
    * @param {Promise<T>} work
-   * @returns {Promise<T>}
    */
-  async function drive(work) {
-    let done = false;
-    const settled = work.finally(() => {
-      done = true;
-    });
-    while (!done) {
-      const gapWaiting = await Promise.race([
-        settled.then(
-          () => false,
-          () => false,
-        ),
-        clock.waitForTimer(gap).then(() => true),
-      ]);
-      if (gapWaiting) clock.advance(gap);
-    }
-    return settled;
-  }
+  const drive = (work) => driveGaps(clock, gap, work);
   return { clock, omlx, config, queue, store, vibe, drive };
 }
 
