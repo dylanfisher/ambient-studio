@@ -19,7 +19,6 @@ import { followJob } from "./follow-job.js";
 import { jobControl } from "./job-control.js";
 import { JOB_STATE } from "./job-progress.js";
 import { jobBox, TONE } from "./job-view.js";
-import { liveChoices } from "./live-feedback.js";
 import { macroTitles } from "./macro-words.js";
 import { oneAtATime } from "./one-at-a-time.js";
 import { createPlayedTracker } from "./played-tracker.js";
@@ -82,6 +81,8 @@ const CARD_PARTS = Object.freeze({
  * @property {string | null} intent
  * @property {LintResult | null} lint
  * @property {{ renderId: number, url: string, duration: number, features: any, checks: LintResult } | null} excerpt
+ * @property {{ thumbs: { id: number, direction: string, note: string | null } | null, macros: Record<string, { id: number, direction: string }> }} feedback
+ *   the live choices, one per thumbs and per macro (decision 0031)
  */
 
 /**
@@ -105,8 +106,8 @@ let cards = [];
 const selection = createSelection(() => performance.now());
 /** @type {Card | null} the first of an A/B pair, once marked */
 let marked = null;
-/** @type {{ ratings: any[], feedback: any[], sketches: any[] }} */
-let rated = { ratings: [], feedback: [], sketches: [] };
+/** @type {{ ratings: any[], sketches: any[] }} */
+let rated = { ratings: [], sketches: [] };
 /** @type {Map<number, JobStatus>} every job followed, by id, as last read */
 const jobs = new Map();
 /** @type {Map<number, ReturnType<typeof jobBox>>} */
@@ -147,12 +148,7 @@ function showFindings(list, findings) {
 }
 
 /** @param {Card} card */
-const choicesOf = (card) =>
-  liveChoices(rated.feedback, {
-    sessionId,
-    genomeId: card.candidate.genomeId,
-    seed: card.candidate.seed,
-  });
+const choicesOf = (card) => card.candidate.feedback;
 
 /** @param {Card} card */
 function showPlayed(card) {
@@ -282,6 +278,7 @@ async function rateCard(card, work) {
   showCardControls();
   try {
     await work();
+    await loadCandidates();
     await loadRatings();
   } catch (error) {
     showRated(card);
@@ -530,23 +527,30 @@ async function follow(job) {
   boxes.set(job.id, box);
   page.jobBox.append(box.root);
   let seen = `${job.progress?.done}/${job.progress?.step}`;
-  const finished = await followJob(job, async (current) => {
-    jobs.set(current.id, current);
-    box.show(current);
+  try {
+    const finished = await followJob(job, async (current) => {
+      jobs.set(current.id, current);
+      box.show(current);
+      showControls();
+      const now = `${current.progress?.done}/${current.progress?.step}`;
+      if (now !== seen) {
+        seen = now;
+        await loadCandidates();
+      }
+    });
+    await loadCandidates();
     showControls();
-    const now = `${current.progress?.done}/${current.progress?.step}`;
-    if (now !== seen) {
-      seen = now;
-      await loadCandidates();
-    }
-  });
-  await loadCandidates();
-  showControls();
-  status.say(
-    finished.state === JOB_STATE.done
-      ? "The job is done. Play the candidates and rate them."
-      : `The job ${finished.state === JOB_STATE.failed ? "stopped on an error; its box says why" : "was cancelled"}.`,
-  );
+    status.say(
+      finished.state === JOB_STATE.done
+        ? "The job is done. Play the candidates and rate them."
+        : `The job ${finished.state === JOB_STATE.failed ? "stopped on an error; its box says why" : "was cancelled"}.`,
+    );
+  } finally {
+    // A failed poll leaves the job unfinished in `jobs`, which would keep the buttons off until
+    // a reload. The caller shows the error; a reload follows the job again if it still runs.
+    if (jobs.get(job.id)?.finishedAt === null) jobs.delete(job.id);
+    showControls();
+  }
 }
 
 /** @param {JobStatus} job */
