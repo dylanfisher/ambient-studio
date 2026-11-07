@@ -98,9 +98,24 @@ export const requestGroupName = (vibeId, seed) => `vibe-${vibeId}-stream-${seed}
  * @property {Lock[]} locks
  * @property {readonly RecordingListing[]} recordings the recordings folder's index, empty when the
  *   config sets no folder: the prompt lists them, and a genome naming another is repaired
- * @property {(candidate: Candidate, firstReason: RejectReason | null) => void} [onCandidate]
+ * @property {(candidate: Candidate, firstReason: RejectReason | null) => void | Promise<void>} [onCandidate]
  *   called as each candidate is stored, with the reason its first answer was rejected (null when
- *   it was valid), which the candidate row no longer holds once a repair replaced it
+ *   it was valid), which the candidate row no longer holds once a repair replaced it. The next
+ *   request waits for it, so a job can render the candidate before asking for another.
+ * @property {(step: GenerationStep) => void} [onStep] called as each request is queued, and as
+ *   omlx answers one busy
+ */
+
+/** What generation is doing for a candidate: its first request, its repair, or a backoff. */
+export const GENERATION_STEP = Object.freeze({
+  asking: "asking",
+  repairing: "repairing",
+  busy: "busy",
+});
+
+/**
+ * What generation is doing for candidate `index` (from 0).
+ * @typedef {{ index: number, kind: (typeof GENERATION_STEP)[keyof typeof GENERATION_STEP] }} GenerationStep
  */
 
 /**
@@ -205,7 +220,7 @@ export async function generateCandidates(
   n,
   store,
   queue,
-  { config, seed, sessionId, locks, recordings, onCandidate },
+  { config, seed, sessionId, locks, recordings, onCandidate, onStep },
 ) {
   if (!Number.isInteger(n) || n < 1) throw new Error(`n must be a positive integer, got ${n}`);
   const vibe = getVibe(store, vibeId);
@@ -240,6 +255,7 @@ export async function generateCandidates(
   /**
    * Sends one request and stores it as a generation. A failure the queue sent at least one
    * attempt for is stored with its error; one it never sent leaves no generation.
+   * @param {number} index the candidate's, from 0
    * @param {ChatMessage[]} prompt
    * @param {Sampling} sampling
    * @param {number | null} repairsId
@@ -248,7 +264,7 @@ export async function generateCandidates(
    *   | { generation: Generation | null, verdict: null, failure: OmlxRequestError }
    * >}
    */
-  async function ask(prompt, sampling, repairsId) {
+  async function ask(index, prompt, sampling, repairsId) {
     const base = {
       vibeRevisionId: revision.id,
       sessionId,
@@ -263,11 +279,16 @@ export async function generateCandidates(
     };
     /** @type {Completion} */
     let completion;
+    onStep?.({
+      index,
+      kind: repairsId === null ? GENERATION_STEP.asking : GENERATION_STEP.repairing,
+    });
     try {
       completion = await queue.request({
         messages: prompt,
         sampling,
         responseFormat: RESPONSE_FORMAT,
+        onRetry: () => onStep?.({ index, kind: GENERATION_STEP.busy }),
       });
     } catch (error) {
       if (!(error instanceof OmlxRequestError)) throw error;
@@ -312,7 +333,7 @@ export async function generateCandidates(
    * @param {number} candidateSeed
    * @param {RejectReason | null} firstReason
    */
-  const keep = (generation, verdict, candidateSeed, firstReason) => {
+  const keep = async (generation, verdict, candidateSeed, firstReason) => {
     const genomeId = verdict.genome === null ? null : putGenome(store, vibeId, verdict.genome).id;
     const candidate = addCandidate(store, {
       vibeRevisionId: revision.id,
@@ -330,7 +351,7 @@ export async function generateCandidates(
       rejectedGenome: verdict.reason === null ? null : verdict.written,
     });
     candidates.push(candidate);
-    onCandidate?.(candidate, firstReason);
+    await onCandidate?.(candidate, firstReason);
   };
   /**
    * The verdict for a candidate whose last request failed, keeping what an earlier try found.
@@ -356,11 +377,11 @@ export async function generateCandidates(
     lint: lintResult([...verdict.lint.findings, { path: "$", rule, message }]),
   });
 
-  for (const { sampling, candidateSeed } of draws) {
-    const first = await ask(messages, sampling, null);
+  for (const [index, { sampling, candidateSeed }] of draws.entries()) {
+    const first = await ask(index, messages, sampling, null);
     if (first.failure !== null) {
       if (first.generation)
-        keep(
+        await keep(
           first.generation,
           failedVerdict(first.failure, null),
           candidateSeed,
@@ -377,10 +398,10 @@ export async function generateCandidates(
         const message = `the repair prompt is about ${tokens} tokens, over the ${budgetTokens}-token budget; no repair was sent`;
         verdict = noted(verdict, REPAIR_OVER_BUDGET_RULE, message);
       } else {
-        const repaired = await ask(repair, sampling, generation.id);
+        const repaired = await ask(index, repair, sampling, generation.id);
         if (repaired.failure !== null) {
           if (repaired.generation) {
-            keep(
+            await keep(
               repaired.generation,
               failedVerdict(repaired.failure, verdict),
               candidateSeed,
@@ -388,7 +409,7 @@ export async function generateCandidates(
             );
           } else {
             const message = `the repair was not sent: ${repaired.failure.message}`;
-            keep(
+            await keep(
               generation,
               noted(verdict, REPAIR_NOT_SENT_RULE, message),
               candidateSeed,
@@ -400,7 +421,7 @@ export async function generateCandidates(
         ({ generation, verdict } = repaired);
       }
     }
-    keep(generation, verdict, candidateSeed, firstReason);
+    await keep(generation, verdict, candidateSeed, firstReason);
   }
   return { requestGroup, candidates };
 }

@@ -51,17 +51,27 @@
 /** The largest request body read, in bytes. Briefs, constraints and ratings are a few kB. */
 export const MAX_BODY_BYTES = 1 << 20;
 
-/** A response with a 4xx status, sent as `{ error: message }`. */
+/** A response with a 4xx status, sent as `{ error: message, ...details }`. */
 export class HttpError extends Error {
   /**
    * @param {number} status
    * @param {string} message
+   * @param {Record<string, unknown>} [details] more fields for the body, such as the `jobId` a
+   *   refused duplicate names
    */
-  constructor(status, message) {
+  constructor(status, message, details = {}) {
     super(message);
     this.status = status;
+    this.details = details;
   }
 }
+
+/**
+ * The 409 for a job like one that hasn't finished: the action was most likely sent twice.
+ * @param {string} message a sentence for the owner
+ * @param {number} jobId the unfinished job
+ */
+export const duplicateJob = (message, jobId) => new HttpError(409, message, { jobId });
 
 /**
  * The request path's segments, each percent-decoded, or undefined when a segment is empty, `.`

@@ -172,8 +172,9 @@ describe("generateCandidates", () => {
         sessionId: null,
         locks: [],
         recordings: [],
-        onCandidate: (candidate, firstReason) =>
-          seen.push([candidate.id, firstReason, candidate.rejectReason]),
+        onCandidate: (candidate, firstReason) => {
+          seen.push([candidate.id, firstReason, candidate.rejectReason]);
+        },
       }),
     );
     expect(seen).toEqual([

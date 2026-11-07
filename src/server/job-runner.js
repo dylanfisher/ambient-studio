@@ -6,13 +6,19 @@
 /** @typedef {"queued" | "running" | "done" | "failed" | "cancelled"} JobState */
 
 /**
+ * How far a job has got. `done` of `total` drives a progress bar; `step` is a sentence for the
+ * owner saying what the job is doing now, null between steps and once the job has finished.
+ * @typedef {{ done: number, total: number, step: string | null }} JobProgress
+ */
+
+/**
  * What the UI polls. `result` is the job's return value once done; `error` its message once
  * failed.
  * @typedef {object} JobStatus
  * @property {number} id
  * @property {string} kind
  * @property {JobState} state
- * @property {{ done: number, total: number } | null} progress
+ * @property {JobProgress | null} progress null until the job first reports
  * @property {unknown} result
  * @property {string | null} error
  * @property {number} addedAt
@@ -25,7 +31,7 @@
  * omlx queue's requests.
  * @typedef {object} JobContext
  * @property {AbortSignal} signal aborted when the job is cancelled
- * @property {(done: number, total: number) => void} progress
+ * @property {(done: number, total: number, step: string | null) => void} progress
  */
 
 /**
@@ -74,6 +80,8 @@ export function createJobRunner({ now }) {
   function finish(done, state) {
     done.status.state = state;
     done.status.finishedAt = now();
+    // A finished job is doing nothing, whatever step it last reported.
+    if (done.status.progress) done.status.progress.step = null;
     done.finish();
   }
 
@@ -91,8 +99,8 @@ export function createJobRunner({ now }) {
     /** @type {JobContext} */
     const context = {
       signal,
-      progress: (done, total) => {
-        status.progress = { done, total };
+      progress: (done, total, step) => {
+        status.progress = { done, total, step };
       },
     };
     // Called through an async function, so a job that throws before its first await still

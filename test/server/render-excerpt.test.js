@@ -189,7 +189,7 @@ describe("renderExcerpts as a job", () => {
     );
     await runner.idle();
     const status = runner.get(job.id);
-    expect(status).toMatchObject({ state: "done", progress: { done: 2, total: 2 } });
+    expect(status).toMatchObject({ state: "done", progress: { done: 2, total: 2, step: null } });
     const [quiet, loud] = /** @type {import("../../src/server/render-excerpt.js").Excerpt[]} */ (
       status.result
     );
@@ -242,6 +242,22 @@ describe("renderExcerpts as a job", () => {
     expect(loud?.render.checks).toMatchObject({ ok: true });
   });
 
+  test("says which excerpt it is rendering, and no step once done", async () => {
+    const { store, cache, drone } = await setup();
+    /** @type {[number, number, string | null][]} */
+    const steps = [];
+    const excerpts = [1, 2].map((seed) => ({ genomeId: drone, seed, target: TARGET }));
+    await renderExcerpts(store, cache, excerpts, {
+      signal: new AbortController().signal,
+      progress: (done, total, step) => steps.push([done, total, step]),
+    });
+    expect(steps).toEqual([
+      [0, 2, "Rendering excerpt 1 of 2"],
+      [1, 2, "Rendering excerpt 2 of 2"],
+      [2, 2, null],
+    ]);
+  });
+
   test("a cancelled job stops before its next render", async () => {
     const { store, cache, drone } = await setup();
     const runner = createJobRunner({ now: () => 0 });
@@ -249,8 +265,8 @@ describe("renderExcerpts as a job", () => {
     const job = runner.add("excerpts", ({ signal, progress }) =>
       renderExcerpts(store, cache, excerpts, {
         signal,
-        progress(done, total) {
-          progress(done, total);
+        progress(done, total, step) {
+          progress(done, total, step);
           if (done === 1) runner.cancel(job.id);
         },
       }),
