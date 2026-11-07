@@ -3,11 +3,13 @@
 // under the context budget (decision 0024). Examples go first when it doesn't fit.
 /** @import { Constraints } from "./constraint-schema.js" */
 /** @import { ChatMessage } from "./prompt-tokens.js" */
+/** @import { RecordingListing } from "./recordings-text.js" */
 import { canonicalGenome } from "../engine/canonical-genome.js";
 import { schemaText } from "../engine/schema-text.js";
 import { constraintsText } from "./constraints-text.js";
 import { ANSWER_KEY } from "./extract-genome.js";
 import { estimateTokens, promptText, ROLE } from "./prompt-tokens.js";
+import { recordingsText } from "./recordings-text.js";
 
 /**
  * What the prompt reads from a vibe revision.
@@ -38,6 +40,8 @@ import { estimateTokens, promptText, ROLE } from "./prompt-tokens.js";
  * @property {Lock[]} locks
  * @property {PromptExample[]} examples most wanted first; trimmed from the end
  * @property {number} budgetTokens the queue's `contextBudgetTokens`
+ * @property {readonly RecordingListing[]} recordings the recordings folder's index, empty when
+ *   the config sets no folder; the system message lists the playable ones
  */
 
 /** @typedef {{ messages: ChatMessage[], exampleIds: number[] }} Prompt */
@@ -64,7 +68,8 @@ const section = (heading, lines) => (lines.length === 0 ? [] : [[heading, ...lin
  * @param {Omit<PromptParts, "budgetTokens">} parts
  * @returns {ChatMessage[]}
  */
-function messages(revision, { notes, locks, examples }) {
+function messages(revision, { notes, locks, examples, recordings }) {
+  const offered = recordingsText(recordings);
   const user = [
     `Vibe: ${revision.name}\n${revision.brief}`,
     constraintsText(revision.constraints),
@@ -85,7 +90,7 @@ function messages(revision, { notes, locks, examples }) {
     "Write one new genome for this vibe.",
   ].join("\n\n");
   return [
-    { role: ROLE.system, content: SYSTEM },
+    { role: ROLE.system, content: offered === "" ? SYSTEM : `${SYSTEM}\n\n${offered}` },
     { role: ROLE.user, content: user },
   ];
 }

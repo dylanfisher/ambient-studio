@@ -4,6 +4,7 @@
 // every generation and candidate stored. It runs only when the owner's route or job calls it.
 /** @import { Config } from "../config/config.js" */
 /** @import { Lock } from "../domain/build-prompt.js" */
+/** @import { RecordingListing } from "../domain/recordings-text.js" */
 /** @import { Constraints } from "../domain/constraint-schema.js" */
 /** @import { Finding, LintResult } from "../domain/lint-result.js" */
 /** @import { ChatMessage } from "../domain/prompt-tokens.js" */
@@ -21,7 +22,9 @@ import { lintResult } from "../domain/lint-result.js";
 import { estimateTokens, promptText } from "../domain/prompt-tokens.js";
 import { REJECT_REASON } from "../domain/reject-reason.js";
 import { validateConstraints } from "../domain/validate-constraints.js";
+import { unplayable } from "../engine/field-recording.js";
 import { drawer } from "../engine/prng.js";
+import { recordingRefs } from "../engine/recording-refs.js";
 import { validateGenome } from "../engine/validate-genome.js";
 import { addCandidate, addGeneration, listRequestGroup, putGenome } from "./generation-store.js";
 import { OmlxRequestError } from "./omlx-queue.js";
@@ -47,6 +50,7 @@ const SCHEMA_RULE = "schema";
 const ANSWER_RULE = "answer";
 const REPAIR_OVER_BUDGET_RULE = "repairOverBudget";
 const REPAIR_NOT_SENT_RULE = "repairNotSent";
+const UNLISTED_RECORDING = "no recording in the folder has this sha256; use one from the list";
 /** The finish reason of a generation whose request failed in the queue (migration 0002). */
 const FAILED_FINISH = "error";
 
@@ -84,6 +88,8 @@ const RESPONSE_FORMAT = Object.freeze({
  *   are drawn from it, and it names the request group, so each value is used once
  * @property {number | null} sessionId
  * @property {Lock[]} locks
+ * @property {readonly RecordingListing[]} recordings the recordings folder's index, empty when the
+ *   config sets no folder: the prompt lists them, and a genome naming another is repaired
  */
 
 /**
@@ -124,9 +130,10 @@ const rejected = (reason, findings, rest = {}) => ({
  * @param {Completion} completion
  * @param {Constraints} constraints
  * @param {number} maxTokens
+ * @param {ReadonlySet<string>} playable hashes of the recordings the voice can play
  * @returns {Verdict}
  */
-function judge(completion, constraints, maxTokens) {
+function judge(completion, constraints, maxTokens, playable) {
   if (completion.finishReason === "length") {
     const message = `the answer hit max_tokens (${maxTokens}) and was cut off`;
     return rejected(REJECT_REASON.truncated, [
@@ -144,6 +151,12 @@ function judge(completion, constraints, maxTokens) {
     ...errors.map((e) => ({ ...e, rule: ANSWER_RULE })),
     ...(validated && !validated.ok
       ? validated.errors.map((e) => ({ ...e, rule: SCHEMA_RULE }))
+      : []),
+    // A hash the model made up or misspelled would render only to fail, so it is repaired here.
+    ...(validated?.ok
+      ? recordingRefs(validated.genome)
+          .filter(({ hash }) => !playable.has(hash))
+          .map(({ path }) => ({ path, rule: SCHEMA_RULE, message: UNLISTED_RECORDING }))
       : []),
   ];
   if (schemaFindings.length > 0 || !validated?.ok) {
@@ -181,7 +194,7 @@ export async function generateCandidates(
   n,
   store,
   queue,
-  { config, seed, sessionId, locks },
+  { config, seed, sessionId, locks, recordings },
 ) {
   if (!Number.isInteger(n) || n < 1) throw new Error(`n must be a positive integer, got ${n}`);
   const vibe = getVibe(store, vibeId);
@@ -201,6 +214,7 @@ export async function generateCandidates(
   }
   const { method, examples } = retrieveExamples(store, vibeId);
   const budgetTokens = config.queue.contextBudgetTokens;
+  const playable = new Set(recordings.filter((r) => unplayable(r) === null).map((r) => r.hash));
   const { messages, exampleIds } = buildPrompt(
     { ...revision, constraints },
     {
@@ -208,6 +222,7 @@ export async function generateCandidates(
       locks,
       examples,
       budgetTokens,
+      recordings,
     },
   );
 
@@ -274,7 +289,7 @@ export async function generateCandidates(
       retries: completion.retries,
       error: null,
     });
-    const verdict = judge(completion, constraints, config.queue.maxTokens);
+    const verdict = judge(completion, constraints, config.queue.maxTokens, playable);
     return { generation, verdict, failure: null };
   }
 
