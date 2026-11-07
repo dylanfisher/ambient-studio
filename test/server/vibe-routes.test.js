@@ -1,7 +1,11 @@
-// The vibe routes (decision 0027): create, list, read, edit as a new revision, and notes.
+// The vibe routes (decision 0027): create, list, read, edit as a new revision, and notes; and
+// loading the seed vibes (0030).
+/** @import { SeedVibe } from "../../src/domain/seed-vibes.js" */
 /** @import { TestServer } from "../support/http-client.js" */
 import { afterEach, expect, test } from "vitest";
+import { SEED_VIBES } from "../../src/domain/seed-vibes.js";
 import { MAX_CHARS } from "../../src/server/request-fields.js";
+import { markRemoved, TABLE } from "../../src/server/store.js";
 import { startTestServer } from "../support/http-client.js";
 import { VIBE } from "../support/studio.js";
 
@@ -99,4 +103,37 @@ test("a name, a brief or a note one character over its limit is a 400 naming it"
     `text must be at most ${MAX_CHARS.note} characters, got ${MAX_CHARS.note + 1}`,
   );
   expect((await ok("GET", `/api/vibes/${vibe.id}`)).notes).toEqual([]);
+});
+
+test("a seed vibe loads once as a normal vibe, and again only once that vibe is removed", async () => {
+  const { server, ok } = await setup();
+  const listed = await ok("GET", "/api/seed-vibes");
+  expect(listed.seeds.map((/** @type {any} */ seed) => seed.id)).toEqual(Object.keys(SEED_VIBES));
+  expect(listed.seeds.every((/** @type {any} */ seed) => seed.vibeId === null)).toBe(true);
+
+  const seed = /** @type {SeedVibe} */ (SEED_VIBES["bell-field"]);
+  const vibe = await ok("POST", "/api/seed-vibes/bell-field", {});
+  expect(vibe.revision).toMatchObject({ ...seed, vibeId: vibe.id });
+  expect((await ok("GET", "/api/vibes")).vibes).toEqual([vibe]);
+  const after = await ok("GET", "/api/seed-vibes");
+  expect(after.seeds.find((/** @type {any} */ s) => s.id === "bell-field").vibeId).toBe(vibe.id);
+
+  const again = await server.api("POST", "/api/seed-vibes/bell-field", {});
+  expect(again.status).toBe(409);
+  expect(again.json().error).toMatch(`vibe ${vibe.id}`);
+  // An edit appends a revision; the vibe still came from the seed.
+  await ok("POST", `/api/vibes/${vibe.id}/revisions`, { ...seed, name: "my bells" });
+  expect((await server.api("POST", "/api/seed-vibes/bell-field", {})).status).toBe(409);
+
+  markRemoved(server.store, TABLE.vibes, vibe.id, "starting over");
+  const reloaded = await ok("POST", "/api/seed-vibes/bell-field", {});
+  expect(reloaded.id).not.toBe(vibe.id);
+});
+
+test("an unknown seed is a 404, and a body with fields or no JSON body is refused", async () => {
+  const { server } = await setup();
+  expect((await server.api("POST", "/api/seed-vibes/nope", {})).status).toBe(404);
+  const withField = await server.api("POST", "/api/seed-vibes/cold-dorian", { name: "x" });
+  expect(withField.status).toBe(400);
+  expect((await server.api("POST", "/api/seed-vibes/cold-dorian")).status).toBe(415);
 });

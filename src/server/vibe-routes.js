@@ -1,8 +1,11 @@
 // The vibe routes (decision 0027): create, list, read, edit as a new revision, notes, the vibe's
-// ratings, and starting a session. An edit never changes a row: it appends a revision (0021).
+// ratings, and starting a session; and the seed vibes, loaded as new vibes (0030). An edit never
+// changes a row: it appends a revision (0021).
 /** @import { Route } from "./routing.js" */
 /** @import { Store } from "./store.js" */
 /** @import { Vibe, VibeDraft } from "./vibe-store.js" */
+import { isDeepStrictEqual } from "node:util";
+import { SEED_VIBES } from "../domain/seed-vibes.js";
 import { validateConstraints } from "../domain/validate-constraints.js";
 
 import { isObject } from "../engine/is-object.js";
@@ -63,8 +66,54 @@ function requireVibe(store, params) {
   return vibe;
 }
 
+/**
+ * The vibe loaded from the seed and not removed, if any: one whose first revision is the seed's
+ * draft. Later edits don't free the seed; removing the vibe does.
+ * @param {Store} store
+ * @param {VibeDraft} seed
+ * @returns {Vibe | undefined}
+ */
+function loadedFrom(store, seed) {
+  return listVibes(store).find((vibe) => {
+    const [first] = listRevisions(store, vibe.id);
+    if (!first) throw new Error(`vibe ${vibe.id} has no revision`);
+    const { name, brief, constraints, softTargets } = first;
+    return isDeepStrictEqual({ name, brief, constraints, softTargets }, seed);
+  });
+}
+
 /** @type {Route[]} */
 export const VIBE_ROUTES = [
+  {
+    method: "GET",
+    path: "/api/seed-vibes",
+    handle: ({ app }) => ({
+      seeds: Object.entries(SEED_VIBES).map(([id, seed]) => ({
+        id,
+        ...seed,
+        vibeId: loadedFrom(app.store, seed)?.id ?? null,
+      })),
+    }),
+  },
+  {
+    method: "POST",
+    path: "/api/seed-vibes/:seedId",
+    handle: async ({ app, params, body }) => {
+      fields(await body(), []);
+      const id = params.seedId ?? "";
+      if (!Object.hasOwn(SEED_VIBES, id))
+        throw new HttpError(404, `there is no seed vibe ${show(id)}`);
+      const seed = /** @type {VibeDraft} */ (SEED_VIBES[id]);
+      const loaded = loadedFrom(app.store, seed);
+      if (loaded) {
+        throw new HttpError(
+          409,
+          `seed ${id} is loaded already, as vibe ${loaded.id}; open it there`,
+        );
+      }
+      return createVibe(app.store, readDraft(seed));
+    },
+  },
   {
     method: "GET",
     path: "/api/vibes",
