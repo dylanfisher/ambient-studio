@@ -10,6 +10,9 @@
 
 /** @typedef {{ ok: boolean, findings: Finding[] }} LintResult */
 
+/** The rule of a finding for a genome validator error (decision 0005). */
+export const SCHEMA_RULE = "schema";
+
 /**
  * @param {Finding[]} findings
  * @returns {LintResult}

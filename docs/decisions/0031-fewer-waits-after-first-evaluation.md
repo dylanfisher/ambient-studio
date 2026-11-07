@@ -10,7 +10,8 @@
   feedback states and removal) and
   [0030](0030-seed-vibes-and-evaluation.md) (the evaluation's params and report, and its 409 body).
   Amended by [0036](0036-revision-pass.md) (the candidates job's revision steps, and the
-  candidates route's `pair` field).
+  candidates route's `pair` field) and [0037](0037-nudge-and-branch.md) (the nudge's conflict
+  rule and progress step).
 
 ## Context
 
@@ -161,3 +162,10 @@ identity. No rated audio is removed when a rating is.
   lists the revisions too, each after its first try. `GET /api/sessions/:id/candidates` gives
   each candidate `operator`, `parentIds` and `pair`, and leaves unchanged revisions out; the
   page shows one card of each pair and links the other.
+- 2026-11-07: from step 3e ([0037](0037-nudge-and-branch.md)). The conflict table gains a row: `POST
+  /api/sessions/:id/nudges` is refused while the session has an unfinished nudge with the same
+  base, step size and count. Another base, step size or count is another action and queues, as
+  does a nudge while a candidates job runs. The route stores each job's action string beside its
+  id; a kind added without one, as candidates and excerpts, matches any job of its kind. The
+  progress table gains: nudge, children finished / asked for, "Rendering the excerpt for nudge
+  3 of 8".

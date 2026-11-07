@@ -2,7 +2,7 @@
 
 - **Date:** 2026-11-06
 - **Status:** accepted; provisional: owner to confirm; amended by [0035](0035-locks.md) (the
-  `locks` table)
+  `locks` table) and [0037](0037-nudge-and-branch.md) (`candidates.sessionId`)
 
 ## Context
 
@@ -156,3 +156,9 @@ refused. The read-only connection neither migrates the source nor waits on its w
   lock on its path, or `covered` by a lock on its whole voice, the way 0031 marks feedback
   `replaced` and `undone`. A test in `lock-store.test.js` runs 0004 over a database built with
   0001 to 0003.
+- 2026-11-07: from step 3e ([0037](0037-nudge-and-branch.md)). `0005-candidate-session.sql` adds `candidates.sessionId`,
+  the session a candidate was made in, null outside one. The migration fills existing rows from
+  their generation's `sessionId` before the triggers are made again, so evaluation candidates and
+  rows with no generation stay null and the column is append-only like the rest. An index on it
+  serves `listSessionCandidates`. A test in `generation-store.test.js` runs it over a database
+  built with 0001 to 0004.

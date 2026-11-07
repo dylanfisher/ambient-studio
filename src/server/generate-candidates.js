@@ -22,7 +22,7 @@ import { buildPrompt } from "../domain/build-prompt.js";
 import { buildRepairPrompt } from "../domain/build-repair-prompt.js";
 import { ANSWER_KEY, extractGenome } from "../domain/extract-genome.js";
 import { lintGenome } from "../domain/lint-genome.js";
-import { lintResult } from "../domain/lint-result.js";
+import { lintResult, SCHEMA_RULE } from "../domain/lint-result.js";
 import { estimateTokens, promptText } from "../domain/prompt-tokens.js";
 import { REJECT_REASON } from "../domain/reject-reason.js";
 import { validateConstraints } from "../domain/validate-constraints.js";
@@ -51,8 +51,7 @@ const CANDIDATE_SEEDS = 2 ** 32;
 
 /** The source of every candidate the model wrote. */
 export const LLM_SOURCE = "llm";
-/** The rule a finding takes for a validator error, and for an answer-shape error. */
-const SCHEMA_RULE = "schema";
+/** The rule a finding takes for an answer-shape error. */
 const ANSWER_RULE = "answer";
 const REPAIR_OVER_BUDGET_RULE = "repairOverBudget";
 const REPAIR_NOT_SENT_RULE = "repairNotSent";

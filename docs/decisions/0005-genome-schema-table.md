@@ -2,7 +2,7 @@
 
 - **Date:** 2026-11-05
 - **Status:** accepted; amended by [0029](0029-sample-layer.md) (a `recording` kind) and
-  [0035](0035-locks.md) (lock paths beyond the vector view)
+  [0035](0035-locks.md) (lock paths beyond the vector view) and [0037](0037-nudge-and-branch.md) (`fromVectorUnchecked`)
 
 ## Context
 
@@ -188,3 +188,7 @@ If `tsc` can't express that, the builder of step 1c records what it did instead.
   parameter of any kind, a whole trajectory, or a whole voice by id (`voices.pad`). No lock path
   ends in `.start` or `.end`. `lockedPaths` maps locks back to the vector paths they cover, for
   nudges and optimizers.
+- 2026-11-07: from step 3e ([0037](0037-nudge-and-branch.md)), provisional: owner to confirm. `fromVectorUnchecked` is
+  `fromVector` without the validation, returning the moved copy, so a nudge can store why a
+  moved genome is invalid instead of catching a throw. `fromVector` is it plus `requireGenome`,
+  unchanged.

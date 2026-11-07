@@ -6,12 +6,17 @@
 /** @import { Feedback } from "./rating-store.js" */
 /** @import { App, Route } from "./routing.js" */
 /** @import { Session } from "./session-store.js" */
+import { applyLocks } from "../domain/apply-locks.js";
+import { lockRefusal, STEP_SIZE } from "../domain/nudge.js";
 import { currentExcerpt } from "./candidate-excerpt.js";
 import { candidateJob, DEFAULT_CANDIDATES, excerptJob, MAX_CANDIDATES } from "./candidate-job.js";
 import { candidatePairs } from "./candidate-pair.js";
 import { getGenome, listSessionCandidates } from "./generation-store.js";
+import { CANDIDATE_ID, vibeCandidate } from "./lock-routes.js";
+import { locksInForce } from "./lock-store.js";
+import { DEFAULT_NUDGES, NUDGE_OPERATOR, nudgeJob } from "./nudge-job.js";
 import { FEEDBACK_KIND, listSessionFeedback } from "./rating-store.js";
-import { fields, idParam, integer } from "./request-fields.js";
+import { fields, idParam, integer, oneOf, rowId } from "./request-fields.js";
 import { duplicateJob, HttpError } from "./routing.js";
 import { getSession, stopSession } from "./session-store.js";
 
@@ -92,6 +97,9 @@ function sessionView(app, session) {
 
 const CANDIDATES = "candidates";
 const EXCERPTS = "excerpts";
+/** A nudge job is named for the operator its children store. */
+const NUDGE = NUDGE_OPERATOR;
+const STEP_SIZES = /** @type {(keyof typeof STEP_SIZE)[]} */ (Object.keys(STEP_SIZE));
 
 /** What a refused second job of each kind tells the owner, naming the unfinished one. */
 const DUPLICATE = Object.freeze({
@@ -101,36 +109,58 @@ const DUPLICATE = Object.freeze({
   /** @param {number} id */
   [EXCERPTS]: (id) =>
     `This session is already rendering its excerpts (job ${id}). Wait for it to finish, or cancel it.`,
+  /** @param {number} id */
+  [NUDGE]: (id) =>
+    `This session is already making this nudge (job ${id}). Wait for it to finish, or cancel it.`,
 });
 
 /**
- * The session's job of `kind` that is queued or running, if any.
+ * What each app's jobs were asked to do beyond their kind, by job id: a nudge's base, step size
+ * and count. A job added without one matches any job of its kind.
+ * @type {WeakMap<App, Map<number, string>>}
+ */
+const jobActions = new WeakMap();
+
+/**
+ * The session's job of `kind` that is queued or running, if any, and when `action` is given, one
+ * added for that action.
  * @param {App} app
  * @param {Session} session
  * @param {string} kind
+ * @param {string} [action]
  */
-function unfinishedJob(app, session, kind) {
+function unfinishedJob(app, session, kind, action) {
   const ids = app.sessionJobs.get(session.id) ?? [];
+  const actions = jobActions.get(app);
   return (
     app.jobs
       .list()
-      .find((job) => ids.includes(job.id) && job.kind === kind && job.finishedAt === null) ?? null
+      .find(
+        (job) =>
+          ids.includes(job.id) &&
+          job.kind === kind &&
+          job.finishedAt === null &&
+          (action === undefined || actions?.get(job.id) === action),
+      ) ?? null
   );
 }
 
 /**
- * Adds the job, unless the session has one of the same kind queued or running, or `coveredBy`
- * names a kind whose unfinished job does the same work: each is a 409 naming that job, since a
- * second is most likely the same click sent twice. The check and the add run with no await
- * between them, so two requests at once can't both pass it.
+ * Adds the job, unless the session has one of the same kind queued or running, for the same
+ * `action` when one is given, or an excerpts job while its candidates job renders them: each is
+ * a 409 naming that job, since a second is most likely the same click sent twice (decision
+ * 0031). The check and the add run with no await between them, so two requests at once can't
+ * both pass it.
  * @param {App} app
  * @param {Session} session
  * @param {keyof typeof DUPLICATE} kind
  * @param {Parameters<App["jobs"]["add"]>[1]} run
+ * @param {string} [action] what the job does beyond its kind, as a nudge's base, step size and
+ *   count; a job of the kind for another action is accepted and queues
  * @returns {JobStatus}
  */
-function addSessionJob(app, session, kind, run) {
-  const same = unfinishedJob(app, session, kind);
+function addSessionJob(app, session, kind, run, action) {
+  const same = unfinishedJob(app, session, kind, action);
   if (same) throw duplicateJob(DUPLICATE[kind](same.id), same.id);
   if (kind === EXCERPTS) {
     const generating = unfinishedJob(app, session, CANDIDATES);
@@ -142,6 +172,11 @@ function addSessionJob(app, session, kind, run) {
     }
   }
   const status = app.jobs.add(kind, run);
+  if (action !== undefined) {
+    const actions = jobActions.get(app) ?? new Map();
+    actions.set(status.id, action);
+    jobActions.set(app, actions);
+  }
   app.sessionJobs.set(session.id, [...(app.sessionJobs.get(session.id) ?? []), status.id]);
   return status;
 }
@@ -178,6 +213,33 @@ export const SESSION_ROUTES = [
           : integer(given, "count", { min: 1, max: MAX_CANDIDATES });
       const run = candidateJob(app, { vibeId: session.vibeId, sessionId: session.id, count });
       return addSessionJob(app, session, CANDIDATES, run);
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/sessions/:sessionId/nudges",
+    handle: async ({ app, params, body }) => {
+      const session = requireOpenSession(app, params);
+      const given = fields(await body(), [CANDIDATE_ID, "stepSize", "count"]);
+      const candidateId = rowId(given, CANDIDATE_ID);
+      const stepSize = oneOf(given, "stepSize", STEP_SIZES);
+      const count =
+        given.count === undefined
+          ? DEFAULT_NUDGES
+          : integer(given, "count", { min: 1, max: MAX_CANDIDATES });
+      const { candidate, genome } = vibeCandidate(app.store, session.vibeId, candidateId);
+      // Checked here so the owner hears now; the job applies the locks live when it starts.
+      const refused = lockRefusal(applyLocks(genome, locksInForce(app.store, session.vibeId)));
+      if (refused !== null) throw new HttpError(409, `candidate ${candidateId} ${refused}`);
+      const run = nudgeJob(app, {
+        vibeId: session.vibeId,
+        sessionId: session.id,
+        base: candidate,
+        genome,
+        stepSize,
+        count,
+      });
+      return addSessionJob(app, session, NUDGE, run, `${candidateId} ${stepSize} ${count}`);
     },
   },
   {

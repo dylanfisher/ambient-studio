@@ -1,6 +1,8 @@
 // The lock routes (decision 0035): lock a value of one of the vibe's candidates, list the vibe's
 // live locks, and remove one. A lock takes its value from the candidate, so the owner names only
 // the candidate and the path; the next candidates job writes it into every answer.
+/** @import { Genome } from "../engine/genome-schema.js" */
+/** @import { Candidate } from "./generation-store.js" */
 /** @import { Route } from "./routing.js" */
 /** @import { Store } from "./store.js" */
 import { macrosMoving } from "../domain/macros-moving.js";
@@ -12,15 +14,16 @@ import { HttpError } from "./routing.js";
 import { requireVibe } from "./vibe-routes.js";
 
 /** The body field naming the candidate a lock takes its value from. */
-const CANDIDATE_ID = "candidateId";
+export const CANDIDATE_ID = "candidateId";
 
 /**
- * The genome of the candidate a body names, checked to be one of the vibe's.
+ * The candidate a body names and its genome, checked to be one of the vibe's: a 400 otherwise.
  * @param {Store} store
  * @param {number} vibeId
  * @param {number} candidateId
+ * @returns {{ candidate: Candidate, genome: Genome }}
  */
-function candidateGenome(store, vibeId, candidateId) {
+export function vibeCandidate(store, vibeId, candidateId) {
   const candidate = getCandidate(store, candidateId);
   if (!candidate) {
     throw new HttpError(
@@ -38,7 +41,7 @@ function candidateGenome(store, vibeId, candidateId) {
   if (row.vibeId !== vibeId) {
     throw new HttpError(400, `candidate ${candidateId} is not a candidate of vibe ${vibeId}`);
   }
-  return row.genome;
+  return { candidate, genome: row.genome };
 }
 
 /** @type {Route[]} */
@@ -58,7 +61,7 @@ export const LOCK_ROUTES = [
       const given = fields(await body(), [CANDIDATE_ID, LOCK_FIELD.path]);
       const path = text(given, LOCK_FIELD.path, MAX_CHARS.lockPath);
       const candidateId = rowId(given, CANDIDATE_ID);
-      const genome = candidateGenome(app.store, vibe.id, candidateId);
+      const { genome } = vibeCandidate(app.store, vibe.id, candidateId);
       const taken = lockOn(genome, path);
       if (!taken.ok) throw new HttpError(400, taken.message);
       const { value, voiceType = null } = taken.lock;

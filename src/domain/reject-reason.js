@@ -14,6 +14,9 @@ export const REJECT_REASON = Object.freeze({
   /** The request failed in the queue (timeout, busy past the wait, cancel, an error status): a
    * failure of the transport, not of the model. */
   requestFailed: "requestFailed",
+  /** A nudge's draw landed on its base's genome or a sibling's, as when an int rounds back
+   * (decision 0037). */
+  repeated: "repeated",
 });
 
 /** @typedef {(typeof REJECT_REASON)[keyof typeof REJECT_REASON]} RejectReason */

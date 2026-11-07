@@ -17,5 +17,7 @@ export const JOB_STEP = Object.freeze({
   /** @param {number} n @param {number} of */
   renderingRevision: (n, of) => `Rendering the revision of candidate ${n} of ${of}`,
   /** @param {number} n @param {number} of */
+  renderingNudge: (n, of) => `Rendering the excerpt for nudge ${n} of ${of}`,
+  /** @param {number} n @param {number} of */
   renderingExcerpt: (n, of) => `Rendering excerpt ${n} of ${of}`,
 });

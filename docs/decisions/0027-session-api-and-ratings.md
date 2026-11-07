@@ -2,7 +2,8 @@
 
 - **Date:** 2026-11-06
 - **Status:** accepted; provisional: owner to confirm; amended by
-  [0034](0034-feature-ranges-as-soft-targets.md) (soft targets checked on every save)
+  [0034](0034-feature-ranges-as-soft-targets.md) (soft targets checked on every save) and
+  [0037](0037-nudge-and-branch.md) (the nudge route; a session's candidates found by their own session)
 
 ## Context
 
@@ -182,3 +183,10 @@ so one number at one time would misstate what was heard.
   `softTargets` goes through `validateTargets` on every create and revision save; bad ranges are
   a 400 `the soft targets are invalid: <path>: <message>`, the path naming the feature, as in
   `$.features.lowEndShare`. Other keys are still kept as given.
+- 2026-11-07: from step 3e ([0037](0037-nudge-and-branch.md)). `GET /api/sessions/:sessionId/candidates` and the excerpts
+  job list the candidates whose own `sessionId` is the session, so a candidate made without a
+  model request, as a nudge child, is listed. `POST /api/sessions/:sessionId/nudges` takes
+  `{candidateId, stepSize, count?}` (`small`, `medium` or `large`; 1 to 32, default 8) and
+  returns the nudge job's status; the base may come from any session of the vibe. A body field
+  outside the list or a bad value is a 400 naming it, a candidate missing, without a genome or of
+  another vibe a 400, and a base that can't take the vibe's locks a 409.
