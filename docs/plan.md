@@ -56,7 +56,7 @@ unneeded stays unused rather than being given to another step.
 | 0031 | Automatic excerpts, one job per action, progress steps, thinking switch, prompt notation | 2m | — |
 | 0032 | Plain-language studio pages, "brief" for vibe | 2n | — |
 | 0033 | Phase 3 features: low end, stereo width, flatness | 3a | [written](decisions/0033-low-end-width-flatness.md) |
-| 0034 | Feature ranges as soft targets, and their calibration | 3b | — |
+| 0034 | Feature ranges as soft targets, and their calibration | 3b | [written](decisions/0034-feature-ranges.md) |
 | 0035 | Locks: paths, storage, enforcement, locks and macros | 3c (settles 0006's open question) | [written](decisions/0035-locks.md) |
 | 0036 | The revision pass ("ears") | 3d | — |
 | 0037 | `sessionId` on candidates, nudge and branch | 3e | — |
@@ -2044,3 +2044,33 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   ones. Fixed in 3dde5a8 (Sonnet: 42k tokens, 9 tool calls, 3.0 min): the test counts its scripted
   failures exactly and allows real races after them. Three fresh full runs passed, and the gate
   after.
+- 2026-11-07: 3b merged as c39924b (Opus: 237k tokens, 105 tool calls, 19.3 min, then a fix round
+  of 2.3 min; reviewer Sonnet: 77k tokens, 11 tool calls, 3.2 min, PASS). Ranges at
+  `softTargets.features`, one optional `[low, high]` per entry of `FEATURE_NAMES`, validated on
+  every save; `targetsText` in every first prompt; `checkTargets` gives one `target` finding per
+  miss, compared at the prompt's rounding, with a null value a miss; a ranges form on the brief
+  page. `shortTermMax` and `truePeak` take no range, since normalize cancels the render's level.
+  Calibration rendered 154, 188 and 200 lint-passing draws (the first two hit the five-minute
+  cap); draws had the vibe's fixed values forced in, since 0 of 5,000 raw draws passed a seed's
+  lint. Share missing at least one range: cold-dorian 0.50, bell-field 0.53, tidal-noise 0.73 of
+  all draws (0.53 of those not near silent). No seed has a flatness range. The fix round made one
+  rounding helper for the prompt and the check. The seed files changed, so they are new seeds:
+  vibes loaded earlier keep `{}`. 1196 tests. Pending owner checks: each seed's ranges against its
+  brief; the noise-bed golden's 6,710 Hz centroid against tidal-noise's 1,500 Hz ceiling; the
+  ranges form in Safari 17.6.
+- 2026-11-07: retrospective after 3a, 3c, 3b (orchestrator rule 11).
+
+  | Step | Build | Fix round | Review |
+  |---|---|---|---|
+  | 3a | 126k, 56 calls, 17.5 min | 39 s | 62k, 12.6 min, PASS |
+  | 3c | 277k, 100 calls, 29.5 min | 1.3 min, with a rebase | 82k, 10.5 min, PASS |
+  | 3b | 237k, 105 calls, 19.3 min | 2.3 min | 77k, 3.2 min, PASS |
+
+  Where it went: every review passed and found only small items, sent as one round each, which
+  took seconds to minutes against phase 2's 10–25 min rounds. Reviews running beside a builder
+  took 10–13 min against 3 min alone, mostly in full test runs under load. The one gate failure
+  came from a test that turned off the settle wait and so met the library's real race at full
+  parallelism; it was a test fault, hunted and fixed in 3 min. 3b's calibration hit the
+  five-minute cap on two vibes and was reported as measured. No rule changes. The checkers'
+  configuration hasn't changed this phase (only `scripts/dupes-allow.txt`), so they still skip
+  `tmp/`, `.claude/worktrees/`, `node_modules/` and `.venv/`.
