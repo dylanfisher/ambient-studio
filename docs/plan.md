@@ -63,6 +63,13 @@ unneeded stays unused rather than being given to another step.
 | 0038 | Explore | 3f | [written](decisions/0038-explore.md) |
 | 0039 | Lineage tree and the steering controls | 3g | [written](decisions/0039-lineage-and-steering-controls.md) |
 | 0040 | Revision evaluation against a control | 3h | [written](decisions/0040-revision-evaluation.md) |
+| 0041 | The sidecar process and protocol | 4a | — |
+| 0042 | CLAP packages, checkpoint and embeddings | 4b | — |
+| 0043 | Training sets, ties, folds and the model key | 4c | — |
+| 0044 | Bayesian Bradley–Terry with a global prior | 4d | — |
+| 0045 | Held-out agreement, the minimum and the baselines | 4e | — |
+| 0046 | Ranking, wildcards and the pair picker | 4f | — |
+| 0047 | The "what you like" summary | 4g | — |
 
 ## Phase 1 — Engine, schema and macros
 
@@ -1332,7 +1339,36 @@ commit (the moved helpers), named in its brief by sha.
 - **Parallel:** none. Then the orchestrator stops: the owner starts the evaluation (the three
   seed vibes, 32 candidates each, on omlx), and its numbers go in Result.
 
-**Result:**
+**Result:** closed on 2026-11-07 at `05370bf` with acceptance 2 inconclusive; 1, 3 and 4 pass.
+The owner asked to record it and move on to phase 4.
+
+1. Acceptance 2, the owner's evaluation 4 (2026-11-07; seed vibes 2–4, 32 each, revision test
+   on, thinking off, `Qwen3.6-35B-A3B-oQ4e-mtp`): 10 revised first tries, under the 20 the
+   verdict needs, so the report says "inconclusive" and gives no p. Treatment put 8 of 10 inside
+   every range (80%, Wilson 49–94%), the control 4 of 10 (40%, 17–69%). Of the 6 discordant
+   pairs, treatment won 5; the exact one-sided p on those counts would be 7/64 = 0.11. Before
+   revision 51 of 61 measured first tries were inside every range (84%, 72–91%), 59 of 61 after
+   the treatment. No revision went over budget or was rejected; two control revisions came back
+   unchanged.
+
+   | Vibe | Valid after repair | First tries in range | Revised | Treatment | Control | T only / C only |
+   |---|---|---|---|---|---|---|
+   | cold-dorian | 31/32 | 30/31 | 1 | 1/1 | 1/1 | 0 / 0 |
+   | bell-field | 30/32 | 21/30 | 9 | 7/9 | 3/9 | 5 / 1 |
+   | tidal-noise | 0/32 | — | 0 | — | — | — |
+
+   Tidal-noise answered all 32, but 27 failed lint after repair, so it gave no revisions. Its
+   cost ceiling is 300 and the master bus alone costs 214 at the default 8 s reverb; neither the
+   prompt nor the finding named the reverb. `05370bf` names it in both (amends 0020). The
+   report counts lint failures without naming the rule, so the cause is the likely one, not a
+   confirmed one.
+2. First tries took 6.3 s at the median (p90 8.1 s), repairs 3.7 s, each revision arm 3.7–3.9 s;
+   first token 179 ms on first tries and about 1 s on follow-ups. No answer was truncated and no
+   request failed. The run took about 15 minutes, against the confirm's 27–40.
+3. The revision pass stays on: nothing in the run argues against it, and a pass needs about 20
+   revised first tries. Since first tries already land in range 84% of the time, that means about
+   twice this run's count, or a vibe whose first tries miss more. Rerunning with tidal-noise
+   repaired, at 64 a vibe, is the owner's to start.
 
 ## Phase 4 — Preference model
 
@@ -1359,7 +1395,202 @@ restarted and the failed request reported to the owner, never retried silently, 
 cancels what is in flight. Tests use a fake sidecar on the Node side and a fake server in pytest;
 active learning picks the pairs with the widest uncertainty; a "what you like" summary is generated
 from the model. **Gate:** `./scripts/check` including the sidecar's pytest; held-out agreement in
-Result. **Result:**
+Result.
+
+**Waiting on the owner before 4b** (AGENTS.md reserves both):
+
+- **The CLAP packages and checkpoint.** The sidecar has no runtime dependencies today. CLAP needs
+  PyTorch (CPU build) and a CLAP implementation; the two candidates are `transformers`'s
+  `ClapModel` with the `laion/larger_clap_music` checkpoint, and LAION's own `laion-clap` package
+  with its music checkpoint. Recommended: `transformers` + `torch` + `numpy`, since `transformers`
+  is maintained and pins cleanly under uv, and the music checkpoint was trained on music rather
+  than general sound. The checkpoint downloads once (about 0.8 GB) to a cache folder the config
+  names. 4b's builder confirms the window length, sample rate and dimension from the checkpoint's
+  own config and writes them in 0042. 4d also needs `numpy`; nothing else (PCA and the Laplace fit
+  are a few lines of linear algebra, so no `scikit-learn`).
+- **Ratings to learn from.** Read through the API on 2026-11-07: 0 A/B ratings, 8 thumbs and 3
+  sketches, all on vibe 1. Every number in this phase's Result needs A/B pairs spread over
+  sessions, since agreement is measured one held-out session at a time. The minimum 4e states
+  is provisional: **40 rated pairs (not skips) over at least 3 sessions, per vibe.** The A/B view
+  from phase 2 records them now, before any of this phase is built, so rating can start in
+  parallel. Pick one or two vibes to rate deeply rather than all four thinly.
+
+**What the code holds today** (read at `05370bf`):
+
+- `ratings` rows store both sides' genome, seed, offset, duration, engine version, the rated
+  audio as heard, played fraction, `leftSide`, `orderSeed`, outcome (`a`, `b`, `tie`, `skip`) and
+  time taken, plus `aRank`, `aScore`, `aModelVersion`, `aWildcard` and the `b` equivalents, which
+  2c added for this phase and every row so far leaves null. `feedback` holds thumbs and "more /
+  less like this" on a macro with its effective value over the heard window.
+- `rated_audio` keeps each excerpt as the owner heard it, so an embedding of what was rated
+  survives an engine change; `renders` holds each excerpt's features and checks as derived data,
+  keyed by `producer`.
+- Example retrieval is `rating-recency` (0024), logged as `retrievalMethod`; the spec's CLAP
+  retrieval waits for embeddings.
+- `sidecar/` is an empty package with ruff, strict pyright and one wiring test; `./scripts/check`
+  already runs its pytest. Nothing in `src/server` starts it.
+- Excerpts are normalized to the vibe's loudness target, so integrated loudness is the same for
+  every heard excerpt; "louder wins" has to read another measure (4e).
+
+**Shared helpers and their owners** (orchestrator rule 4):
+
+- 4a: the protocol file both sides load, the Node client (`sidecar-client.js`) with its timeout,
+  restart and cancel, the fake sidecar in `test/support/`, and the Python request loop.
+- 4b: the `embeddings` table and its migration (derived, keyed by rated audio or render and the
+  checkpoint's producer), and the embed job.
+- 4c: the training-set builder and `modelKey()`, the hash every model, report and rank names.
+- 4d: the fit and predict methods in the sidecar.
+- 4e: the evaluation report and its minimum. 4f: the pair picker and the ranking fields.
+- A step that finds it needs another migration asks the orchestrator for the number.
+
+### Steps
+
+Order: 4a ‖ 4c, then 4b (after the owner approves the packages), then 4d, then 4e ‖ 4g, then 4f,
+then 4h.
+
+#### 4a — The sidecar process
+
+- **Builds:** one long-lived child process the server starts through `uv run --frozen` inside
+  `sidecar/`, the first time a job needs it and never at start-up. Line-delimited JSON over
+  stdio: each request `{id, method, params}`, each answer `{id, result}` or `{id, error}`, with
+  the methods and their params defined once in a protocol file both sides load. Audio and arrays
+  pass as file paths under the data root. The client gives every request a timeout from config;
+  a crash or a hang ends the process, reports the failed request to the job and the owner, and
+  starts a fresh process on the next request, never retrying on its own. A session stop or a job
+  cancel cancels what is in flight. Node owns every SQLite write. The first methods are `ping`
+  and `version` (the package version and Python's).
+- **Tiers:** server, sidecar, config (the timeout key).
+- **Tests first:** the client against a fake sidecar: an answer arrives under its id; two
+  requests in flight are answered out of order; a timeout kills the process and fails the
+  request with a message naming the method; a crash mid-request does the same and the next
+  request starts a new process; cancel ends the request; a line that isn't JSON is an error,
+  not a hang. In pytest, the loop answers `ping`, rejects an unknown method with an error answer
+  and keeps reading, and rejects a request missing `id`. A protocol test loads the one file from
+  both sides.
+- **Records:** writes 0041: the process model, protocol file location, framing, timeouts,
+  restart and cancel, why not HTTP, and why it starts on first use.
+- **Parallel:** with 4c. Review: yes (new subsystem, the sidecar boundary).
+
+#### 4b — CLAP embeddings
+
+- **Builds:** `embed_audio(paths)` and `embed_text(texts)` in the sidecar with the checkpoint the
+  owner approved, on CPU with a capped thread count so it leaves omlx the GPU. An excerpt longer
+  than CLAP's window is embedded as the mean of its windows, unit-normalized. A derived
+  `embeddings` table holds one row per rated audio or render and producer (the checkpoint's id and
+  hash), dropped and rebuilt when the producer changes. An owner-started "embed" job embeds every
+  rated audio and kept render that lacks a row, with progress steps; the candidates job embeds
+  each new excerpt after its features when the sidecar is set up, and skips that step, saying so,
+  when it isn't.
+- **Tiers:** sidecar, server, config (the checkpoint cache folder).
+- **Tests first:** pytest with a tiny fake model in place of CLAP: shapes, window averaging,
+  normalization, a missing file as an error answer. In Node, against the fake sidecar: the job
+  embeds only what lacks a row, a producer change rebuilds, a sidecar failure fails the job
+  with the file named and keeps the rows already written. One pytest marked to run only when
+  the checkpoint is cached checks that the same file embeds identically twice and that a text
+  embeds near an excerpt it describes better than one it doesn't.
+- **Bench (capped at five minutes):** seconds per 30 s excerpt on mbp2021 on CPU, in 0042.
+- **Records:** writes 0042: packages and versions, checkpoint, window, sample rate, dimension,
+  windowing, threads, the cache folder, and the derived-data shape.
+- **Parallel:** none.
+
+#### 4c — Training sets and the model key
+
+- **Builds:** in `src/domain`, pure and testable without a sidecar: from a vibe's ratings and
+  feedback, a training set of pairs (winner, loser; a tie as half a win each way; skips dropped)
+  and pointwise thumbs, each side described by its embedding id, its heard features
+  (`FEATURE_NAMES`) and its macros' effective values over the heard window, plus which side was
+  on the left. Removed rows are left out. Folds split by session, leave one session out, and a
+  pair whose candidate also appears in another session's pairs is dropped from that test fold
+  so nothing leaks. `modelKey()` hashes the rating ids, the feature extractor's and embedding's
+  producers and the hyperparameters.
+- **Tiers:** domain.
+- **Tests first:** a tie becomes two half-weighted pairs; a skip and a removed rating are left
+  out; each fold's test pairs share no candidate with its training pairs; one more rating
+  changes the key and reordering the rows doesn't; a pair with a missing embedding is reported,
+  not dropped silently.
+- **Records:** writes 0043: ties as half a win in the fit and excluded from agreement, thumbs as
+  a pointwise term, the fold rule, and the key.
+- **Parallel:** with 4a.
+
+#### 4d — The preference model
+
+- **Builds:** in the sidecar, `fit(train_set_path)` and `predict(model_path, items)`: Bayesian
+  logistic Bradley–Terry with a Laplace posterior over PCA-reduced CLAP (dimension chosen in the
+  record, about 8–16 against tens of pairs) plus standardized features and macros, with a
+  left/right bias term and the thumbs as a pointwise term. Each vibe's weights have a Gaussian
+  prior centered on a global fit over every vibe, weaker than the vibe's own data once it has
+  some. `predict` returns each item's mean score and variance, and the variance of any pair's
+  difference. Models are files under the data root named by `modelKey()`, derived data, rebuilt
+  when the key changes.
+- **Tiers:** sidecar, server (the fit job and storage).
+- **Tests first:** on synthetic pairs from known weights, the fit recovers the weights' signs
+  and ranks held-out items with agreement over 0.8; variance falls as pairs are added; a vibe
+  with no pairs predicts from the global prior; a left bias planted in the data is learned by
+  the bias term, not the weights; the same set fits identically twice.
+- **Records:** writes 0044: the model, the PCA dimension and prior strengths, the global prior,
+  and why Laplace rather than an ensemble.
+- **Parallel:** none. Review: yes.
+
+#### 4e — Held-out agreement and the baselines
+
+- **Builds:** an owner-started "Model test" for preferences: for each vibe, fit on all sessions
+  but one and score the held-out session's pairs, then report agreement with a bootstrap 95%
+  interval and the pair count, against always-left, louder wins and a features-only model.
+  "Louder wins" reads the excerpt's momentary loudness range or peak, since integrated loudness
+  is normalized; the record says which. Below the minimum (provisionally 40 pairs over 3
+  sessions) the vibe reads "not enough data" with how many more pairs it needs. The report is
+  stored like the generation evaluations and shown on the Model test page.
+- **Tiers:** server, web.
+- **Tests first:** on a scripted training set through the fake sidecar: agreement and its
+  interval match a hand count; always-left scores the share of left wins; a vibe under the
+  minimum reads "not enough data" and names the shortfall; ties are left out of agreement.
+- **Records:** writes 0045: the minimum and why, the bootstrap, the loudness measure, and the
+  report's shape.
+- **Parallel:** with 4g.
+
+#### 4f — Ranking and better pairs
+
+- **Builds:** when a vibe has a fitted model, the candidates job ranks its new candidates by
+  posterior mean, the grid shows them in that order with the score, and one slot in every eight
+  goes to a wildcard drawn from outside the top half. The A/B view offers the pair with the
+  widest uncertainty in its difference among the session's candidates, with the old choice when
+  there is no model. Every rating fills `aRank`, `aScore`, `aModelVersion` (the model key) and
+  `aWildcard`, and the `b` equivalents.
+- **Tiers:** server, web.
+- **Tests first:** with a scripted model, the order follows the scores; a wildcard comes from the
+  bottom half; the offered pair is the one with the widest difference variance; a rating stores
+  the rank, score, key and wildcard flag it was shown with; with no model, nothing changes from
+  today.
+- **Records:** writes 0046: the ranking, the wildcard share, the pair rule, and what the grid
+  shows.
+- **Parallel:** none. Review: yes (session page in Safari: name `card-hold.js` in the brief and
+  say what holds a card, as phase 3's retrospective asks).
+
+#### 4g — "What you like"
+
+- **Builds:** a short plain-language summary on the vibe's brief page from the model's feature
+  and macro weights whose 95% interval excludes zero ("prefers less density, a longer reverb"),
+  with the pair count it rests on, and "not enough data" under 4e's minimum. Written from the
+  weights by a template, not by the model, so it costs no omlx time and says only what the fit
+  supports.
+- **Tiers:** domain (the text), server, web.
+- **Tests first:** weights with known signs give the matching phrases; a weight whose interval
+  crosses zero is left out; under the minimum the text says so.
+- **Records:** writes 0047: the template, the interval rule, why not the LLM.
+- **Parallel:** with 4e.
+
+#### 4h — Examples retrieved by similarity
+
+- **Builds:** when embeddings exist, the generation prompt's liked and disliked examples are the
+  rated genomes nearest the vibe's brief in CLAP text-to-audio similarity, instead of the newest,
+  logged as `retrievalMethod: "clap-similarity"`; with no embeddings it stays `rating-recency`.
+- **Tiers:** server.
+- **Tests first:** with scripted embeddings, the nearest liked and disliked come first and the
+  method is logged; with none, the old order and method.
+- **Records:** amends 0024.
+- **Parallel:** none.
+
+**Result:**
 
 ## Phase 5 — Optimizers
 
@@ -2203,3 +2434,12 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
 - 2026-11-07: phase 3 built; the gate passes on main at d446aa8. Acceptance 1, 3 and 4 pass.
   Acceptance 2 waits on the owner's evaluation (three seed vibes, 32 each, revision test on); its
   numbers go in Result. Phase 4 is not expanded until then.
+- 2026-11-07: owner: "record phase 3 now, or if you are able to debug the tidal noise you can do
+  that, and ideally you run it yourself. then expand phase 4 into full plan". Evaluation 4 read
+  through the app's API: inconclusive, 10 revised first tries, treatment 8 of 10 against control
+  4 of 10; tidal-noise 0 of 32 valid. Debugged offline: its 300 cost ceiling against a reverb
+  costing 214 at the default decay, which neither the prompt nor the finding named. Fixed as
+  `05370bf`, 1323 tests, the gate passes. Running the evaluation from the session wasn't possible:
+  a temp-rooted server would need the omlx key copied out of the owner's config, and the
+  permission check refused that. Phase 3 closed with acceptance 2 inconclusive. Phase 4 expanded.
+  Through the API the owner's data holds 0 A/B ratings, 8 thumbs and 3 sketches, all on vibe 1.
