@@ -11,7 +11,7 @@ import {
   VOICE_KEYS,
   VOICE_PARAMS,
 } from "./genome-schema.js";
-import { TRAJECTORY_TEXT } from "./trajectory.js";
+import { POINTS_KEY, TRAJECTORY_TEXT } from "./trajectory.js";
 import { isAbsolute } from "./tuning.js";
 import { getTuning, tuningIds } from "./tuning-registry.js";
 import {
@@ -75,7 +75,7 @@ export function schemaText() {
   // A scale's values and a key's range depend on the tuning, so they're listed per tuning.
   const { scale, key } = GLOBAL_PARAMS;
   const globalLines = Object.entries(GLOBAL_PARAMS).flatMap(([name, d]) => {
-    if (d === scale) return [`${name} =${d.default} ${d.description}, per tuning below`];
+    if (d === scale) return [`${name} =${d.default}, per tuning below`];
     if (d === key) {
       const when = `; only ${key.when.text}`;
       return [`${name} int =${d.default} ${d.description}${when}, per tuning:`, ...pitchLines()];
@@ -83,8 +83,8 @@ export function schemaText() {
     return [line(name, d)];
   });
   return [
-    "Genome JSON. Omitted keys take their =default; unknown keys are errors.",
-    `${TRAJECTORY_MARK} = may be a trajectory: ${TRAJECTORY_TEXT}.`,
+    "Genome JSON. Omitted keys take =default; unknown keys error.",
+    `${TRAJECTORY_MARK} = may be a trajectory: an object with key "${POINTS_KEY}", never a bare array: "cutoff": {"${POINTS_KEY}": [[0, 400], [300, 900]]}; ${TRAJECTORY_TEXT}.`,
     `schemaVersion ${SCHEMA_VERSION}`,
     ...globalLines,
     // Every macro shares one descriptor, so one line covers them.

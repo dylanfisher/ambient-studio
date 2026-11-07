@@ -33,6 +33,13 @@ describe("schemaText", () => {
     expect(text).toMatch(/^pulse none\|beat =none /m);
   });
 
+  // A model wrote `"cutoff": [[0,120],[300,250]]`, a bare array, for a trajectory.
+  test("shows a trajectory as an object with a points key, never a bare array", () => {
+    const text = schemaText();
+    expect(text).toContain('"cutoff": {"points": [[0, 400], [300, 900]]}');
+    expect(text).toMatch(/^\(T\) .*never a bare array/m);
+  });
+
   test("gives each tuning's key range and scales", () => {
     const text = schemaText();
     expect(text).toMatch(/^ +12-tet,just-5-limit: key 0\.\.11; scale all\|ionian\|/m);

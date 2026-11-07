@@ -224,11 +224,11 @@ const padChords = /** @type {ConstraintKind<number>} */ ({
     }),
 });
 
-/** The brightness macro's range over the timeline; no macro offsets another, so raw is effective. */
+/** The brightness macro's range; no macro offsets another, so raw is effective. */
 const brightness = /** @type {ConstraintKind<Range>} */ ({
   form: FORM.range,
   value: still(MACROS.brightness),
-  text: ({ min, max }) => `macros.brightness from ${min} to ${max} over the whole timeline`,
+  text: ({ min, max }) => `macros.brightness between ${min} and ${max} (one number)`,
   lint: (genome, { min, max }) => {
     const [lo, hi] = valueRange(
       genome.macros.brightness,

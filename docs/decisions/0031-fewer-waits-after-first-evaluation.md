@@ -135,3 +135,16 @@ identity. No rated audio is removed when a rating is.
 - Rated-audio files are never cleaned up by an undo; they are kept as heard.
 - Old sessions may hold more than one live row for one state, made before this rule; the next
   post on that state replaces all of them.
+
+## Amendments
+
+- 2026-11-06: from step 2m's second model test (16 candidates: 12 valid first try, 15 after one
+  repair). All 9 remaining schema errors were two kinds. Six wrote a trajectory as a bare array
+  (`"cutoff": [[0,120],[300,250]]`, likewise `tone` and `level`), and one wrote a malformed
+  point. Three wrote `macros.brightness` as `[[0,0.1],[600,0.45,"linear"]]`. The schema text's
+  header now says a trajectory is an object with key `"points"`, never a bare array, and gives
+  `"cutoff": {"points": [[0, 400], [300, 900]]}`; `TRAJECTORY_TEXT` is shortened to fit, and
+  the schema text is 2,996 characters. The brightness constraint reads `macros.brightness
+  between 0.3 and 0.7 (one number)`: "from 0.1 to 0.45 over the whole timeline" read as a ramp.
+  The other constraint texts name no macro or trajectory. The schema still refuses bare arrays,
+  and the engine version stays: prompts are not audio.

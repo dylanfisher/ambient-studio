@@ -36,7 +36,7 @@ const lines = {
   bellNotes: /^bell density at most 4 \/min, macro offsets included$/m,
   grains: /^granular density at most 10 \/s, macro offsets included$/m,
   padChords: /^pad hold at least 40 s \(at most 1\.5 chords a minute\)$/m,
-  brightness: /^macros\.brightness from 0\.3 to 0\.7 over the whole timeline$/m,
+  brightness: /^macros\.brightness between 0\.3 and 0\.7 \(one number\)$/m,
   cost: /^render cost at most 300; /m,
 };
 
@@ -49,6 +49,13 @@ describe("constraintsText", () => {
     expect(Object.keys(lines).sort()).toEqual(Object.keys(CONSTRAINT_KINDS).sort());
     const text = constraintsText(full);
     for (const pattern of Object.values(lines)) expect(text).toMatch(pattern);
+  });
+
+  // A model read "from 0.1 to 0.45 over the whole timeline" as a ramp and wrote a trajectory.
+  test("words the brightness range as one number, not a ramp", () => {
+    const text = constraintsText(full);
+    expect(text).not.toContain("over the whole timeline");
+    expect(text).not.toMatch(/macros\.brightness from /);
   });
 
   test("stays under 800 characters with every kind set", () => {

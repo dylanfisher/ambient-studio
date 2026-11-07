@@ -31,8 +31,11 @@ const MAX_POINTS = 64;
 
 const curveNames = Object.keys(CURVES);
 
+/** The one key of a trajectory object, named in the LLM's schema text. */
+export const POINTS_KEY = "points";
+
 /** One line for the LLM's schema text. */
-export const TRAJECTORY_TEXT = `{"points":[[seconds,value],[seconds,value,curve],...]}, up to ${MAX_POINTS}, timeline seconds rising; curve shapes the ramp into its point: ${curveNames.join("|")}, =${DEFAULT_CURVE}; held before the first and after the last`;
+export const TRAJECTORY_TEXT = `up to ${MAX_POINTS} points [seconds,value,curve], timeline seconds rising; optional curve, ramp into the point: ${curveNames.join("|")}, =${DEFAULT_CURVE}; held past the ends`;
 
 /** @param {unknown} value @returns {value is Curve} */
 const isCurve = (value) => typeof value === "string" && Object.hasOwn(CURVES, value);
@@ -49,7 +52,7 @@ const isCurve = (value) => typeof value === "string" && Object.hasOwn(CURVES, va
  */
 export function checkTrajectory(value, path, checkPoint, errors) {
   const before = errors.length;
-  checkKeys(value, (key) => key === "points", path, errors);
+  checkKeys(value, (key) => key === POINTS_KEY, path, errors);
   const { points } = value;
   if (!Array.isArray(points) || points.length === 0) {
     errors.push({
