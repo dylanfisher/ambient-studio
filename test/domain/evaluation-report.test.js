@@ -121,7 +121,7 @@ describe("evaluationReport", () => {
             timing(3000),
             timing(2000),
             timing(9000, 1),
-            { repairRound: 0, latencyMs: 50, firstTokenMs: null, failed: true },
+            { repairRound: 0, latencyMs: 50, firstTokenMs: null, failed: true, reasoned: false },
           ],
         },
       ],
