@@ -2,7 +2,8 @@
 
 - **Date:** 2026-11-06
 - **Status:** accepted; provisional: owner to confirm; amended by [0035](0035-locks.md) (the
-  lock shape and its line, locks applied to each answer)
+  lock shape and its line, locks applied to each answer) and
+  [0034](0034-feature-ranges-as-soft-targets.md) (the vibe's feature ranges in the user turn)
 
 ## Context
 
@@ -26,8 +27,8 @@ has no description field ([0005](0005-genome-schema-table.md)): adding one would
 - *user*: `Vibe: <name>` and the brief; `constraintsText()`; the locks, one `path = value` line
   each under "Locked by the owner; keep these values exactly"; the owner's notes, oldest first;
   the rated examples, one `Liked: ` or `Disliked: ` line each with the genome's canonical JSON;
-  and the ask. A section with nothing in it is left out. Soft targets are left out until phase 3
-  gives them features to be measured against.
+  and the ask. A section with nothing in it is left out. The vibe's feature ranges follow the
+  constraints (amended 2026-11-07, [0034](0034-feature-ranges-as-soft-targets.md)).
 
 A lock is `{path, value}` with the vector view's paths (`reverbDecay`, `voices.pad.hold`), so
 phase 3's locking and phase 5's optimizers name a value the same way; phase 3 may widen the shape.
@@ -168,3 +169,10 @@ which 2l settles.
   take is a `lock` finding and goes to the repair round. A candidate made with locks stores the
   paths changed and filled in `operatorParams`. The session's candidates job passes the vibe's
   live locks; the evaluation still passes none.
+- 2026-11-07: from step 3b ([0034](0034-feature-ranges-as-soft-targets.md)). Every first prompt
+  carries the vibe's feature ranges as `targetsText`'s lines, after `constraintsText()` and
+  before the locks, and leaves them out when the vibe has none. `PromptRevision` gains `ranges`,
+  which `generateCandidates` takes from `validateTargets` on the revision's soft targets, and a
+  revision whose stored ranges don't validate stops generation with an error naming it. Other
+  keys of `softTargets` still stay out of the prompt. The seed-sized budget tests now carry a
+  range on every feature and still fit under half the budget.

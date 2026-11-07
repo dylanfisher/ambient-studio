@@ -23,6 +23,7 @@ import { lintResult } from "../domain/lint-result.js";
 import { estimateTokens, promptText } from "../domain/prompt-tokens.js";
 import { REJECT_REASON } from "../domain/reject-reason.js";
 import { validateConstraints } from "../domain/validate-constraints.js";
+import { validateTargets } from "../domain/validate-targets.js";
 import { unplayable } from "../engine/field-recording.js";
 import { drawer } from "../engine/prng.js";
 import { recordingRefs } from "../engine/recording-refs.js";
@@ -249,6 +250,11 @@ export async function generateCandidates(
     throw new Error(`vibe ${vibeId} revision ${revision.id} has invalid constraints: ${list}`);
   }
   const { constraints } = checked;
+  const targets = validateTargets(revision.softTargets);
+  if (!targets.ok) {
+    const list = targets.errors.map((e) => `${e.path}: ${e.message}`).join("; ");
+    throw new Error(`vibe ${vibeId} revision ${revision.id} has invalid soft targets: ${list}`);
+  }
   const draws = samplingStream(seed, n);
   const requestGroup = requestGroupName(vibeId, seed);
   if (listRequestGroup(store, requestGroup).length > 0) {
@@ -258,7 +264,7 @@ export async function generateCandidates(
   const budgetTokens = config.queue.contextBudgetTokens;
   const playable = new Set(recordings.filter((r) => unplayable(r) === null).map((r) => r.hash));
   const { messages, exampleIds } = buildPrompt(
-    { ...revision, constraints },
+    { ...revision, constraints, ranges: targets.ranges },
     {
       notes: listNotes(store, vibeId).map((note) => note.text),
       locks,

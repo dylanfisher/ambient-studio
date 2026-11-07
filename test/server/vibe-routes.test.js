@@ -69,6 +69,36 @@ test("invalid constraints, a missing field and an unknown field are 400s naming 
   expect((await server.api("GET", "/api/vibes")).json().vibes).toEqual([]);
 });
 
+test("a revision with bad feature ranges is a 400 naming the feature, and saves nothing", async () => {
+  const { server, ok } = await setup();
+  const vibe = await ok("POST", "/api/vibes", VIBE);
+  const bad = await server.api("POST", `/api/vibes/${vibe.id}/revisions`, {
+    ...VIBE,
+    softTargets: { features: { lowEndShare: [0.8, 0.2] } },
+  });
+  expect(bad.status).toBe(400);
+  expect(bad.json().error).toMatch(/^the soft targets are invalid: \$\.features\.lowEndShare: /);
+  const created = await server.api("POST", "/api/vibes", {
+    ...VIBE,
+    softTargets: { features: { tempo: [1, 2] } },
+  });
+  expect(created.status).toBe(400);
+  expect(created.json().error).toMatch(/\$\.features\.tempo: unknown feature/);
+  expect((await ok("GET", `/api/vibes/${vibe.id}/revisions`)).revisions).toHaveLength(1);
+});
+
+test("soft targets keep a key other than the ranges as saved", async () => {
+  const { ok } = await setup();
+  const softTargets = { clap: { toward: "rain" }, features: { flatness: [null, 0.1] } };
+  const vibe = await ok("POST", "/api/vibes", { ...VIBE, softTargets });
+  const edited = await ok("POST", `/api/vibes/${vibe.id}/revisions`, {
+    ...VIBE,
+    softTargets: { clap: { toward: "rain" } },
+  });
+  expect(vibe.revision.softTargets).toEqual(softTargets);
+  expect(edited.revision.softTargets).toEqual({ clap: { toward: "rain" } });
+});
+
 test("an unknown vibe is a 404", async () => {
   const { server } = await setup();
   expect((await server.api("GET", "/api/vibes/7")).status).toBe(404);

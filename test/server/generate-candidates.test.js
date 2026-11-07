@@ -2,11 +2,13 @@
 // candidate, one repair round, and every generation and candidate stored with its reason. No
 // test reaches the real omlx, and the fake clock stands in for the queue's timers.
 /** @import { LintResult } from "../../src/domain/lint-result.js" */
+/** @import { FeatureRanges } from "../../src/domain/target-schema.js" */
 import { afterEach, describe, expect, test } from "vitest";
 import { loadConfig } from "../../src/config/config.js";
 import { buildPrompt } from "../../src/domain/build-prompt.js";
 import { estimateTokens, promptText } from "../../src/domain/prompt-tokens.js";
 import { REJECT_REASON } from "../../src/domain/reject-reason.js";
+import { targetsText } from "../../src/domain/targets-text.js";
 import { canonicalGenome } from "../../src/engine/canonical-genome.js";
 import exampleGenome from "../../src/engine/genomes/example.json" with { type: "json" };
 import {
@@ -17,7 +19,7 @@ import {
 } from "../../src/server/generation-store.js";
 import { createOmlxQueue } from "../../src/server/omlx-queue.js";
 import { RETRIEVAL_METHOD } from "../../src/server/retrieve-examples.js";
-import { addNote, createVibe } from "../../src/server/vibe-store.js";
+import { addNote, createVibe, reviseVibe } from "../../src/server/vibe-store.js";
 import { driveGaps, fakeClock } from "../support/fake-clock.js";
 import { fakeOmlx } from "../support/fake-omlx.js";
 import { tempRoot } from "../support/temp-root.js";
@@ -239,6 +241,44 @@ describe("generateCandidates", () => {
     expect(candidates[0]).toMatchObject({ rejectReason: null, locks: [], operatorParams: null });
   });
 
+  test("the first prompt holds the vibe's feature ranges", async () => {
+    const { omlx, config, queue, store, vibe, drive } = await setup();
+    const { generateCandidates } = await load();
+    /** @type {FeatureRanges} */
+    const ranges = { centroidMean: [null, 700], stereoWidth: [0.1, 0.4] };
+    reviseVibe(store, vibe.id, { ...revisionDraft, softTargets: { features: ranges } });
+    omlx.script(says(answer(valid)));
+    await drive(
+      generateCandidates(vibe.id, 1, store, queue, {
+        config,
+        seed: 29,
+        sessionId: null,
+        locks: [],
+        recordings: [],
+      }),
+    );
+    const sent = promptText(omlx.requests[0]?.body.messages);
+    for (const line of targetsText(ranges).split("\n")) expect(sent).toContain(line);
+  });
+
+  test("a revision whose saved ranges no longer validate stops generation, naming it", async () => {
+    const { config, queue, store, vibe } = await setup();
+    const { generateCandidates } = await load();
+    const revision = reviseVibe(store, vibe.id, {
+      ...revisionDraft,
+      softTargets: { features: { flatness: [0.5, 0.1] } },
+    });
+    await expect(
+      generateCandidates(vibe.id, 1, store, queue, {
+        config,
+        seed: 31,
+        sessionId: null,
+        locks: [],
+        recordings: [],
+      }),
+    ).rejects.toThrow(`revision ${revision.id} has invalid soft targets: $.features.flatness`);
+  });
+
   test("onCandidate gets each stored candidate with its first answer's reason", async () => {
     const { omlx, config, queue, store, vibe, drive } = await setup();
     const { generateCandidates } = await load();
@@ -284,7 +324,7 @@ describe("generateCandidates", () => {
     const bodies = omlx.requests.map((r) => r.body);
     const generations = listRequestGroup(store, requestGroup);
     const prompt = buildPrompt(
-      { ...revisionDraft },
+      { ...revisionDraft, ranges: {} },
       {
         notes: ["less shimmer"],
         locks,
@@ -425,13 +465,16 @@ describe("generateCandidates", () => {
 
   test("a repair that would pass the context budget is not sent, and the candidate says so", async () => {
     // A budget the first prompt fits and the repair, which adds the answer, doesn't.
-    const probe = buildPrompt(revisionDraft, {
-      notes: [],
-      locks,
-      examples: [],
-      budgetTokens: 1e9,
-      recordings: [],
-    });
+    const probe = buildPrompt(
+      { ...revisionDraft, ranges: {} },
+      {
+        notes: [],
+        locks,
+        examples: [],
+        budgetTokens: 1e9,
+        recordings: [],
+      },
+    );
     const budget = estimateTokens(promptText(probe.messages)) + 50;
     const { omlx, config, queue, store, vibe, drive } = await setup({
       contextBudgetTokens: budget,

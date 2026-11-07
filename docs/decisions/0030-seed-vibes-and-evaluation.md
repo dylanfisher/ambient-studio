@@ -1,7 +1,8 @@
 # 0030. Three seed vibes, and an owner-started evaluation that stores one report per run
 
 - **Date:** 2026-11-06
-- **Status:** accepted; provisional: owner to confirm
+- **Status:** accepted; provisional: owner to confirm; amended by
+  [0034](0034-feature-ranges-as-soft-targets.md) (the seed vibes' feature ranges)
 
 ## Context
 
@@ -21,7 +22,8 @@ ships three seed vibes written by the plan's builder, for the owner to edit or r
 
 **Seed vibes** are JSON files in `src/domain/vibes/`, each in the shape `POST /api/vibes` takes,
 listed in `SEED_VIBES` (`src/domain/seed-vibes.js`). All three target −16 LUFS
-([0018](0018-default-loudness-target.md)), have no beat, and leave soft targets empty. Between
+([0018](0018-default-loudness-target.md)) and have no beat. Each has feature ranges and no other
+soft target (amended 2026-11-07). Between
 them they set every constraint kind but `bpm`, each sets a kind the others don't, and a test
 builds one genome per seed from the goldens that passes its linter, so no seed asks for what no
 genome can meet.
@@ -151,3 +153,8 @@ unconstrained genomes. It never runs against omlx.
   - **A second evaluation.** `POST /api/evaluations` while any evaluation is queued or running is
     a 409 with body `{error, jobId}`, `jobId` naming the unfinished job and `error` the sentence
     "An evaluation is already queued or running (job N). Wait for it to finish, or cancel it."
+- 2026-11-07: from step 3b ([0034](0034-feature-ranges-as-soft-targets.md)). Each seed vibe has
+  feature ranges at `softTargets.features`, calibrated on lint-passing draws as 0034 records,
+  and no other soft target; 3h's builder may not change them. Since the seed's draft is compared
+  deeply, each edited file is a new seed: a vibe the owner loaded before keeps `{}` and no
+  longer counts as the seed, which shows as not loaded and loads again as a new vibe.

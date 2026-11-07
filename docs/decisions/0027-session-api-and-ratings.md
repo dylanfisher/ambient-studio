@@ -1,7 +1,8 @@
 # 0027. Session and rating routes, A/B order from a logged seed, ratings name the render heard
 
 - **Date:** 2026-11-06
-- **Status:** accepted; provisional: owner to confirm
+- **Status:** accepted; provisional: owner to confirm; amended by
+  [0034](0034-feature-ranges-as-soft-targets.md) (soft targets checked on every save)
 
 ## Context
 
@@ -71,7 +72,7 @@ session, a job or a stop are the routes a page on another site would most want t
 
 **Edits append.** An edit is a new revision with the whole draft, never an UPDATE. Constraints
 are checked by 2b's `validateConstraints` and refused with every error; soft targets must be an
-object and are kept as given until phase 3 measures against them. Notes, sessions and ratings
+object whose feature ranges pass 3b's `validateTargets` (amended 2026-11-07). Notes, sessions and ratings
 are appended likewise. Nothing here removes a row: removal routes come with the UI that needs
 them.
 
@@ -177,3 +178,7 @@ so one number at one time would misstate what was heard.
   returns it. `POST …/feedback/:feedbackId/remove` and `POST …/ab-ratings/:ratingId/remove` mark
   a row `undone`; notes and sketches still have no remove route. Each candidate in the list gains
   `feedback`, its live state with row ids. Rated audio is kept when a row is replaced or removed.
+- 2026-11-07: from step 3b ([0034](0034-feature-ranges-as-soft-targets.md)). A draft's
+  `softTargets` goes through `validateTargets` on every create and revision save; bad ranges are
+  a 400 `the soft targets are invalid: <path>: <message>`, the path naming the feature, as in
+  `$.features.lowEndShare`. Other keys are still kept as given.

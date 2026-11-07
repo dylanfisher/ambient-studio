@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import { lintGenome } from "../../src/domain/lint-genome.js";
 import { SEED_VIBES } from "../../src/domain/seed-vibes.js";
 import { validateConstraints } from "../../src/domain/validate-constraints.js";
+import { validateTargets } from "../../src/domain/validate-targets.js";
 import { requireGenome } from "../../src/engine/validate-genome.js";
 import { SEED_GENOMES } from "../support/seed-genomes.js";
 
@@ -25,7 +26,13 @@ describe("the seed vibes", () => {
     expect(seed.constraints.loudness).toBe(-16);
     expect(seed.name.trim()).not.toBe("");
     expect(seed.brief.length).toBeGreaterThan(100);
-    expect(seed.softTargets).toEqual({});
+  });
+
+  test.each(seeds)("%s has feature ranges that validate, and no other soft target", (_id, seed) => {
+    const checked = validateTargets(seed.softTargets);
+    expect(checked.ok && checked.softTargets).toEqual(seed.softTargets);
+    expect(Object.keys(seed.softTargets)).toEqual(["features"]);
+    expect(checked.ok && Object.keys(checked.ranges).length).toBeGreaterThan(0);
   });
 
   test.each(seeds)("%s can be met: a genome passes the schema and its linter", (id, seed) => {

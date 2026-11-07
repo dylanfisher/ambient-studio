@@ -1,9 +1,11 @@
 // The generation prompt: a system message with the answer format and the genome schema, and a
-// user message with the vibe, its constraints, the locks, the owner's notes and rated examples,
-// under the context budget (decision 0024). Examples go first when it doesn't fit.
+// user message with the vibe, its constraints and feature ranges, the locks, the owner's notes
+// and rated examples, under the context budget (decisions 0024 and 0034). Examples go first
+// when it doesn't fit.
 /** @import { Constraints } from "./constraint-schema.js" */
 /** @import { ChatMessage } from "./prompt-tokens.js" */
 /** @import { RecordingListing } from "./recordings-text.js" */
+/** @import { FeatureRanges } from "./target-schema.js" */
 /** @import { Lock } from "./validate-lock.js" */
 import { canonicalGenome } from "../engine/canonical-genome.js";
 import { schemaText } from "../engine/schema-text.js";
@@ -11,6 +13,7 @@ import { constraintsText } from "./constraints-text.js";
 import { ANSWER_KEY } from "./extract-genome.js";
 import { estimateTokens, promptText, ROLE } from "./prompt-tokens.js";
 import { recordingsText } from "./recordings-text.js";
+import { targetsText } from "./targets-text.js";
 
 /**
  * What the prompt reads from a vibe revision.
@@ -18,6 +21,7 @@ import { recordingsText } from "./recordings-text.js";
  * @property {string} name
  * @property {string} brief
  * @property {Constraints} constraints a validated set
+ * @property {FeatureRanges} ranges validated, as `validateTargets` returns them
  */
 
 /**
@@ -64,9 +68,11 @@ const section = (heading, lines) => (lines.length === 0 ? [] : [[heading, ...lin
  */
 function messages(revision, { notes, locks, examples, recordings }) {
   const offered = recordingsText(recordings);
+  const targets = targetsText(revision.ranges);
   const user = [
     `Vibe: ${revision.name}\n${revision.brief}`,
     constraintsText(revision.constraints),
+    ...(targets === "" ? [] : [targets]),
     ...section(
       "Locked by the owner; keep these values exactly:",
       // A voice's parameter names the type too: the lock holds only while the voice keeps it.

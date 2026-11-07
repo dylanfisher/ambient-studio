@@ -42,14 +42,22 @@
             <div id="constraintBox" class="constraints"></div>
           </fieldset>
           <p class="small muted" id="constraintsText"></p>
-          <details>
-            <summary title="Shows or hides the advanced soft targets field.">Advanced: soft targets</summary>
-            <label class="field" for="softTargets">Soft targets, as JSON (<code>{}</code> for none). These are stored with the brief; nothing checks them yet.</label>
-            <textarea id="softTargets" name="softTargets" rows="2" title="Optional targets as a JSON object, stored with the brief for later steps to measure against. Leave it as {} for none.">{}</textarea>
-          </details>
+          <fieldset class="stack">
+            <legend>Ranges to aim for (leave both ends empty for no range)</legend>
+            <p class="small muted">
+              The studio measures each excerpt. The model is told these ranges and aims inside
+              them, but a candidate outside one is still kept.
+            </p>
+            <div id="targetBox" class="constraints"></div>
+          </fieldset>
+          <p class="small muted" id="targetsText"></p>
+          <div id="keptBox" class="stack" hidden>
+            <p class="small muted">Other saved targets, kept as they are when you save:</p>
+            <pre id="keptTargets" class="small"></pre>
+          </div>
           <ul id="draftErrors" class="errors"></ul>
           <div class="row">
-            <button id="saveButton" class="button primary" type="submit" title="Saves the name, description and rules as a new version of the brief. Nothing is asked of the model.">Save</button>
+            <button id="saveButton" class="button primary" type="submit" title="Saves the name, description, rules and ranges as a new version of the brief. Nothing is asked of the model.">Save</button>
           </div>
         </form>
 
@@ -136,7 +144,7 @@
     <template id="revision-item">
       <li class="item small">
         <details>
-          <summary data-part="summary" title="Shows or hides this version's description and rules.">version</summary>
+          <summary data-part="summary" title="Shows or hides this version's description, rules and ranges.">version</summary>
           <p data-part="description"></p>
           <pre data-part="constraints"></pre>
         </details>

@@ -1,12 +1,19 @@
-// The brief page (decisions 0028 and 0032): the name, the description and a rules form built
-// from 2b's table, saved as a new revision; the brief's sessions, notes, ratings and revisions.
-// With no `id` in the query it makes a new brief. A brief is a vibe in the API and the store,
-// and its description is the vibe's `brief` field.
+// The brief page (decisions 0028, 0032 and 0034): the name, the description, a rules form built
+// from 2b's table and a ranges form built from 3b's, saved as a new revision; the brief's
+// sessions, notes, ratings and revisions. With no `id` in the query it makes a new brief. A
+// brief is a vibe in the API and the store, and its description is the vibe's `brief` field.
+/** @import { Constraints } from "../domain/constraint-schema.js" */
+/** @import { SoftTargets } from "../domain/target-schema.js" */
+/** @import { ValidationError } from "../engine/validation-error.js" */
 /** @import { ConstraintField } from "./constraint-fields.js" */
+/** @import { TargetField } from "./target-fields.js" */
 import { FORM } from "../domain/constraint-schema.js";
 import { constraintsText } from "../domain/constraints-text.js";
 import { MACRO_DIRECTIONS } from "../domain/rating-values.js";
+import { RANGE_ENDS } from "../domain/target-schema.js";
+import { targetsText } from "../domain/targets-text.js";
 import { validateConstraints } from "../domain/validate-constraints.js";
+import { validateTargets } from "../domain/validate-targets.js";
 import { getJson, postJson, VIBES_PATH } from "./api.js";
 import { cloneTemplate } from "./clone-template.js";
 import {
@@ -21,6 +28,14 @@ import { formatTime } from "./format-time.js";
 import { oneAtATime } from "./one-at-a-time.js";
 import { outcomeText } from "./outcome-text.js";
 import { statusLine } from "./status-line.js";
+import {
+  keptTargets,
+  readTargets,
+  targetFields,
+  targetInput,
+  targetTitle,
+  targetValues,
+} from "./target-fields.js";
 
 const [MORE] = MACRO_DIRECTIONS;
 /** The form controls the constraint fields are made of. */
@@ -34,7 +49,10 @@ const page = elementsById({
   briefDescription: HTMLTextAreaElement,
   constraintBox: HTMLElement,
   constraintsText: HTMLElement,
-  softTargets: HTMLTextAreaElement,
+  targetBox: HTMLElement,
+  targetsText: HTMLElement,
+  keptBox: HTMLElement,
+  keptTargets: HTMLElement,
   draftErrors: HTMLUListElement,
   saveButton: HTMLButtonElement,
   savedOnly: HTMLElement,
@@ -50,6 +68,8 @@ const page = elementsById({
 });
 const idText = new URLSearchParams(location.search).get("id");
 const vibeId = idText === null ? null : Number(idText);
+/** The loaded revision's soft targets, whose keys other than the ranges a save keeps. */
+let savedTargets = {};
 
 /**
  * The label's text for a field: its kind, what it constrains, and the range it may take.
@@ -121,6 +141,26 @@ function fieldElement(field) {
   return box.root;
 }
 
+/** @param {TargetField} field */
+function targetElement(field) {
+  const box = cloneTemplate("range-field", {
+    label: HTMLElement,
+    min: HTMLInputElement,
+    max: HTMLInputElement,
+  });
+  box.label.textContent = `${field.label} (${field.unit ?? "a share from 0 to 1"})`;
+  const inputs = [box.min, box.max];
+  for (const [i, end] of RANGE_ENDS.entries()) {
+    const input = /** @type {HTMLInputElement} */ (inputs[i]);
+    input.name = targetInput(field.name, end);
+    input.title = targetTitle(field, end);
+    input.min = String(field.least);
+    if (field.most !== null) input.max = String(field.most);
+    input.step = "any";
+  }
+  return box.root;
+}
+
 /** @param {Readonly<Record<string, unknown>>} constraints */
 function fillConstraints(constraints) {
   const values = fieldValues(constraints);
@@ -135,51 +175,67 @@ function fillConstraints(constraints) {
   }
 }
 
-/** The form's constraints, checked: the set, or null with the errors shown. */
-function checkedConstraints() {
-  const data = new FormData(page.draft);
-  const raw = readConstraints(
-    (name) => String(data.get(name) ?? ""),
-    (name) => data.getAll(name).map(String),
-  );
-  const checked = validateConstraints(raw);
-  if (!checked.ok) {
-    page.draftErrors.replaceChildren(
-      ...checked.errors.map((error) => {
-        const item = document.createElement("li");
-        item.textContent = `${error.path}: ${error.message}`;
-        return item;
-      }),
-    );
-    page.constraintsText.textContent = "";
-    return null;
+/** @param {ValidationError[]} errors */
+const errorList = (errors) => errors.map((e) => `${e.path}: ${e.message}`).join("; ");
+
+/**
+ * Fills the ranges form and lists the other saved keys. Throws when the saved ranges don't
+ * validate, which only a version saved before ranges were checked can hold; the form is then
+ * left empty, and saving replaces them.
+ * @param {Readonly<Record<string, unknown>>} softTargets
+ */
+function fillTargets(softTargets) {
+  const checked = validateTargets(softTargets);
+  const values = targetValues(checked.ok ? checked.ranges : {});
+  for (const input of page.targetBox.querySelectorAll("input")) {
+    input.value = values[input.name] ?? "";
   }
-  page.draftErrors.replaceChildren();
-  page.constraintsText.textContent = `What the model is told: ${constraintsText(checked.constraints)}`;
-  return checked.constraints;
+  const kept = keptTargets(softTargets);
+  page.keptBox.hidden = Object.keys(kept).length === 0;
+  page.keptTargets.textContent = JSON.stringify(kept, null, 2);
+  if (!checked.ok) {
+    throw new Error(
+      `This version's saved ranges are invalid, so the form shows none, and saving replaces them: ${errorList(checked.errors)}`,
+    );
+  }
+}
+
+/**
+ * The form's rules and ranges, checked: both, or null with every error shown.
+ * @returns {{ constraints: Constraints, softTargets: SoftTargets } | null}
+ */
+function checkedForm() {
+  const data = new FormData(page.draft);
+  const get = (/** @type {string} */ name) => String(data.get(name) ?? "");
+  const rules = validateConstraints(readConstraints(get, (name) => data.getAll(name).map(String)));
+  const targets = validateTargets(readTargets(get, savedTargets));
+  const errors = [
+    ...(rules.ok ? [] : rules.errors),
+    ...(targets.ok ? [] : targets.errors.map((e) => ({ ...e, path: `ranges ${e.path}` }))),
+  ];
+  page.draftErrors.replaceChildren(
+    ...errors.map((error) => {
+      const item = document.createElement("li");
+      item.textContent = `${error.path}: ${error.message}`;
+      return item;
+    }),
+  );
+  page.constraintsText.textContent = rules.ok
+    ? `What the model is told: ${constraintsText(rules.constraints)}`
+    : "";
+  const told = targets.ok ? targetsText(targets.ranges) : "";
+  page.targetsText.textContent = told === "" ? "" : `What the model is told: ${told}`;
+  if (!rules.ok || !targets.ok) return null;
+  return { constraints: rules.constraints, softTargets: targets.softTargets };
 }
 
 /** The form as the draft a create or revision route takes. */
 function readDraft() {
-  const constraints = checkedConstraints();
-  if (constraints === null) {
-    throw new Error("The rules have errors; see the list above Save.");
+  const checked = checkedForm();
+  if (checked === null) {
+    throw new Error("The rules or ranges have errors; see the list above Save.");
   }
-  /** @type {unknown} */
-  let softTargets;
-  try {
-    softTargets = JSON.parse(page.softTargets.value);
-  } catch (error) {
-    throw new Error(
-      `The soft targets aren't JSON: ${error instanceof Error ? error.message : error}`,
-    );
-  }
-  return {
-    name: page.briefName.value,
-    brief: page.briefDescription.value,
-    constraints,
-    softTargets,
-  };
+  return { name: page.briefName.value, brief: page.briefDescription.value, ...checked };
 }
 
 /**
@@ -239,9 +295,8 @@ async function load(id) {
   page.pageTitle.textContent = revision.name;
   page.briefName.value = revision.name;
   page.briefDescription.value = revision.brief;
-  page.softTargets.value = JSON.stringify(revision.softTargets);
+  savedTargets = revision.softTargets;
   fillConstraints(revision.constraints);
-  checkedConstraints();
 
   page.sessionList.replaceChildren(
     ...[...vibe.sessions].reverse().map((/** @type {any} */ session) => {
@@ -275,10 +330,22 @@ async function load(id) {
       });
       item.summary.textContent = `${formatTime(row.createdAt)}: ${row.name}${i === 0 ? " (current)" : ""}`;
       item.description.textContent = row.brief;
-      item.constraints.textContent = constraintsText(row.constraints);
+      const ranges = validateTargets(row.softTargets);
+      const targets = ranges.ok
+        ? targetsText(ranges.ranges)
+        : `Saved ranges are invalid: ${errorList(ranges.errors)}`;
+      item.constraints.textContent = [constraintsText(row.constraints), targets]
+        .filter((text) => text !== "")
+        .join("\n\n");
       return item.root;
     }),
   );
+  // Last, so a throw over invalid saved ranges leaves the rest of the page filled.
+  try {
+    fillTargets(revision.softTargets);
+  } finally {
+    checkedForm();
+  }
 }
 
 /** The saved vibe's id, or an error saying to save it first. */
@@ -318,7 +385,8 @@ const startSession = oneAtATime(async () => {
 });
 
 page.constraintBox.replaceChildren(...constraintFields().map(fieldElement));
-page.draft.oninput = () => checkedConstraints();
+page.targetBox.replaceChildren(...targetFields().map(targetElement));
+page.draft.oninput = () => checkedForm();
 page.draft.onsubmit = (event) => {
   event.preventDefault();
   status.run(save);
@@ -336,8 +404,8 @@ if (vibeId === null) {
   page.saveButton.textContent = "Create the brief";
   page.saveButton.title =
     "Saves the new brief and opens its page, where you can start a session. Nothing is asked of the model.";
-  checkedConstraints();
-  status.say("Name the brief, describe the music, and set any rules.");
+  checkedForm();
+  status.say("Name the brief, describe the music, and set any rules and ranges.");
   page.briefName.focus();
 } else {
   page.saveButton.textContent = "Save as a new version";

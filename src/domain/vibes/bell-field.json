@@ -18,5 +18,12 @@
     },
     "cost": 400
   },
-  "softTargets": {}
+  "softTargets": {
+    "features": {
+      "centroidMean": [250, null],
+      "onsetRate": [null, 0.1],
+      "lowEndShare": [null, 0.6],
+      "stereoWidth": [0.02, null]
+    }
+  }
 }

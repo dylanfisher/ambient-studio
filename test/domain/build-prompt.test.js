@@ -1,6 +1,7 @@
 // The generation prompt: what it states, and how it fits the context budget (decision 0024).
 /** @import { Constraints } from "../../src/domain/constraint-schema.js" */
 /** @import { PromptExample } from "../../src/domain/build-prompt.js" */
+/** @import { FeatureRanges } from "../../src/domain/target-schema.js" */
 /** @import { ChatMessage } from "../../src/domain/prompt-tokens.js" */
 import { describe, expect, test } from "vitest";
 import example from "../../src/config/example.json" with { type: "json" };
@@ -8,6 +9,8 @@ import { buildPrompt } from "../../src/domain/build-prompt.js";
 import { constraintsText } from "../../src/domain/constraints-text.js";
 import { estimateTokens, promptText } from "../../src/domain/prompt-tokens.js";
 import { MAX_PROMPT_RECORDINGS } from "../../src/domain/recordings-text.js";
+import { TARGET_FEATURES } from "../../src/domain/target-schema.js";
+import { targetsText } from "../../src/domain/targets-text.js";
 import { validateConstraints } from "../../src/domain/validate-constraints.js";
 import { canonicalGenome } from "../../src/engine/canonical-genome.js";
 import colundiGenome from "../../src/engine/genomes/colundi.json" with { type: "json" };
@@ -35,10 +38,17 @@ const full = {
   cost: 300,
 };
 
+/** A range on every feature the table has, as the longest ranges text a vibe can hold. */
+/** @type {FeatureRanges} */
+const allRanges = Object.fromEntries(
+  Object.keys(TARGET_FEATURES).map((name) => [name, [0.12, 0.34]]),
+);
+
 const revision = {
   name: "cold drone",
   brief: "A slow, cold drone in D dorian, like wind over a frozen lake at night.",
   constraints: full,
+  ranges: /** @type {FeatureRanges} */ ({ lowEndShare: [0.4, null], centroidMean: [null, 800] }),
 };
 const locks = [
   { path: "reverbDecay", value: 8 },
@@ -77,6 +87,11 @@ describe("buildPrompt", () => {
     const text = promptText(messages);
     expect(text).toContain(schemaText());
     for (const line of constraintsText(full).split("\n")) expect(text).toContain(line);
+    // The first try already knows the ranges; a revision adds only the measurements.
+    for (const line of targetsText(revision.ranges).split("\n")) expect(text).toContain(line);
+    expect(text.indexOf(constraintsText(full))).toBeLessThan(
+      text.indexOf(targetsText(revision.ranges)),
+    );
     expect(text).toContain("reverbDecay = 8");
     // A voice's parameter names the voice's type, which the lock holds the voice to.
     expect(text).toContain("voices.pad.hold = 40 (a pad voice)");
@@ -102,11 +117,12 @@ describe("buildPrompt", () => {
 
   test("leaves out the sections a vibe doesn't have", () => {
     const { messages } = buildPrompt(
-      { ...revision, constraints: {} },
+      { ...revision, constraints: {}, ranges: {} },
       { notes: [], locks: [], examples: [], budgetTokens: BUDGET, recordings: [] },
     );
     const text = promptText(messages);
     expect(text).toContain(constraintsText({}));
+    expect(text).not.toMatch(/measured on each excerpt/);
     expect(text).not.toMatch(/Locked/);
     expect(text).not.toMatch(/owner.s notes/);
     expect(text).not.toMatch(/Liked|Disliked/);
@@ -204,6 +220,7 @@ describe("buildPrompt", () => {
       name: "cold dorian drone and pad",
       brief: "b".repeat(600),
       constraints: full,
+      ranges: allRanges,
     };
     const { messages, exampleIds } = buildPrompt(seedSized, {
       notes: Array.from({ length: 12 }, () => "n".repeat(150)),
@@ -222,6 +239,7 @@ describe("buildPrompt", () => {
       name: "cold dorian drone and pad",
       brief: "b".repeat(600),
       constraints: full,
+      ranges: allRanges,
     };
     const voices = requireGenome(exampleGenome, "example genome").voices;
     const wholeVoices = voices.map((voice) => ({ path: `voices.${voice.id}`, value: voice }));

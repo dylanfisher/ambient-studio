@@ -16,5 +16,12 @@
     },
     "cost": 300
   },
-  "softTargets": {}
+  "softTargets": {
+    "features": {
+      "loudnessRange": [2, null],
+      "centroidMean": [null, 1500],
+      "onsetRate": [null, 0.1],
+      "lowEndShare": [0.5, null]
+    }
+  }
 }

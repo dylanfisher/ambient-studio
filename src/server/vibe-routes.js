@@ -7,8 +7,7 @@
 import { isDeepStrictEqual } from "node:util";
 import { SEED_VIBES } from "../domain/seed-vibes.js";
 import { validateConstraints } from "../domain/validate-constraints.js";
-
-import { isObject } from "../engine/is-object.js";
+import { validateTargets } from "../domain/validate-targets.js";
 import { show } from "../engine/validation-error.js";
 import { listFeedback, listRatings, listSketches } from "./rating-store.js";
 import { fields, idParam, MAX_CHARS, text } from "./request-fields.js";
@@ -26,7 +25,8 @@ import {
 } from "./vibe-store.js";
 
 /**
- * A vibe's whole draft from a body, its constraints checked by 2b's validator.
+ * A vibe's whole draft from a body, its constraints checked by 2b's validator and its soft
+ * targets by 3b's.
  * @param {unknown} body
  * @returns {VibeDraft}
  */
@@ -37,19 +37,16 @@ function readDraft(body) {
     const list = checked.errors.map((e) => `${e.path}: ${e.message}`).join("; ");
     throw new HttpError(400, `the constraints are invalid: ${list}`);
   }
-  // Soft targets are kept as given until phase 3 measures features against them.
-  const { softTargets } = given;
-  if (!isObject(softTargets)) {
-    throw new HttpError(
-      400,
-      `softTargets must be a JSON object, {} for none, got ${show(softTargets)}`,
-    );
+  const targets = validateTargets(given.softTargets);
+  if (!targets.ok) {
+    const list = targets.errors.map((e) => `${e.path}: ${e.message}`).join("; ");
+    throw new HttpError(400, `the soft targets are invalid: ${list}`);
   }
   return {
     name: text(given, VIBE_DRAFT_FIELD.name, MAX_CHARS.name),
     brief: text(given, VIBE_DRAFT_FIELD.brief, MAX_CHARS.brief),
     constraints: checked.constraints,
-    softTargets,
+    softTargets: targets.softTargets,
   };
 }
 

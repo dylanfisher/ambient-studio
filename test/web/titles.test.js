@@ -2,10 +2,12 @@
 // templates included, and the titles the modules set on what they build.
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
+import { RANGE_ENDS } from "../../src/domain/target-schema.js";
 import { MACROS } from "../../src/engine/genome-schema.js";
 import { constraintFields, fieldTitle } from "../../src/web/constraint-fields.js";
 import { jobControl } from "../../src/web/job-control.js";
 import { macroTitles } from "../../src/web/macro-words.js";
+import { targetFields, targetTitle } from "../../src/web/target-fields.js";
 
 const PAGES = readdirSync("src/web").filter((name) => name.endsWith(".html"));
 const INTERACTIVE = /<(a|button|input|select|textarea|summary|audio)\b([^>]*)>/g;
@@ -43,6 +45,14 @@ describe("titles the modules set", () => {
   test("each constraint field's title says what it limits", () => {
     for (const field of constraintFields()) {
       expect(isSentence(fieldTitle(field)), field.name).toBe(true);
+    }
+  });
+
+  test("each feature range's two ends have a title", () => {
+    for (const field of targetFields()) {
+      for (const end of RANGE_ENDS) {
+        expect(isSentence(targetTitle(field, end)), field.name).toBe(true);
+      }
     }
   });
 
