@@ -1,6 +1,8 @@
 // The rating routes (decision 0027): thumbs, more or less like this on a macro, A/B pairs and
 // their ratings, and keep as sketch. Each names the render the owner heard, keeps it as rated
-// audio with `captureRatedAudio`, and stores the heard identity beside the rating (0021).
+// audio with `captureRatedAudio`, and stores the heard identity beside the rating (0021). A
+// candidate holds one live thumbs and one live direction per macro, and the remove routes take
+// feedback or an A/B rating back by marking it removed (0031).
 /** @import { MacroName } from "../engine/macro-table.js" */
 /** @import { FeedbackKindFields, HeardExcerpt, RatingSide } from "./rating-store.js" */
 /** @import { Render } from "./render-store.js" */
@@ -14,19 +16,24 @@ import { captureRatedAudio } from "./capture-rated-audio.js";
 import { getCandidate, getGenome } from "./generation-store.js";
 import { PRODUCER } from "./producer.js";
 import {
-  addFeedback,
   addRating,
   addSketch,
   FEEDBACK_KIND,
+  getFeedback,
+  getRating,
   MACRO_DIRECTIONS,
   OUTCOMES,
   SKETCH_FIELD,
+  setFeedback,
   THUMBS,
+  undoFeedback,
+  undoRating,
 } from "./rating-store.js";
 import { getRender } from "./render-store.js";
 import {
   fields,
   finite,
+  idParam,
   integer,
   MAX_CHARS,
   oneOf,
@@ -136,7 +143,7 @@ function feedbackRoute(path, kindFields, read) {
       const { render, genome } = heardRender(app, session, given, "renderId");
       const kind = read(given, render, genome);
       const heard = await keepHeard(app, render.id);
-      return addFeedback(app.store, {
+      return setFeedback(app.store, {
         sessionId: session.id,
         vibeRevisionId: currentRevisionId(app, session),
         ...heard,
@@ -236,6 +243,32 @@ export const RATING_ROUTES = [
       // The sketch row names the candidate only, and the rated-audio row keeps what was heard.
       await keepHeard(app, render.id);
       return addSketch(app.store, { candidateId, notes, tags });
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/sessions/:sessionId/feedback/:feedbackId/remove",
+    handle: async ({ app, params, body }) => {
+      const session = requireOpenSession(app, params);
+      fields(await body(), []);
+      const id = idParam(params, "feedbackId");
+      if (getFeedback(app.store, id)?.sessionId !== session.id) {
+        throw new HttpError(404, `session ${session.id} has no feedback ${id}`);
+      }
+      return undoFeedback(app.store, id);
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/sessions/:sessionId/ab-ratings/:ratingId/remove",
+    handle: async ({ app, params, body }) => {
+      const session = requireOpenSession(app, params);
+      fields(await body(), []);
+      const id = idParam(params, "ratingId");
+      if (getRating(app.store, id)?.sessionId !== session.id) {
+        throw new HttpError(404, `session ${session.id} has no A/B rating ${id}`);
+      }
+      return undoRating(app.store, id);
     },
   },
 ];

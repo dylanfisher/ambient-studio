@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { AB_ORDER_SEEDS, abOrder } from "../../src/domain/ab-order.js";
 import { ENGINE_VERSION } from "../../src/engine/engine-version.js";
-import { listRatedAudio } from "../../src/server/rating-store.js";
+import { listRatedAudio, listRatedGenomes } from "../../src/server/rating-store.js";
 import { getRender, putRender } from "../../src/server/render-store.js";
 import { MAX_CHARS, MAX_TAGS } from "../../src/server/request-fields.js";
 import { GENOMES, removeStudio, startStudio } from "../support/studio.js";
@@ -249,5 +249,172 @@ describe("ratings", () => {
       timeTakenMs: 1,
     });
     expect(reply.status).toBe(409);
+  });
+});
+
+describe("undo and replace (0031)", () => {
+  /**
+   * Posts macro feedback or thumbs on `candidate`'s excerpt.
+   * @param {Studio["ok"]} ok
+   * @param {number} sessionId
+   * @param {any} candidate
+   */
+  const poster = (ok, sessionId, candidate) => ({
+    /** @param {"more" | "less"} direction @param {string} [macro] */
+    macro: (direction, macro = "brightness") =>
+      ok("POST", `/api/sessions/${sessionId}/macro-feedback`, {
+        renderId: candidate.excerpt.renderId,
+        macro,
+        direction,
+        playedFraction: 1,
+        timeTakenMs: 1000,
+      }),
+    /** @param {"up" | "down"} direction */
+    thumbs: (direction) =>
+      ok("POST", `/api/sessions/${sessionId}/thumbs`, {
+        renderId: candidate.excerpt.renderId,
+        direction,
+        playedFraction: 1,
+        timeTakenMs: 1000,
+      }),
+  });
+
+  /**
+   * Every feedback row of the session, removed ones too, oldest first.
+   * @param {Studio["server"]} server
+   * @param {number} sessionId
+   */
+  const allFeedback = (server, sessionId) =>
+    server.store.db
+      .prepare("SELECT id, direction, removedReason FROM feedback WHERE sessionId = ? ORDER BY id")
+      .all(sessionId);
+
+  test("the other direction on a macro replaces the live row, marking the old one", async () => {
+    const { server, ok, session, one } = await setup();
+    const post = poster(ok, session.id, one);
+    const more = await post.macro("more");
+    const less = await post.macro("less");
+    expect(less.id).not.toBe(more.id);
+    expect(allFeedback(server, session.id)).toEqual([
+      { id: more.id, direction: "more", removedReason: "replaced" },
+      { id: less.id, direction: "less", removedReason: null },
+    ]);
+    // Another macro on the same candidate is its own state.
+    const warmer = await post.macro("more", "warmth");
+    expect(allFeedback(server, session.id)).toHaveLength(3);
+    const [candidate] = (await ok("GET", `/api/sessions/${session.id}/candidates`)).candidates;
+    expect(candidate.feedback).toEqual({
+      thumbs: null,
+      macros: {
+        brightness: { id: less.id, direction: "less" },
+        warmth: { id: warmer.id, direction: "more" },
+      },
+    });
+  });
+
+  test("the same direction twice keeps one row and returns it", async () => {
+    const { server, ok, session, one } = await setup();
+    const post = poster(ok, session.id, one);
+    const first = await post.macro("more");
+    expect(await post.macro("more")).toEqual(first);
+    const up = await post.thumbs("up");
+    expect(await post.thumbs("up")).toEqual(up);
+    expect(allFeedback(server, session.id)).toHaveLength(2);
+  });
+
+  test("thumbs hold one live direction per candidate", async () => {
+    const { server, ok, vibe, session, one, two } = await setup();
+    const up = await poster(ok, session.id, one).thumbs("up");
+    const down = await poster(ok, session.id, one).thumbs("down");
+    await poster(ok, session.id, two).thumbs("up");
+    expect(allFeedback(server, session.id).map((r) => r.removedReason)).toEqual([
+      "replaced",
+      null,
+      null,
+    ]);
+    const { feedback } = await ok("GET", `/api/vibes/${vibe.id}/ratings`);
+    expect(feedback.map((/** @type {any} */ f) => f.id)).not.toContain(up.id);
+    // The replaced up counts for nothing: the genome scores -1, not 0 (0024).
+    const scores = listRatedGenomes(server.store, vibe.id);
+    expect(scores.find((s) => s.genomeId === one.genomeId)?.score).toBe(-1);
+    const [first] = (await ok("GET", `/api/sessions/${session.id}/candidates`)).candidates;
+    expect(first.feedback.thumbs).toEqual({ id: down.id, direction: "down", note: null });
+  });
+
+  test("remove marks the row undone, and removing it again changes nothing", async () => {
+    const { server, ok, vibe, session, one } = await setup();
+    const up = await poster(ok, session.id, one).thumbs("up");
+    const path = `/api/sessions/${session.id}/feedback/${up.id}/remove`;
+    const removed = await ok("POST", path, {});
+    expect(removed).toMatchObject({ id: up.id, removedReason: "undone" });
+    expect(removed.removedAt).toEqual(expect.any(Number));
+    expect(await ok("POST", path, {})).toEqual(removed);
+    expect(listRatedGenomes(server.store, vibe.id)).toEqual([]);
+    expect((await ok("GET", `/api/vibes/${vibe.id}/ratings`)).feedback).toEqual([]);
+    const [candidate] = (await ok("GET", `/api/sessions/${session.id}/candidates`)).candidates;
+    expect(candidate.feedback).toEqual({ thumbs: null, macros: {} });
+    // The heard excerpt stays kept: the removed row still names it.
+    expect(listRatedAudio(server.store).map((a) => a.id)).toEqual([up.ratedAudioId]);
+    // After an undo the same direction is a new row.
+    const again = await poster(ok, session.id, one).thumbs("up");
+    expect(again.id).not.toBe(up.id);
+  });
+
+  test("an A/B rating can be removed, once", async () => {
+    const { server, ok, vibe, session, one, two } = await setup();
+    const at = `/api/sessions/${session.id}`;
+    const pair = await ok("POST", `${at}/ab-pairs`, {
+      a: one.excerpt.renderId,
+      b: two.excerpt.renderId,
+    });
+    const rating = await ok("POST", `${at}/ab-ratings`, {
+      a: pair.a,
+      b: pair.b,
+      orderSeed: pair.orderSeed,
+      outcome: "a",
+      aPlayedFraction: 1,
+      bPlayedFraction: 1,
+      timeTakenMs: 1000,
+    });
+    const path = `${at}/ab-ratings/${rating.id}/remove`;
+    const removed = await ok("POST", path, {});
+    expect(removed).toMatchObject({ id: rating.id, outcome: "a", removedReason: "undone" });
+    expect(await ok("POST", path, {})).toEqual(removed);
+    expect((await ok("GET", `/api/vibes/${vibe.id}/ratings`)).ratings).toEqual([]);
+    expect(listRatedGenomes(server.store, vibe.id)).toEqual([]);
+  });
+
+  test("a row of another session, or none, is a 404", async () => {
+    const { server, ok, vibe, session, one } = await setup();
+    const up = await poster(ok, session.id, one).thumbs("up");
+    const other = await ok("POST", `/api/vibes/${vibe.id}/sessions`, {});
+    for (const path of [
+      `/api/sessions/${other.id}/feedback/${up.id}/remove`,
+      `/api/sessions/${session.id}/feedback/999/remove`,
+      `/api/sessions/${session.id}/ab-ratings/999/remove`,
+    ]) {
+      expect((await server.api("POST", path, {})).status).toBe(404);
+    }
+  });
+
+  test("two posts at once leave one live row", async () => {
+    const { server, session, one } = await setup();
+    const body = (/** @type {string} */ direction) => ({
+      renderId: one.excerpt.renderId,
+      macro: "brightness",
+      direction,
+      playedFraction: 1,
+      timeTakenMs: 1000,
+    });
+    const path = `/api/sessions/${session.id}/macro-feedback`;
+    for (const directions of [
+      ["more", "more"],
+      ["less", "more"],
+    ]) {
+      const replies = await Promise.all(directions.map((d) => server.api("POST", path, body(d))));
+      expect(replies.map((r) => r.status)).toEqual([200, 200]);
+      const live = allFeedback(server, session.id).filter((r) => r.removedReason === null);
+      expect(live).toHaveLength(1);
+    }
   });
 });
