@@ -70,7 +70,9 @@ and write down why when a rule comes from something that went wrong.
 1. You don't write product code. You brief, merge, run the gate, and keep the plan and log.
 2. Give each builder its decision-record number, so parallel builders never take the same one.
 3. Before a brief, find the decision records that govern the step (docs/map.md) and quote them.
-   Don't describe a decided approach from memory.
+   Don't describe a decided approach from memory. When a step reaches another system (omlx, the sidecar), read that
+   system's own settings, secrets hidden, and put what they require in the brief; phase 2 learned
+   only at the end that omlx refuses requests without a key.
 4. When two briefs touch the same idea, name in each what the other adds, and tell the later one
    to build on it. Two builders working blind each define it. Name an owner for every helper both could need (shared constants,
    test helpers); in phase 1 two voice builders each wrote the same three.

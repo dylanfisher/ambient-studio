@@ -1469,3 +1469,35 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   recent requests in its own log; recordings in `~/Music/Field Recordings`; mode 600) with the key
   left as a placeholder for the owner to paste. omlx's own stats put that model at about 1,700
   prompt tokens a second and 88 output tokens a second, well above the queue's assumed 100 and 20.
+- 2026-11-06: 2l merged as 3fd8b31 (Opus: 316k tokens, 170 tool calls, 29.2 min, then a rebase
+  onto the omlx key and a fix round at 335k, 21 calls, 6.4 min; reviewer Sonnet: 115k tokens, 34
+  tool calls, 7.2 min, PASS, reviewing 2l merged onto main). Three seed vibes (cold-dorian,
+  bell-field, tidal-noise) load from the vibe list once each while their vibe is kept; between
+  them they set every constraint kind but `bpm`, and a test meets each one with a genome built
+  from the goldens. The evaluation is a job of kind `evaluation`, started only from
+  `POST /api/evaluations` (one at a time), run through 2f's `generateCandidates` and the shared
+  queue with one stream seed and no session. Its stored report counts valid before and after
+  repair, schema-only validity, truncations and failed requests apart, reject reasons, 95% Wilson
+  intervals, latency and first-token percentiles by nearest rank, and whether omlx took
+  `response_format`; a run stopped by an error or a cancel keeps its partial report. The review
+  found that a cancel while the recordings folder was indexed never reached the queue, in the
+  evaluation and in 2i's candidate job; both now check the signal before the first request. A
+  test pins that a 401 stops the run after one request with the key in neither the report nor the
+  job. Record 0030. 1023 tests. Known: a focused vibe checkbox holds the evaluation page's keys
+  until Esc (0028).
+- 2026-11-06: phase 2 retrospective (2a–2l plus the omlx key). Builder steps ran 29–42 min and
+  310–390k tokens on Opus; the steps that crossed tiers (2j, 2k, 2l) cost the most, mostly in
+  reading neighbors and full-suite runs, since any change under test/support runs everything.
+  Reviews ran 6–15 min on Sonnet; two of six failed a step (2g leaking a path in a 500, 2j moving
+  focus out of a typed note), both on paths a user reaches with no test driving them, which is
+  what the reviewer rules already ask for. Reviewing a branch merged onto current main, rather
+  than its own base, caught nothing new this time but made the omlx-key rebase a non-event; keep
+  it whenever main moved during a build. The omlx key was the phase's one surprise: no step knew
+  omlx refuses unauthenticated requests, because the plan described omlx from the brief, not from
+  its settings. Change: a step that crosses a boundary to another system (omlx, the sidecar)
+  starts by reading that system's settings with secrets hidden, written into the brief. A full
+  gate failed once on a render test past its 10 s limit while a builder loaded the machine; it
+  passed alone and on every run since, and stays watched rather than hunted until it recurs. The
+  gate's tools still skip `tmp/`, `.claude/worktrees/`, `node_modules/` and `.venv/` (biome via
+  `.gitignore`, links via `git ls-files`, tsc, knip, arch and dupes by their `src`/`test`/`scripts`
+  roots); nothing in the checkers changed.
