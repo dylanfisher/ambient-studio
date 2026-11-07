@@ -3,7 +3,8 @@
 - **Date:** 2026-11-06
 - **Status:** accepted; amended by [0041](0041-sidecar-process.md) and
   [0042](0042-clap-embeddings.md) (the sidecar keys), and by [0044](0044-bayesian-bradley-terry.md)
-  (the `models` folder)
+  (the `models` folder) and [0024](0024-prompt-parse-repair-generation.md) (the
+  `textEmbeddings` folder)
 
 ## Context
 
@@ -125,3 +126,6 @@ only: `scripts/` and `test/` are tools, and a test stubs variables with `vi.stub
   ([0042](0042-clap-embeddings.md)).
 - 2026-11-07: from step 4d ([0044](0044-bayesian-bradley-terry.md)). `paths(dataRoot)` adds
   `models` (`models/`), where each preference model is a file named by its model key.
+- 2026-11-07: from step 4h ([0024](0024-prompt-parse-repair-generation.md)). `paths(dataRoot)`
+  adds `textEmbeddings` (`text-embeddings/`), derived, where each vibe brief's CLAP embedding is
+  a file named by the SHA-256 of its producer and text.

@@ -4,7 +4,8 @@
 - **Status:** accepted; amends [0019](0019-config-file-and-paths.md) (adds
   `sidecar.checkpointCache`), [0021](0021-store-tables-and-append-only.md) (the `embeddings`
   table) and [0041](0041-sidecar-process.md) (the `path` type). Amended by
-  [0049](0049-session-table-hiding-marks.md) (the session page shows `notEmbedded`)
+  [0049](0049-session-table-hiding-marks.md) (the session page shows `notEmbedded`) and step 4h
+  in [0024](0024-prompt-parse-repair-generation.md) (the brief's text embedding)
 
 ## Context
 
@@ -177,3 +178,7 @@ weights are 589 MB against 744 MB.
 
 - 2026-11-07: from step 4j ([0049](0049-session-table-hiding-marks.md)). The session page shows
   a finished candidates job's `notEmbedded` reason in its job box.
+- 2026-11-07: from step 4h ([0024](0024-prompt-parse-repair-generation.md)). The candidates job
+  asks `embedder` before its first request rather than at its first excerpt, and calls
+  `embed_text` on the vibe's brief when a rated genome has an embedding; `embedText` caches the
+  result in `paths.textEmbeddings`.

@@ -13,7 +13,7 @@ import { currentExcerpt } from "../../src/server/candidate-excerpt.js";
 import { candidateJob, STREAM_SEEDS } from "../../src/server/candidate-job.js";
 import { candidatePairs } from "../../src/server/candidate-pair.js";
 import { NO_CHECKPOINT_CACHE } from "../../src/server/embed-audio.js";
-import { findEmbedding } from "../../src/server/embedding-store.js";
+import { findEmbedding, putEmbedding } from "../../src/server/embedding-store.js";
 import {
   requestGroupName,
   revisedGroupName,
@@ -28,7 +28,9 @@ import {
   putGenome,
 } from "../../src/server/generation-store.js";
 import { setLock } from "../../src/server/lock-store.js";
+import { addFeedback, addRatedAudio } from "../../src/server/rating-store.js";
 import { getRender } from "../../src/server/render-store.js";
+import { RETRIEVAL_METHOD } from "../../src/server/retrieve-examples.js";
 import { startSession } from "../../src/server/session-store.js";
 import { createVibe } from "../../src/server/vibe-store.js";
 import { driveGaps } from "../support/fake-clock.js";
@@ -250,6 +252,105 @@ test("with the checkpoint not downloaded, the job skips embedding and says why",
     `the CLAP checkpoint isn't in ${checkpointCache} yet, so excerpts aren't embedded; start the embed job to download it`,
   );
   expect((await sidecar.received()).map(({ request }) => request.method)).toEqual(["embedder"]);
+});
+
+// Examples by similarity to the brief (decision 0024's 4h amendment).
+/**
+ * Rates GENOMES[1] thumbs up in the session's vibe, with its rated audio embedded under the
+ * fake embedder's producer.
+ * @param {TestApp["app"]} app
+ * @param {{ id: number, revision: { id: number } }} vibe
+ * @param {{ id: number }} session
+ */
+function likedAndEmbedded(app, vibe, session) {
+  const genome = putGenome(app.store, vibe.id, GENOMES[1]);
+  const heard = { genomeId: genome.id, seed: 7, offset: 12.5, duration: 25, engineVersion: 2 };
+  const audio = addRatedAudio(app.store, {
+    ...heard,
+    target: -16,
+    file: `${genome.id}.flac`,
+    pcmSha256: "0".repeat(64),
+    gainDb: 0,
+  });
+  addFeedback(app.store, {
+    ...heard,
+    sessionId: session.id,
+    vibeRevisionId: vibe.revision.id,
+    ratedAudioId: audio.id,
+    playedFraction: 1,
+    timeTakenMs: 1,
+    kind: "thumbs",
+    direction: "up",
+    note: null,
+    macro: null,
+    macroValue: null,
+  });
+  const vector = new Uint8Array(new Float32Array([0.6, 0.8]).buffer);
+  putEmbedding(app.store, {
+    ratedAudioId: audio.id,
+    renderId: null,
+    producer: EMBEDDER.producer,
+    vector,
+  });
+  return genome;
+}
+
+test("with rated audio embedded, the job embeds the brief once and logs clap-similarity", async () => {
+  const { app, omlx, sidecar, vibe, session, run } = await sessionApp(undefined, INSIDE);
+  const checkpointCache = setCheckpointCache(app);
+  const liked = likedAndEmbedded(app, vibe, session);
+  omlx.script(answer(GENOMES[0]), answer(GENOMES[0]));
+  const ready = { do: /** @type {const} */ ("answer"), result: { ...EMBEDDER, ready: true } };
+  sidecar.script(
+    ready,
+    { do: "answer", result: {}, floats: [1, 0] },
+    { do: "answer", result: { windows: 3 }, floats: [0.6, 0.8] },
+    ready,
+  );
+  const first = await run(1);
+  expect(first.retrievalMethod).toBe(RETRIEVAL_METHOD.clapSimilarity);
+  const base = /** @type {Candidate} */ (getCandidate(app.store, first.candidateIds[0] ?? 0));
+  expect(getGeneration(app.store, /** @type {number} */ (base.generationId))).toMatchObject({
+    retrievalMethod: RETRIEVAL_METHOD.clapSimilarity,
+    exampleIds: [liked.id],
+  });
+
+  // The explore's prompt reads the brief's embedding from the cache, not the sidecar.
+  const second = await run(1, { base, genome: genomeOf(app, base), direction: null });
+  expect(second.retrievalMethod).toBe(RETRIEVAL_METHOD.clapSimilarity);
+  const requests = (await sidecar.received()).map(({ request }) => request);
+  expect(requests.map(({ method }) => method)).toEqual([
+    "embedder",
+    "embed_text",
+    "embed_audio",
+    "embedder",
+  ]);
+  expect(requests[1]).toMatchObject({ params: { checkpointCache, text: INSIDE.brief } });
+});
+
+test("with no checkpoint, the job logs rating-recency though rated audio is embedded", async () => {
+  const { app, omlx, sidecar, vibe, session, run } = await sessionApp(undefined, INSIDE);
+  likedAndEmbedded(app, vibe, session);
+  omlx.script(answer(GENOMES[0]));
+  const result = await run(1);
+  expect(result.retrievalMethod).toBe(RETRIEVAL_METHOD.ratingRecency);
+  expect(result.notEmbedded).toBe(NO_CHECKPOINT_CACHE);
+  expect(await sidecar.received()).toEqual([]);
+});
+
+test("a sidecar failure while embedding the brief fails the job before asking omlx", async () => {
+  const { app, omlx, sidecar, vibe, session, run } = await sessionApp(undefined, INSIDE);
+  setCheckpointCache(app);
+  likedAndEmbedded(app, vibe, session);
+  omlx.script(answer(GENOMES[0]));
+  sidecar.script(
+    { do: "answer", result: { ...EMBEDDER, ready: true } },
+    { do: "crash", stderr: "MemoryError\n", code: 3 },
+  );
+  await expect(run(1)).rejects.toThrow(
+    /^embedding the vibe's brief failed: sidecar request embed_text failed: the sidecar exited with code 3: MemoryError$/,
+  );
+  expect(omlx.requests).toHaveLength(0);
 });
 
 test("one outside a range is revised once, replaying its round-0 prompt with the measurements and the locks in force", async () => {
