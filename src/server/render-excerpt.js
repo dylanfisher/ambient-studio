@@ -24,6 +24,7 @@ import { requireGenome } from "../engine/validate-genome.js";
 import { encodePcm24 } from "./encode-pcm24.js";
 import { requireFinite } from "./export-render.js";
 import { getGenome } from "./generation-store.js";
+import { JOB_STEP } from "./job-steps.js";
 import { loadSamples } from "./load-samples.js";
 import { PRODUCER } from "./producer.js";
 import { renderOffline } from "./render-offline.js";
@@ -157,11 +158,12 @@ export async function renderExcerpt(store, folder, { genomeId, seed, target }, r
 export async function renderExcerpts(store, folder, requests, { signal, progress }, recordings) {
   /** @type {Excerpt[]} */
   const done = [];
-  progress(0, requests.length);
+  const total = requests.length;
   for (const request of requests) {
+    progress(done.length, total, JOB_STEP.renderingExcerpt(done.length + 1, total));
     signal.throwIfAborted();
     done.push(await renderExcerpt(store, folder, request, recordings));
-    progress(done.length, requests.length);
   }
+  progress(total, total, null);
   return done;
 }

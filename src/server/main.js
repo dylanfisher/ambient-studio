@@ -98,9 +98,11 @@ async function answer(routes, app, request, response) {
       response.destroy();
       return;
     }
-    sendJson(response, known ? error.status : 500, {
-      error: known ? error.message : "internal error",
-    });
+    sendJson(
+      response,
+      known ? error.status : 500,
+      known ? { error: error.message, ...error.details } : { error: "internal error" },
+    );
   }
 }
 

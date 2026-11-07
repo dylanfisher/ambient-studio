@@ -26,6 +26,8 @@ export const RESPONSE_FORMAT_REFUSED = "omlx refused the JSON-schema response_fo
  * @property {{ temperature?: number, top_p?: number, seed?: number }} [sampling] sent as is
  * @property {{ name: string, schema: object }} [responseFormat] the JSON schema sent as
  *   `response_format` when `queue.sendResponseFormat` is true; required then, ignored otherwise
+ * @property {(event: RetryEvent) => void} [onRetry] called before each of this request's
+ *   backoffs, after the queue's own `onRetry`, so a job can tell the owner it is waiting
  */
 
 /**
@@ -327,6 +329,8 @@ export function createOmlxQueue({ omlx, queue, clock, jitter, onRetry }) {
       stream_options: { include_usage: true },
       n: 1,
       max_tokens: queue.maxTokens,
+      // A request field omlx passes to the model's chat template, not an omlx setting.
+      chat_template_kwargs: { enable_thinking: queue.thinking },
       ...request.sampling,
       ...(queue.sendResponseFormat && request.responseFormat
         ? {
@@ -413,6 +417,7 @@ export function createOmlxQueue({ omlx, queue, clock, jitter, onRetry }) {
       const event = { attempt: number, reason: outcome.busy, delayMs };
       retries.push(event);
       onRetry(event);
+      request.onRetry?.(event);
       await sleep(delayMs);
       if (cancels !== epoch) throw cancelled();
     }

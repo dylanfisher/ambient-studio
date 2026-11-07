@@ -75,18 +75,31 @@ test("a job reports its progress, and a failed job doesn't stop the next", async
   const runner = createJobRunner({ now: countingClock() });
   const hold = deferred();
   const failing = runner.add("render", async ({ progress }) => {
-    progress(1, 3);
+    progress(1, 3, "Rendering excerpt 2 of 3");
     await hold.promise;
     throw new Error("the render failed");
   });
   const next = runner.add("render", async () => "ran");
   await Promise.resolve();
-  expect(runner.get(failing.id).progress).toEqual({ done: 1, total: 3 });
+  expect(runner.get(failing.id).progress).toEqual({
+    done: 1,
+    total: 3,
+    step: "Rendering excerpt 2 of 3",
+  });
 
   hold.resolve(undefined);
   await runner.idle();
   expect(runner.get(failing.id)).toMatchObject({ state: "failed", error: "the render failed" });
   expect(runner.get(next.id)).toMatchObject({ state: "done", result: "ran" });
+});
+
+test("a finished job keeps its count and drops its step, which said what it was doing", async () => {
+  const runner = createJobRunner({ now: countingClock() });
+  const job = runner.add("render", async ({ progress }) => {
+    progress(2, 2, "Rendering excerpt 2 of 2");
+  });
+  await runner.idle();
+  expect(runner.get(job.id).progress).toEqual({ done: 2, total: 2, step: null });
 });
 
 test("a cancelled job stops at its next check, and a queued one never starts", async () => {

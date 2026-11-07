@@ -122,3 +122,7 @@ normalizing, measuring and writing one excerpt took 1.04–1.09 s for the drone 
 - 2026-11-06: from the step's review, before merge. Any normalize throw is a failed check, not a
   failed job; render ids are never reused (migration 0003); `list()` leaves out results; a
   capture that finds its name taken by a parallel capture returns that capture's row.
+- 2026-11-06: progress is `{done, total, step}`; `step` is a sentence for the owner from
+  `JOB_STEP`, or null between steps, and the runner sets it to null when a job finishes. A job
+  reports `progress(done, total, step)`. The excerpt job says which excerpt it is rendering
+  ([0031](0031-fewer-waits-after-first-evaluation.md)).

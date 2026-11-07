@@ -3,7 +3,15 @@
 // derived and get replaced.
 /** @import { MACRO_DIRECTIONS, OUTCOMES, THUMBS } from "../domain/rating-values.js" */
 /** @import { Removable, Row, Store } from "./store.js" */
-import { decode, insertRow, selectRow, selectRows, TABLE } from "./store.js";
+import {
+  decode,
+  insertRow,
+  markRemoved,
+  selectRow,
+  selectRows,
+  TABLE,
+  transaction,
+} from "./store.js";
 
 /**
  * An excerpt as heard: enough to render it again with the same engine.
@@ -234,6 +242,78 @@ export function addFeedback(store, draft) {
  */
 export function getFeedback(store, id) {
   return selectRow(store, TABLE.feedback, FEEDBACK, id);
+}
+
+/** Why a feedback or A/B rating row was marked removed (decision 0031). */
+const REMOVAL = Object.freeze({
+  /** a later post on the same candidate, kind and macro took its place */
+  replaced: "replaced",
+  /** the owner took it back */
+  undone: "undone",
+});
+
+/**
+ * Stores feedback as the one live state of its candidate (session, genome and seed), kind and,
+ * for macro feedback, macro. A live row with the same direction and note is returned as it is,
+ * so a second click adds nothing; any other live row is marked replaced and the new one added,
+ * in one transaction. More than one live row, left from before this rule, is replaced too.
+ * @param {Store} store
+ * @param {FeedbackDraft} draft
+ * @returns {Feedback}
+ */
+export function setFeedback(store, draft) {
+  return transaction(store, () => {
+    const { sessionId, kind, genomeId, seed, macro } = draft;
+    /** @type {Record<string, number | string>} */
+    const where = { sessionId, kind, genomeId, seed };
+    if (macro !== null) where.macro = macro;
+    /** @type {Feedback[]} */
+    const live = selectRows(store, TABLE.feedback, FEEDBACK, where);
+    const [only] = live;
+    if (live.length === 1 && only?.direction === draft.direction && only.note === draft.note) {
+      return only;
+    }
+    for (const row of live) markRemoved(store, TABLE.feedback, row.id, REMOVAL.replaced);
+    return addFeedback(store, draft);
+  });
+}
+
+/**
+ * Marks the feedback row undone; one already removed, for any reason, is left as it is.
+ * @param {Store} store
+ * @param {number} id
+ * @returns {Feedback}
+ */
+export function undoFeedback(store, id) {
+  const row = getFeedback(store, id);
+  if (!row) throw new Error(`there is no feedback ${id}`);
+  if (row.removedAt !== null) return row;
+  markRemoved(store, TABLE.feedback, id, REMOVAL.undone);
+  return /** @type {Feedback} */ (getFeedback(store, id));
+}
+
+/**
+ * Marks the A/B rating undone; one already removed is left as it is.
+ * @param {Store} store
+ * @param {number} id
+ * @returns {Rating}
+ */
+export function undoRating(store, id) {
+  const row = getRating(store, id);
+  if (!row) throw new Error(`there is no rating ${id}`);
+  if (row.removedAt !== null) return row;
+  markRemoved(store, TABLE.ratings, id, REMOVAL.undone);
+  return /** @type {Rating} */ (getRating(store, id));
+}
+
+/**
+ * The session's live thumbs and macro feedback, oldest first.
+ * @param {Store} store
+ * @param {number} sessionId
+ * @returns {Feedback[]}
+ */
+export function listSessionFeedback(store, sessionId) {
+  return selectRows(store, TABLE.feedback, FEEDBACK, { sessionId });
 }
 
 /**

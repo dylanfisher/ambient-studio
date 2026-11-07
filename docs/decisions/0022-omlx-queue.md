@@ -172,3 +172,7 @@ offset; the 4 096 of headroom also absorbs the error. The test checks that examp
   `onRetry` event or in a log. An HTTP 401 or 403 is not busy and is not retried: it fails at
   once with "omlx refused the studio's API key (HTTP <status>); check omlx.apiKey in the config",
   and the response body is not read or quoted ([0019](0019-config-file-and-paths.md)).
+- 2026-11-06: every request carries `chat_template_kwargs: {enable_thinking: queue.thinking}`,
+  a request field omlx passes to the chat template, kept in `params` like the rest of the body.
+  A request may carry its own `onRetry`, called after the queue's for each of its backoffs, so a
+  job can say it is waiting ([0031](0031-fewer-waits-after-first-evaluation.md)).

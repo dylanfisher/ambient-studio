@@ -90,14 +90,23 @@ describe("the evaluation job", () => {
     );
 
     const job = await evaluate(vibeIds, 16);
-    expect(job).toMatchObject({ state: "done", error: null, progress: { done: 48, total: 48 } });
+    expect(job).toMatchObject({
+      state: "done",
+      error: null,
+      progress: { done: 48, total: 48, step: null },
+    });
     expect(omlx.requests).toHaveLength(53);
     expect(omlx.maxInFlight()).toBe(1);
 
     const evaluation = await ok("GET", `/api/evaluations/${job.result.evaluationId}`);
     expect((await ok("GET", "/api/evaluations")).evaluations).toEqual([evaluation]);
     const { params, report } = evaluation;
-    expect(params).toMatchObject({ vibeIds, count: 16, sendResponseFormat: false });
+    expect(params).toMatchObject({
+      vibeIds,
+      count: 16,
+      sendResponseFormat: false,
+      thinking: true,
+    });
     expect(report.overall).toMatchObject({
       requested: 48,
       made: 48,
@@ -134,6 +143,8 @@ describe("the evaluation job", () => {
     expect(report.latencyMs.repair.count).toBe(5);
     expect(report.firstTokenMs.firstTry.count).toBe(48);
     expect(report.responseFormat).toBe("notSent");
+    // The fake sends no reasoning text, as a model that honoured thinking off would.
+    expect(report.reasoning).toEqual({ answered: 53, withReasoning: 0 });
     expect(report.stopped).toBeNull();
 
     // Every vibe used the run's one stream seed, outside any session.
@@ -229,6 +240,10 @@ describe("the evaluation job", () => {
 
     const second = await server.api("POST", "/api/evaluations", { vibeIds, count: 2 });
     expect(second.status).toBe(409);
+    expect(second.json()).toEqual({
+      error: `An evaluation is already queued or running (job ${job.id}). Wait for it to finish, or cancel it.`,
+      jobId: job.id,
+    });
     expect((await ok("GET", "/api/evaluations")).job).toMatchObject({ id: job.id });
 
     await ok("POST", `/api/jobs/${job.id}/cancel`, {});
@@ -246,6 +261,21 @@ describe("the evaluation job", () => {
     expect(counted(evaluation.report.overall.valid.beforeRepair)).toEqual({ count: 1, of: 1 });
     // The vibes the run never reached are listed with nothing made.
     expect(evaluation.report.vibes.map((/** @type {any} */ v) => v.made)).toEqual([2, 0, 0]);
+  });
+
+  test("two evaluations posted at once make one job and one 409", async () => {
+    const { omlx, server, loadSeeds } = await setup();
+    const vibeIds = await loadSeeds();
+    omlx.script({ tokens: ["{"], holdAfter: 0 });
+    const replies = await Promise.all(
+      [1, 2].map(() => server.api("POST", "/api/evaluations", { vibeIds, count: 1 })),
+    );
+    expect(replies.map((r) => r.status).sort()).toEqual([200, 409]);
+    const [job] = server.jobs.list();
+    expect(server.jobs.list()).toHaveLength(1);
+    expect(replies.find((r) => r.status === 409)?.json().jobId).toBe(job?.id);
+    server.jobs.cancel(/** @type {any} */ (job).id);
+    await server.jobs.idle();
   });
 
   test("bad bodies are refused before anything runs", async () => {

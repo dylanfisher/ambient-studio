@@ -7,7 +7,7 @@ import { show } from "../engine/validation-error.js";
 import { evaluationJob } from "./evaluation-job.js";
 import { getEvaluation, listEvaluations } from "./evaluation-store.js";
 import { fields, idParam, integer } from "./request-fields.js";
-import { HttpError } from "./routing.js";
+import { duplicateJob, HttpError } from "./routing.js";
 import { getVibe } from "./vibe-store.js";
 
 const EVALUATION_JOB = "evaluation";
@@ -65,9 +65,9 @@ export const EVALUATION_ROUTES = [
       // second click.
       const unfinished = unfinishedJob(app);
       if (unfinished) {
-        throw new HttpError(
-          409,
-          `evaluation job ${unfinished.id} hasn't finished; wait or cancel it`,
+        throw duplicateJob(
+          `An evaluation is already queued or running (job ${unfinished.id}). Wait for it to finish, or cancel it.`,
+          unfinished.id,
         );
       }
       return app.jobs.add(EVALUATION_JOB, evaluationJob(app, { vibeIds, count }));

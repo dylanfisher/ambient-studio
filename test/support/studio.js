@@ -6,7 +6,7 @@
 import { expect } from "vitest";
 import example from "../../src/config/example.json" with { type: "json" };
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
-import { fakeClock } from "./fake-clock.js";
+import { driveGaps, fakeClock } from "./fake-clock.js";
 import { fakeOmlx } from "./fake-omlx.js";
 import { startTestServer } from "./http-client.js";
 
@@ -65,23 +65,7 @@ export async function startStudio({ random, fieldRecordings, sendResponseFormat 
   const gap = example.queue.minGapMs;
 
   /** @type {Studio["drive"]} */
-  async function drive(work) {
-    let done = false;
-    const settled = work.finally(() => {
-      done = true;
-    });
-    while (!done) {
-      const gapWaiting = await Promise.race([
-        settled.then(
-          () => false,
-          () => false,
-        ),
-        clock.waitForTimer(gap).then(() => true),
-      ]);
-      if (gapWaiting) clock.advance(gap);
-    }
-    return settled;
-  }
+  const drive = (work) => driveGaps(clock, gap, work);
 
   /** @type {Studio["ok"]} */
   async function ok(method, path, value) {

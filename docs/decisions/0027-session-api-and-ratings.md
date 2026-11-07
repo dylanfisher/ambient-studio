@@ -165,3 +165,15 @@ so one number at one time would misstate what was heard.
 - If jobs ever run side by side, cancelling a job's queue requests needs a cancel per request
   group instead of the whole queue.
 - Removing a note, a rating or a sketch needs routes that call `markRemoved`; none exist yet.
+
+## Amendments
+
+- 2026-11-06: from step 2m ([0031](0031-fewer-waits-after-first-evaluation.md)). The candidate
+  job renders each valid candidate's excerpt as it is made, before asking for the next, and its
+  progress counts candidates with a step sentence. A second candidates or excerpts job for a
+  session with one unfinished, or an excerpts job while its candidates job is unfinished, is a
+  409 `{error, jobId}`. Thumbs hold one live direction per candidate, and macro feedback one per
+  candidate and macro: a new direction marks the old row `replaced`, and the same one again
+  returns it. `POST …/feedback/:feedbackId/remove` and `POST …/ab-ratings/:ratingId/remove` mark
+  a row `undone`; notes and sketches still have no remove route. Each candidate in the list gains
+  `feedback`, its live state with row ids. Rated audio is kept when a row is replaced or removed.

@@ -21,17 +21,21 @@ import {
   voiceTypeIds,
 } from "./voice-registry.js";
 
+/** Written after a parameter's default when the parameter may be a trajectory. */
+const TRAJECTORY_MARK = "(T)";
+
 /**
- * One line: name, ~ when it may be a trajectory, allowed values, =default (or "required" for a
- * recording, which has none), description.
+ * One line: name, allowed values, =default (or "required" for a recording, which has none), the
+ * trajectory mark when it may be one, description. The mark stands apart from the name: a model
+ * copied a `~` written against the name into its keys (`cutoff~`).
  * @param {string} name
  * @param {Descriptor} d
  */
 function line(name, d) {
-  const mark = allowsTrajectory(d) ? "~" : "";
+  const mark = allowsTrajectory(d) ? ` ${TRAJECTORY_MARK}` : "";
   const when = d.when ? `; only ${d.when.text}` : "";
   const given = isRecording(d) ? "required" : `=${d.default}`;
-  return `${name}${mark} ${valueText(d)} ${given} ${d.description}${when}`;
+  return `${name} ${valueText(d)} ${given}${mark} ${d.description}${when}`;
 }
 
 /** @param {DescriptorTable} table @param {string} indent */
@@ -80,7 +84,7 @@ export function schemaText() {
   });
   return [
     "Genome JSON. Omitted keys take their =default; unknown keys are errors.",
-    `name~ may be a trajectory: ${TRAJECTORY_TEXT}.`,
+    `${TRAJECTORY_MARK} = may be a trajectory: ${TRAJECTORY_TEXT}.`,
     `schemaVersion ${SCHEMA_VERSION}`,
     ...globalLines,
     // Every macro shares one descriptor, so one line covers them.

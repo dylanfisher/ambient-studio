@@ -57,3 +57,4 @@ literal "count" | files src/server/evaluation-routes.js src/server/session-route
 literal "/api/seed-vibes" | files src/server/vibe-routes.js src/web/api.js | the seed vibes route, declared by the server and requested by the pages, which talk to it only over HTTP and can't import it (map.md)
 literal "/api/evaluations" | files src/server/evaluation-routes.js src/web/api.js | the evaluations route, declared by the server and requested by the pages, which talk to it only over HTTP and can't import it (map.md)
 literal "evaluation" | files src/server/evaluation-routes.js src/web/evaluation.js | the evaluation job's kind on the server, and the evaluation page's view in its key table
+literal "busy" | files src/server/generate-candidates.js src/server/omlx-queue.js | the field an attempt's outcome sets when omlx was busy in the queue, and the generation step a job reports while the queue backs off

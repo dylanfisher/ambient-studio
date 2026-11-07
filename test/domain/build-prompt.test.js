@@ -143,6 +143,22 @@ describe("buildPrompt", () => {
     expect(long).not.toContain(listing(MAX_PROMPT_RECORDINGS + 10).hash);
   });
 
+  test("writes no key with a mark joined to it, so none is copied into an answer", () => {
+    const recordings = [
+      { file: "a.wav", hash: "a".repeat(64), duration: 60, channels: 2, sampleRate: 44100 },
+    ];
+    const { messages } = buildPrompt(revision, {
+      notes,
+      locks,
+      examples: [],
+      budgetTokens: BUDGET,
+      recordings,
+    });
+    const system = /** @type {ChatMessage} */ (messages[0]).content;
+    expect(system).not.toContain("~");
+    expect(system).toMatch(/^ {2}cutoff 100\.\.2000 Hz =600 \(T\) low-pass$/m);
+  });
+
   test("trims examples from the end until the prompt fits the budget", () => {
     const many = examples(40);
     const { messages, exampleIds } = buildPrompt(revision, {

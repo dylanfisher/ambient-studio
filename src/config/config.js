@@ -25,6 +25,7 @@ import { isAbsolute, join, resolve, sep } from "node:path";
  * @property {number} maxTokens
  * @property {number} contextBudgetTokens
  * @property {boolean} sendResponseFormat
+ * @property {boolean} thinking whether requests ask the model's chat template to think first
  */
 
 const ENV_VAR = "AMBIENT_STUDIO_CONFIG";
@@ -183,6 +184,7 @@ const SCHEMA = {
     maxTokens: positiveInteger,
     contextBudgetTokens: positiveInteger,
     sendResponseFormat: boolean,
+    thinking: boolean,
   },
   dataRoot: folder,
   fieldRecordings: folderOrNull,

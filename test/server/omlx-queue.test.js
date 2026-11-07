@@ -194,6 +194,19 @@ describe("createOmlxQueue", () => {
     });
   }
 
+  test("a request's own onRetry hears its backoffs, beside the queue's", async () => {
+    const { clock, omlx, queue, retries } = await setup();
+    omlx.script({ status: 429, body: "busy" }, { tokens: ["done"] });
+    /** @type {RetryEvent[]} */
+    const heard = [];
+    const result = queue.request({ ...ask(), onRetry: (event) => heard.push(event) });
+    await clock.waitForTimer(/** @type {number} */ (BACKOFFS[0]));
+    expect(heard).toEqual([{ attempt: 1, reason: "HTTP 429", delayMs: BACKOFFS[0] }]);
+    clock.advance(/** @type {number} */ (BACKOFFS[0]));
+    await result;
+    expect(retries).toEqual(heard);
+  });
+
   test("a first token slower than the threshold is busy: aborted, backed off and retried", async () => {
     const { clock, omlx, queue, retries } = await setup();
     omlx.script({ tokens: ["late"], holdAfter: 0 }, { tokens: ["prompt"] });
@@ -301,6 +314,18 @@ describe("createOmlxQueue", () => {
     clock.advance(QUEUE.minGapMs);
     expect((await next).text).toBe("after");
   });
+
+  test.each([true, false])(
+    "asks the chat template to think or not, as queue.thinking (%s) says",
+    async (thinking) => {
+      const { omlx, queue } = await setup({ thinking });
+      omlx.script({ tokens: ["{}"] });
+      const { params } = await queue.request(ask());
+      const body = /** @type {Record<string, any>} */ (omlx.requests[0]?.body);
+      expect(body.chat_template_kwargs).toEqual({ enable_thinking: thinking });
+      expect(params.chat_template_kwargs).toEqual({ enable_thinking: thinking });
+    },
+  );
 
   test("sends response_format only when the config says to", async () => {
     const { omlx, queue } = await setup({ sendResponseFormat: true });

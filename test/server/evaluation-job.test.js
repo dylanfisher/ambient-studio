@@ -6,6 +6,7 @@ import { SEED_VIBES } from "../../src/domain/seed-vibes.js";
 import { evaluationJob } from "../../src/server/evaluation-job.js";
 import { listEvaluations } from "../../src/server/evaluation-store.js";
 import { createVibe } from "../../src/server/vibe-store.js";
+import { driveGaps } from "../support/fake-clock.js";
 import { testApp } from "../support/test-app.js";
 
 /** @type {TestApp[]} */
@@ -25,4 +26,33 @@ test("a cancel that lands before the job listens for it, as during indexing, sen
   await expect(run({ signal, progress: () => undefined })).rejects.toThrow(/cancelled/);
   expect(omlx.requests).toHaveLength(0);
   expect(listEvaluations(app.store)).toEqual([]);
+});
+
+test("progress counts candidates across every vibe, and says which one is being asked for", async () => {
+  const made = await testApp();
+  apps.push(made);
+  const { app, omlx, clock } = made;
+  const vibes = ["cold-dorian", "bell-field"].map((id) =>
+    createVibe(app.store, /** @type {any} */ (SEED_VIBES[id])),
+  );
+  // Answers with no JSON are rejected without a repair, so each vibe takes one request.
+  omlx.script({ tokens: ["no genome"] }, { tokens: ["no genome"] });
+  /** @type {[number, number, string | null][]} */
+  const reports = [];
+  const run = evaluationJob(app, { vibeIds: vibes.map(({ id }) => id), count: 1 });
+  await driveGaps(
+    clock,
+    app.config.queue.minGapMs,
+    run({
+      signal: new AbortController().signal,
+      progress: (done, total, step) => reports.push([done, total, step]),
+    }),
+  );
+  expect(reports).toEqual([
+    [0, 2, null],
+    [0, 2, "Asking the model for candidate 1 of 2"],
+    [1, 2, null],
+    [1, 2, "Asking the model for candidate 2 of 2"],
+    [2, 2, null],
+  ]);
 });

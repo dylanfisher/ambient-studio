@@ -1,11 +1,12 @@
 // Sessions and their jobs through the HTTP routes (decision 0027), against the fake omlx on a
 // fake clock: asking for candidates renders playable excerpts, and stopping a session cancels
 // its jobs and their omlx requests.
+/** @import { Reply } from "../support/http-client.js" */
 /** @import { Studio } from "../support/studio.js" */
 import { copyFile, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { getRender } from "../../src/server/render-store.js";
 import { sha256Hex } from "../../src/server/sha256-hex.js";
 import { FIXTURE_RECORDINGS } from "../support/golden.js";
@@ -33,7 +34,7 @@ test("asking for candidates runs a job that generates them and renders playable 
 
   const job = await generate(session.id, GENOMES);
   expect(job).toMatchObject({ kind: "candidates", state: "done", error: null });
-  expect(job.progress).toEqual({ done: 2, total: 2 });
+  expect(job.progress).toEqual({ done: 2, total: 2, step: null });
   expect(job.result.candidateIds).toHaveLength(2);
   expect(job.result.excerpts.map((/** @type {any} */ e) => e.candidateId)).toEqual(
     job.result.candidateIds,
@@ -90,13 +91,18 @@ test("a candidate that plays a field recording from the configured folder gets a
 test("stopping a session cancels its running and queued jobs and the omlx request in flight", async () => {
   const { server, omlx, ok, openSession } = await setup();
   const { session } = await openSession();
+  // A session holds one candidates job at a time, so the queued one is another session's.
+  const other = await ok("POST", `/api/vibes/${session.vibeId}/sessions`, {});
   omlx.script({ tokens: ["{"], holdAfter: 0 });
   const running = await ok("POST", `/api/sessions/${session.id}/candidates`, { count: 3 });
-  const queued = await ok("POST", `/api/sessions/${session.id}/candidates`, { count: 3 });
+  const queued = await ok("POST", `/api/sessions/${other.id}/candidates`, { count: 3 });
   await omlx.waitForRequests(1);
   expect(server.jobs.get(running.id).state).toBe("running");
   expect(server.jobs.get(queued.id).state).toBe("queued");
 
+  await ok("POST", `/api/sessions/${other.id}/stop`, {});
+  expect(server.jobs.get(queued.id).state).toBe("cancelled");
+  expect(server.jobs.get(running.id).state).toBe("running");
   const stopped = await ok("POST", `/api/sessions/${session.id}/stop`, {});
   expect(stopped.stoppedAt).not.toBeNull();
   await server.jobs.settled(running.id);
@@ -140,6 +146,95 @@ test("a candidate whose excerpt file is gone gets it back from the excerpts job"
   expect((await ok("GET", `/api/jobs/${job.id}`)).state).toBe("done");
   const [after] = (await ok("GET", `/api/sessions/${session.id}/candidates`)).candidates;
   expect(after.excerpt.url).toMatch(/^\/audio\/\d+$/);
+});
+
+test("while omlx is busy the candidates job says it is waiting for the model", async () => {
+  const { server, omlx, ok, openSession } = await setup();
+  const { session } = await openSession();
+  omlx.script({ status: 429, body: "busy" });
+  const job = await ok("POST", `/api/sessions/${session.id}/candidates`, { count: 1 });
+  await vi.waitFor(() =>
+    expect(server.jobs.get(job.id).progress).toEqual({
+      done: 0,
+      total: 1,
+      step: "Waiting for the model: it is busy with another request",
+    }),
+  );
+  await ok("POST", `/api/jobs/${job.id}/cancel`, {});
+  await server.jobs.settled(job.id);
+  expect(server.jobs.get(job.id)).toMatchObject({ state: "cancelled", progress: { step: null } });
+});
+
+/**
+ * Sends `path` twice at once and returns the two replies, the lower status first.
+ * @param {Studio} studio
+ * @param {string} path
+ * @param {unknown} body
+ * @returns {Promise<Reply[]>}
+ */
+async function postTwice({ server }, path, body) {
+  const replies = await Promise.all([
+    server.api("POST", path, body),
+    server.api("POST", path, body),
+  ]);
+  return replies.sort((a, b) => a.status - b.status);
+}
+
+/**
+ * The accepted reply's job id, after checking one reply was accepted and the other refused.
+ * @param {Reply[]} replies
+ * @returns {{ id: number, refused: any }}
+ */
+function oneAccepted([accepted, refused]) {
+  expect([accepted?.status, refused?.status]).toEqual([200, 409]);
+  return { id: accepted?.json().id, refused: refused?.json() };
+}
+
+test("a second candidates request for a session with one unfinished is refused, naming it", async () => {
+  const studio = await setup();
+  const { server, omlx, ok, openSession } = studio;
+  const { session } = await openSession();
+  const other = await ok("POST", `/api/vibes/${session.vibeId}/sessions`, {});
+  omlx.script({ tokens: ["{"], holdAfter: 0 });
+  const path = `/api/sessions/${session.id}/candidates`;
+  const { id, refused } = oneAccepted(await postTwice(studio, path, { count: 2 }));
+  expect(refused).toEqual({
+    error: `This session is already asking for candidates (job ${id}). Wait for it to finish, or cancel it.`,
+    jobId: id,
+  });
+  expect(server.jobs.list().filter((job) => job.kind === "candidates")).toHaveLength(1);
+  // Another session's request is another action.
+  expect((await server.api("POST", `/api/sessions/${other.id}/candidates`, {})).status).toBe(200);
+  // While the candidates job runs it renders the session's excerpts itself.
+  const excerpts = await server.api("POST", `/api/sessions/${session.id}/excerpts`, {});
+  expect(excerpts.status).toBe(409);
+  expect(excerpts.json()).toEqual({
+    error: `This session's candidates job (job ${id}) renders the excerpts itself. Wait for it to finish.`,
+    jobId: id,
+  });
+  for (const job of server.jobs.list()) server.jobs.cancel(job.id);
+  await server.jobs.idle();
+  // Once it has finished the session takes another.
+  expect((await server.api("POST", path, { count: 1 })).status).toBe(200);
+});
+
+test("a second excerpts request for a session with one unfinished is refused, naming it", async () => {
+  const studio = await setup();
+  const { server, omlx, openSession } = studio;
+  const { session } = await openSession();
+  // A held request ahead of it keeps the excerpts job queued.
+  const blocker = await openSession();
+  omlx.script({ tokens: ["{"], holdAfter: 0 });
+  await studio.ok("POST", `/api/sessions/${blocker.session.id}/candidates`, { count: 1 });
+  const path = `/api/sessions/${session.id}/excerpts`;
+  const { id, refused } = oneAccepted(await postTwice(studio, path, {}));
+  expect(refused).toEqual({
+    error: `This session is already rendering its excerpts (job ${id}). Wait for it to finish, or cancel it.`,
+    jobId: id,
+  });
+  expect(server.jobs.list().filter((job) => job.kind === "excerpts")).toHaveLength(1);
+  for (const job of server.jobs.list()) server.jobs.cancel(job.id);
+  await server.jobs.idle();
 });
 
 test("a count outside 1 to 32, an unknown field and an unknown session are refused", async () => {

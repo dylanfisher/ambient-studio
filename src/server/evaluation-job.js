@@ -8,7 +8,7 @@
 /** @import { JobContext } from "./job-runner.js" */
 /** @import { App } from "./routing.js" */
 import { evaluationReport, RESPONSE_FORMAT_RESULT } from "../domain/evaluation-report.js";
-import { jobRecordings, STREAM_SEEDS } from "./candidate-job.js";
+import { generationStepText, jobRecordings, STREAM_SEEDS } from "./candidate-job.js";
 import { addEvaluation } from "./evaluation-store.js";
 import { generateCandidates, requestGroupName } from "./generate-candidates.js";
 import { listRequestGroup } from "./generation-store.js";
@@ -23,6 +23,7 @@ import { getVibe } from "./vibe-store.js";
  * @property {number} seed the stream seed every vibe's request group uses
  * @property {string} model
  * @property {boolean} sendResponseFormat
+ * @property {boolean} thinking
  * @property {number} maxTokens
  */
 
@@ -61,6 +62,7 @@ export function evaluationJob(app, { vibeIds, count }) {
       seed: Math.floor(app.random() * STREAM_SEEDS),
       model: config.omlx.model,
       sendResponseFormat: config.queue.sendResponseFormat,
+      thinking: config.queue.thinking,
       maxTokens: config.queue.maxTokens,
     };
     /** @type {VibeRun[]} */
@@ -69,7 +71,7 @@ export function evaluationJob(app, { vibeIds, count }) {
     let failure = null;
     const total = vibeIds.length * count;
     let done = 0;
-    job.progress(done, total);
+    job.progress(done, total, null);
     // Every vibe has a run from the start, so a run that stops early still reports the vibes it
     // never reached, with nothing made.
     for (const vibeId of vibeIds) {
@@ -90,7 +92,9 @@ export function evaluationJob(app, { vibeIds, count }) {
     try {
       // A cancel while the folder was indexed fired before the listener was added.
       job.signal.throwIfAborted();
-      for (const { vibeId, outcomes } of runs) {
+      for (const [i, { vibeId, outcomes }] of runs.entries()) {
+        // Candidates are numbered across every vibe, as the progress bar counts them.
+        const offset = i * count;
         try {
           await generateCandidates(vibeId, count, store, app.queue, {
             config,
@@ -103,8 +107,9 @@ export function evaluationJob(app, { vibeIds, count }) {
                 firstReason,
                 finalReason: /** @type {RejectReason | null} */ (candidate.rejectReason),
               });
-              job.progress(++done, total);
+              job.progress(++done, total, null);
             },
+            onStep: (step) => job.progress(done, total, generationStepText(step, offset, total)),
           });
         } catch (error) {
           if (!(error instanceof OmlxRequestError)) throw error;
@@ -126,6 +131,7 @@ export function evaluationJob(app, { vibeIds, count }) {
         latencyMs: g.latencyMs,
         firstTokenMs: g.firstTokenMs,
         failed: g.error !== null,
+        reasoned: g.reasoning !== null,
       }));
     }
     const report = evaluationReport({
