@@ -14,6 +14,7 @@ import { MACRO } from "./macro-table.js";
 import { drawer, TRIGGER_SLOT } from "./prng.js";
 import { WINDOW } from "./render.js";
 import { CURVES } from "./trajectory.js";
+import { playWindowBuffer } from "./window-buffer.js";
 
 const PARAMS = Object.freeze({
   color: choice({ values: NOISE_COLORS, default: PINK, description: "spectrum" }),
@@ -245,13 +246,7 @@ function build({ ctx, output, voice, seed, from, startFrame, at, automate }) {
       frames,
       sampleRate: rate,
     });
-    const buffer = ctx.createBuffer(2, frames, rate);
-    for (const [c, data] of channels.entries()) buffer.copyToChannel(data, c);
-    const player = ctx.createBufferSource();
-    player.buffer = buffer;
-    player.connect(filter);
-    // Each window's buffer starts on the frame where the last one ended.
-    player.start(at(from) + (first - startFrame) / rate);
+    playWindowBuffer({ ctx, channels, first, startFrame, startTime: at(from), into: filter });
   };
 }
 
