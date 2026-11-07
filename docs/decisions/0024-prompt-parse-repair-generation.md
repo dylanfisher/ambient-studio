@@ -153,3 +153,9 @@ which 2l settles.
   with the reason its first answer was rejected, which a repaired candidate's row no longer
   holds; the evaluation's before-repair rates read it. `requestGroupName(vibeId, seed)` is
   exported, so a caller can name a group before generation returns.
+- 2026-11-06: from step 2m ([0031](0031-fewer-waits-after-first-evaluation.md)). The schema text
+  writes a name plainly and marks a possible trajectory with `(T)` after the default
+  (`cutoff 100..2000 Hz =600 (T) low-pass`), since the model copied a `~` written against the
+  name into its keys. `generateCandidates` awaits `onCandidate` before its next request, and
+  takes `onStep({index, kind})`, called as each first request or repair is queued and as omlx
+  answers one busy.

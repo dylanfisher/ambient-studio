@@ -110,3 +110,6 @@ only: `scripts/` and `test/` are tools, and a test stubs variables with `vi.stub
   (mode & 0o077), naming it and saying to run `chmod 600`. No config error quotes the key's value
   or the file's text, so an unparseable file reports only that it isn't valid JSON. The example
   holds a placeholder, and `temp-root.js` writes a dummy key at mode 600.
+- 2026-11-06: added `queue.thinking`, a boolean: whether each request asks the model's chat
+  template to think first, sent as `chat_template_kwargs.enable_thinking`. The example sets it
+  `true`, which keeps what requests did before ([0031](0031-fewer-waits-after-first-evaluation.md)).
