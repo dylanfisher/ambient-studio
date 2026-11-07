@@ -17,10 +17,8 @@ import { cloneTemplate } from "./clone-template.js";
 import { elementsById } from "./element-by-id.js";
 import { oneAtATime } from "./one-at-a-time.js";
 import { createPlayedTracker } from "./played-tracker.js";
+import { POLL_MS } from "./poll-ms.js";
 import { statusLine } from "./status-line.js";
-
-/** How often a running job's status is read: often enough that excerpts appear as they render. */
-const POLL_MS = 1000;
 
 const [UP, DOWN] = THUMBS;
 const [MORE, LESS] = MACRO_DIRECTIONS;
