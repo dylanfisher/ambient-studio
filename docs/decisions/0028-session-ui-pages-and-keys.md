@@ -141,3 +141,8 @@ and time taken. Safari itself is the owner's check on mbp2015.
   and no choice takes it from a form control; rating actions, pair opens and form saves run one
   at a time; held Enter and Space are dropped; time taken restarts after each rating of a card
   and when the A/B view closes.
+- 2026-11-06: from step 2l ([0030](0030-seed-vibes-and-evaluation.md)). A fourth page,
+  `evaluation.html`, starts evaluations and shows their reports (keys `j` / `k` next and previous
+  report, Shift+S start, `c` cancel, `l` the vibe list). The vibe list lists the seed vibes after
+  the vibes: `j` / `k` move through both, Enter opens a vibe or loads a seed, and `e` opens the
+  evaluations. The polling interval moved to `src/web/poll-ms.js`, which both job pages import.
