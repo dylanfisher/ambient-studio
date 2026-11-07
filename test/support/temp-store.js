@@ -7,6 +7,7 @@ import { paths } from "../../src/config/paths.js";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
 import { addEvaluation } from "../../src/server/evaluation-store.js";
 import { addCandidate, addGeneration, putGenome } from "../../src/server/generation-store.js";
+import { setLock } from "../../src/server/lock-store.js";
 import { addFeedback, addRatedAudio, addRating, addSketch } from "../../src/server/rating-store.js";
 import { startSession, stopSession } from "../../src/server/session-store.js";
 import { openStore } from "../../src/server/store.js";
@@ -150,6 +151,13 @@ export function fillStore(store) {
   });
   const sketch = addSketch(store, { candidateId: candidate.id, notes: "keep", tags: ["cold"] });
   const evaluation = addEvaluation(store, { params: { count: 1 }, report: { valid: 1 } });
+  const { lock } = setLock(store, {
+    vibeId: vibe.id,
+    candidateId: candidate.id,
+    path: "width",
+    value: droneGenome.width,
+    voiceType: null,
+  });
   return {
     vibes: vibe.id,
     vibe_revisions: vibeRevisionId,
@@ -163,5 +171,6 @@ export function fillStore(store) {
     feedback: feedback.id,
     sketches: sketch.id,
     evaluations: evaluation.id,
+    locks: lock.id,
   };
 }

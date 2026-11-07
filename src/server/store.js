@@ -43,6 +43,7 @@ export const TABLE = /** @type {const} */ ({
   feedback: "feedback",
   sketches: "sketches",
   evaluations: "evaluations",
+  locks: "locks",
   renders: "renders",
 });
 

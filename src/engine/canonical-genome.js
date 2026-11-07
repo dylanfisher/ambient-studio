@@ -8,7 +8,7 @@ import { requireGenome } from "./validate-genome.js";
  * @param {unknown} value
  * @returns {string}
  */
-function sortedJson(value) {
+export function sortedJson(value) {
   if (Array.isArray(value)) return `[${value.map(sortedJson).join(",")}]`;
   if (isObject(value)) {
     const entries = Object.keys(value)

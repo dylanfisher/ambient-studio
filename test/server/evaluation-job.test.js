@@ -3,8 +3,11 @@
 /** @import { TestApp } from "../support/test-app.js" */
 import { afterEach, expect, test } from "vitest";
 import { SEED_VIBES } from "../../src/domain/seed-vibes.js";
+import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
 import { evaluationJob } from "../../src/server/evaluation-job.js";
 import { listEvaluations } from "../../src/server/evaluation-store.js";
+import { addCandidate, putGenome } from "../../src/server/generation-store.js";
+import { locksInForce, setLock } from "../../src/server/lock-store.js";
 import { createVibe } from "../../src/server/vibe-store.js";
 import { driveGaps } from "../support/fake-clock.js";
 import { testApp } from "../support/test-app.js";
@@ -55,4 +58,43 @@ test("progress counts candidates across every vibe, and says which one is being 
     [1, 2, "Asking the model for candidate 2 of 2"],
     [2, 2, null],
   ]);
+});
+
+test("the evaluation's prompt carries no locks while the vibe has some", async () => {
+  const made = await testApp();
+  apps.push(made);
+  const { app, omlx, clock } = made;
+  const vibe = createVibe(app.store, /** @type {any} */ (SEED_VIBES["cold-dorian"]));
+  const candidate = addCandidate(app.store, {
+    vibeRevisionId: vibe.revision.id,
+    generationId: null,
+    genomeId: putGenome(app.store, vibe.id, droneGenome).id,
+    seed: 1,
+    source: "llm",
+    parentIds: [],
+    locks: [],
+    operator: null,
+    operatorParams: null,
+    intent: null,
+    rejectReason: null,
+    lint: null,
+    rejectedGenome: null,
+  });
+  setLock(app.store, {
+    vibeId: vibe.id,
+    candidateId: candidate.id,
+    path: "reverbDecay",
+    value: droneGenome.reverbDecay,
+    voiceType: null,
+  });
+  expect(locksInForce(app.store, vibe.id)).toHaveLength(1);
+  omlx.script({ tokens: ["no genome"] });
+  const run = evaluationJob(app, { vibeIds: [vibe.id], count: 1 });
+  await driveGaps(
+    clock,
+    app.config.queue.minGapMs,
+    run({ signal: new AbortController().signal, progress: () => undefined }),
+  );
+  expect(omlx.requests).toHaveLength(1);
+  expect(omlx.requests[0]?.body.messages[1].content).not.toContain("Locked by the owner");
 });

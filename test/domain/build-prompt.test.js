@@ -13,6 +13,7 @@ import { canonicalGenome } from "../../src/engine/canonical-genome.js";
 import colundiGenome from "../../src/engine/genomes/colundi.json" with { type: "json" };
 import exampleGenome from "../../src/engine/genomes/example.json" with { type: "json" };
 import { recordingVoiceText, schemaText } from "../../src/engine/schema-text.js";
+import { requireGenome } from "../../src/engine/validate-genome.js";
 
 const BUDGET = example.queue.contextBudgetTokens;
 
@@ -41,7 +42,7 @@ const revision = {
 };
 const locks = [
   { path: "reverbDecay", value: 8 },
-  { path: "voices.pad.hold", value: 40 },
+  { path: "voices.pad.hold", value: 40, voiceType: "pad" },
 ];
 const notes = ["less shimmer on the bells", "the pad swell is too fast"];
 
@@ -77,7 +78,8 @@ describe("buildPrompt", () => {
     expect(text).toContain(schemaText());
     for (const line of constraintsText(full).split("\n")) expect(text).toContain(line);
     expect(text).toContain("reverbDecay = 8");
-    expect(text).toContain("voices.pad.hold = 40");
+    // A voice's parameter names the voice's type, which the lock holds the voice to.
+    expect(text).toContain("voices.pad.hold = 40 (a pad voice)");
     expect(text).toContain(revision.name);
     expect(text).toContain(revision.brief);
     for (const note of notes) expect(text).toContain(note);
@@ -212,6 +214,26 @@ describe("buildPrompt", () => {
     });
     expect(exampleIds).toHaveLength(6);
     // A repair adds the answer and its errors; half the budget leaves that room.
+    expect(tokens(messages)).toBeLessThan(BUDGET / 2);
+  });
+
+  test("a seed-sized vibe with every voice of a genome locked whole still fits with room to repair", () => {
+    const seedSized = {
+      name: "cold dorian drone and pad",
+      brief: "b".repeat(600),
+      constraints: full,
+    };
+    const voices = requireGenome(exampleGenome, "example genome").voices;
+    const wholeVoices = voices.map((voice) => ({ path: `voices.${voice.id}`, value: voice }));
+    const { messages, exampleIds } = buildPrompt(seedSized, {
+      notes: Array.from({ length: 12 }, () => "n".repeat(150)),
+      locks: [...locks, ...wholeVoices],
+      examples: examples(6),
+      budgetTokens: BUDGET,
+      recordings: [],
+    });
+    expect(promptText(messages)).toContain(`voices.bell = ${JSON.stringify(voices[3])}`);
+    expect(exampleIds).toHaveLength(6);
     expect(tokens(messages)).toBeLessThan(BUDGET / 2);
   });
 });

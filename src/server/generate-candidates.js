@@ -3,7 +3,7 @@
 // answer parsed, validated and linted, one repair round for an answer with errors to quote, and
 // every generation and candidate stored. It runs only when the owner's route or job calls it.
 /** @import { Config } from "../config/config.js" */
-/** @import { Lock } from "../domain/build-prompt.js" */
+/** @import { Lock } from "../domain/validate-lock.js" */
 /** @import { RecordingListing } from "../domain/recordings-text.js" */
 /** @import { Constraints } from "../domain/constraint-schema.js" */
 /** @import { Finding, LintResult } from "../domain/lint-result.js" */
@@ -14,6 +14,7 @@
 /** @import { Completion, OmlxQueue } from "./omlx-queue.js" */
 
 /** @import { Store } from "./store.js" */
+import { applyLocks } from "../domain/apply-locks.js";
 import { buildPrompt } from "../domain/build-prompt.js";
 import { buildRepairPrompt } from "../domain/build-repair-prompt.js";
 import { ANSWER_KEY, extractGenome } from "../domain/extract-genome.js";
@@ -87,6 +88,9 @@ export const requestGroupName = (vibeId, seed) => `vibe-${vibeId}-stream-${seed}
  * @property {Genome | null} genome the valid genome; null when rejected
  * @property {Record<string, unknown> | null} answer
  * @property {unknown} written the genome as the answer wrote it; null when none parsed
+ * @property {{ locksChanged: string[], locksFilled: string[] } | null} lockChanges the lock
+ *   paths the answer changed and left out, which `applyLocks` restored; null when the genome
+ *   was rejected or no lock was in force
  */
 
 /**
@@ -95,7 +99,9 @@ export const requestGroupName = (vibeId, seed) => `vibe-${vibeId}-stream-${seed}
  * @property {number} seed the stream seed, an integer in [0, 2^32): sampling and candidate seeds
  *   are drawn from it, and it names the request group, so each value is used once
  * @property {number | null} sessionId
- * @property {Lock[]} locks
+ * @property {readonly Lock[]} locks written into every valid answer and stored on each
+ *   candidate: the session's job passes the vibe's live locks, the evaluation none (decision
+ *   0035)
  * @property {readonly RecordingListing[]} recordings the recordings folder's index, empty when the
  *   config sets no folder: the prompt lists them, and a genome naming another is repaired
  * @property {(candidate: Candidate, firstReason: RejectReason | null) => void | Promise<void>} [onCandidate]
@@ -149,6 +155,7 @@ const rejected = (reason, findings, rest = {}) => ({
   genome: null,
   answer: null,
   written: null,
+  lockChanges: null,
   ...rest,
 });
 
@@ -157,9 +164,10 @@ const rejected = (reason, findings, rest = {}) => ({
  * @param {Constraints} constraints
  * @param {number} maxTokens
  * @param {ReadonlySet<string>} playable hashes of the recordings the voice can play
+ * @param {readonly Lock[]} locks
  * @returns {Verdict}
  */
-function judge(completion, constraints, maxTokens, playable) {
+function judge(completion, constraints, maxTokens, playable, locks) {
   if (completion.finishReason === "length") {
     const message = `the answer hit max_tokens (${maxTokens}) and was cut off`;
     return rejected(REJECT_REASON.truncated, [
@@ -173,34 +181,42 @@ function judge(completion, constraints, maxTokens, playable) {
   }
   const { answer, intent, genome, errors } = extracted;
   const validated = genome === undefined ? null : validateGenome(genome);
+  // Locked values go in before the recordings are checked and the genome linted, so both see
+  // the genome that would be stored (decision 0035).
+  const locked = validated?.ok ? applyLocks(validated.genome, locks, genome) : null;
   const schemaFindings = [
     ...errors.map((e) => ({ ...e, rule: ANSWER_RULE })),
     ...(validated && !validated.ok
       ? validated.errors.map((e) => ({ ...e, rule: SCHEMA_RULE }))
       : []),
     // A hash the model made up or misspelled would render only to fail, so it is repaired here.
-    ...(validated?.ok
-      ? recordingRefs(validated.genome)
+    ...(locked
+      ? recordingRefs(locked.genome)
           .filter(({ hash }) => !playable.has(hash))
           .map(({ path }) => ({ path, rule: SCHEMA_RULE, message: UNLISTED_RECORDING }))
       : []),
   ];
-  if (schemaFindings.length > 0 || !validated?.ok) {
+  if (schemaFindings.length > 0 || !locked) {
     const written = genome ?? null;
-    return rejected(REJECT_REASON.schemaErrors, schemaFindings, { intent, answer, written });
+    const findings = [...schemaFindings, ...(locked?.findings ?? [])];
+    return rejected(REJECT_REASON.schemaErrors, findings, { intent, answer, written });
   }
-  const lint = lintGenome(validated.genome, constraints);
-  if (!lint.ok) {
-    return {
-      reason: REJECT_REASON.lintErrors,
-      lint,
-      intent,
-      genome: null,
-      answer,
-      written: genome,
-    };
-  }
-  return { reason: null, lint, intent, genome: validated.genome, answer: null, written: genome };
+  const linted = lintGenome(locked.genome, constraints);
+  // A lock the answer can't take is a lint finding, so the repair round gets it.
+  const lint = lintResult([...locked.findings, ...linted.findings]);
+  if (!lint.ok)
+    return rejected(REJECT_REASON.lintErrors, lint.findings, { intent, answer, written: genome });
+  const lockChanges =
+    locks.length === 0 ? null : { locksChanged: locked.changed, locksFilled: locked.filled };
+  return {
+    reason: null,
+    lint,
+    intent,
+    genome: locked.genome,
+    answer: null,
+    written: genome,
+    lockChanges,
+  };
 }
 
 /**
@@ -321,7 +337,7 @@ export async function generateCandidates(
       retries: completion.retries,
       error: null,
     });
-    const verdict = judge(completion, constraints, config.queue.maxTokens, playable);
+    const verdict = judge(completion, constraints, config.queue.maxTokens, playable, locks);
     return { generation, verdict, failure: null };
   }
 
@@ -344,7 +360,7 @@ export async function generateCandidates(
       parentIds: [],
       locks,
       operator: null,
-      operatorParams: null,
+      operatorParams: verdict.lockChanges,
       intent: verdict.intent,
       rejectReason: verdict.reason,
       lint: verdict.lint,

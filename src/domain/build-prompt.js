@@ -4,6 +4,7 @@
 /** @import { Constraints } from "./constraint-schema.js" */
 /** @import { ChatMessage } from "./prompt-tokens.js" */
 /** @import { RecordingListing } from "./recordings-text.js" */
+/** @import { Lock } from "./validate-lock.js" */
 import { canonicalGenome } from "../engine/canonical-genome.js";
 import { schemaText } from "../engine/schema-text.js";
 import { constraintsText } from "./constraints-text.js";
@@ -20,13 +21,6 @@ import { recordingsText } from "./recordings-text.js";
  */
 
 /**
- * A value the owner locked, which the genome must keep (phase 3 builds the locking).
- * @typedef {object} Lock
- * @property {string} path as the vector view writes it: `reverbDecay`, `voices.pad.hold`
- * @property {unknown} value
- */
-
-/**
  * A genome the owner rated in this vibe.
  * @typedef {object} PromptExample
  * @property {number} id the genome's row id, logged with the generation
@@ -37,7 +31,7 @@ import { recordingsText } from "./recordings-text.js";
 /**
  * @typedef {object} PromptParts
  * @property {string[]} notes the owner's notes, oldest first
- * @property {Lock[]} locks
+ * @property {readonly Lock[]} locks
  * @property {PromptExample[]} examples most wanted first; trimmed from the end
  * @property {number} budgetTokens the queue's `contextBudgetTokens`
  * @property {readonly RecordingListing[]} recordings the recordings folder's index, empty when
@@ -75,7 +69,11 @@ function messages(revision, { notes, locks, examples, recordings }) {
     constraintsText(revision.constraints),
     ...section(
       "Locked by the owner; keep these values exactly:",
-      locks.map(({ path, value }) => `${path} = ${JSON.stringify(value)}`),
+      // A voice's parameter names the type too: the lock holds only while the voice keeps it.
+      locks.map(
+        ({ path, value, voiceType }) =>
+          `${path} = ${JSON.stringify(value)}${voiceType === undefined ? "" : ` (a ${voiceType} voice)`}`,
+      ),
     ),
     ...section(
       "The owner's notes, oldest first:",

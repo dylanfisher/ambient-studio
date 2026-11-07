@@ -10,6 +10,7 @@
 import { excerptRequest } from "./candidate-excerpt.js";
 import { GENERATION_STEP, generateCandidates } from "./generate-candidates.js";
 import { JOB_STEP } from "./job-steps.js";
+import { locksInForce } from "./lock-store.js";
 import { indexRecordings } from "./recording-index.js";
 import { renderExcerpt, renderExcerpts } from "./render-excerpt.js";
 
@@ -122,7 +123,7 @@ export function candidateJob(app, { vibeId, sessionId, count }) {
           config: app.config,
           seed: Math.floor(app.random() * STREAM_SEEDS),
           sessionId,
-          locks: [],
+          locks: locksInForce(app.store, vibeId),
           recordings,
           onStep: (step) => job.progress(done, count, generationStepText(step, 0, count)),
           onCandidate: async (candidate) => {

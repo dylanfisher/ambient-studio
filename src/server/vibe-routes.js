@@ -59,7 +59,7 @@ function readDraft(body) {
  * @param {Record<string, string>} params
  * @returns {Vibe}
  */
-function requireVibe(store, params) {
+export function requireVibe(store, params) {
   const id = idParam(params, "vibeId");
   const vibe = getVibe(store, id);
   if (!vibe || vibe.removedAt !== null) throw new HttpError(404, `there is no vibe ${id}`);

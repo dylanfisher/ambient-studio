@@ -156,6 +156,89 @@ describe("generateCandidates", () => {
     expect(candidates[2]?.genomeId).toBe(null);
   });
 
+  test("an answer that changes two locked values is stored with both restored and listed", async () => {
+    const { omlx, config, queue, store, vibe, drive } = await setup();
+    const { generateCandidates } = await load();
+    const owned = [
+      { path: "reverbDecay", value: 8 },
+      { path: "voices.pad.hold", value: 30, voiceType: "pad" },
+      { path: "delayTime", value: 0.75 },
+    ];
+    const { delayTime, ...changed } = structuredClone(valid);
+    changed.reverbDecay = 14;
+    const pad = changed.voices.find((v) => v.id === "pad");
+    if (pad) pad.hold = 60;
+    omlx.script(says(answer(changed)));
+    const { candidates } = await drive(
+      generateCandidates(vibe.id, 1, store, queue, {
+        config,
+        seed: 21,
+        sessionId: null,
+        locks: owned,
+        recordings: [],
+      }),
+    );
+    const [candidate] = candidates;
+    expect(candidate).toMatchObject({
+      rejectReason: null,
+      locks: owned,
+      operator: null,
+      operatorParams: {
+        locksChanged: ["reverbDecay", "voices.pad.hold"],
+        locksFilled: ["delayTime"],
+      },
+    });
+    const [stored] = listGenomes(store, vibe.id);
+    expect(canonicalGenome(stored?.genome)).toBe(canonicalGenome(valid));
+    expect(stored?.id).toBe(candidate?.genomeId);
+  });
+
+  test("a lock on a voice the answer dropped goes to the repair round", async () => {
+    const { omlx, config, queue, store, vibe, drive } = await setup();
+    const { generateCandidates } = await load();
+    const owned = [{ path: "voices.pad.hold", value: 30, voiceType: "pad" }];
+    const noPad = { ...valid, voices: valid.voices.filter((v) => v.id !== "pad") };
+    omlx.script(says(answer(noPad)), says(answer(valid)));
+    /** @type {(string | null)[]} */
+    const firstReasons = [];
+    const { candidates } = await drive(
+      generateCandidates(vibe.id, 1, store, queue, {
+        config,
+        seed: 22,
+        sessionId: null,
+        locks: owned,
+        recordings: [],
+        onCandidate: (_, firstReason) => {
+          firstReasons.push(firstReason);
+        },
+      }),
+    );
+    expect(firstReasons).toEqual([REJECT_REASON.lintErrors]);
+    expect(omlx.requests).toHaveLength(2);
+    const repairAsk = omlx.requests[1]?.body.messages.at(-1).content;
+    expect(repairAsk).toMatch(/- \$\.voices \(lock\): .*voices\.pad\.hold/);
+    expect(candidates[0]).toMatchObject({
+      rejectReason: null,
+      operatorParams: { locksChanged: [], locksFilled: [] },
+    });
+  });
+
+  test("with no locks a candidate stores no lock changes", async () => {
+    const { omlx, config, queue, store, vibe, drive } = await setup();
+    const { generateCandidates } = await load();
+    omlx.script(says(answer(valid)));
+    const { candidates } = await drive(
+      generateCandidates(vibe.id, 1, store, queue, {
+        config,
+        seed: 23,
+        sessionId: null,
+        locks: [],
+        recordings: [],
+      }),
+    );
+    expect(candidates[0]).toMatchObject({ rejectReason: null, locks: [], operatorParams: null });
+  });
+
   test("onCandidate gets each stored candidate with its first answer's reason", async () => {
     const { omlx, config, queue, store, vibe, drive } = await setup();
     const { generateCandidates } = await load();
