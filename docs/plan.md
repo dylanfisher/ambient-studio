@@ -53,6 +53,8 @@ unneeded stays unused rather than being given to another step.
 | 0028 | Session UI and keys | 2j | — |
 | 0029 | Sample layer | 2k | — |
 | 0030 | Seed vibes and the evaluation report | 2l | — |
+| 0031 | Automatic excerpts, one job per action, progress steps, thinking switch, prompt notation | 2m | — |
+| 0032 | Plain-language studio pages, "brief" for vibe | 2n | — |
 
 ## Phase 1 — Engine, schema and macros
 
@@ -900,6 +902,31 @@ Order: 2a ‖ 2b, then 2c ‖ 2d, then 2e ‖ 2f, then 2g ‖ 2h, then 2i ‖ 2k
 
 **Result:**
 
+#### 2m — Fewer waits after the first evaluation
+
+- **Builds:** a candidates job renders each valid candidate's excerpt itself, so nothing is
+  queued by hand. A job identical to one queued or running is refused with 409 naming that
+  job. Job status carries a plain-language step ("asking the model for candidate 3 of 8").
+  `queue.thinking` decides whether requests ask the model to think first. The prompt's mark
+  for macro parameters stops being copied into key names.
+- **Why:** in the first evaluation, 14 of 16 first answers failed only because the model wrote
+  keys like `cutoff~`. Each request spent about 5,000 tokens and 55 s thinking for a
+  400-character answer. The owner queued excerpts by hand and could queue the same one twice.
+- **Records:** 0031; amends 0022, 0024 and 0026.
+
+#### 2n — Plain-language pages
+
+- **Builds:** pages with ordinary navigation and buttons instead of single-key commands. Every
+  control gets a title that says what it does. Pages also get:
+  - a short muted line on each page saying how to use it;
+  - a dashboard card explaining the whole loop;
+  - progress shown from 2m's steps;
+  - controls that send a job once while it is pending;
+  - smaller type in a neutral card style.
+
+  The pages say "brief" where they said "vibe". Code, routes and stored names stay as they are.
+- **Records:** 0032; amends 0028 and 0030.
+
 ## Phase 3 — Ears and steering
 
 **Goal:** the LLM hears measured features before the owner does, and the owner can lock, explore
@@ -1501,3 +1528,14 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   gate's tools still skip `tmp/`, `.claude/worktrees/`, `node_modules/` and `.venv/` (biome via
   `.gitignore`, links via `git ls-files`, tsc, knip, arch and dupes by their `src`/`test`/`scripts`
   roots); nothing in the checkers changed.
+- 2026-11-06: the owner's first evaluation (Cold dorian drone, 16 candidates): 2 valid on the
+  first try and 14 after one repair. Every first-try failure was a schema error: the model copied
+  the prompt's `~` mark for macro parameters into key names (`cutoff~` 22 times, `sweep~` 22,
+  `swing~` 19, `tone~` 14, `level~` 13). No lint errors, no truncations. A request takes 54 s at
+  the median, almost all of it about 5,000 tokens of thinking before a 400-character answer.
+  The owner, quoted: "any action to queue a job should only ever be able to be triggered once
+  per unique action"; "automate all of the task except for describing the brief ... and
+  evaluating the results"; and asked for traditional navigation in place of single-key
+  commands, tooltips on everything, plain language, smaller type, a dashboard explaining the
+  process, more progress detail, and a literal name for vibes. Steps 2m and 2n were added for
+  this. The owner also listened to the first session's 25 s excerpts: "all sound pretty good".
