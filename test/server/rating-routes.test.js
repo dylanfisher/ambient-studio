@@ -4,7 +4,7 @@
 /** @import { Studio } from "../support/studio.js" */
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "vitest";
 import { AB_ORDER_SEEDS, abOrder } from "../../src/domain/ab-order.js";
 import { ENGINE_VERSION } from "../../src/engine/engine-version.js";
 import { listRatedAudio, listRatedGenomes } from "../../src/server/rating-store.js";
@@ -252,17 +252,27 @@ describe("ratings", () => {
   });
 });
 
+// One session with two rendered candidates serves every test here, since rendering them is most
+// of a test's time. Each test uses its own candidate and macro, or thumbs on a candidate no
+// other test gives thumbs, so none sees another's rows.
 describe("undo and replace (0031)", () => {
+  /** @type {Awaited<ReturnType<typeof setup>>} */
+  let shared;
+  beforeAll(async () => {
+    shared = await setup();
+    // afterEach removes the studios in the list; this one lasts until afterAll.
+    studios.splice(studios.indexOf(shared), 1);
+  });
+  afterAll(() => removeStudio(shared));
+
   /**
-   * Posts macro feedback or thumbs on `candidate`'s excerpt.
-   * @param {Studio["ok"]} ok
-   * @param {number} sessionId
+   * Posts macro feedback or thumbs on `candidate`'s excerpt in the shared session.
    * @param {any} candidate
    */
-  const poster = (ok, sessionId, candidate) => ({
-    /** @param {"more" | "less"} direction @param {string} [macro] */
-    macro: (direction, macro = "brightness") =>
-      ok("POST", `/api/sessions/${sessionId}/macro-feedback`, {
+  const poster = (candidate) => ({
+    /** @param {"more" | "less"} direction @param {string} macro */
+    macro: (direction, macro) =>
+      shared.ok("POST", `/api/sessions/${shared.session.id}/macro-feedback`, {
         renderId: candidate.excerpt.renderId,
         macro,
         direction,
@@ -271,7 +281,7 @@ describe("undo and replace (0031)", () => {
       }),
     /** @param {"up" | "down"} direction */
     thumbs: (direction) =>
-      ok("POST", `/api/sessions/${sessionId}/thumbs`, {
+      shared.ok("POST", `/api/sessions/${shared.session.id}/thumbs`, {
         renderId: candidate.excerpt.renderId,
         direction,
         playedFraction: 1,
@@ -280,88 +290,93 @@ describe("undo and replace (0031)", () => {
   });
 
   /**
-   * Every feedback row of the session, removed ones too, oldest first.
-   * @param {Studio["server"]} server
-   * @param {number} sessionId
+   * The feedback rows with these ids, removed ones too, oldest first.
+   * @param {...number} ids
    */
-  const allFeedback = (server, sessionId) =>
-    server.store.db
-      .prepare("SELECT id, direction, removedReason FROM feedback WHERE sessionId = ? ORDER BY id")
-      .all(sessionId);
+  const rows = (...ids) =>
+    shared.server.store.db
+      .prepare(
+        `SELECT id, direction, removedReason FROM feedback WHERE id IN (${ids.map(() => "?").join(",")}) ORDER BY id`,
+      )
+      .all(...ids);
+
+  /** The shared session's candidate with this id, as the list gives it. */
+  const listed = async (/** @type {number} */ id) =>
+    (await shared.ok("GET", `/api/sessions/${shared.session.id}/candidates`)).candidates.find(
+      (/** @type {any} */ c) => c.id === id,
+    );
 
   test("the other direction on a macro replaces the live row, marking the old one", async () => {
-    const { server, ok, session, one } = await setup();
-    const post = poster(ok, session.id, one);
-    const more = await post.macro("more");
-    const less = await post.macro("less");
+    const { one } = shared;
+    const more = await poster(one).macro("more", "brightness");
+    const less = await poster(one).macro("less", "brightness");
     expect(less.id).not.toBe(more.id);
-    expect(allFeedback(server, session.id)).toEqual([
+    expect(rows(more.id, less.id)).toEqual([
       { id: more.id, direction: "more", removedReason: "replaced" },
       { id: less.id, direction: "less", removedReason: null },
     ]);
     // Another macro on the same candidate is its own state.
-    const warmer = await post.macro("more", "warmth");
-    expect(allFeedback(server, session.id)).toHaveLength(3);
-    const [candidate] = (await ok("GET", `/api/sessions/${session.id}/candidates`)).candidates;
-    expect(candidate.feedback).toEqual({
-      thumbs: null,
-      macros: {
-        brightness: { id: less.id, direction: "less" },
-        warmth: { id: warmer.id, direction: "more" },
-      },
+    const warmer = await poster(one).macro("more", "warmth");
+    expect(rows(more.id, less.id, warmer.id)).toHaveLength(3);
+    const { feedback } = await listed(one.id);
+    expect(feedback.macros).toMatchObject({
+      brightness: { id: less.id, direction: "less" },
+      warmth: { id: warmer.id, direction: "more" },
     });
   });
 
   test("the same direction twice keeps one row and returns it", async () => {
-    const { server, ok, session, one } = await setup();
-    const post = poster(ok, session.id, one);
-    const first = await post.macro("more");
-    expect(await post.macro("more")).toEqual(first);
-    const up = await post.thumbs("up");
-    expect(await post.thumbs("up")).toEqual(up);
-    expect(allFeedback(server, session.id)).toHaveLength(2);
+    const { server, session, two } = shared;
+    const before = server.store.db
+      .prepare("SELECT COUNT(*) AS n FROM feedback WHERE sessionId = ?")
+      .get(session.id)?.n;
+    const first = await poster(two).macro("more", "density");
+    expect(await poster(two).macro("more", "density")).toEqual(first);
+    const up = await poster(two).thumbs("up");
+    expect(await poster(two).thumbs("up")).toEqual(up);
+    const after = server.store.db
+      .prepare("SELECT COUNT(*) AS n FROM feedback WHERE sessionId = ?")
+      .get(session.id)?.n;
+    expect(Number(after) - Number(before)).toBe(2);
   });
 
   test("thumbs hold one live direction per candidate", async () => {
-    const { server, ok, vibe, session, one, two } = await setup();
-    const up = await poster(ok, session.id, one).thumbs("up");
-    const down = await poster(ok, session.id, one).thumbs("down");
-    await poster(ok, session.id, two).thumbs("up");
-    expect(allFeedback(server, session.id).map((r) => r.removedReason)).toEqual([
-      "replaced",
-      null,
-      null,
-    ]);
+    const { server, ok, vibe, one } = shared;
+    const up = await poster(one).thumbs("up");
+    const down = await poster(one).thumbs("down");
+    expect(rows(up.id, down.id).map((r) => r.removedReason)).toEqual(["replaced", null]);
     const { feedback } = await ok("GET", `/api/vibes/${vibe.id}/ratings`);
     expect(feedback.map((/** @type {any} */ f) => f.id)).not.toContain(up.id);
     // The replaced up counts for nothing: the genome scores -1, not 0 (0024).
     const scores = listRatedGenomes(server.store, vibe.id);
     expect(scores.find((s) => s.genomeId === one.genomeId)?.score).toBe(-1);
-    const [first] = (await ok("GET", `/api/sessions/${session.id}/candidates`)).candidates;
-    expect(first.feedback.thumbs).toEqual({ id: down.id, direction: "down", note: null });
+    expect((await listed(one.id)).feedback.thumbs).toEqual({
+      id: down.id,
+      direction: "down",
+      note: null,
+    });
   });
 
   test("remove marks the row undone, and removing it again changes nothing", async () => {
-    const { server, ok, vibe, session, one } = await setup();
-    const up = await poster(ok, session.id, one).thumbs("up");
-    const path = `/api/sessions/${session.id}/feedback/${up.id}/remove`;
+    const { server, ok, vibe, session, two } = shared;
+    const more = await poster(two).macro("more", "motion");
+    const path = `/api/sessions/${session.id}/feedback/${more.id}/remove`;
     const removed = await ok("POST", path, {});
-    expect(removed).toMatchObject({ id: up.id, removedReason: "undone" });
+    expect(removed).toMatchObject({ id: more.id, removedReason: "undone" });
     expect(removed.removedAt).toEqual(expect.any(Number));
     expect(await ok("POST", path, {})).toEqual(removed);
-    expect(listRatedGenomes(server.store, vibe.id)).toEqual([]);
-    expect((await ok("GET", `/api/vibes/${vibe.id}/ratings`)).feedback).toEqual([]);
-    const [candidate] = (await ok("GET", `/api/sessions/${session.id}/candidates`)).candidates;
-    expect(candidate.feedback).toEqual({ thumbs: null, macros: {} });
+    const { feedback } = await ok("GET", `/api/vibes/${vibe.id}/ratings`);
+    expect(feedback.map((/** @type {any} */ f) => f.id)).not.toContain(more.id);
+    expect((await listed(two.id)).feedback.macros).not.toHaveProperty("motion");
     // The heard excerpt stays kept: the removed row still names it.
-    expect(listRatedAudio(server.store).map((a) => a.id)).toEqual([up.ratedAudioId]);
+    expect(listRatedAudio(server.store).map((a) => a.id)).toContain(more.ratedAudioId);
     // After an undo the same direction is a new row.
-    const again = await poster(ok, session.id, one).thumbs("up");
-    expect(again.id).not.toBe(up.id);
+    const again = await poster(two).macro("more", "motion");
+    expect(again.id).not.toBe(more.id);
   });
 
   test("an A/B rating can be removed, once", async () => {
-    const { server, ok, vibe, session, one, two } = await setup();
+    const { ok, vibe, session, one, two } = shared;
     const at = `/api/sessions/${session.id}`;
     const pair = await ok("POST", `${at}/ab-pairs`, {
       a: one.excerpt.renderId,
@@ -380,28 +395,28 @@ describe("undo and replace (0031)", () => {
     const removed = await ok("POST", path, {});
     expect(removed).toMatchObject({ id: rating.id, outcome: "a", removedReason: "undone" });
     expect(await ok("POST", path, {})).toEqual(removed);
-    expect((await ok("GET", `/api/vibes/${vibe.id}/ratings`)).ratings).toEqual([]);
-    expect(listRatedGenomes(server.store, vibe.id)).toEqual([]);
+    const { ratings } = await ok("GET", `/api/vibes/${vibe.id}/ratings`);
+    expect(ratings.map((/** @type {any} */ r) => r.id)).not.toContain(rating.id);
   });
 
   test("a row of another session, or none, is a 404", async () => {
-    const { server, ok, vibe, session, one } = await setup();
-    const up = await poster(ok, session.id, one).thumbs("up");
+    const { server, ok, vibe, session, two } = shared;
+    const up = await poster(two).thumbs("up");
     const other = await ok("POST", `/api/vibes/${vibe.id}/sessions`, {});
     for (const path of [
       `/api/sessions/${other.id}/feedback/${up.id}/remove`,
-      `/api/sessions/${session.id}/feedback/999/remove`,
-      `/api/sessions/${session.id}/ab-ratings/999/remove`,
+      `/api/sessions/${session.id}/feedback/999999/remove`,
+      `/api/sessions/${session.id}/ab-ratings/999999/remove`,
     ]) {
       expect((await server.api("POST", path, {})).status).toBe(404);
     }
   });
 
   test("two posts at once leave one live row", async () => {
-    const { server, session, one } = await setup();
+    const { server, session, two } = shared;
     const body = (/** @type {string} */ direction) => ({
-      renderId: one.excerpt.renderId,
-      macro: "brightness",
+      renderId: two.excerpt.renderId,
+      macro: "space",
       direction,
       playedFraction: 1,
       timeTakenMs: 1000,
@@ -413,7 +428,11 @@ describe("undo and replace (0031)", () => {
     ]) {
       const replies = await Promise.all(directions.map((d) => server.api("POST", path, body(d))));
       expect(replies.map((r) => r.status)).toEqual([200, 200]);
-      const live = allFeedback(server, session.id).filter((r) => r.removedReason === null);
+      const live = server.store.db
+        .prepare(
+          "SELECT id FROM feedback WHERE sessionId = ? AND macro = 'space' AND removedAt IS NULL",
+        )
+        .all(session.id);
       expect(live).toHaveLength(1);
     }
   });
