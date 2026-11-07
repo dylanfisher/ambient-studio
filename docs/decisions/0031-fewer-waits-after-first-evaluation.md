@@ -148,3 +148,7 @@ identity. No rated audio is removed when a rating is.
   between 0.3 and 0.7 (one number)`: "from 0.1 to 0.45 over the whole timeline" read as a ramp.
   The other constraint texts name no macro or trajectory. The schema still refuses bare arrays,
   and the engine version stays: prompts are not audio.
+  Correction: "(one number)" was wrong, because a macro may be a trajectory and the linter checks
+  its whole range. 7 of 16 valid answers in the next test wrote `{"points": [...]}` for
+  brightness and passed. The text now reads `macros.brightness stays between 0.3 and 0.7 the
+  whole time (a number, or a trajectory within that range)`.

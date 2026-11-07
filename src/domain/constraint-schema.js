@@ -228,7 +228,8 @@ const padChords = /** @type {ConstraintKind<number>} */ ({
 const brightness = /** @type {ConstraintKind<Range>} */ ({
   form: FORM.range,
   value: still(MACROS.brightness),
-  text: ({ min, max }) => `macros.brightness between ${min} and ${max} (one number)`,
+  text: ({ min, max }) =>
+    `macros.brightness stays between ${min} and ${max} the whole time (a number, or a trajectory within that range)`,
   lint: (genome, { min, max }) => {
     const [lo, hi] = valueRange(
       genome.macros.brightness,

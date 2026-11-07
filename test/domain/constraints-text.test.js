@@ -36,7 +36,8 @@ const lines = {
   bellNotes: /^bell density at most 4 \/min, macro offsets included$/m,
   grains: /^granular density at most 10 \/s, macro offsets included$/m,
   padChords: /^pad hold at least 40 s \(at most 1\.5 chords a minute\)$/m,
-  brightness: /^macros\.brightness between 0\.3 and 0\.7 \(one number\)$/m,
+  brightness:
+    /^macros\.brightness stays between 0\.3 and 0\.7 the whole time \(a number, or a trajectory within that range\)$/m,
   cost: /^render cost at most 300; /m,
 };
 
@@ -51,9 +52,11 @@ describe("constraintsText", () => {
     for (const pattern of Object.values(lines)) expect(text).toMatch(pattern);
   });
 
-  // A model read "from 0.1 to 0.45 over the whole timeline" as a ramp and wrote a trajectory.
-  test("words the brightness range as one number, not a ramp", () => {
+  // "From 0.1 to 0.45 over the whole timeline" read as a ramp. A macro may be a trajectory, so
+  // the text must not say "one number" either.
+  test("words the brightness range as a bound at every moment, not a ramp or one number", () => {
     const text = constraintsText(full);
+    expect(text).not.toContain("one number");
     expect(text).not.toContain("over the whole timeline");
     expect(text).not.toMatch(/macros\.brightness from /);
   });
