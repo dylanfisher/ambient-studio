@@ -88,6 +88,8 @@ export function evaluationJob(app, { vibeIds, count }) {
     const cancelRequests = () => app.queue.cancel();
     job.signal.addEventListener("abort", cancelRequests);
     try {
+      // A cancel while the folder was indexed fired before the listener was added.
+      job.signal.throwIfAborted();
       for (const { vibeId, outcomes } of runs) {
         try {
           await generateCandidates(vibeId, count, store, app.queue, {

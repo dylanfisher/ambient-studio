@@ -91,6 +91,8 @@ export function candidateJob(app, { vibeId, sessionId, count }) {
     /** @type {Awaited<ReturnType<typeof generateCandidates>>} */
     let generated;
     try {
+      // A cancel while the folder was indexed fired before the listener was added.
+      job.signal.throwIfAborted();
       generated = await generateCandidates(vibeId, count, app.store, app.queue, {
         config: app.config,
         seed: Math.floor(app.random() * STREAM_SEEDS),
