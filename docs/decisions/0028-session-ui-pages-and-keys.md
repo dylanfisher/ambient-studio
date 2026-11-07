@@ -146,3 +146,5 @@ and time taken. Safari itself is the owner's check on mbp2015.
   report, Shift+S start, `c` cancel, `l` the vibe list). The vibe list lists the seed vibes after
   the vibes: `j` / `k` move through both, Enter opens a vibe or loads a seed, and `e` opens the
   evaluations. The polling interval moved to `src/web/poll-ms.js`, which both job pages import.
+  Known: a focused vibe checkbox on the evaluation page takes every key but Esc, as this
+  record's rule for checkboxes says, so `S`, `c`, `j` and `k` wait until Esc leaves it.
