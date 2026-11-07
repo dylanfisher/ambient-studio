@@ -32,4 +32,8 @@ export const JOB_STEP = Object.freeze({
   fetchingEmbedder: "Loading the sound-analysis model; the first time, it downloads 0.8 GB",
   /** @param {number} n @param {number} of */
   embeddingExcerpt: (n, of) => `Analyzing the sound of excerpt ${n} of ${of}`,
+  fittingCheck: "Checking that every rated excerpt's sound is analyzed",
+  fittingGlobal: "Learning your taste across every brief",
+  /** @param {number} n @param {number} of */
+  fittingVibe: (n, of) => `Learning your taste for brief ${n} of ${of}`,
 });
