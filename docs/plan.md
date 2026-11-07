@@ -1395,3 +1395,45 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   brief 4,000, notes 2,000, 32 tags of 64). A test ties the rating enums to 0001's CHECK lists.
   Acceptance 4 passes: every rating kind read back whole after a restart on the same root. 877
   tests.
+- 2026-11-06: 2k merged as c035a18 (Opus: 360k tokens, 228 tool calls, 41.6 min, then a fix round
+  at 421k, 72 calls, 20.4 min; reviewer Sonnet: 101k tokens, 43 tool calls, 9.2 min, PASS with
+  findings taken before merge; fixes read by the orchestrator). A `recording` voice that plays
+  one decoded file, named by its SHA-256, looped or scattered by the seed in equal-power
+  crossfaded passes, with rate, a fixed high-pass, a low-pass cutoff and pan; computed in JS one
+  2 s window at a time like the noise bed, so an excerpt matches a full render exactly. The engine
+  does no I/O: the server indexes the folder (header reads, streamed hashes, reused when size and
+  time are unchanged), rehashes and decodes only what a genome uses, and passes `samples` through
+  render, export, rerender, the CLI's `--recordings` and the excerpt jobs. `decodeAudioData` read
+  WAV, 24-bit FLAC and big-endian AIFF; 44.1 kHz decodes to 48 kHz deterministically. Decoded
+  length and channels are checked as well as the header's, since a header can understate them.
+  `schemaText()` and `randomGenome` leave the voice out, so both are byte-identical (old seeds
+  pinned by hash); the prompt lists up to 32 recordings only when the folder has some. Every
+  existing golden matches, ENGINE_VERSION stays 2, and the voice's golden joins them. The
+  reviewer's mutation checks caught four of five breaks; a one-frame shift of window starts is
+  caught only by the noise bed's test. The header reader trusted a chunk whose size ran past the
+  file, found by the new header tests. A 25 s excerpt with two recording voices: about 0.67 s.
+  919 tests. Pending owner checks: point `fieldRecordings` at the real folder and listen for
+  clicks at pass seams in loop and scatter modes, for aliasing at rates above 1, and look at the
+  folder rules in 0029 (20 minutes, 2 channels, 32 listed, one unreadable header stops the index).
+- 2026-11-06: retrospective after 2g, 2h, 2i, 2k (orchestrator rule 11).
+
+  | Step | Build | Fix round | Review |
+  |---|---|---|---|
+  | 2g | 148k, 65 calls, 13.4 min | 202k, 16.5 min | 69k, 4.2 min, FAIL |
+  | 2h | 192k, 104 calls, 18.9 min | 240k, 10.3 min | 64k, 5.1 min, PASS with findings |
+  | 2i | 285k, 156 calls, 27.7 min | 313k, 9.3 min | 105k, 6.6 min, PASS with findings |
+  | 2k | 360k, 228 calls, 41.6 min | 421k, 20.4 min | 101k, 9.2 min, PASS with findings |
+
+  Where it went: every step had a fix round, and the round's tokens exceed the build's, because a
+  resumed builder carries its whole build context; the round's wall time is a third to a half of
+  the build's. Each round fixed something a user would hit: a 500 that leaked paths, render ids
+  reused under stale URLs, a whole batch failed by one candidate, uncapped text fields, a
+  recording header trusted past the file's end. Reviews ran 4–9 minutes and slowed when two
+  shared the machine with a builder's full suite; two reviewers stopped their own long test runs
+  and relied on targeted files. 2k was the most expensive step of the phase so far: engine
+  plumbing through five render paths plus a performance target re-measured twice. Changes:
+  reviewers run the test files the diff touches first and the `--changed` suite only when the
+  machine is quiet; when a review finds only small items, the orchestrator sends them as one round
+  rather than waiting for a second review; briefs for steps that call each other's functions name
+  who adapts the caller at merge (2k adapted 2i's job, which worked). The gate's tools still skip
+  `tmp/`, `.claude/worktrees/`, `node_modules/` and `.venv/`; nothing in the checkers changed.
