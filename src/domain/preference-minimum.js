@@ -2,6 +2,9 @@
 // ratings that aren't skips, a tie counted once, over enough sessions. Leave-one-session-out
 // needs three sessions for every fold to train on more than one.
 
+/** What the minimum counts, in the words the pages use for one. */
+export const PAIR_NOUN = "A/B choice";
+
 /** Below this a vibe reads "not enough data". */
 export const PREFERENCE_MINIMUM = Object.freeze({ pairs: 40, sessions: 3 });
 

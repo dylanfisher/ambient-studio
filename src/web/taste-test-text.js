@@ -1,6 +1,6 @@
 // The taste model test's report in plain words (decisions 0032 and 0045). No DOM here, so the
 // wording is tested. The report is the server's `PreferenceTestReport`, read as JSON.
-import { PREFERENCE_MINIMUM } from "../domain/preference-minimum.js";
+import { PAIR_NOUN, PREFERENCE_MINIMUM } from "../domain/preference-minimum.js";
 
 const NEEDS = `${PREFERENCE_MINIMUM.pairs} A/B choices over at least ${PREFERENCE_MINIMUM.sessions} sessions`;
 
@@ -62,7 +62,7 @@ export function tasteSummary(vibe) {
         `${shortfall.pairs > 0 ? "over " : ""}at least ${plural(shortfall.sessions, "more session", "more sessions")}`,
       );
     }
-    return `Not enough data: ${plural(pairs, "A/B choice", "A/B choices")} over ${plural(sessions, "session", "sessions")}. It needs ${more.join(", ")}.${leftOutText(vibe)}`;
+    return `Not enough data: ${plural(pairs, PAIR_NOUN, `${PAIR_NOUN}s`)} over ${plural(sessions, "session", "sessions")}. It needs ${more.join(", ")}.${leftOutText(vibe)}`;
   }
   const { agreement } = test.model;
   if (agreement === null) {

@@ -4,7 +4,7 @@
 // The CLAP components have no names, so the text gives only their share of the weights.
 import { FEATURE_NAMES } from "./feature-names.js";
 import { macroVerb, macroWords } from "./macro-words.js";
-import { shortfall } from "./preference-minimum.js";
+import { PAIR_NOUN, shortfall } from "./preference-minimum.js";
 
 /** A 95% interval is the mean ± this many standard deviations. */
 const Z_95 = 1.96;
@@ -111,11 +111,11 @@ export function preferenceText(found) {
     return preferenceText({ state: PREFERENCE_STATE.none, reason: null });
   }
 
-  const rests = `${counted(pairs, "A/B choice")} over ${counted(sessions, "session")}`;
+  const rests = `${counted(pairs, PAIR_NOUN)} over ${counted(sessions, "session")}`;
   const more = shortfall(pairs, sessions);
   if (more !== null) {
     const needs = [
-      more.pairs > 0 ? counted(more.pairs, "more A/B choice") : "",
+      more.pairs > 0 ? counted(more.pairs, `more ${PAIR_NOUN}`) : "",
       more.sessions > 0 ? counted(more.sessions, "more session") : "",
     ].filter((part) => part !== "");
     return {
