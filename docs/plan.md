@@ -1454,3 +1454,7 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   owner checks, on Safari 17.6 (mbp2015) and mbp2026: playback and seeking, rating everything by
   keyboard, visible focus and readable type, ratings listed after a restart, A/B sides equally
   loud, and `Q` confirming before a stop.
+- 2026-11-06: owner check of 2j on a throwaway studio served on the home network (temp data
+  root, omlx address unreachable, three seeded candidates): the owner tried the pages and called
+  them a good start. No faults reported; the per-item listening and keyboard checks above stay
+  open for the first real session.
