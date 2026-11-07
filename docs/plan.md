@@ -62,7 +62,7 @@ unneeded stays unused rather than being given to another step.
 | 0037 | `sessionId` on candidates, nudge and branch | 3e | [written](decisions/0037-nudge-and-branch.md) |
 | 0038 | Explore | 3f | [written](decisions/0038-explore.md) |
 | 0039 | Lineage tree and the steering controls | 3g | [written](decisions/0039-lineage-and-steering-controls.md) |
-| 0040 | Revision evaluation against a control | 3h | — |
+| 0040 | Revision evaluation against a control | 3h | [written](decisions/0040-revision-evaluation.md) |
 
 ## Phase 1 — Engine, schema and macros
 
@@ -2163,3 +2163,43 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   page. Also: in Safari, pick a lock path and press Lock while a revised pair waits to swap; the
   card and its offer should stay until answered. The seed files changed in 3b, so load the seeds
   again (or type ranges onto the loaded vibes) before checking them.
+- 2026-11-07: 3h merged as d446aa8 (Opus: 243k tokens, 79 calls, 23.1 min, then a fix round of
+  4.7 min; reviewer Sonnet: 93k tokens, 23 calls, 5.8 min, PASS with findings taken before
+  merge; fixes read by the orchestrator). The evaluation gains "Also test the revision step":
+  every first try that misses a range or fails a render check is revised twice from the same
+  first try, the treatment through 3d's ask and the control (`revise-control`, never in a
+  session) with the measured line and misses taken out; the arms alternate which goes first, and
+  have their own seeds (slots 3 and 4) and request groups. `exactMcNemar` gives the one-sided p
+  (9 against 1: 11/1024); the report gives shares before and after each arm with Wilson
+  intervals, the paired counts, unchanged, over-budget and rejected revisions per arm, each arm's
+  request times, and the revision and ranges each vibe used, read from its first tries' own
+  revision. Verdicts: passes (p < 0.05 over at least 20 revised first tries), inconclusive below
+  20, asking again, fails. The review found a mid-run range edit could score a vibe against the
+  wrong ranges, the confirm promised about 192 minutes for a 27–40 minute run, and a render fault
+  lost the whole report; all three fixed. 1322 tests.
+- 2026-11-07: phase 3 retrospective (3a–3h).
+
+  | Step | Build | Fix rounds | Review |
+  |---|---|---|---|
+  | 3a | 126k, 17.5 min | 39 s | 62k PASS |
+  | 3c | 277k, 29.5 min | 1.3 min | 82k PASS |
+  | 3b | 237k, 19.3 min | 2.3 min | 77k PASS |
+  | 3d | 329k, 38.6 min | 5.9 min | 120k FAIL, 50k PASS |
+  | 3e | 254k, 38.2 min | 9.1 min | 93k PASS |
+  | 3f | 195k, 20.5 min | 8.3 min | 69k FAIL, 46k PASS |
+  | 3g | 290k, 27.2 min | 6.0 min | 90k FAIL, 56k PASS |
+  | 3h | 243k, 23.1 min | 4.7 min | 93k PASS |
+
+  Where it went: builds ran 17–39 min and 126–329k tokens; fix rounds stayed under 10 min each,
+  against phase 2's 10–25, because every round was sent as one list. Three reviews failed: two
+  on the session page in Safari (a swap hiding a card under a typed note, then under a click,
+  then under a lock offer), one on a test past its timeout. Each fix of the Safari class came
+  from a reviewer reasoning about Safari's focus rules, since no agent can drive Safari 17.6;
+  the owner's checks are the only test of it. Changes for phase 4: a brief for any session-page
+  control names `card-hold.js` and says what holds a card; rule 11 (seed rows) stays. No gate
+  failed for a product fault; the one failure was a test that met the library's real race. The
+  checkers' configuration hasn't changed this phase (only `scripts/dupes-allow.txt`), so they
+  still skip `tmp/`, `.claude/worktrees/`, `node_modules/` and `.venv/`.
+- 2026-11-07: phase 3 built; the gate passes on main at d446aa8. Acceptance 1, 3 and 4 pass.
+  Acceptance 2 waits on the owner's evaluation (three seed vibes, 32 each, revision test on); its
+  numbers go in Result. Phase 4 is not expanded until then.
