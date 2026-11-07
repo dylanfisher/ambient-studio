@@ -70,6 +70,8 @@ unneeded stays unused rather than being given to another step.
 | 0045 | Held-out agreement, the minimum and the baselines | 4e | — |
 | 0046 | Ranking, wildcards and the pair picker | 4f | — |
 | 0047 | The "what you like" summary | 4g | — |
+| 0048 | Quick A/B, the excerpt player and MP3 playback audio | 4i | — |
+| 0049 | The session table, hiding and rating marks | 4j | — |
 
 ## Phase 1 — Engine, schema and macros
 
@@ -1445,8 +1447,8 @@ Result.
 
 ### Steps
 
-Order: 4a ‖ 4c, then 4b (after the owner approves the packages), then 4d, then 4e ‖ 4g, then 4f,
-then 4h.
+Order: 4a ‖ 4c, then 4b ‖ 4i, then 4j, then 4d, then 4e ‖ 4g, then 4f, then 4h. 4i and 4j were
+added on 2026-11-07 at the owner's request, to rate faster before the model needs the data.
 
 #### 4a — The sidecar process
 
@@ -1578,6 +1580,42 @@ then 4h.
   crosses zero is left out; under the minimum the text says so.
 - **Records:** writes 0047: the template, the interval rule, why not the LLM.
 - **Parallel:** with 4e.
+
+#### 4i — Quick A/B, the excerpt player and MP3 playback audio
+
+- **Builds:** a quick A/B page started from a session page, over that session's candidates less
+  the hidden ones (none hidden until 4j). By default the chosen side stays as champion against
+  the next challenger until every candidate has had a turn; a switch draws random pairs instead,
+  never a pair twice. Keys, owner's choice: ← and → play left and right, switching at the same
+  point in the excerpt; A chooses left, D chooses right, S is about the same, W skips, Space
+  pauses, Z undoes. The buttons stay beside the keys, which amends 0032 for this page only.
+  Ratings go through the existing rating route with the session's id, so 4c's folds read them
+  unchanged. A minimal excerpt player, a play button, the time and a full-width seek bar, replaces
+  the native `<audio>` controls on every page, keeping the played tracker. Playback audio is MP3
+  at 320 kbps through the `lame` CLI (owner-approved; a system tool like `flac`); the one file
+  kept per rated excerpt stays FLAC with its PCM hash, made from the exact normalized PCM.
+- **Tiers:** server, web.
+- **Tests first:** the champion stays after a choice and a fresh challenger comes next; random
+  mode never repeats a pair; every key does what it names and does nothing while a field has
+  focus; a rating from the page stores the session id and the shown order; the excerpt route
+  serves MP3 and seeks by byte range; rated audio is still FLAC whose PCM hash checks.
+- **Records:** writes 0048, amends 0026 (the cache format) and 0032 (keys on this page).
+- **Parallel:** 4b. Review: yes (keys and the player in Safari; name `card-hold.js`).
+
+#### 4j — The session table, hiding and rating marks
+
+- **Builds:** the session page lists candidates as a compact table, revised and branched
+  candidates nested under their parent so lineage shows at a glance. Each row shows a mark per
+  A/B win and per loss, and whether it has been A/B rated at all. A row can be hidden, after
+  rating or not, into a hidden panel that opens to show and unhide it; hidden candidates leave
+  quick A/B. Hiding is the owner's choice, so it is irreplaceable data: a migration, and unhiding
+  appends rather than deletes. Going to A/B and back restores the session page's scroll.
+- **Tiers:** server, web.
+- **Tests first:** children nest under their parent at any depth; the marks count live A/B wins
+  and losses, not ties, skips or undone ratings; hide and unhide round-trip and keep history;
+  quick A/B leaves hidden candidates out; the scroll is restored after a return.
+- **Records:** writes 0049, amends 0028.
+- **Parallel:** none. Review: yes (the table in Safari).
 
 #### 4h — Examples retrieved by similarity
 
@@ -2457,3 +2495,10 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   still fails what is in flight, and the Python loop answers bad UTF-8 and unencodable results).
   The gate passes, 1371 tests and 22 in the sidecar. The owner's config needs
   `"sidecar": { "requestTimeoutMs": 120000 }` before the server loads.
+- 2026-11-07: owner: "we need a way to automate a/b testing quickly ... use wasd and left/right
+  keys ... session cards should be more compact ... revised candidates nested underneath ...
+  minimal audio player ... mp3 320 or similar ... remember where in the scroll ... a marker for
+  chosen, and a marker for not chose ... a hidden panel". Added as 4i and 4j. Asked: MP3 for
+  playback with rated audio kept FLAC; pairs from one session; champion stays with a random
+  switch; arrows play, A/D choose, S same, W skip. The owner has run sessions for all three
+  briefs. 4b and 4i start in parallel.
