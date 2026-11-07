@@ -2,18 +2,21 @@
 // requests of a request group, sampling drawn per candidate from a logged stream seed, each
 // answer parsed, validated and linted, one repair round for an answer with errors to quote, and
 // every generation and candidate stored. It runs only when the owner's route or job calls it.
+// The batch helpers (`ask`, `keep`, `failedVerdict`, `requestCandidate`) are what every
+// operator that asks the model calls, so all its answers take one path.
 /** @import { Config } from "../config/config.js" */
 /** @import { Lock } from "../domain/validate-lock.js" */
 /** @import { RecordingListing } from "../domain/recordings-text.js" */
 /** @import { Constraints } from "../domain/constraint-schema.js" */
+/** @import { FeatureRanges } from "../domain/target-schema.js" */
 /** @import { Finding, LintResult } from "../domain/lint-result.js" */
 /** @import { ChatMessage } from "../domain/prompt-tokens.js" */
 /** @import { RejectReason } from "../domain/reject-reason.js" */
 /** @import { Genome } from "../engine/genome-schema.js" */
 /** @import { Candidate, Generation } from "./generation-store.js" */
 /** @import { Completion, OmlxQueue } from "./omlx-queue.js" */
-
 /** @import { Store } from "./store.js" */
+/** @import { VibeRevision } from "./vibe-store.js" */
 import { applyLocks } from "../domain/apply-locks.js";
 import { buildPrompt } from "../domain/build-prompt.js";
 import { buildRepairPrompt } from "../domain/build-repair-prompt.js";
@@ -221,6 +224,266 @@ function judge(completion, constraints, maxTokens, playable, locks) {
 }
 
 /**
+ * The vibe's current revision with its constraints and feature ranges checked. Throws when the
+ * vibe is missing or removed, or either fails its validator, since every prompt states both.
+ * @param {Store} store
+ * @param {number} vibeId
+ * @returns {{ revision: VibeRevision, constraints: Constraints, ranges: FeatureRanges }}
+ */
+export function currentRevision(store, vibeId) {
+  const vibe = getVibe(store, vibeId);
+  if (!vibe || vibe.removedAt !== null)
+    throw new Error(`vibe ${vibeId} doesn't exist or was removed`);
+  const { revision } = vibe;
+  const checked = validateConstraints(revision.constraints);
+  if (!checked.ok) {
+    const list = checked.errors.map((e) => `${e.path}: ${e.message}`).join("; ");
+    throw new Error(`vibe ${vibeId} revision ${revision.id} has invalid constraints: ${list}`);
+  }
+  const targets = validateTargets(revision.softTargets);
+  if (!targets.ok) {
+    const list = targets.errors.map((e) => `${e.path}: ${e.message}`).join("; ");
+    throw new Error(`vibe ${vibeId} revision ${revision.id} has invalid soft targets: ${list}`);
+  }
+  return { revision, constraints: checked.constraints, ranges: targets.ranges };
+}
+
+/**
+ * What the requests and candidates of one batch share: one request group, one prompt's
+ * retrieval, and the locks written into every valid answer. An operator builds one per request
+ * group and passes it to `ask`, `keep` and `requestCandidate`.
+ * @typedef {object} Batch
+ * @property {Store} store
+ * @property {OmlxQueue} queue
+ * @property {Config} config
+ * @property {number} vibeId
+ * @property {number} vibeRevisionId
+ * @property {number | null} sessionId
+ * @property {string} requestGroup
+ * @property {number[]} exampleIds the examples in the prompt, logged with each generation
+ * @property {string} retrievalMethod
+ * @property {Constraints} constraints what each answer is linted against
+ * @property {ReadonlySet<string>} playable hashes of the recordings the voice can play; a genome
+ *   naming another is repaired
+ * @property {readonly Lock[]} locks applied to every valid answer and stored on each candidate
+ * @property {GenerateOptions["onCandidate"]} [onCandidate]
+ * @property {GenerateOptions["onStep"]} [onStep]
+ */
+
+/**
+ * Where a candidate came from, stored on its row. `operatorParams` is merged over the locks the
+ * answer changed and left out, and the row's is null when both are.
+ * @typedef {object} CandidateOrigin
+ * @property {number} seed the candidate's render seed
+ * @property {string} source
+ * @property {number[]} parentIds
+ * @property {string | null} operator null for a root
+ * @property {Record<string, unknown> | null} operatorParams
+ */
+
+/**
+ * Sends one request and stores it as a generation, with the answer parsed, locked, validated and
+ * linted into a verdict. A failure the queue sent at least one attempt for is stored with its
+ * error; one it never sent leaves no generation.
+ * @param {Batch} batch
+ * @param {number} index the candidate's, from 0, for `onStep`
+ * @param {ChatMessage[]} prompt
+ * @param {Sampling} sampling
+ * @param {number | null} repairsId the generation this request repairs; null for a first try
+ * @returns {Promise<
+ *   | { generation: Generation, verdict: Verdict, failure: null }
+ *   | { generation: Generation | null, verdict: null, failure: OmlxRequestError }
+ * >}
+ */
+export async function ask(batch, index, prompt, sampling, repairsId) {
+  const { store, queue, config, onStep } = batch;
+  const base = {
+    vibeRevisionId: batch.vibeRevisionId,
+    sessionId: batch.sessionId,
+    requestGroup: batch.requestGroup,
+    prompt,
+    exampleIds: batch.exampleIds,
+    retrievalMethod: batch.retrievalMethod,
+    model: config.omlx.model,
+    sampling,
+    repairRound: repairsId === null ? 0 : 1,
+    repairsId,
+  };
+  /** @type {Completion} */
+  let completion;
+  onStep?.({
+    index,
+    kind: repairsId === null ? GENERATION_STEP.asking : GENERATION_STEP.repairing,
+  });
+  try {
+    completion = await queue.request({
+      messages: prompt,
+      sampling,
+      responseFormat: RESPONSE_FORMAT,
+      onRetry: () => onStep?.({ index, kind: GENERATION_STEP.busy }),
+    });
+  } catch (error) {
+    if (!(error instanceof OmlxRequestError)) throw error;
+    if (error.latencyMs === null) return { generation: null, verdict: null, failure: error };
+    const generation = addGeneration(store, {
+      ...base,
+      response: "",
+      finishReason: FAILED_FINISH,
+      latencyMs: error.latencyMs,
+      firstTokenMs: null,
+      promptTokens: null,
+      completionTokens: null,
+      reasoning: null,
+      requestParams: error.params,
+      retries: error.retries,
+      error: error.message,
+    });
+    return { generation, verdict: null, failure: error };
+  }
+  const generation = addGeneration(store, {
+    ...base,
+    response: completion.text,
+    finishReason: completion.finishReason,
+    latencyMs: completion.latencyMs,
+    firstTokenMs: completion.firstTokenMs,
+    promptTokens: completion.promptTokens,
+    completionTokens: completion.completionTokens,
+    reasoning: completion.reasoning === "" ? null : completion.reasoning,
+    requestParams: completion.params,
+    retries: completion.retries,
+    error: null,
+  });
+  const verdict = judge(
+    completion,
+    batch.constraints,
+    config.queue.maxTokens,
+    batch.playable,
+    batch.locks,
+  );
+  return { generation, verdict, failure: null };
+}
+
+/**
+ * Stores a verdict as a candidate, and its genome when it has one.
+ * @param {Batch} batch
+ * @param {Generation | null} generation the last generation made for the candidate; null for
+ *   one no LLM call made
+ * @param {Verdict} verdict
+ * @param {CandidateOrigin} origin
+ * @returns {Candidate}
+ */
+export function keep(batch, generation, verdict, origin) {
+  const { store } = batch;
+  const genomeId =
+    verdict.genome === null ? null : putGenome(store, batch.vibeId, verdict.genome).id;
+  const operatorParams =
+    verdict.lockChanges === null && origin.operatorParams === null
+      ? null
+      : { ...verdict.lockChanges, ...origin.operatorParams };
+  return addCandidate(store, {
+    vibeRevisionId: batch.vibeRevisionId,
+    generationId: generation?.id ?? null,
+    genomeId,
+    seed: origin.seed,
+    source: origin.source,
+    parentIds: origin.parentIds,
+    locks: batch.locks,
+    operator: origin.operator,
+    operatorParams,
+    intent: verdict.intent,
+    rejectReason: verdict.reason,
+    lint: verdict.lint,
+    rejectedGenome: verdict.reason === null ? null : verdict.written,
+  });
+}
+
+/**
+ * The verdict for a candidate whose last request failed, keeping what an earlier try found.
+ * @param {OmlxRequestError} failure
+ * @param {Verdict | null} earlier
+ * @returns {Verdict}
+ */
+export function failedVerdict(failure, earlier) {
+  const finding = { path: "$", rule: REJECT_REASON.requestFailed, message: failure.message };
+  return rejected(REJECT_REASON.requestFailed, [...(earlier?.lint.findings ?? []), finding], {
+    intent: earlier?.intent ?? null,
+    written: earlier?.written ?? null,
+  });
+}
+
+/**
+ * @param {Verdict} verdict
+ * @param {string} rule
+ * @param {string} message
+ * @returns {Verdict}
+ */
+const noted = (verdict, rule, message) => ({
+  ...verdict,
+  lint: lintResult([...verdict.lint.findings, { path: "$", rule, message }]),
+});
+
+/**
+ * Asks for one candidate with `prompt`, sends one repair round for an answer with errors to
+ * quote, stores the candidate and calls `batch.onCandidate`. When a request fails in the queue
+ * it rethrows the failure after storing the candidate it was for, so every generation has one.
+ * @param {Batch} batch
+ * @param {number} index the candidate's, from 0, for `onStep`
+ * @param {ChatMessage[]} prompt
+ * @param {Sampling} sampling used by the first try and its repair
+ * @param {CandidateOrigin} origin
+ * @returns {Promise<Candidate>}
+ */
+export async function requestCandidate(batch, index, prompt, sampling, origin) {
+  /**
+   * @param {Generation} generation
+   * @param {Verdict} verdict
+   * @param {RejectReason | null} firstReason
+   */
+  const stored = async (generation, verdict, firstReason) => {
+    const candidate = keep(batch, generation, verdict, origin);
+    await batch.onCandidate?.(candidate, firstReason);
+    return candidate;
+  };
+  const first = await ask(batch, index, prompt, sampling, null);
+  if (first.failure !== null) {
+    if (first.generation)
+      await stored(
+        first.generation,
+        failedVerdict(first.failure, null),
+        REJECT_REASON.requestFailed,
+      );
+    throw first.failure;
+  }
+  let { generation, verdict } = first;
+  const firstReason = verdict.reason;
+  if (verdict.answer !== null) {
+    const budgetTokens = batch.config.queue.contextBudgetTokens;
+    const repair = buildRepairPrompt(
+      { messages: prompt, answer: verdict.answer },
+      verdict.lint.findings,
+    );
+    const tokens = estimateTokens(promptText(repair));
+    if (tokens > budgetTokens) {
+      const message = `the repair prompt is about ${tokens} tokens, over the ${budgetTokens}-token budget; no repair was sent`;
+      verdict = noted(verdict, REPAIR_OVER_BUDGET_RULE, message);
+    } else {
+      const repaired = await ask(batch, index, repair, sampling, generation.id);
+      if (repaired.failure !== null) {
+        if (repaired.generation) {
+          await stored(repaired.generation, failedVerdict(repaired.failure, verdict), firstReason);
+        } else {
+          const message = `the repair was not sent: ${repaired.failure.message}`;
+          await stored(generation, noted(verdict, REPAIR_NOT_SENT_RULE, message), firstReason);
+        }
+        throw repaired.failure;
+      }
+      ({ generation, verdict } = repaired);
+    }
+  }
+  return stored(generation, verdict, firstReason);
+}
+
+/**
  * Generates `n` candidates for the vibe's current revision and stores every LLM call and every
  * candidate. When a request fails in the queue (a cancel, a busy omlx past its wait, a timeout,
  * an error status) the batch stops and rethrows it, after storing the failed request as a
@@ -240,210 +503,51 @@ export async function generateCandidates(
   { config, seed, sessionId, locks, recordings, onCandidate, onStep },
 ) {
   if (!Number.isInteger(n) || n < 1) throw new Error(`n must be a positive integer, got ${n}`);
-  const vibe = getVibe(store, vibeId);
-  if (!vibe || vibe.removedAt !== null)
-    throw new Error(`vibe ${vibeId} doesn't exist or was removed`);
-  const { revision } = vibe;
-  const checked = validateConstraints(revision.constraints);
-  if (!checked.ok) {
-    const list = checked.errors.map((e) => `${e.path}: ${e.message}`).join("; ");
-    throw new Error(`vibe ${vibeId} revision ${revision.id} has invalid constraints: ${list}`);
-  }
-  const { constraints } = checked;
-  const targets = validateTargets(revision.softTargets);
-  if (!targets.ok) {
-    const list = targets.errors.map((e) => `${e.path}: ${e.message}`).join("; ");
-    throw new Error(`vibe ${vibeId} revision ${revision.id} has invalid soft targets: ${list}`);
-  }
+  const { revision, constraints, ranges } = currentRevision(store, vibeId);
   const draws = samplingStream(seed, n);
   const requestGroup = requestGroupName(vibeId, seed);
   if (listRequestGroup(store, requestGroup).length > 0) {
     throw new Error(`request group ${requestGroup} already exists; draw a new stream seed`);
   }
   const { method, examples } = retrieveExamples(store, vibeId);
-  const budgetTokens = config.queue.contextBudgetTokens;
-  const playable = new Set(recordings.filter((r) => unplayable(r) === null).map((r) => r.hash));
   const { messages, exampleIds } = buildPrompt(
-    { ...revision, constraints, ranges: targets.ranges },
+    { ...revision, constraints, ranges },
     {
       notes: listNotes(store, vibeId).map((note) => note.text),
       locks,
       examples,
-      budgetTokens,
+      budgetTokens: config.queue.contextBudgetTokens,
       recordings,
     },
   );
-
-  /**
-   * Sends one request and stores it as a generation. A failure the queue sent at least one
-   * attempt for is stored with its error; one it never sent leaves no generation.
-   * @param {number} index the candidate's, from 0
-   * @param {ChatMessage[]} prompt
-   * @param {Sampling} sampling
-   * @param {number | null} repairsId
-   * @returns {Promise<
-   *   | { generation: Generation, verdict: Verdict, failure: null }
-   *   | { generation: Generation | null, verdict: null, failure: OmlxRequestError }
-   * >}
-   */
-  async function ask(index, prompt, sampling, repairsId) {
-    const base = {
-      vibeRevisionId: revision.id,
-      sessionId,
-      requestGroup,
-      prompt,
-      exampleIds,
-      retrievalMethod: method,
-      model: config.omlx.model,
-      sampling,
-      repairRound: repairsId === null ? 0 : 1,
-      repairsId,
-    };
-    /** @type {Completion} */
-    let completion;
-    onStep?.({
-      index,
-      kind: repairsId === null ? GENERATION_STEP.asking : GENERATION_STEP.repairing,
-    });
-    try {
-      completion = await queue.request({
-        messages: prompt,
-        sampling,
-        responseFormat: RESPONSE_FORMAT,
-        onRetry: () => onStep?.({ index, kind: GENERATION_STEP.busy }),
-      });
-    } catch (error) {
-      if (!(error instanceof OmlxRequestError)) throw error;
-      if (error.latencyMs === null) return { generation: null, verdict: null, failure: error };
-      const generation = addGeneration(store, {
-        ...base,
-        response: "",
-        finishReason: FAILED_FINISH,
-        latencyMs: error.latencyMs,
-        firstTokenMs: null,
-        promptTokens: null,
-        completionTokens: null,
-        reasoning: null,
-        requestParams: error.params,
-        retries: error.retries,
-        error: error.message,
-      });
-      return { generation, verdict: null, failure: error };
-    }
-    const generation = addGeneration(store, {
-      ...base,
-      response: completion.text,
-      finishReason: completion.finishReason,
-      latencyMs: completion.latencyMs,
-      firstTokenMs: completion.firstTokenMs,
-      promptTokens: completion.promptTokens,
-      completionTokens: completion.completionTokens,
-      reasoning: completion.reasoning === "" ? null : completion.reasoning,
-      requestParams: completion.params,
-      retries: completion.retries,
-      error: null,
-    });
-    const verdict = judge(completion, constraints, config.queue.maxTokens, playable, locks);
-    return { generation, verdict, failure: null };
-  }
-
+  /** @type {Batch} */
+  const batch = {
+    store,
+    queue,
+    config,
+    vibeId,
+    vibeRevisionId: revision.id,
+    sessionId,
+    requestGroup,
+    exampleIds,
+    retrievalMethod: method,
+    constraints,
+    playable: new Set(recordings.filter((r) => unplayable(r) === null).map((r) => r.hash)),
+    locks,
+    onCandidate,
+    onStep,
+  };
   /** @type {Candidate[]} */
   const candidates = [];
-  /**
-   * @param {Generation} generation the last generation made for the candidate
-   * @param {Verdict} verdict
-   * @param {number} candidateSeed
-   * @param {RejectReason | null} firstReason
-   */
-  const keep = async (generation, verdict, candidateSeed, firstReason) => {
-    const genomeId = verdict.genome === null ? null : putGenome(store, vibeId, verdict.genome).id;
-    const candidate = addCandidate(store, {
-      vibeRevisionId: revision.id,
-      generationId: generation.id,
-      genomeId,
+  for (const [index, { sampling, candidateSeed }] of draws.entries()) {
+    const origin = {
       seed: candidateSeed,
       source: SOURCE,
       parentIds: [],
-      locks,
       operator: null,
-      operatorParams: verdict.lockChanges,
-      intent: verdict.intent,
-      rejectReason: verdict.reason,
-      lint: verdict.lint,
-      rejectedGenome: verdict.reason === null ? null : verdict.written,
-    });
-    candidates.push(candidate);
-    await onCandidate?.(candidate, firstReason);
-  };
-  /**
-   * The verdict for a candidate whose last request failed, keeping what an earlier try found.
-   * @param {OmlxRequestError} failure
-   * @param {Verdict | null} earlier
-   * @returns {Verdict}
-   */
-  const failedVerdict = (failure, earlier) => {
-    const finding = { path: "$", rule: REJECT_REASON.requestFailed, message: failure.message };
-    return rejected(REJECT_REASON.requestFailed, [...(earlier?.lint.findings ?? []), finding], {
-      intent: earlier?.intent ?? null,
-      written: earlier?.written ?? null,
-    });
-  };
-  /**
-   * @param {Verdict} verdict
-   * @param {string} rule
-   * @param {string} message
-   * @returns {Verdict}
-   */
-  const noted = (verdict, rule, message) => ({
-    ...verdict,
-    lint: lintResult([...verdict.lint.findings, { path: "$", rule, message }]),
-  });
-
-  for (const [index, { sampling, candidateSeed }] of draws.entries()) {
-    const first = await ask(index, messages, sampling, null);
-    if (first.failure !== null) {
-      if (first.generation)
-        await keep(
-          first.generation,
-          failedVerdict(first.failure, null),
-          candidateSeed,
-          REJECT_REASON.requestFailed,
-        );
-      throw first.failure;
-    }
-    let { generation, verdict } = first;
-    const firstReason = verdict.reason;
-    if (verdict.answer !== null) {
-      const repair = buildRepairPrompt({ messages, answer: verdict.answer }, verdict.lint.findings);
-      const tokens = estimateTokens(promptText(repair));
-      if (tokens > budgetTokens) {
-        const message = `the repair prompt is about ${tokens} tokens, over the ${budgetTokens}-token budget; no repair was sent`;
-        verdict = noted(verdict, REPAIR_OVER_BUDGET_RULE, message);
-      } else {
-        const repaired = await ask(index, repair, sampling, generation.id);
-        if (repaired.failure !== null) {
-          if (repaired.generation) {
-            await keep(
-              repaired.generation,
-              failedVerdict(repaired.failure, verdict),
-              candidateSeed,
-              firstReason,
-            );
-          } else {
-            const message = `the repair was not sent: ${repaired.failure.message}`;
-            await keep(
-              generation,
-              noted(verdict, REPAIR_NOT_SENT_RULE, message),
-              candidateSeed,
-              firstReason,
-            );
-          }
-          throw repaired.failure;
-        }
-        ({ generation, verdict } = repaired);
-      }
-    }
-    await keep(generation, verdict, candidateSeed, firstReason);
+      operatorParams: null,
+    };
+    candidates.push(await requestCandidate(batch, index, messages, sampling, origin));
   }
   return { requestGroup, candidates };
 }
