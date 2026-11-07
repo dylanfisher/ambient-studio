@@ -7,6 +7,7 @@
 /** @import { JobRunner } from "../../src/server/job-runner.js" */
 /** @import { Clock } from "../../src/server/omlx-queue.js" */
 /** @import { Route } from "../../src/server/routing.js" */
+/** @import { SidecarClient, SidecarLaunch } from "../../src/server/sidecar-client.js" */
 /** @import { Store } from "../../src/server/store.js" */
 import { once } from "node:events";
 import { Agent, request as httpRequest } from "node:http";
@@ -43,6 +44,7 @@ const NO_OMLX = "http://omlx.invalid";
  * @property {Paths} paths the temp root's folders
  * @property {Store} store the running server's open store
  * @property {JobRunner} jobs the running server's job runner
+ * @property {SidecarClient} sidecar the running server's sidecar client
  * @property {string[]} logged every line the server logged
  * @property {(method: string, path: string, options?: RequestOptions) => Promise<Reply>} request
  *   `path` is sent exactly as given
@@ -61,6 +63,8 @@ const NO_OMLX = "http://omlx.invalid";
  * @property {Clock} [clock] the queue's and the job runner's clock; the real one when omitted
  * @property {() => number} [random]
  * @property {string} [fieldRecordings] the config's recordings folder; `null` when omitted
+ * @property {SidecarLaunch} [sidecarLaunch] a fake sidecar's; the real one when omitted, which
+ *   starts only if a test sends it a request
  * @property {boolean} [sendResponseFormat] the config's `queue.sendResponseFormat`; the example
  *   config's when omitted
  */
@@ -136,6 +140,7 @@ export async function startTestServer({
     paths: paths(config.dataRoot),
     store: server.store,
     jobs: server.jobs,
+    sidecar: server.sidecar,
     logged,
     request,
     api: (method, path, value) =>
@@ -151,7 +156,12 @@ export async function startTestServer({
       server = await start();
       running = true;
       address = new URL(server.origin);
-      Object.assign(made, { origin: server.origin, store: server.store, jobs: server.jobs });
+      Object.assign(made, {
+        origin: server.origin,
+        store: server.store,
+        jobs: server.jobs,
+        sidecar: server.sidecar,
+      });
     },
     async remove() {
       if (running) await stop();

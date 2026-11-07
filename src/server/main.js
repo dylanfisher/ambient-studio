@@ -6,6 +6,7 @@
 /** @import { JobRunner } from "./job-runner.js" */
 /** @import { Clock } from "./omlx-queue.js" */
 /** @import { App, Route } from "./routing.js" */
+/** @import { SidecarClient, SidecarLaunch } from "./sidecar-client.js" */
 /** @import { Store } from "./store.js" */
 import { mkdir } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -18,6 +19,7 @@ import { createOmlxQueue } from "./omlx-queue.js";
 import { ROUTES } from "./routes.js";
 import { HttpError, matchRoute, parseTarget, readJson, sendJson } from "./routing.js";
 import { serveStatic } from "./serve-static.js";
+import { createSidecarClient, SIDECAR_LAUNCH } from "./sidecar-client.js";
 import { openStore } from "./store.js";
 
 /**
@@ -26,9 +28,10 @@ import { openStore } from "./store.js";
  *   ephemeral one
  * @property {Store} store
  * @property {JobRunner} jobs
+ * @property {SidecarClient} sidecar
  * @property {() => Promise<void>} stop cancels every job and waits for them to end, closes every
- *   connection, waits for the requests in flight to settle and the server to close, then closes
- *   the store
+ *   connection, waits for the requests in flight to settle and the server to close, ends the
+ *   sidecar's process, then closes the store
  */
 
 /**
@@ -40,6 +43,8 @@ import { openStore } from "./store.js";
  *   when omitted
  * @property {() => number} [random] a draw in [0, 1) for the queue's jitter and for stream and
  *   order seeds; `Math.random` when omitted
+ * @property {SidecarLaunch} [sidecarLaunch] how to start the sidecar; the real one when omitted,
+ *   the fake in tests
  */
 
 /** @type {Clock} */
@@ -137,7 +142,13 @@ async function listen(server, { host, port }) {
  */
 export async function startServer(
   config,
-  { routes = ROUTES, log = console.error, clock = REAL_CLOCK, random = Math.random } = {},
+  {
+    routes = ROUTES,
+    log = console.error,
+    clock = REAL_CLOCK,
+    random = Math.random,
+    sidecarLaunch = SIDECAR_LAUNCH,
+  } = {},
 ) {
   const dataPaths = paths(config.dataRoot);
   await mkdir(config.dataRoot, { recursive: true });
@@ -152,8 +163,25 @@ export async function startServer(
       log(`omlx was busy on attempt ${attempt} (${reason}); retrying in ${delayMs / 1000} s`),
   });
   const jobs = createJobRunner({ now: clock.now });
+  // Like the queue, making the client starts nothing: the process starts on the first request.
+  const sidecar = createSidecarClient({
+    launch: sidecarLaunch,
+    timeoutMs: config.sidecar.requestTimeoutMs,
+    clock,
+    log,
+  });
   /** @type {App} */
-  const app = { config, paths: dataPaths, store, log, queue, jobs, random, sessionJobs: new Map() };
+  const app = {
+    config,
+    paths: dataPaths,
+    store,
+    log,
+    queue,
+    jobs,
+    sidecar,
+    random,
+    sessionJobs: new Map(),
+  };
   /** @type {Set<Promise<void>>} */
   const inFlight = new Set();
   // A request without Host reaches `answer`, which refuses it like a foreign one.
@@ -175,6 +203,7 @@ export async function startServer(
     origin,
     store,
     jobs,
+    sidecar,
     async stop() {
       /** @type {Promise<void>} */
       const closed = new Promise((resolve, reject) =>
@@ -185,9 +214,17 @@ export async function startServer(
       // A job left running would write to the closed store, and its omlx request or render
       // would hold the process open. Cancelling a finished job leaves it as it is.
       for (const { id } of jobs.list()) jobs.cancel(id);
-      await jobs.idle();
-      await closed;
-      store.close();
+      // Whatever fails above, the sidecar's process still ends and the store still closes.
+      try {
+        await jobs.idle();
+        await closed;
+      } finally {
+        try {
+          await sidecar.stop();
+        } finally {
+          store.close();
+        }
+      }
     },
   };
 }

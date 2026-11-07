@@ -4,9 +4,10 @@
 import { readFile } from "node:fs/promises";
 import { hostname, networkInterfaces } from "node:os";
 import { setImmediate as tick } from "node:timers/promises";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { ROUTES } from "../../src/server/routes.js";
 import { MAX_BODY_BYTES } from "../../src/server/routing.js";
+import { fakeSidecar } from "../support/fake-sidecar.js";
 import { startTestServer } from "../support/http-client.js";
 
 /** @type {(() => Promise<void>)[]} */
@@ -271,4 +272,43 @@ test("stop closes the server, its idle keep-alive sockets and the store", async 
   await stop();
   expect(await tcpHandlesSettledTo(before)).toEqual(before);
   expect(store.db.isOpen).toBe(false);
+});
+
+test("stop ends the sidecar's process and fails the request in flight", async () => {
+  const fake = await fakeSidecar();
+  cleanups.push(fake.remove);
+  fake.script({ do: "hang" });
+  const server = await startTestServer({ sidecarLaunch: fake.launch });
+  cleanups.push(server.remove);
+  const ping = server.sidecar.request("ping", {});
+  const failed = expect(ping).rejects.toThrow(
+    "sidecar request ping failed: the server is stopping",
+  );
+  await fake.waitForReceived(1);
+  const [pid] = await fake.starts();
+  await server.stop();
+  await failed;
+  // stop waits for the process to close, so it has been reaped by now.
+  expect(() => process.kill(/** @type {number} */ (pid), 0)).toThrow(
+    expect.objectContaining({ code: "ESRCH" }),
+  );
+});
+
+test("a stop that fails waiting on the jobs still ends the sidecar and closes the store", async () => {
+  const fake = await fakeSidecar();
+  cleanups.push(fake.remove);
+  fake.script({ do: "hang" });
+  const server = await startTestServer({ sidecarLaunch: fake.launch });
+  cleanups.push(server.remove);
+  const ping = server.sidecar.request("ping", {});
+  const failed = expect(ping).rejects.toThrow("the server is stopping");
+  await fake.waitForReceived(1);
+  const [pid] = await fake.starts();
+  vi.spyOn(server.jobs, "idle").mockRejectedValue(new Error("a job wouldn't end"));
+  await expect(server.stop()).rejects.toThrow("a job wouldn't end");
+  await failed;
+  expect(() => process.kill(/** @type {number} */ (pid), 0)).toThrow(
+    expect.objectContaining({ code: "ESRCH" }),
+  );
+  expect(server.store.db.isOpen).toBe(false);
 });

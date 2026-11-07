@@ -30,6 +30,7 @@ key fails instead of being ignored.
 | `queue.maxTokens`, `queue.contextBudgetTokens` | whole tokens, at least 1 |
 | `queue.minPrefillTokensPerSecond` | whole tokens a second, at least 1: the slowest prefill the first-token threshold and timeout allow for (0022) |
 | `queue.sendResponseFormat` | boolean: whether requests carry a JSON-schema `response_format` |
+| `sidecar.requestTimeoutMs` | whole milliseconds, at least 1: each sidecar request's limit ([0041](0041-sidecar-process.md)) |
 | `dataRoot` | folder path |
 | `fieldRecordings` | folder path, or `null` until the owner sets one |
 | `server.host` | non-empty string |
@@ -113,3 +114,5 @@ only: `scripts/` and `test/` are tools, and a test stubs variables with `vi.stub
 - 2026-11-06: added `queue.thinking`, a boolean: whether each request asks the model's chat
   template to think first, sent as `chat_template_kwargs.enable_thinking`. The example sets it
   `true`, which keeps what requests did before ([0031](0031-fewer-waits-after-first-evaluation.md)).
+- 2026-11-07: added `sidecar.requestTimeoutMs`, each sidecar request's limit from writing it
+  to its answer. The example sets 120 000 ms ([0041](0041-sidecar-process.md)).

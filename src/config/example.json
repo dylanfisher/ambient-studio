@@ -16,6 +16,9 @@
     "sendResponseFormat": false,
     "thinking": true
   },
+  "sidecar": {
+    "requestTimeoutMs": 120000
+  },
   "dataRoot": "~/Library/Application Support/Ambient Studio/",
   "fieldRecordings": null,
   "server": {

@@ -8,6 +8,7 @@ import { isAbsolute, join, resolve, sep } from "node:path";
  * @typedef {object} Config
  * @property {{ baseUrl: string, model: string, apiKey: string }} omlx
  * @property {QueueConfig} queue
+ * @property {{ requestTimeoutMs: number }} sidecar each sidecar request's limit (0041)
  * @property {string} dataRoot absolute, `~` expanded
  * @property {string | null} fieldRecordings absolute, `~` expanded; `null` until the owner sets one
  * @property {{ host: string, port: number }} server
@@ -186,6 +187,7 @@ const SCHEMA = {
     sendResponseFormat: boolean,
     thinking: boolean,
   },
+  sidecar: { requestTimeoutMs: positiveInteger },
   dataRoot: folder,
   fieldRecordings: folderOrNull,
   server: { host: text, port },
