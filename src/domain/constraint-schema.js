@@ -8,10 +8,12 @@
 /** @import { VoiceType } from "../engine/voice-registry.js" */
 import { bell } from "../engine/bell.js";
 import { COST_BUDGET, cost } from "../engine/cost.js";
+import { IR_WEIGHT } from "../engine/cost-unit.js";
 import { isNumeric, number } from "../engine/descriptor.js";
 import { GLOBAL_PARAMS, MACROS } from "../engine/genome-schema.js";
 import { granularCloud } from "../engine/granular-cloud.js";
 import { highestValue } from "../engine/highest-value.js";
+import { masterBusCost } from "../engine/master-bus.js";
 import { pad } from "../engine/pad.js";
 import { isAbsolute } from "../engine/tuning.js";
 import { getTuning } from "../engine/tuning-registry.js";
@@ -247,7 +249,11 @@ const brightness = /** @type {ConstraintKind<Range>} */ ({
   },
 });
 
-/** A ceiling on the engine's render cost, at most the engine's own budget. */
+/**
+ * A ceiling on the engine's render cost, at most the engine's own budget. The text and the
+ * finding name the reverb: at the default 8 s decay it costs 214, most of a 300 ceiling, and
+ * nothing else in the genome says so.
+ */
 const renderCost = /** @type {ConstraintKind<number>} */ ({
   form: FORM.ceiling,
   value: number({
@@ -257,14 +263,14 @@ const renderCost = /** @type {ConstraintKind<number>} */ ({
     unit: "",
     description: "render cost",
   }),
-  text: (ceiling) => `render cost at most ${ceiling}; fewer voices, notes and grains cost less`,
+  text: (ceiling) => `render cost at most ${ceiling}; reverbDecay costs ${IR_WEIGHT} a second`,
   lint: (genome, ceiling) => {
     const found = cost(genome);
     if (found <= ceiling) return [];
     return [
       {
         path: "$",
-        message: `costs ${round(found)} to render; the vibe allows at most ${ceiling}, so drop a voice or lower a density`,
+        message: `costs ${round(found)} to render, ${round(masterBusCost(genome))} of it the reverb (reverbDecay ${genome.reverbDecay} s); the vibe allows at most ${ceiling}, so shorten reverbDecay, drop a voice or lower a density`,
       },
     ];
   },

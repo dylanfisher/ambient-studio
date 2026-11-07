@@ -38,7 +38,7 @@ const lines = {
   padChords: /^pad hold at least 40 s \(at most 1\.5 chords a minute\)$/m,
   brightness:
     /^macros\.brightness stays between 0\.3 and 0\.7 the whole time \(a number, or a trajectory within that range\)$/m,
-  cost: /^render cost at most 300; /m,
+  cost: /^render cost at most 300; reverbDecay costs 25 a second$/m,
 };
 
 describe("constraintsText", () => {

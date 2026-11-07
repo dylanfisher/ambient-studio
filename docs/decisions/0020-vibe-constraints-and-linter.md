@@ -45,7 +45,13 @@ kinds' names as camelCase keys; unknown keys are errors.
 `name = value`; bpm, duration and brightness as `from min to max`; the three densities and the
 cost as `at most`. The pad's ceiling is stated as the `hold` it implies (`pad hold at least 40 s
 (at most 1.5 chords a minute)`), since `hold` is what the model writes. A set with every kind
-takes 539 characters; a test holds it under 800.
+takes 539 characters; a test holds it under 800. The cost line names the reverb's rate
+(`reverbDecay costs 25 a second`) and its finding splits out the reverb's share and says to shorten
+`reverbDecay` first: the master bus costs 14 plus 25 a second of decay, 214 at the default 8 s, so
+under a low ceiling the reverb is the cost, and a model told only about voices and densities
+can't repair it. In the owner's 2026-11-07 evaluation, 27 of tidal-noise's 32 answers still failed
+lint after repair under its 300 ceiling; the report doesn't name the rule, and the reference
+genome's two noise beds at the default decay cost 294.
 
 **Report, never rewrite.** The linter returns findings and leaves the genome as it is. A value
 the vibe fixes, like the loudness target, is checked, not written into the genome: the model sees

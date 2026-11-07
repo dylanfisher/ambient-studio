@@ -173,6 +173,13 @@ describe("lintGenome", () => {
     expect(lintGenome(pushed, { bellNotes: 4 }).findings[0]?.path).toBe("$.voices[2].density");
   });
 
+  test("a cost finding says how much of the cost is the reverb, so a repair knows to shorten it", () => {
+    const long = genome({ reverbDecay: 12 });
+    const [finding] = lintGenome(long, { cost: baseCost }).findings;
+    expect(finding?.message).toMatch(/reverbDecay 12 s/);
+    expect(finding?.message).toMatch(/shorten reverbDecay/);
+  });
+
   test("brightness is read up to the duration, where a ramp past it stops", () => {
     // Linear from 0.5 at 0 s to 0.9 at 400 s reaches 0.8 at 300 s, the duration.
     const ramp = {
