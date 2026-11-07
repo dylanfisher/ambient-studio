@@ -1,7 +1,8 @@
 // The session and job routes (decision 0027): a session's state and stop, asking for
 // candidates, nudging (0037) and exploring (0038) from one, re-rendering missing excerpts, the
-// candidates with their excerpts and revised pairs (0036), and job status and cancel. Stopping a
-// session cancels its jobs, and with them their omlx requests.
+// candidates with their excerpts and revised pairs (0036), hiding and showing them again (0049),
+// and job status and cancel. Stopping a session cancels its jobs, and with them their omlx
+// requests.
 /** @import { JobStatus } from "./job-runner.js" */
 /** @import { Feedback } from "./rating-store.js" */
 /** @import { App, Route } from "./routing.js" */
@@ -13,7 +14,8 @@ import { currentExcerpt } from "./candidate-excerpt.js";
 import { candidateJob, DEFAULT_CANDIDATES, excerptJob, MAX_CANDIDATES } from "./candidate-job.js";
 import { candidatePairs } from "./candidate-pair.js";
 import { EXPLORE_OPERATOR } from "./generate-candidates.js";
-import { getGenome, listSessionCandidates } from "./generation-store.js";
+import { getCandidate, getGenome, listSessionCandidates } from "./generation-store.js";
+import { HIDDEN, hiddenInSession, setHidden } from "./hide-store.js";
 import { CANDIDATE_ID, vibeCandidate } from "./lock-routes.js";
 import { locksInForce } from "./lock-store.js";
 import { NUDGE_OPERATOR, nudgeJob } from "./nudge-job.js";
@@ -103,6 +105,32 @@ const EXCERPTS = "excerpts";
 const NUDGE = NUDGE_OPERATOR;
 const EXPLORE = EXPLORE_OPERATOR;
 const STEP_SIZES = /** @type {(keyof typeof STEP_SIZE)[]} */ (Object.keys(STEP_SIZE));
+/** The most candidates one hide names; the page sends one, or the two of a revised pair. */
+const MAX_HIDES = 64;
+
+/**
+ * The candidates a hide names, each checked to be of the session: a 400 otherwise.
+ * @param {App} app
+ * @param {Session} session
+ * @param {Record<string, unknown>} given
+ * @returns {number[]}
+ */
+function hideIds(app, session, given) {
+  const list = given.candidateIds;
+  if (!Array.isArray(list) || list.length === 0 || list.length > MAX_HIDES) {
+    throw new HttpError(
+      400,
+      `candidateIds must be a list of 1 to ${MAX_HIDES} ids, got ${JSON.stringify(list)}`,
+    );
+  }
+  return list.map((value, i) => {
+    const id = rowId({ [`candidateIds[${i}]`]: value }, `candidateIds[${i}]`);
+    if (getCandidate(app.store, id)?.sessionId !== session.id) {
+      throw new HttpError(400, `candidate ${id} is not of session ${session.id}`);
+    }
+    return id;
+  });
+}
 
 /** What a refused second job of each kind tells the owner, naming the unfinished one. */
 const DUPLICATE = Object.freeze({
@@ -307,11 +335,41 @@ export const SESSION_ROUTES = [
     },
   },
   {
+    method: "POST",
+    path: "/api/sessions/:sessionId/hidden",
+    handle: async ({ app, params, body }) => {
+      // Hiding is not a rating, so a stopped session takes it too.
+      const session = requireSession(app, params);
+      const given = fields(await body(), ["candidateIds", HIDDEN]);
+      if (typeof given.hidden !== "boolean") {
+        throw new HttpError(
+          400,
+          `hidden must be true or false, got ${JSON.stringify(given.hidden)}`,
+        );
+      }
+      // A revised pair takes one place on the page, so hiding is a fact about the pair.
+      const { pairs } = candidatePairs(
+        app.store,
+        listSessionCandidates(app.store, session.id).map((candidate) => ({
+          candidate,
+          excerpt: null,
+        })),
+      );
+      const ids = hideIds(app, session, given).flatMap((id) => {
+        const pair = pairs.get(id);
+        return pair ? [pair.firstTryId, pair.revisionId] : [id];
+      });
+      setHidden(app.store, ids, given.hidden);
+      return { hidden: [...hiddenInSession(app.store, session.id)].sort((a, b) => a - b) };
+    },
+  },
+  {
     method: "GET",
     path: "/api/sessions/:sessionId/candidates",
     handle: ({ app, params }) => {
       const session = requireSession(app, params);
       const live = listSessionFeedback(app.store, session.id);
+      const hidden = hiddenInSession(app.store, session.id);
       const listed = listSessionCandidates(app.store, session.id).map((candidate) => ({
         candidate,
         excerpt: currentExcerpt(app.store, app.paths.renderCache, candidate),
@@ -333,6 +391,7 @@ export const SESSION_ROUTES = [
           const genome =
             genomeId === null ? null : (getGenome(app.store, genomeId)?.genome ?? null);
           const feedback = feedbackState(live, candidate);
+          const pair = pairs.get(id);
           return {
             id,
             genomeId,
@@ -346,9 +405,13 @@ export const SESSION_ROUTES = [
             operator: candidate.operator,
             operatorParams: candidate.operatorParams,
             parentIds: candidate.parentIds,
-            pair: pairs.get(id) ?? null,
+            pair: pair ?? null,
             excerpt,
             feedback,
+            // A pair is hidden when either member is: rows from before a hide named both.
+            hidden: [id, pair?.firstTryId, pair?.revisionId].some(
+              (member) => member !== undefined && hidden.has(member),
+            ),
           };
         });
       return { candidates };

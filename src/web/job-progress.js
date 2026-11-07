@@ -1,5 +1,6 @@
 // A job's status as the pages show it (decision 0032): what it is doing in a sentence, a bar
 // from its count, and how long it has run. No DOM here, so the wording is tested.
+import { isObject } from "../engine/is-object.js";
 
 /** What each kind of job is called on the page. */
 const TITLE = Object.freeze({
@@ -40,6 +41,8 @@ const STATE = Object.freeze({
  * @property {number} addedAt
  * @property {number | null} startedAt
  * @property {number | null} finishedAt
+ * @property {unknown} [result] the job's return value once done, read when `GET /api/jobs/:id`
+ *   sends it
  */
 
 /**
@@ -50,6 +53,8 @@ const STATE = Object.freeze({
  * @property {number | null} fraction from 0 to 1, or null while there is no count
  * @property {string} elapsed
  * @property {string | null} error
+ * @property {string | null} notEmbedded why a candidates job's excerpts weren't embedded
+ *   (decision 0042), as a sentence; null when they were, or the job says nothing of it
  * @property {boolean} finished
  */
 
@@ -98,6 +103,16 @@ function elapsedText({ addedAt, startedAt, finishedAt }, now) {
 }
 
 /**
+ * The reason a candidates job returns for not embedding its excerpts, or null.
+ * @param {JobStatus} job
+ */
+function notEmbeddedText({ result }) {
+  if (!isObject(result)) return null;
+  const { notEmbedded } = result;
+  return typeof notEmbedded === "string" ? sentence(notEmbedded) : null;
+}
+
+/**
  * @param {JobStatus} job
  * @param {number} now milliseconds since the epoch
  * @returns {JobProgress}
@@ -117,6 +132,7 @@ export function jobProgress(job, now) {
     fraction: progress && progress.total > 0 ? progress.done / progress.total : null,
     elapsed: elapsedText(job, now),
     error: job.error,
+    notEmbedded: notEmbeddedText(job),
     finished: job.finishedAt !== null,
   };
 }

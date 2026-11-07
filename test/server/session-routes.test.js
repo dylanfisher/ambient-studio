@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { checkRatedAudio } from "../../src/server/check-rated-audio.js";
 import { addCandidate, putGenome } from "../../src/server/generation-store.js";
+import { listHides } from "../../src/server/hide-store.js";
 import { getRender } from "../../src/server/render-store.js";
 import { sha256Hex } from "../../src/server/sha256-hex.js";
 import { markRemoved, TABLE } from "../../src/server/store.js";
@@ -296,13 +297,14 @@ test("a POST without a JSON body is refused, so a cross-site form can't start a 
  * @param {Studio} studio
  * @param {any} vibe as the vibe route returns it
  * @param {unknown} genome
+ * @param {number | null} [sessionId] the session it was made in; none by default
  */
-function seedCandidate({ server }, vibe, genome) {
+function seedCandidate({ server }, vibe, genome, sessionId = null) {
   const genomeId = genome === null ? null : putGenome(server.store, vibe.id, genome).id;
   return addCandidate(server.store, {
     vibeRevisionId: vibe.revision.id,
     generationId: null,
-    sessionId: null,
+    sessionId,
     genomeId,
     seed: 7,
     source: "llm",
@@ -575,4 +577,117 @@ test("a malformed explore is refused with a message naming the problem", async (
 
   await ok("POST", `/api/sessions/${session.id}/stop`, {});
   expect((await server.api("POST", path, good)).status).toBe(409);
+});
+
+test("hiding and showing again a candidate round-trips through the routes and keeps history", async () => {
+  const studio = await setup();
+  const { server, ok, openSession } = studio;
+  const { vibe, session } = await openSession();
+  const [drone] = GENOMES;
+  const first = seedCandidate(studio, vibe, drone, session.id);
+  const second = seedCandidate(studio, vibe, drone, session.id);
+  const path = `/api/sessions/${session.id}/hidden`;
+  const hiddenOf = async () =>
+    (await ok("GET", `/api/sessions/${session.id}/candidates`)).candidates.map(
+      (/** @type {any} */ c) => [c.id, c.hidden],
+    );
+  expect(await hiddenOf()).toEqual([
+    [first.id, false],
+    [second.id, false],
+  ]);
+
+  expect(await ok("POST", path, { candidateIds: [first.id, second.id], hidden: true })).toEqual({
+    hidden: [first.id, second.id],
+  });
+  expect(await hiddenOf()).toEqual([
+    [first.id, true],
+    [second.id, true],
+  ]);
+  expect(await ok("POST", path, { candidateIds: [second.id], hidden: false })).toEqual({
+    hidden: [first.id],
+  });
+  expect(await hiddenOf()).toEqual([
+    [first.id, true],
+    [second.id, false],
+  ]);
+  expect(listHides(server.store, second.id).map((row) => row.hidden)).toEqual([true, false]);
+
+  // Hiding is not a rating, so a stopped session still takes it.
+  await ok("POST", `/api/sessions/${session.id}/stop`, {});
+  expect(await ok("POST", path, { candidateIds: [first.id], hidden: false })).toEqual({
+    hidden: [],
+  });
+});
+
+test("a malformed hide, or one naming another session's candidate, is refused and stores nothing", async () => {
+  const studio = await setup();
+  const { server, openSession } = studio;
+  const { vibe, session } = await openSession();
+  const [drone] = GENOMES;
+  const mine = seedCandidate(studio, vibe, drone, session.id);
+  const elsewhere = seedCandidate(studio, vibe, drone);
+  const path = `/api/sessions/${session.id}/hidden`;
+  /** @type {[unknown, number, RegExp][]} */
+  const cases = [
+    [{ candidateIds: [mine.id] }, 400, /^hidden must be true or false, got undefined/],
+    [{ candidateIds: [mine.id], hidden: "yes" }, 400, /^hidden must be true or false/],
+    [{ candidateIds: [], hidden: true }, 400, /^candidateIds must be a list of 1 to 64 ids/],
+    [{ candidateIds: mine.id, hidden: true }, 400, /^candidateIds must be a list of 1 to 64 ids/],
+    [{ candidateIds: [mine.id, 0], hidden: true }, 400, /^candidateIds\[1\] must be an integer/],
+    [{ candidateIds: [mine.id], hidden: true, why: "x" }, 400, /^unknown fields why/],
+    [
+      { candidateIds: [mine.id, elsewhere.id], hidden: true },
+      400,
+      new RegExp(`^candidate ${elsewhere.id} is not of session ${session.id}`),
+    ],
+  ];
+  for (const [body, status, message] of cases) {
+    const reply = await server.api("POST", path, body);
+    expect(reply.status, JSON.stringify(body)).toBe(status);
+    expect(reply.json().error, JSON.stringify(body)).toMatch(message);
+  }
+  expect(listHides(server.store, mine.id)).toEqual([]);
+  const body = { candidateIds: [mine.id], hidden: true };
+  expect((await server.api("POST", "/api/sessions/999/hidden", body)).status).toBe(404);
+});
+
+test("hiding either member of a revised pair hides both, and showing either shows both", async () => {
+  const studio = await setup();
+  const { server, ok, openSession } = studio;
+  const { vibe, session } = await openSession();
+  const [drone, variant] = GENOMES;
+  const firstTry = seedCandidate(studio, vibe, drone, session.id);
+  const revision = addCandidate(server.store, {
+    vibeRevisionId: vibe.revision.id,
+    generationId: null,
+    sessionId: session.id,
+    genomeId: putGenome(server.store, vibe.id, variant).id,
+    seed: 7,
+    source: "llm",
+    parentIds: [firstTry.id],
+    locks: [],
+    operator: "revise",
+    operatorParams: null,
+    intent: null,
+    rejectReason: null,
+    lint: null,
+    rejectedGenome: null,
+  });
+  const path = `/api/sessions/${session.id}/hidden`;
+  const hiddenOf = async () =>
+    (await ok("GET", `/api/sessions/${session.id}/candidates`)).candidates.map(
+      (/** @type {any} */ c) => [c.id, c.hidden],
+    );
+
+  expect(await ok("POST", path, { candidateIds: [revision.id], hidden: true })).toEqual({
+    hidden: [firstTry.id, revision.id],
+  });
+  expect(await hiddenOf()).toEqual([
+    [firstTry.id, true],
+    [revision.id, true],
+  ]);
+  expect(await ok("POST", path, { candidateIds: [firstTry.id], hidden: false })).toEqual({
+    hidden: [],
+  });
+  expect(listHides(server.store, revision.id).map((row) => row.hidden)).toEqual([true, false]);
 });

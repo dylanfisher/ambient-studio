@@ -7,12 +7,16 @@ import { createQuickAbSession, unloadGuard } from "../../src/web/quick-ab-sessio
 
 const SESSION = "/api/sessions/5";
 
-/** @param {number} id */
-const candidate = (id) => ({
+/**
+ * @param {number} id
+ * @param {boolean} [hidden]
+ */
+const candidate = (id, hidden = false) => ({
   id,
   genomeId: 100 + id,
   seed: 7,
   excerpt: { renderId: 200 + id, url: `/audio/${200 + id}`, duration: 25 },
+  hidden,
 });
 
 /**
@@ -66,13 +70,14 @@ const fail = (/** @type {string} */ error) => ({ status: 500, body: { error } })
 
 /**
  * The routes a load reads, the pair route, and whatever else `more` answers.
- * @param {{ ids?: number[], ratings?: unknown[], more?: (call: Call) => Reply | Promise<Reply> | undefined }} [options]
+ * @param {{ ids?: number[], hidden?: number[], ratings?: unknown[], more?: (call: Call) => Reply | Promise<Reply> | undefined }} [options]
  */
-function server({ ids = [1, 2, 3], ratings = [], more = () => undefined } = {}) {
+function server({ ids = [1, 2, 3], hidden = [], ratings = [], more = () => undefined } = {}) {
   let seeds = 0;
   return stubServer((call) => {
     if (call.path === SESSION) return ok({ id: 5, vibeId: 9 });
-    if (call.path === `${SESSION}/candidates`) return ok({ candidates: ids.map(candidate) });
+    if (call.path === `${SESSION}/candidates`)
+      return ok({ candidates: ids.map((id) => candidate(id, hidden.includes(id))) });
     if (call.path === "/api/vibes/9/ratings") return ok({ ratings });
     const custom = more(call);
     if (custom) return custom;
@@ -355,7 +360,15 @@ test("a mode switch made while the pool loads is kept", async () => {
   const loading = session.load();
   await flush();
   await session.setMode("random");
-  candidates.release(ok({ candidates: [1, 2, 3].map(candidate) }));
+  candidates.release(ok({ candidates: [1, 2, 3].map((id) => candidate(id)) }));
   await loading;
   expect(session.view().mode).toBe("random");
+});
+
+test("hidden candidates are left out of the pool, and no pair names one", async () => {
+  const calls = server({ ids: [1, 2, 3, 4], hidden: [2, 4] });
+  const session = await started();
+  expect(session.view()).toMatchObject({ phase: "pair", poolSize: 2 });
+  expect(session.view().shown?.ids.slice().sort()).toEqual([1, 3]);
+  expect(posts(calls, "/ab-pairs").map((c) => [c.body.a, c.body.b].sort())).toEqual([[201, 203]]);
 });

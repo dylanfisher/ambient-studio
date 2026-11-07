@@ -538,12 +538,90 @@ legend {
   }
 }
 
-/* Candidates. */
+/* Candidates: the session table (decision 0049). Each candidate is a tbody of two rows, the
+   row itself and its More controls, and one made from another is indented under it by its
+   depth. Below 720px each row stacks its cells. */
 
-.candidate {
+.candidates {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.candidates th {
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+}
+
+.candidates td {
+  padding: 0.5rem;
+  border-top: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.candidates .candidate-more > td {
+  padding-top: 0.25rem;
+  border-top: none;
+}
+
+.candidates td.candidate-name {
+  padding-left: calc(0.5rem + var(--depth, 0) * 1.5rem);
+}
+
+.candidate-excerpt {
+  width: 32%;
+  min-width: 13rem;
+}
+
+.candidate-marks {
+  white-space: nowrap;
+}
+
+.marks {
+  display: block;
+  margin-top: 0.25rem;
+  letter-spacing: 0.05em;
+}
+
+.marks .win {
+  color: var(--good);
+}
+
+.marks .loss {
+  margin-left: 0.35rem;
+  color: var(--bad);
+}
+
+.badge.muted {
+  color: var(--muted-foreground);
+}
+
+.candidate-controls {
   display: grid;
-  gap: 0.6rem;
-  align-content: start;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 0.6rem 1.25rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--radius);
+  background: var(--muted);
+}
+
+@media (max-width: 720px) {
+  .candidates thead {
+    display: none;
+  }
+
+  .candidates tr:not([hidden]),
+  .candidates td {
+    display: block;
+    width: auto;
+  }
+
+  .candidates td + td {
+    border-top: none;
+  }
 }
 
 /* The excerpt player (decision 0048): its button and time on one line, the seek bar under them
@@ -576,13 +654,13 @@ kbd {
   font-variant-numeric: tabular-nums;
 }
 
-.selected {
-  border-color: var(--ring);
+.candidate.selected > tr > td {
+  background: var(--secondary);
 }
 
-.marked {
-  outline: 2px dashed var(--foreground);
-  outline-offset: 2px;
+/* The first of an A/B pair, marked and waiting for the second: a bar down its left edge. */
+.candidate.marked > tr > td:first-child {
+  box-shadow: inset 3px 0 0 var(--foreground);
 }
 
 .macros {

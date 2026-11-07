@@ -1,7 +1,8 @@
 # 0028. Three static pages, one key table, and played time measured from the audio element
 
 - **Date:** 2026-11-06
-- **Status:** accepted; provisional: owner to confirm
+- **Status:** accepted; provisional: owner to confirm. Amended by
+  [0049](0049-session-table-hiding-marks.md) (the session page's candidate table)
 
 ## Context
 
@@ -157,3 +158,8 @@ and time taken. Safari itself is the owner's check on mbp2015.
   buttons on each candidate card, each card keeps its own note and tags, and a card is updated in
   place when its excerpt lands instead of replaced. Choosing a candidate no longer moves the
   focus. Time taken still runs from when the candidate was chosen or last rated.
+- 2026-11-07: from step 4j ([0049](0049-session-table-hiding-marks.md)). The session page lists
+  candidates as a table in place of the grid, one row each, nested under the candidate it was
+  made from, with its A/B marks and its less-used controls behind More controls. A row can be
+  hidden into a Hidden candidates panel and shown again, and the page keeps its scroll across
+  the A/B view and a trip to Quick A/B.
