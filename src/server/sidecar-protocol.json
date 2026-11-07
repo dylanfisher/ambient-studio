@@ -7,6 +7,18 @@
     "version": {
       "params": {},
       "result": { "package": "string", "python": "string" }
+    },
+    "embedder": {
+      "params": { "checkpointCache": "path", "fetch": "boolean" },
+      "result": { "producer": "string", "dimension": "number", "ready": "boolean" }
+    },
+    "embed_audio": {
+      "params": { "checkpointCache": "path", "audio": "path", "out": "path" },
+      "result": { "windows": "number" }
+    },
+    "embed_text": {
+      "params": { "checkpointCache": "path", "text": "string", "out": "path" },
+      "result": {}
     }
   }
 }

@@ -96,10 +96,12 @@ describe("loadConfig", () => {
   test("reads back every value of a complete file", async () => {
     const { root, configPath } = await makeRoot((raw) => {
       raw.fieldRecordings = join(raw.dataRoot, "recordings");
+      raw.sidecar.checkpointCache = join(raw.dataRoot, "clap");
     });
     expect(loadConfig(configPath)).toEqual({
       ...example,
       omlx: { ...example.omlx, apiKey: TEST_OMLX_KEY },
+      sidecar: { ...example.sidecar, checkpointCache: join(root, "clap") },
       dataRoot: root,
       fieldRecordings: join(root, "recordings"),
     });
@@ -155,6 +157,7 @@ describe("loadConfig", () => {
     "queue.thinking": 1,
     sidecar: 120000,
     "sidecar.requestTimeoutMs": 0,
+    "sidecar.checkpointCache": "clap",
     dataRoot: "relative/folder",
     fieldRecordings: 7,
     server: null,
@@ -257,6 +260,7 @@ describe("loadConfig", () => {
       ["dataRoot", "~/.config/ambient-studio", realConfig],
       ["fieldRecordings", "~/.config/ambient-studio/recordings", realConfig],
       ["fieldRecordings", `${realData}/recordings`, realData],
+      ["sidecar.checkpointCache", `${realData}/clap`, realData],
     ])("refuses %s %s", async (key, value, folder) => {
       const { configPath } = await makeRoot((raw) => setPath(raw, key, value));
       expectRefused(() => loadConfig(configPath), key, configPath, folder, "owner's real");

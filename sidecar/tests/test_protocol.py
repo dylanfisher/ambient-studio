@@ -30,3 +30,13 @@ def test_mismatch_names_the_first_wrong_field() -> None:
     )
     assert mismatch({"n": "number"}, {"n": True}, "params") == "params.n must be a number, got true"
     assert mismatch(fields, [], "params") == "params must be an object, got []"
+
+
+def test_a_path_field_takes_only_an_absolute_path() -> None:
+    fields = {"audio": "path"}
+    assert mismatch(fields, {"audio": "/data/rated_audio/1.flac"}, "params") is None
+    assert (
+        mismatch(fields, {"audio": "rated_audio/1.flac"}, "params")
+        == 'params.audio must be a path, got "rated_audio/1.flac"'
+    )
+    assert mismatch(fields, {"audio": 1}, "params") == "params.audio must be a path, got 1"

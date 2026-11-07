@@ -7,6 +7,7 @@
 /** @import { ChildProcessWithoutNullStreams } from "node:child_process" */
 /** @import { Clock } from "./omlx-queue.js" */
 import { spawn } from "node:child_process";
+import { isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import protocol from "./sidecar-protocol.json" with { type: "json" };
 
@@ -55,11 +56,16 @@ export const SIDECAR_LAUNCH = {
 
 /** @typedef {Record<string, string>} Fields field name to type, as the protocol writes them */
 
-/** @type {Record<string, (value: unknown) => boolean>} */
+/**
+ * The field types, the four the sidecar checks too. A path is an absolute file path, which is
+ * how audio and arrays pass, never inline (0041).
+ * @type {Record<string, (value: unknown) => boolean>}
+ */
 const TYPES = {
   string: (value) => typeof value === "string",
   number: (value) => typeof value === "number" && Number.isFinite(value),
   boolean: (value) => typeof value === "boolean",
+  path: (value) => typeof value === "string" && isAbsolute(value),
 };
 
 /** @type {Record<string, { params: Fields, result: Fields }>} */

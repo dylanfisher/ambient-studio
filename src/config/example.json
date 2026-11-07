@@ -17,7 +17,8 @@
     "thinking": true
   },
   "sidecar": {
-    "requestTimeoutMs": 120000
+    "requestTimeoutMs": 120000,
+    "checkpointCache": null
   },
   "dataRoot": "~/Library/Application Support/Ambient Studio/",
   "fieldRecordings": null,

@@ -20,7 +20,9 @@ import { fileURLToPath } from "node:url";
  * `crash` writes `stderr` and exits with `code`; `garbage` writes `line` as it is.
  * `release` answers every held request after this step's own answer, newest first, and
  * `together` sends all of those answers in one write. `split` writes an answer in two halves,
- * the second a turn of the event loop after the first has gone.
+ * the second a turn of the event loop after the first has gone. `floats` is written to the
+ * request's `out` param as little-endian float32 before the step's answer, as the sidecar
+ * writes a vector.
  * @typedef {object} Step
  * @property {"answer" | "error" | "hold" | "hang" | "crash" | "garbage"} do
  * @property {unknown} [result]
@@ -31,6 +33,7 @@ import { fileURLToPath } from "node:url";
  * @property {string} [stderr]
  * @property {number} [code]
  * @property {string} [line]
+ * @property {number[]} [floats]
  */
 
 /**
@@ -156,6 +159,7 @@ function serve(dir) {
       return;
     }
     const { id } = request;
+    if (step.floats) writeFileSync(request.params.out, new Float32Array(step.floats));
     const own = step.do === "answer" ? { id, result: step.result } : undefined;
     if (own && !(step.release && step.together)) void write(own, step.split);
     else if (step.do === "error") void write({ id, error: step.error });
