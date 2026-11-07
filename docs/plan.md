@@ -2443,3 +2443,6 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   a temp-rooted server would need the omlx key copied out of the owner's config, and the
   permission check refused that. Phase 3 closed with acceptance 2 inconclusive. Phase 4 expanded.
   Through the API the owner's data holds 0 A/B ratings, 8 thumbs and 3 sketches, all on vibe 1.
+- 2026-11-07: owner: "add the web package you need. start 4a and 4c." Read as approval of phase
+  4's packages: `torch` 2.15.0, `transformers` 5.22.2 and `numpy` 2.5.4 added to the sidecar
+  (venv 804 MB). The CLAP checkpoint is fetched in 4b, not now.

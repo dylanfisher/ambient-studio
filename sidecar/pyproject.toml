@@ -3,7 +3,11 @@ name = "ambient-sidecar"
 version = "0.0.0"
 description = "ML sidecar for Ambient Studio: CLAP embeddings, preference models, optimizers, LoRA training."
 requires-python = ">=3.12,<3.13"
-dependencies = []
+dependencies = [
+    "numpy>=2.5.4",
+    "torch>=2.15.0",
+    "transformers>=5.22.2",
+]
 
 [dependency-groups]
 dev = ["pytest", "ruff", "pyright"]
