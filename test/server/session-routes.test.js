@@ -428,16 +428,14 @@ test("a malformed nudge is refused with a message naming the problem", async () 
 // Explore (decision 0038).
 test("an explore through its route asks for each child and lists it under its base", async () => {
   const studio = await setup();
-  const { server, omlx, ok, openSession, generate, drive } = studio;
-  const { session } = await openSession();
-  const made = await generate(session.id, GENOMES.slice(0, 1));
-  const [baseId] = made.result.candidateIds;
-  omlx.script({
-    tokens: [JSON.stringify({ intent: "slower", genome: { ...GENOMES[0], reverbDecay: 5 } })],
-  });
+  const { server, omlx, ok, openSession, drive } = studio;
+  const { vibe, session } = await openSession();
+  const base = seedCandidate(studio, vibe, GENOMES[0]);
+  // Only the request and the row matter here, so the child gives no genome and renders nothing.
+  omlx.script({ tokens: ["no genome here"] });
 
   const job = await ok("POST", `/api/sessions/${session.id}/explores`, {
-    candidateId: baseId,
+    candidateId: base.id,
     direction: "slower",
     count: 1,
   });
@@ -446,18 +444,14 @@ test("an explore through its route asks for each child and lists it under its ba
   const done = await ok("GET", `/api/jobs/${job.id}`);
   expect(done).toMatchObject({ state: "done", error: null, progress: { done: 1, total: 1 } });
 
-  expect(omlx.requests).toHaveLength(2);
-  expect(omlx.requests[1]?.body.messages[1].content).toContain('JSON string: "slower"');
+  expect(omlx.requests).toHaveLength(1);
+  expect(omlx.requests[0]?.body.messages[1].content).toContain('JSON string: "slower"');
   const { candidates } = await ok("GET", `/api/sessions/${session.id}/candidates`);
-  expect(candidates.map((/** @type {any} */ c) => c.id)).toEqual([
-    baseId,
-    ...done.result.candidateIds,
-  ]);
-  expect(candidates.at(-1)).toMatchObject({
-    rejectReason: null,
+  expect(candidates.map((/** @type {any} */ c) => c.id)).toEqual(done.result.candidateIds);
+  expect(candidates[0]).toMatchObject({
+    rejectReason: "noJson",
     operator: "explore",
-    parentIds: [baseId],
-    intent: "slower",
+    parentIds: [base.id],
   });
 });
 
@@ -521,7 +515,12 @@ test("a malformed explore is refused with a message naming the problem", async (
       /^direction must be at most 200 characters, got 201/,
     ],
     [{ ...good, direction: "slower\nless bell" }, 400, /^direction must be one line/],
-    [{ ...good, direction: "slower less bell" }, 400, /^direction must be one line/],
+    [{ ...good, direction: "slower\u2028less bell" }, 400, /^direction must be one line/],
+    [{ ...good, direction: "slower\u2029" }, 400, /^direction must be one line/],
+    [{ ...good, direction: "slower\tless" }, 400, /^direction must be one line/],
+    [{ ...good, direction: "slower\u0000" }, 400, /^direction must be one line/],
+    [{ ...good, direction: "slower\u007f" }, 400, /^direction must be one line/],
+    [{ ...good, direction: "slower\u0085" }, 400, /^direction must be one line/],
     [{ ...good, count: 0 }, 400, /^count must be an integer from 1 to 32, got 0/],
     [{ ...good, count: 33 }, 400, /^count must be an integer from 1 to 32/],
     [{ ...good, candidateId: 999 }, 400, /there is no candidate 999/],

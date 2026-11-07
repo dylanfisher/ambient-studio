@@ -125,8 +125,11 @@ const DUPLICATE = Object.freeze({
     `This session is already making this explore (job ${id}). Wait for it to finish, or cancel it.`,
 });
 
-/** A line break in any form, which a one-line direction may not hold. */
-const LINE_BREAK = /[\n\r\u2028\u2029]/;
+/**
+ * What a one-line direction may not hold: a control character (line breaks, tab, NUL, DEL and
+ * NEL among them) or a line or paragraph separator.
+ */
+const NOT_ONE_LINE = /[\p{Cc}\u2028\u2029]/u;
 
 /**
  * An explore's direction, or null when the body gives none or only white space (decision 0038).
@@ -136,7 +139,9 @@ const LINE_BREAK = /[\n\r\u2028\u2029]/;
 function direction(given) {
   if (given.direction === undefined || given.direction === null) return null;
   const line = text(given, "direction", MAX_CHARS.direction, { allowEmpty: true });
-  if (LINE_BREAK.test(line)) throw new HttpError(400, "direction must be one line");
+  if (NOT_ONE_LINE.test(line)) {
+    throw new HttpError(400, "direction must be one line of text, with no control characters");
+  }
   return line.trim() === "" ? null : line;
 }
 

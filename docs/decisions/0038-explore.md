@@ -45,9 +45,11 @@ failed job if the locks changed after the request.
 **The direction is quoted as JSON.** It goes into the prompt as the owner wrote it, inside
 `JSON.stringify`, so a quote, backslash or line break in it is escaped, and it can't end the
 direction line or start a section of its own (the prompt's sections are separated by blank
-lines). The route also refuses a direction with a line break in any form (`\n`, `\r`, U+2028,
-U+2029), which `JSON.stringify` leaves as it is for the last two, and one over
-`MAX_CHARS.direction`, 200 characters: a 400 each. A direction that is absent, null, empty or
+lines). The route also refuses a direction holding any control character (`\p{Cc}`: line breaks,
+tab, NUL, DEL and NEL among them) or U+2028 or U+2029, which `JSON.stringify` leaves as they
+are, and one over `MAX_CHARS.direction`, 200 characters: a 400 each. The direction is the
+owner's text and reaches pages as it was written, so 3g's card and lineage page show it with
+`textContent`, never as HTML. A direction that is absent, null, empty or
 only white space is no direction.
 
 **Trimming.** When the prompt is over the context budget, examples are trimmed from the end
@@ -118,5 +120,10 @@ steps keep "candidate", the word every card goes by.
   shipped genomes, so the examples are trimmed a little sooner.
 - 3g's card adds the direction field and the button; until then the route is reachable only by
   HTTP.
-- A child whose base was trimmed is a plain first try in all but its parent; the lineage page
-  (3g) can read `baseTrimmed` to say so.
+- A child whose base was trimmed is a plain first try in all but its parent. The lineage page
+  (3g) reads `operatorParams.baseTrimmed` to say so, and 3h's statistics read it too, so a
+  trimmed child isn't counted as a variation of its base.
+- An explore prompt is larger than a first try's, so a child near the budget may have its
+  revision skipped over budget (`revisionOverBudget`, 0036): the follow-up replays the prompt
+  untrimmed and adds the answer and the ask. The seed-sized case above leaves about 3,000
+  tokens.

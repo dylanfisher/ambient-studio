@@ -359,90 +359,112 @@ test("a first try too quiet to normalize is revised, with its unmeasured feature
 const genomeOf = (app, { genomeId }) =>
   /** @type {any} */ (getGenome(app.store, /** @type {number} */ (genomeId))?.genome);
 
+/**
+ * A base row stored directly, so a test renders nothing it doesn't check.
+ * @param {TestApp["app"]} app
+ * @param {{ id: number, revision: { id: number } }} vibe
+ * @param {{ id: number }} session
+ * @param {unknown} genome
+ * @param {{ operator?: string | null, parentIds?: number[], source?: string }} [origin]
+ */
+const seedBase = (
+  app,
+  vibe,
+  session,
+  genome,
+  { operator = null, parentIds = [], source = "llm" } = {},
+) =>
+  addCandidate(app.store, {
+    vibeRevisionId: vibe.revision.id,
+    generationId: null,
+    sessionId: session.id,
+    genomeId: putGenome(app.store, vibe.id, genome).id,
+    seed: 5,
+    source,
+    parentIds,
+    locks: [],
+    operator,
+    operatorParams: null,
+    intent: "a slow cold drone",
+    rejectReason: null,
+    lint: null,
+    rejectedGenome: null,
+  });
+
+/** An answer with no genome: it is stored rejected, renders nothing and gets no repair. */
+const NO_GENOME = { tokens: ["no genome here"] };
+
 test("explore sends a fresh first prompt per child holding the base and the direction, and stores each child under the base", async () => {
   const { app, omlx, vibe, session, reports, run } = await sessionApp(undefined, INSIDE);
-  omlx.script(answer(GENOMES[0]));
-  await run(1);
-  const [base] = listSessionCandidates(app.store, session.id);
-  if (!base) throw new Error("expected a base");
+  const base = seedBase(app, vibe, session, GENOMES[0]);
   setLock(app.store, {
     vibeId: vibe.id,
     candidateId: base.id,
     path: "reverbDecay",
-    value: 9,
+    value: 3,
     voiceType: null,
   });
-  app.random = () => 0.5;
-  // The second answer changes the locked value, which goes back.
-  const [one, two] = [
-    { ...GENOMES[0], delayLevel: -30 },
-    { ...GENOMES[0], reverbDecay: 2, delayLevel: -28 },
-  ];
-  omlx.script(answer(one), answer(two));
+  // The first child gives no genome, so only the second renders; it changes the locked value,
+  // which goes back. A short reverb keeps that render quick.
+  omlx.script(NO_GENOME, answer({ ...GENOMES[0], reverbDecay: 6, delayLevel: -28 }));
 
   const result = await run(2, { base, genome: genomeOf(app, base), direction: "slower" });
-  expect(omlx.requests).toHaveLength(3);
-  const plain = /** @type {any} */ (omlx.requests[0]).body.messages;
-  const locked = canonicalGenome({ ...genomeOf(app, base), reverbDecay: 9 });
-  for (const { body } of omlx.requests.slice(1)) {
+  expect(omlx.requests).toHaveLength(2);
+  const locked = canonicalGenome({ ...genomeOf(app, base), reverbDecay: 3 });
+  for (const { body } of omlx.requests) {
     expect(body.messages.map((/** @type {any} */ m) => m.role)).toEqual(["system", "user"]);
-    expect(body.messages[0]).toEqual(plain[0]);
     const text = body.messages[1].content;
     expect(text).toContain(`The base genome to vary:\n${locked}`);
     expect(text).toContain('as a JSON string: "slower"');
-    expect(text).toContain("reverbDecay = 9");
+    expect(text).toContain("reverbDecay = 3");
   }
   const children = listSessionCandidates(app.store, session.id).slice(1);
   expect(children.map(({ id }) => id)).toEqual(result.candidateIds);
-  const exploreSeed = Math.floor(0.5 * STREAM_SEEDS);
   for (const child of children) {
     expect(child).toMatchObject({
       parentIds: [base.id],
       operator: "explore",
       sessionId: session.id,
-      rejectReason: null,
       operatorParams: expect.objectContaining({ direction: "slower", baseTrimmed: false }),
     });
     expect(child.seed).not.toBe(base.seed);
-    expect(genomeOf(app, child).reverbDecay).toBe(9);
     const generation = getGeneration(app.store, /** @type {number} */ (child.generationId));
-    expect(generation?.requestGroup).toBe(requestGroupName(vibe.id, exploreSeed, "explore"));
+    expect(generation?.requestGroup).toBe(requestGroupName(vibe.id, STREAM_SEED, "explore"));
   }
-  expect(children[0]?.seed).not.toBe(children[1]?.seed);
-  expect(children[1]?.operatorParams).toMatchObject({ locksChanged: ["reverbDecay"] });
-  expect(result.excerpts.map(({ candidateId }) => candidateId)).toEqual(result.candidateIds);
+  const [rejected, kept] = children;
+  expect(rejected?.seed).not.toBe(kept?.seed);
+  expect(rejected).toMatchObject({ rejectReason: "noJson" });
+  expect(kept).toMatchObject({
+    rejectReason: null,
+    operatorParams: expect.objectContaining({ locksChanged: ["reverbDecay"] }),
+  });
+  expect(genomeOf(app, /** @type {any} */ (kept)).reverbDecay).toBe(3);
+  expect(result.excerpts.map(({ candidateId }) => candidateId)).toEqual([kept?.id]);
   expect(reports.map(({ step }) => step)).toContain("Asking the model for variation 2 of 2");
 });
 
 test("exploring from a revision or a nudge child sends a first prompt with no earlier turns", async () => {
   const { app, omlx, vibe, session, run } = await sessionApp(undefined, MISSED);
-  omlx.script(answer(GENOMES[0]), answer(REVISED));
-  await run(1);
-  const [, revised] = listSessionCandidates(app.store, session.id);
-  if (!revised) throw new Error("expected a revision");
-  expect(revised.operator).toBe("revise");
-  const nudged = addCandidate(app.store, {
-    vibeRevisionId: revised.vibeRevisionId,
-    sessionId: session.id,
-    seed: revised.seed,
-    source: "mutation",
-    locks: [],
-    intent: null,
-    rejectReason: null,
-    lint: null,
-    rejectedGenome: null,
-    generationId: null,
-    genomeId: putGenome(app.store, vibe.id, { ...REVISED, delayLevel: -29 }).id,
-    parentIds: [revised.id],
-    operator: "nudge",
-    operatorParams: { stepSize: "small", seed: 1 },
+  const first = seedBase(app, vibe, session, GENOMES[0]);
+  const revised = seedBase(app, vibe, session, REVISED, {
+    operator: "revise",
+    parentIds: [first.id],
   });
+  const nudged = seedBase(
+    app,
+    vibe,
+    session,
+    { ...REVISED, delayLevel: -29 },
+    {
+      operator: "nudge",
+      parentIds: [revised.id],
+      source: "mutation",
+    },
+  );
   for (const [i, base] of [revised, nudged].entries()) {
     app.random = () => 0.5 + i / 10;
     const before = omlx.requests.length;
-    // Only the prompt matters here, so the child's answer is one with no genome, which renders
-    // nothing and gets no repair.
-    omlx.script({ tokens: ["no genome here"] });
+    omlx.script(NO_GENOME);
     await run(1, { base, genome: genomeOf(app, base), direction: null });
     const sent = /** @type {any} */ (omlx.requests[before]).body.messages;
     expect(sent.map((/** @type {any} */ m) => m.role)).toEqual(["system", "user"]);
@@ -455,23 +477,9 @@ test("exploring from a revision or a nudge child sends a first prompt with no ea
 
 test("an explore child that misses a range is revised, replaying its own explore prompt", async () => {
   const { app, omlx, vibe, session, run } = await sessionApp(undefined, MISSED);
-  const base = addCandidate(app.store, {
-    vibeRevisionId: vibe.revision.id,
-    generationId: null,
-    sessionId: session.id,
-    genomeId: putGenome(app.store, session.vibeId, GENOMES[1]).id,
-    seed: 5,
-    source: "llm",
-    parentIds: [],
-    locks: [],
-    operator: null,
-    operatorParams: null,
-    intent: "a slow cold drone",
-    rejectReason: null,
-    lint: null,
-    rejectedGenome: null,
-  });
-  omlx.script(answer(GENOMES[0]), answer(REVISED));
+  const base = seedBase(app, vibe, session, GENOMES[1]);
+  // The revision's answer has no genome, so only the child renders.
+  omlx.script(answer(GENOMES[0]), NO_GENOME);
   const result = await run(1, { base, genome: genomeOf(app, base), direction: "less bell" });
   expect(omlx.requests).toHaveLength(2);
   const [explore, revision] = /** @type {[any, any]} */ (omlx.requests.map((r) => r.body));
@@ -482,4 +490,24 @@ test("an explore child that misses a range is revised, replaying its own explore
   expect(child).toMatchObject({ operator: "explore", parentIds: [base.id] });
   expect(revised).toMatchObject({ operator: "revise", parentIds: [child?.id] });
   expect(result.candidateIds).toEqual([child?.id, revised?.id]);
+});
+
+test("an explore whose base can't take the locks set after the route took it fails before asking", async () => {
+  const { app, omlx, vibe, session, run } = await sessionApp();
+  // The drone has no pad voice, so a lock on the pad's level can't go into it.
+  const base = seedBase(app, vibe, session, GENOMES[0]);
+  setLock(app.store, {
+    vibeId: vibe.id,
+    candidateId: base.id,
+    path: "voices.pad.level",
+    value: -12,
+    voiceType: "pad",
+  });
+  await expect(run(1, { base, genome: genomeOf(app, base), direction: null })).rejects.toThrow(
+    new RegExp(
+      `^the base, candidate ${base.id}, can't take the vibe's locks: .*voices\\.pad\\.level`,
+    ),
+  );
+  expect(omlx.requests).toHaveLength(0);
+  expect(listSessionCandidates(app.store, session.id)).toEqual([base]);
 });
