@@ -1437,3 +1437,20 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   rather than waiting for a second review; briefs for steps that call each other's functions name
   who adapts the caller at merge (2k adapted 2i's job, which worked). The gate's tools still skip
   `tmp/`, `.claude/worktrees/`, `node_modules/` and `.venv/`; nothing in the checkers changed.
+- 2026-11-06: 2j merged as 12e8274 (Opus: 337k tokens, 146 tool calls, 32.1 min, then a fix round
+  at 388k, 50 calls, 7.6 min; reviewer Sonnet: 108k tokens, 21 tool calls, 5.8 min, FAIL; fixes
+  read by the orchestrator). Three pages in plain HTML, CSS and ES modules: the vibe list, the vibe
+  page (brief, a constraints form built from `CONSTRAINT_KINDS` and validated as it's typed, notes,
+  revisions, every rating of the vibe) and the session view (a candidate grid with an `<audio>`
+  per excerpt, features, lint and check findings, intent, rating controls, and an A/B view). Every
+  action has a key, listed on its page; job status is polled every second. Played fraction is the
+  union of played intervals from the audio element's events; time taken runs from when a
+  candidate is shown or last rated, or a pair opened, to the rating. The review failed the step: a
+  poll that landed an excerpt on the selected card moved the focus out of the note being typed,
+  so the rest of the note fired rating keys on audio not yet heard. Selection now never takes the
+  focus from a form field; each rating action posts once while a press is pending, and held keys
+  repeat nothing. No API newer than Safari 15.4 is used (checked across all 60 modules); the
+  pages were driven by key presses in headless Chromium against a temp root. 967 tests. Pending
+  owner checks, on Safari 17.6 (mbp2015) and mbp2026: playback and seeking, rating everything by
+  keyboard, visible focus and readable type, ratings listed after a restart, A/B sides equally
+  loud, and `Q` confirming before a stop.
