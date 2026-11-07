@@ -3,6 +3,7 @@
 // derived and get replaced.
 /** @import { MACRO_DIRECTIONS, OUTCOMES, THUMBS } from "../domain/rating-values.js" */
 /** @import { Removable, Row, Store } from "./store.js" */
+import { FEEDBACK_KIND } from "../domain/rating-values.js";
 import {
   decode,
   insertRow,
@@ -59,9 +60,7 @@ import {
  * @property {number} timeTakenMs
  */
 
-/** The feedback kinds. The directions each takes are in ../domain/rating-values.js. */
-export const FEEDBACK_KIND = /** @type {const} */ ({ thumbs: "thumbs", macro: "macro" });
-export { MACRO_DIRECTIONS, OUTCOMES, THUMBS } from "../domain/rating-values.js";
+export { FEEDBACK_KIND, MACRO_DIRECTIONS, OUTCOMES, THUMBS } from "../domain/rating-values.js";
 
 /** @typedef {RatingDraft & Removable & { id: number, createdAt: number }} Rating */
 
@@ -347,7 +346,7 @@ export function listRatedGenomes(store, vibeId) {
     .prepare(
       `WITH votes (genomeId, vote, createdAt) AS (
          SELECT genomeId, CASE direction WHEN 'up' THEN 1 ELSE -1 END, createdAt
-           FROM ${TABLE.feedback} WHERE kind = 'thumbs' AND removedAt IS NULL
+           FROM ${TABLE.feedback} WHERE kind = '${FEEDBACK_KIND.thumbs}' AND removedAt IS NULL
          UNION ALL
          SELECT aGenomeId, CASE outcome WHEN 'a' THEN 1 ELSE -1 END, createdAt
            FROM ${TABLE.ratings} WHERE outcome IN ('a', 'b') AND removedAt IS NULL
