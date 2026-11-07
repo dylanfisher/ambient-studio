@@ -1,18 +1,34 @@
-// The session's jobs (decisions 0027, 0031): ask omlx for candidates (0024) and render each valid
-// one's excerpt as it is made (0026), or render the excerpts a session's candidates are missing.
+// The session's jobs (decisions 0027, 0031): ask omlx for candidates (0024), render each valid
+// one's excerpt as it is made (0026) and revise one that misses (0036), or render the excerpts a
+// session's candidates are missing.
 // Each runs only when the owner's request adds it to the job runner.
+/** @import { Features } from "../domain/extract-features.js" */
+/** @import { LintResult } from "../domain/lint-result.js" */
 /** @import { GenerationStep } from "./generate-candidates.js" */
 /** @import { Candidate } from "./generation-store.js" */
 /** @import { JobContext } from "./job-runner.js" */
 /** @import { RecordingEntry } from "./recording-index.js" */
 /** @import { ExcerptRequest } from "./render-excerpt.js" */
+/** @import { Render } from "./render-store.js" */
 /** @import { App } from "./routing.js" */
+
+import { excerptMisses } from "../domain/excerpt-misses.js";
 import { excerptRequest } from "./candidate-excerpt.js";
-import { GENERATION_STEP, generateCandidates } from "./generate-candidates.js";
+import {
+  checkRevision,
+  GENERATION_STEP,
+  generateCandidates,
+  playableHashes,
+  requestGroupName,
+  revisedGroupName,
+  revisionSeed,
+} from "./generate-candidates.js";
 import { JOB_STEP } from "./job-steps.js";
 import { locksInForce } from "./lock-store.js";
 import { indexRecordings } from "./recording-index.js";
 import { renderExcerpt, renderExcerpts } from "./render-excerpt.js";
+import { isUnchanged, reviseCandidate } from "./revise-candidate.js";
+import { getRevision } from "./vibe-store.js";
 
 /** How many candidates one request asks for when it doesn't say. */
 export const DEFAULT_CANDIDATES = 8;
@@ -83,10 +99,12 @@ async function renderFor(app, candidates, job, recordings) {
  * @param {GenerationStep} step
  * @param {number} offset how many candidates came before this run's first
  * @param {number} total
+ * @param {(n: number, of: number) => string} [asking] the sentence for a first request,
+ *   `JOB_STEP.asking` when omitted; a revision says `JOB_STEP.revising`
  */
-export function generationStepText({ index, kind }, offset, total) {
+export function generationStepText({ index, kind }, offset, total, asking = JOB_STEP.asking) {
   const n = offset + index + 1;
-  if (kind === GENERATION_STEP.asking) return JOB_STEP.asking(n, total);
+  if (kind === GENERATION_STEP.asking) return asking(n, total);
   if (kind === GENERATION_STEP.repairing) return JOB_STEP.repairing(n);
   return JOB_STEP.busy;
 }
@@ -94,11 +112,13 @@ export function generationStepText({ index, kind }, offset, total) {
 /**
  * The job that generates `count` candidates for the session's vibe and renders each valid one's
  * excerpt as soon as it is made, before asking for the next, so the owner can hear the first
- * while the rest are made. Between requests nothing is in flight at omlx, so a render never
- * shares the event loop with a request's first-token timer. Progress counts candidates: one is
- * done once it is stored and, when valid, rendered. Cancelling the job cancels the omlx queue
- * too, which is the job's alone while it runs, since the runner runs one job at a time, and a
- * cancel during a render stops the job before its next request.
+ * while the rest are made. A first try whose excerpt misses one of its vibe's feature ranges or
+ * fails a render check is revised once (decision 0036), and the revision's excerpt rendered,
+ * before the next first try. Between requests nothing is in flight at omlx, so a render never
+ * shares the event loop with a request's first-token timer. Progress counts first tries: one is
+ * done once it is stored and, when valid, rendered, measured and revised. Cancelling the job
+ * cancels the omlx queue too, which is the job's alone while it runs, since the runner runs one
+ * job at a time, and a cancel during a render stops the job before its next request.
  * @param {App} app
  * @param {{ vibeId: number, sessionId: number, count: number }} request
  * @returns {(job: JobContext) => Promise<CandidateJobResult>}
@@ -106,45 +126,89 @@ export function generationStepText({ index, kind }, offset, total) {
 export function candidateJob(app, { vibeId, sessionId, count }) {
   return async (job) => {
     const recordings = await jobRecordings(app);
+    const playable = playableHashes(recordings);
     /** @type {CandidateRender[]} */
     const excerpts = [];
+    /** @type {number[]} */
+    const candidateIds = [];
     let done = 0;
+    let firstTries = 0;
     const cancelRequests = () => app.queue.cancel();
     job.signal.addEventListener("abort", cancelRequests);
+
+    /**
+     * Renders the candidate's excerpt when it has a genome, saying `step` first.
+     * @param {Candidate} candidate
+     * @param {string} step
+     */
+    const render = async (candidate, step) => {
+      const request = excerptRequest(app.store, candidate);
+      if (!request) return null;
+      job.progress(done, count, step);
+      job.signal.throwIfAborted();
+      const { render } = await renderExcerpt(app.store, app.paths.renderCache, request, recordings);
+      excerpts.push({ candidateId: candidate.id, renderId: render.id });
+      return render;
+    };
+
     try {
       // A cancel while the folder was indexed fired before the listener was added.
       job.signal.throwIfAborted();
-      const { requestGroup, candidates } = await generateCandidates(
-        vibeId,
-        count,
-        app.store,
-        app.queue,
-        {
+      const seed = Math.floor(app.random() * STREAM_SEEDS);
+      const revisions = revisedGroupName(requestGroupName(vibeId, seed));
+
+      /**
+       * Measures the first try's excerpt and revises the first try when it misses anything.
+       * @param {Candidate} firstTry
+       * @param {Render} rendered
+       * @param {number} index
+       */
+      const measureAndRevise = async (firstTry, rendered, index) => {
+        job.progress(done, count, JOB_STEP.measuring(done + 1, count));
+        const revision = getRevision(app.store, firstTry.vibeRevisionId);
+        if (!revision) throw new Error(`there is no vibe revision ${firstTry.vibeRevisionId}`);
+        const features = /** @type {Features} */ (rendered.features);
+        const checks = /** @type {LintResult} */ (rendered.checks);
+        const misses = excerptMisses(features, checks, checkRevision(revision).ranges);
+        if (misses.length === 0) return;
+        job.signal.throwIfAborted();
+        await reviseCandidate(app.store, app.queue, firstTry, {
           config: app.config,
-          seed: Math.floor(app.random() * STREAM_SEEDS),
           sessionId,
+          requestGroup: revisions,
+          index,
+          seed: revisionSeed(seed, index),
           locks: locksInForce(app.store, vibeId),
-          recordings,
-          onStep: (step) => job.progress(done, count, generationStepText(step, 0, count)),
-          onCandidate: async (candidate) => {
-            const request = excerptRequest(app.store, candidate);
-            if (request) {
-              job.progress(done, count, JOB_STEP.renderingCandidate(done + 1, count));
-              job.signal.throwIfAborted();
-              const { render } = await renderExcerpt(
-                app.store,
-                app.paths.renderCache,
-                request,
-                recordings,
-              );
-              excerpts.push({ candidateId: candidate.id, renderId: render.id });
-            }
-            job.progress(++done, count, null);
-            job.signal.throwIfAborted();
+          playable,
+          features,
+          misses,
+          onStep: (step) =>
+            job.progress(done, count, generationStepText(step, 0, count, JOB_STEP.revising)),
+          onCandidate: async (revised) => {
+            candidateIds.push(revised.id);
+            if (isUnchanged(revised)) return;
+            await render(revised, JOB_STEP.renderingRevision(done + 1, count));
           },
+        });
+      };
+
+      const { requestGroup } = await generateCandidates(vibeId, count, app.store, app.queue, {
+        config: app.config,
+        seed,
+        sessionId,
+        locks: locksInForce(app.store, vibeId),
+        recordings,
+        onStep: (step) => job.progress(done, count, generationStepText(step, 0, count)),
+        onCandidate: async (candidate) => {
+          const index = firstTries++;
+          candidateIds.push(candidate.id);
+          const rendered = await render(candidate, JOB_STEP.renderingCandidate(done + 1, count));
+          if (rendered) await measureAndRevise(candidate, rendered, index);
+          job.progress(++done, count, null);
+          job.signal.throwIfAborted();
         },
-      );
-      return { requestGroup, candidateIds: candidates.map(({ id }) => id), excerpts };
+      });
+      return { requestGroup, candidateIds, excerpts };
     } finally {
       job.signal.removeEventListener("abort", cancelRequests);
     }

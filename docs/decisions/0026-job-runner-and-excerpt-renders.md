@@ -1,7 +1,8 @@
 # 0026. One job at a time, and excerpts cached by window, target and producer
 
 - **Date:** 2026-11-06
-- **Status:** accepted; provisional: owner to confirm
+- **Status:** accepted; provisional: owner to confirm; amended by
+  [0036](0036-revision-pass.md) (the candidates job revises after a render)
 
 ## Context
 
@@ -126,3 +127,8 @@ normalizing, measuring and writing one excerpt took 1.04–1.09 s for the drone 
   `JOB_STEP`, or null between steps, and the runner sets it to null when a job finishes. A job
   reports `progress(done, total, step)`. The excerpt job says which excerpt it is rendering
   ([0031](0031-fewer-waits-after-first-evaluation.md)).
+- 2026-11-07: from step 3d ([0036](0036-revision-pass.md)). After a first try's excerpt renders,
+  the candidates job checks its features against its vibe's ranges and reads its render checks.
+  A first try with a miss is revised once, and the revision's excerpt rendered, before the next
+  first try. The job checks for a cancel after measuring and before the revision request. An
+  unchanged revision isn't rendered.

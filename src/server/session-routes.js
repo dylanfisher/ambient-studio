@@ -1,12 +1,13 @@
 // The session and job routes (decision 0027): a session's state and stop, asking for
-// candidates, re-rendering missing excerpts, the candidates with their excerpts, and job status
-// and cancel. Stopping a session cancels its jobs, and with them their omlx requests.
+// candidates, re-rendering missing excerpts, the candidates with their excerpts and revised
+// pairs (0036), and job status and cancel. Stopping a session cancels its jobs, and with them their omlx requests.
 /** @import { JobStatus } from "./job-runner.js" */
 /** @import { Feedback } from "./rating-store.js" */
 /** @import { App, Route } from "./routing.js" */
 /** @import { Session } from "./session-store.js" */
 import { currentExcerpt } from "./candidate-excerpt.js";
 import { candidateJob, DEFAULT_CANDIDATES, excerptJob, MAX_CANDIDATES } from "./candidate-job.js";
+import { candidatePairs } from "./candidate-pair.js";
 import { getGenome, listSessionCandidates } from "./generation-store.js";
 import { FEEDBACK_KIND, listSessionFeedback } from "./rating-store.js";
 import { fields, idParam, integer } from "./request-fields.js";
@@ -194,33 +195,43 @@ export const SESSION_ROUTES = [
     handle: ({ app, params }) => {
       const session = requireSession(app, params);
       const live = listSessionFeedback(app.store, session.id);
-      const candidates = listSessionCandidates(app.store, session.id).map((candidate) => {
-        const render = currentExcerpt(app.store, app.paths.renderCache, candidate);
-        const excerpt = render && {
-          renderId: render.id,
-          url: `/audio/${render.id}`,
-          offset: render.offset,
-          duration: render.duration,
-          target: render.target,
-          features: render.features,
-          checks: render.checks,
-        };
-        const { id, genomeId, seed, intent, rejectReason, lint, createdAt } = candidate;
-        const genome = genomeId === null ? null : (getGenome(app.store, genomeId)?.genome ?? null);
-        const feedback = feedbackState(live, candidate);
-        return {
-          id,
-          genomeId,
-          seed,
-          intent,
-          rejectReason,
-          lint,
-          genome,
-          createdAt,
-          excerpt,
-          feedback,
-        };
-      });
+      const listed = listSessionCandidates(app.store, session.id).map((candidate) => ({
+        candidate,
+        excerpt: currentExcerpt(app.store, app.paths.renderCache, candidate),
+      }));
+      const { pairs, folded } = candidatePairs(app.store, listed);
+      const candidates = listed
+        .filter(({ candidate }) => !folded.has(candidate.id))
+        .map(({ candidate, excerpt: render }) => {
+          const excerpt = render && {
+            renderId: render.id,
+            url: `/audio/${render.id}`,
+            offset: render.offset,
+            duration: render.duration,
+            target: render.target,
+            features: render.features,
+            checks: render.checks,
+          };
+          const { id, genomeId, seed, intent, rejectReason, lint, createdAt } = candidate;
+          const genome =
+            genomeId === null ? null : (getGenome(app.store, genomeId)?.genome ?? null);
+          const feedback = feedbackState(live, candidate);
+          return {
+            id,
+            genomeId,
+            seed,
+            intent,
+            rejectReason,
+            lint,
+            genome,
+            createdAt,
+            operator: candidate.operator,
+            parentIds: candidate.parentIds,
+            pair: pairs.get(id) ?? null,
+            excerpt,
+            feedback,
+          };
+        });
       return { candidates };
     },
   },

@@ -9,6 +9,8 @@
   [0027](0027-session-api-and-ratings.md) (duplicate jobs, the candidate job's renders, and
   feedback states and removal) and
   [0030](0030-seed-vibes-and-evaluation.md) (the evaluation's params and report, and its 409 body).
+  Amended by [0036](0036-revision-pass.md) (the candidates job's revision steps, and the
+  candidates route's `pair` field).
 
 ## Context
 
@@ -152,3 +154,10 @@ identity. No rated audio is removed when a rating is.
   its whole range. 7 of 16 valid answers in the next test wrote `{"points": [...]}` for
   brightness and passed. The text now reads `macros.brightness stays between 0.3 and 0.7 the
   whole time (a number, or a trajectory within that range)`.
+- 2026-11-07: from step 3d ([0036](0036-revision-pass.md)). The candidates job's steps gain
+  "Measuring candidate 3 of 8" after each first try's render, "Revising candidate 3 of 8" while
+  its revision is asked for, and "Rendering the revision of candidate 3 of 8". `done` counts
+  first tries, each done once revised when it needed it. `candidateIds` in the job's result
+  lists the revisions too, each after its first try. `GET /api/sessions/:id/candidates` gives
+  each candidate `operator`, `parentIds` and `pair`, and leaves unchanged revisions out; the
+  page shows one card of each pair and links the other.

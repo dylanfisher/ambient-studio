@@ -1,7 +1,7 @@
 // The session page (decisions 0028 and 0032): the candidate grid, one card per candidate with its
 // excerpt, its rating controls and its details; the A/B view; and the session's jobs, each with
-// its progress, followed until they finish. Played fraction and time taken are measured here as
-// decision 0027 defines them.
+// its progress, followed until they finish. Of a revised pair, one card shows and links the
+// other (0036). Played fraction and time taken are measured here as decision 0027 defines them.
 /** @import { LintResult } from "../domain/lint-result.js" */
 /** @import { AbCandidate } from "./ab-view.js" */
 /** @import { JobStatus } from "./job-progress.js" */
@@ -21,6 +21,7 @@ import { JOB_STATE } from "./job-progress.js";
 import { jobBox, TONE } from "./job-view.js";
 import { macroTitles } from "./macro-words.js";
 import { oneAtATime } from "./one-at-a-time.js";
+import { createPairSwap } from "./pair-swap.js";
 import { createPlayedTracker } from "./played-tracker.js";
 import { statusLine } from "./status-line.js";
 
@@ -68,6 +69,7 @@ const CARD_PARTS = Object.freeze({
   features: HTMLElement,
   lint: HTMLElement,
   findings: HTMLUListElement,
+  pairLink: HTMLButtonElement,
 });
 
 /** @typedef {{ less: HTMLButtonElement, clear: HTMLButtonElement, more: HTMLButtonElement }} MacroButtons */
@@ -83,6 +85,8 @@ const CARD_PARTS = Object.freeze({
  * @property {{ renderId: number, url: string, duration: number, features: any, checks: LintResult } | null} excerpt
  * @property {{ thumbs: { id: number, direction: string, note: string | null } | null, macros: Record<string, { id: number, direction: string }> }} feedback
  *   the live choices, one per thumbs and per macro (decision 0031)
+ * @property {{ firstTryId: number, revisionId: number, shownId: number } | null} pair a first
+ *   try and its revision, and which the server would show (decision 0036)
  */
 
 /**
@@ -90,7 +94,8 @@ const CARD_PARTS = Object.freeze({
  * it keeps its text and the focus.
  * @typedef {object} Card
  * @property {Candidate} candidate
- * @property {number} number its place among the session's candidates, from 1
+ * @property {number} number its place among the session's first tries, from 1; a revision
+ *   has its first try's
  * @property {ReturnType<typeof cloneTemplate<typeof CARD_PARTS>>} parts
  * @property {Record<string, MacroButtons>} macros
  * @property {PlayedTracker | null} tracker null without an excerpt
@@ -104,6 +109,7 @@ let session;
 let cards = [];
 /** @type {import("./candidate-selection.js").Selection<Card>} */
 const selection = createSelection(() => performance.now());
+const pairSwap = createPairSwap();
 /** @type {Card | null} the first of an A/B pair, once marked */
 let marked = null;
 /** @type {{ ratings: any[], sketches: any[] }} */
@@ -256,6 +262,8 @@ function showExcerpt(card) {
           choose(card);
         },
         onChange: () => showPlayed(card),
+        // A pair waiting to swap does so once the card it would hide stops playing.
+        onStop: showPairs,
         onError: status.fail,
       },
       card.wiring.signal,
@@ -437,12 +445,67 @@ async function compare(card) {
   status.say("Play both sides, then choose which is better.");
 }
 
+/** What the pair link says on each side of a pair. */
+const PAIR_LINK = Object.freeze({
+  firstTry: {
+    text: "Show the revision",
+    title:
+      "The model revised this candidate once, after its excerpt missed a range or a check. Shows the revision in this card's place; this one stays one click away.",
+  },
+  revision: {
+    text: "Show the first try",
+    title:
+      "This is the model's revision of a candidate whose excerpt missed a range or a check. Shows the first try in its place; this one stays one click away.",
+  },
+});
+
+/**
+ * Shows one card of each revised pair, as `pairSwap` picks, with a link to the other. A card
+ * whose excerpt plays isn't replaced until it stops.
+ */
+function showPairs() {
+  const byId = new Map(cards.map((card) => [card.candidate.id, card]));
+  /** @param {number} id */
+  const playing = (id) => {
+    const card = byId.get(id);
+    return Boolean(card && !card.parts.audio.paused);
+  };
+  for (const card of cards) {
+    const { pair, id } = card.candidate;
+    card.parts.pairLink.hidden = pair === null;
+    if (pair === null) {
+      card.parts.root.hidden = false;
+      continue;
+    }
+    card.parts.root.hidden = pairSwap.show(pair.firstTryId, pair.shownId, playing) !== id;
+    const link = id === pair.revisionId ? PAIR_LINK.revision : PAIR_LINK.firstTry;
+    card.parts.pairLink.textContent = link.text;
+    card.parts.pairLink.title = link.title;
+  }
+}
+
+/**
+ * The owner chose the other card of the card's pair. The focus moves to that card's link, since
+ * this one is hidden.
+ * @param {Card} card
+ */
+function showOther(card) {
+  const { pair, id } = card.candidate;
+  if (pair === null) return;
+  const other = id === pair.firstTryId ? pair.revisionId : pair.firstTryId;
+  card.parts.audio.pause();
+  pairSwap.choose(pair.firstTryId, other);
+  showPairs();
+  cards.find((shown) => shown.candidate.id === other)?.parts.pairLink.focus();
+}
+
 /**
  * @param {Candidate} candidate
  * @param {number} number
+ * @param {boolean} revised whether it is the revision of first try `number`
  * @returns {Card}
  */
-function makeCard(candidate, number) {
+function makeCard(candidate, number, revised) {
   const parts = cloneTemplate("candidate-card", CARD_PARTS);
   /** @type {Record<string, MacroButtons>} */
   const macros = {};
@@ -456,7 +519,7 @@ function makeCard(candidate, number) {
     wiring: new AbortController(),
     busy: false,
   };
-  parts.heading.textContent = `Candidate ${number}`;
+  parts.heading.textContent = `Candidate ${number}${revised ? ", revised" : ""}`;
   parts.intent.textContent = candidate.intent ?? "The model gave no intent.";
   for (const macro of MACRO_NAMES) {
     const choice = cloneTemplate("macro-choice", {
@@ -481,6 +544,7 @@ function makeCard(candidate, number) {
   parts.sketch.onclick = () => status.run(() => keepSketch(card));
   const compareOnce = oneAtATime(() => compare(card));
   parts.compare.onclick = () => status.run(compareOnce);
+  parts.pairLink.onclick = () => showOther(card);
   showExcerpt(card);
   return card;
 }
@@ -616,9 +680,16 @@ async function loadCandidates() {
   );
   const rejected = candidates.filter((candidate) => /** @type {any} */ (candidate).genome === null);
   const before = new Map(cards.map((card) => [card.candidate.id, card]));
-  cards = withGenome.map((candidate, i) => {
+  /** @type {Map<number, number>} each card's number, by candidate id */
+  const numbers = new Map();
+  let firstTries = 0;
+  cards = withGenome.map((candidate) => {
+    const { pair } = candidate;
+    const parent = pair?.revisionId === candidate.id ? numbers.get(pair.firstTryId) : undefined;
+    const number = parent ?? ++firstTries;
+    numbers.set(candidate.id, number);
     const kept = before.get(candidate.id);
-    if (!kept) return makeCard(candidate, i + 1);
+    if (!kept) return makeCard(candidate, number, parent !== undefined);
     const changed = kept.candidate.excerpt?.renderId !== candidate.excerpt?.renderId;
     kept.candidate = candidate;
     if (changed) showExcerpt(kept);
@@ -628,6 +699,7 @@ async function loadCandidates() {
     if (!card.parts.root.isConnected) page.candidateGrid.append(card.parts.root);
     showRated(card);
   }
+  showPairs();
   page.noCandidates.hidden = cards.length > 0;
   showControls();
 

@@ -42,14 +42,15 @@ import { getVibe, listNotes } from "./vibe-store.js";
  */
 const STREAM_ID = ":generation";
 /** The stream's draws for candidate i are `(seed, STREAM_ID, i, slot)`. */
-const SLOT = Object.freeze({ temperature: 0, samplingSeed: 1, candidateSeed: 2 });
+const SLOT = Object.freeze({ temperature: 0, samplingSeed: 1, candidateSeed: 2, revisionSeed: 3 });
 const TEMPERATURE = Object.freeze({ min: 0.6, max: 1 });
 const TOP_P = 0.95;
 /** omlx takes a signed 32-bit sampling seed; candidate seeds use the PRNG's full range. */
 const SAMPLING_SEEDS = 2 ** 31;
 const CANDIDATE_SEEDS = 2 ** 32;
 
-const SOURCE = "llm";
+/** The source of every candidate the model wrote. */
+export const LLM_SOURCE = "llm";
 /** The rule a finding takes for a validator error, and for an answer-shape error. */
 const SCHEMA_RULE = "schema";
 const ANSWER_RULE = "answer";
@@ -81,6 +82,30 @@ const RESPONSE_FORMAT = Object.freeze({
  */
 export const requestGroupName = (vibeId, seed) => `vibe-${vibeId}-stream-${seed}`;
 
+/**
+ * The request group of the revisions made in one job (decision 0036), named from its first
+ * tries' group.
+ * @param {string} requestGroup the first tries'
+ */
+export const revisedGroupName = (requestGroup) => `${requestGroup}-revisions`;
+
+/**
+ * The render seed of the revision of candidate `index` (from 0), from the job's stream seed, so
+ * its excerpt and ratings never share a heard identity with the first try (decision 0036).
+ * @param {number} seed the stream seed
+ * @param {number} index
+ */
+export const revisionSeed = (seed, index) =>
+  Math.floor(drawer(seed, STREAM_ID)(index, SLOT.revisionSeed) * CANDIDATE_SEEDS);
+
+/**
+ * The hashes of the recordings the voice can play: a genome naming another is repaired.
+ * @param {readonly RecordingListing[]} recordings
+ * @returns {ReadonlySet<string>}
+ */
+export const playableHashes = (recordings) =>
+  new Set(recordings.filter((r) => unplayable(r) === null).map((r) => r.hash));
+
 /** @typedef {{ temperature: number, top_p: number, seed: number }} Sampling */
 
 /**
@@ -108,12 +133,20 @@ export const requestGroupName = (vibeId, seed) => `vibe-${vibeId}-stream-${seed}
  *   0035)
  * @property {readonly RecordingListing[]} recordings the recordings folder's index, empty when the
  *   config sets no folder: the prompt lists them, and a genome naming another is repaired
- * @property {(candidate: Candidate, firstReason: RejectReason | null) => void | Promise<void>} [onCandidate]
- *   called as each candidate is stored, with the reason its first answer was rejected (null when
- *   it was valid), which the candidate row no longer holds once a repair replaced it. The next
- *   request waits for it, so a job can render the candidate before asking for another.
- * @property {(step: GenerationStep) => void} [onStep] called as each request is queued, and as
- *   omlx answers one busy
+ * @property {CandidateHook} [onCandidate]
+ * @property {StepHook} [onStep]
+ */
+
+/**
+ * Called as each candidate is stored, with the reason its first answer was rejected (null when
+ * it was valid), which the candidate row no longer holds once a repair replaced it. The next
+ * request waits for it, so a job can render the candidate before asking for another.
+ * @typedef {(candidate: Candidate, firstReason: RejectReason | null) => void | Promise<void>} CandidateHook
+ */
+
+/**
+ * Called as each request is queued, and as omlx answers one busy.
+ * @typedef {(step: GenerationStep) => void} StepHook
  */
 
 /** What generation is doing for a candidate: its first request, its repair, or a backoff. */
@@ -224,17 +257,13 @@ function judge(completion, constraints, maxTokens, playable, locks) {
 }
 
 /**
- * The vibe's current revision with its constraints and feature ranges checked. Throws when the
- * vibe is missing or removed, or either fails its validator, since every prompt states both.
- * @param {Store} store
- * @param {number} vibeId
- * @returns {{ revision: VibeRevision, constraints: Constraints, ranges: FeatureRanges }}
+ * A vibe revision's constraints and feature ranges, checked. Throws when either fails its
+ * validator, since every prompt states both.
+ * @param {VibeRevision} revision
+ * @returns {{ constraints: Constraints, ranges: FeatureRanges }}
  */
-export function currentRevision(store, vibeId) {
-  const vibe = getVibe(store, vibeId);
-  if (!vibe || vibe.removedAt !== null)
-    throw new Error(`vibe ${vibeId} doesn't exist or was removed`);
-  const { revision } = vibe;
+export function checkRevision(revision) {
+  const { vibeId } = revision;
   const checked = validateConstraints(revision.constraints);
   if (!checked.ok) {
     const list = checked.errors.map((e) => `${e.path}: ${e.message}`).join("; ");
@@ -245,7 +274,21 @@ export function currentRevision(store, vibeId) {
     const list = targets.errors.map((e) => `${e.path}: ${e.message}`).join("; ");
     throw new Error(`vibe ${vibeId} revision ${revision.id} has invalid soft targets: ${list}`);
   }
-  return { revision, constraints: checked.constraints, ranges: targets.ranges };
+  return { constraints: checked.constraints, ranges: targets.ranges };
+}
+
+/**
+ * The vibe's current revision, checked by `checkRevision`. Throws when the vibe is missing or
+ * removed.
+ * @param {Store} store
+ * @param {number} vibeId
+ * @returns {{ revision: VibeRevision, constraints: Constraints, ranges: FeatureRanges }}
+ */
+export function currentRevision(store, vibeId) {
+  const vibe = getVibe(store, vibeId);
+  if (!vibe || vibe.removedAt !== null)
+    throw new Error(`vibe ${vibeId} doesn't exist or was removed`);
+  return { revision: vibe.revision, ...checkRevision(vibe.revision) };
 }
 
 /**
@@ -266,8 +309,8 @@ export function currentRevision(store, vibeId) {
  * @property {ReadonlySet<string>} playable hashes of the recordings the voice can play; a genome
  *   naming another is repaired
  * @property {readonly Lock[]} locks applied to every valid answer and stored on each candidate
- * @property {GenerateOptions["onCandidate"]} [onCandidate]
- * @property {GenerateOptions["onStep"]} [onStep]
+ * @property {CandidateHook | undefined} [onCandidate]
+ * @property {StepHook | undefined} [onStep]
  */
 
 /**
@@ -430,7 +473,8 @@ const noted = (verdict, rule, message) => ({
  * @param {number} index the candidate's, from 0, for `onStep`
  * @param {ChatMessage[]} prompt
  * @param {Sampling} sampling used by the first try and its repair
- * @param {CandidateOrigin} origin
+ * @param {CandidateOrigin | ((verdict: Verdict) => CandidateOrigin)} origin or a function of the
+ *   last verdict, for an origin that depends on the answer
  * @returns {Promise<Candidate>}
  */
 export async function requestCandidate(batch, index, prompt, sampling, origin) {
@@ -440,7 +484,8 @@ export async function requestCandidate(batch, index, prompt, sampling, origin) {
    * @param {RejectReason | null} firstReason
    */
   const stored = async (generation, verdict, firstReason) => {
-    const candidate = keep(batch, generation, verdict, origin);
+    const from = typeof origin === "function" ? origin(verdict) : origin;
+    const candidate = keep(batch, generation, verdict, from);
     await batch.onCandidate?.(candidate, firstReason);
     return candidate;
   };
@@ -532,7 +577,7 @@ export async function generateCandidates(
     exampleIds,
     retrievalMethod: method,
     constraints,
-    playable: new Set(recordings.filter((r) => unplayable(r) === null).map((r) => r.hash)),
+    playable: playableHashes(recordings),
     locks,
     onCandidate,
     onStep,
@@ -542,7 +587,7 @@ export async function generateCandidates(
   for (const [index, { sampling, candidateSeed }] of draws.entries()) {
     const origin = {
       seed: candidateSeed,
-      source: SOURCE,
+      source: LLM_SOURCE,
       parentIds: [],
       operator: null,
       operatorParams: null,

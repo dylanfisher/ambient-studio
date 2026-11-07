@@ -67,3 +67,4 @@ literal "locks" | files src/server/generation-store.js src/server/store.js | the
 literal "candidateId" | files src/server/lock-routes.js src/server/rating-store.js | the lock route's body field naming the candidate to lock from, the sketches table's column in rating-store
 literal "replaced" | files src/server/lock-store.js src/server/rating-store.js | each table's own removal reason: a lock a later lock on its path took the place of, a feedback row a later post took the place of
 literal "features" | files src/domain/target-schema.js src/server/render-store.js | the key of a vibe's feature ranges in its soft targets, and the renders table's column of measured features
+literal "function" | files src/engine/render.js src/server/generate-candidates.js | the JavaScript typeof tag: a context method in render.js, an origin given as a function of the verdict in generate-candidates

@@ -7,11 +7,12 @@
  * because the element's currentTime is already the new position when it fires.
  * @param {HTMLAudioElement} audio
  * @param {PlayedTracker} tracker
- * @param {{ onPlay: () => void, onChange: () => void, onError: (error: Error) => void }} on
- *   `onPlay` when playback is asked for, `onChange` when the played share may have changed
+ * @param {{ onPlay: () => void, onChange: () => void, onStop?: () => void, onError: (error: Error) => void }} on
+ *   `onPlay` when playback is asked for, `onChange` when the played share may have changed,
+ *   `onStop` when playback pauses or ends
  * @param {AbortSignal} signal aborting it unwires the element, as when the A/B view reuses it
  */
-export function trackAudio(audio, tracker, { onPlay, onChange, onError }, signal) {
+export function trackAudio(audio, tracker, { onPlay, onChange, onStop, onError }, signal) {
   /**
    * @param {string} type
    * @param {() => void} listener
@@ -20,6 +21,7 @@ export function trackAudio(audio, tracker, { onPlay, onChange, onError }, signal
   const stopHere = () => {
     tracker.stop(audio.currentTime);
     onChange();
+    onStop?.();
   };
   on("play", onPlay);
   on("playing", () => {

@@ -4,6 +4,7 @@
 - **Status:** accepted; provisional: owner to confirm; amended by [0035](0035-locks.md) (the
   lock shape and its line, locks applied to each answer) and
   [0034](0034-feature-ranges-as-soft-targets.md) (the vibe's feature ranges in the user turn)
+  and [0036](0036-revision-pass.md) (the request helpers, `followUp`, and revision candidates)
 
 ## Context
 
@@ -176,3 +177,13 @@ which 2l settles.
   revision whose stored ranges don't validate stops generation with an error naming it. Other
   keys of `softTargets` still stay out of the prompt. The seed-sized budget tests now carry a
   range on every feature and still fit under half the budget.
+- 2026-11-07: from step 3d ([0036](0036-revision-pass.md)). The request, store and repair steps
+  are module functions every operator that asks the model calls, over a `Batch` (one request
+  group's store, queue, config, revision, retrieval, constraints, playable recordings, locks and
+  hooks): `ask`, `keep`, `failedVerdict`, and `requestCandidate`, which is a first try, one
+  repair round and the stored candidate. `keep` takes the candidate's origin (seed, source,
+  parents, operator, operatorParams). `currentRevision` and `checkRevision` check a revision's
+  constraints and ranges. `buildRepairPrompt` is built on `followUp`, which the revision uses
+  too, and quotes errors with `quotedErrors`. The locks' prompt paragraph is `locksText`. A
+  revision is a `revise` candidate with its first try in `parentIds`, in its own request group
+  `<group>-revisions`, with its render seed from slot 3 of the stream.
