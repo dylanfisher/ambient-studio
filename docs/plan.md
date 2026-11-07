@@ -82,6 +82,14 @@ unneeded stays unused rather than being given to another step.
 | 0057 | The MAP-Elites archive and the map view | 5h | — |
 | 0058 | Breeding | 5i | — |
 | 0059 | The optimizer evaluation | 5j | — |
+| 0060 | Streaming meters, limiter and WAV writers | 6a | — |
+| 0061 | Tracks, the arrangement and the timeline | 6b | — |
+| 0062 | Track rendering: chunks, crossfades, previews, export and the bench | 6c | — |
+| 0063 | Stems | 6d | — |
+| 0064 | Morph transitions | 6e | — |
+| 0065 | Macro automation lanes | 6f | — |
+| 0066 | Material from phase 5 and the reference arc | 6g | — |
+| 0067 | The proposed structure | 6h | — |
 
 ## Phase 1 — Engine, schema and macros
 
@@ -2039,14 +2047,344 @@ moved chain) is on main before 5e starts, and 5e builds on 5d's merge.
 
 ## Phase 6 — Track builder
 
-**Goal:** sketches arranged into 3–20 minute tracks. **Acceptance:** sections on a timeline,
-crossfade and morph transitions (genome interpolation over time), macro automation curves, an
-LLM-proposed structure for a target length and arc; morphs interpolate numeric parameters in encoded
-space and crossfade two instances of a voice for enums and bools; a full-track render of 20 minutes
-stays at least 10× real time on the bench and inside a stated memory ceiling; per-voice stems (solo
-renders through `voices`) sum to the full mix before the limiter within a stated error; the limiter
-is nonlinear, so the stems are exported unlimited at the mix's gain. **Gate:** `./scripts/check`;
-bench numbers for a 20-minute track in Result. **Result:**
+**Goal:** get closer to putting together songs. Sketches are arranged into 3–20 minute tracks
+that play in the studio and export as files.
+
+**Acceptance, as measurable checks:**
+
+1. **A hand-made track plays and exports.** At least three sketches placed by hand with
+   crossfades render as an owner-started job, preview as MP3 (4i's format), and export as WAV
+   and FLAC (0012) with a manifest. Rendering again from the manifest alone gives the same PCM
+   hash. Tracks and their revisions are append-only, with a migration tested over the previous
+   shape.
+2. **Chunks are seamless.** A section rendered in chunks matches one render of the same window
+   within 0007's excerpt tolerance (peak 1e-5, the difference's RMS at least 100 dB under), at
+   every seam.
+3. **Streaming changes nothing already heard.** The streaming loudness meter, true-peak meter and
+   limiter give the same bits as today's whole-array functions on every existing test input, so
+   no excerpt, feature or rated audio changes. A track normalizes to its target within 0.1 LU,
+   under its ceiling.
+4. **Speed and memory.** `./scripts/bench --track` renders a 20-minute track (five sections, four
+   transitions including a morph, two macro lanes) at a render-only median of at least 10× real
+   time on mbp2021, with a peak RSS under **1 GiB**, and a 10-minute track's peak RSS within
+   10% of the 20-minute one's, so memory doesn't grow with length.
+5. **Stems.** One stem per voice id sums to the mix before the limiter, at the mix's gain, within
+   a peak of 1e-5, at least 100 dB under the mix; stems export unlimited as 32-bit float WAV.
+6. **Morphs.** Across a morph, every numeric parameter that both sketches hold moves along its
+   encoded scale by the transition's curve (checked at the start, middle and end); a voice whose
+   type, choices or flags differ plays as two instances crossfaded; the render before the morph
+   starts equals the outgoing section's within 0007's tolerance.
+7. **Macro lanes.** Under a lane, each section's effective macro equals its own value plus the
+   lane's offset at every breakpoint, clamped to 0–1.
+8. **Proposal, then edit.** Given a length and an arc, the model's proposal validates, after at
+   most one repair round, and lands within 5% of the length; it opens in the timeline, where
+   reordering, resizing and retiming save new revisions and leave the proposal as it was. In the
+   owner's run, the share of proposals valid after repair is logged over at least 5 requests.
+
+**Gate:** `./scripts/check`; `./scripts/bench --track` numbers in Result; omlx only through the
+queue, with a fake in tests. Acceptance 8's share waits on the owner's run.
+
+**Settled by the owner on 2026-11-07, when phase 6 was expanded:**
+
+- **"Proposal, then edit."** The owner gives a length and an arc; the model proposes sections from
+  the owner's sketches; the owner reorders, resizes and retimes them on the timeline before
+  rendering. Nothing renders until the owner starts it.
+- **A playable track first.** A crossfade-only track from hand-placed sketches comes before
+  morphs, automation and the proposal (6a–6c), so the owner can put songs together while the rest
+  is built.
+- **Previews are MP3** as 4i's playback audio; **exports are WAV and FLAC** (0012).
+
+**Waiting on the owner** (none blocks a step; each builder takes the recommendation and the
+record says so, so the owner can overrule):
+
+- **No packages.** Rendering, mixing and encoding use what is installed: node-web-audio-api, the
+  `flac` CLI (0012) and `lame` (4i).
+- **One brief per track** (recommended): a track's sections come from one vibe's sketches, so it
+  has one loudness target, one set of constraints and one brief for the proposal. Alternative:
+  any sketches, with the owner setting the track's target. Phase 7's albums cross briefs either
+  way.
+- **A section longer than its sketch** (recommended: extend). A sketch's genome is 3–15 minutes
+  (`MAX_DURATION` 900). Extending makes a derived genome with `duration` raised to the section's
+  length, the fade-out and every voice end at the old duration moved with it, and trajectories
+  holding past their last point as 0007 already says. Alternative: refuse sections longer than the
+  sketch.
+- **Stems as 32-bit float WAV** (recommended): unlimited at the mix's gain they can pass 0 dBFS,
+  which 24-bit integer clips and FLAC can't hold as float. Alternative: 24-bit with one stated
+  headroom gain for every stem, written in the manifest.
+- **The memory ceiling, 1 GiB** for any track up to 20 minutes, against 0010's 1.5 GiB for one
+  900 s genome.
+
+**What the code holds today** (read at `05f2ffc`; phases 4 and 5 as planned):
+
+- **One context per render.** `renderOffline` (`src/server/render-offline.js`) builds one
+  `OfflineAudioContext` from `renderPlan` for the whole window, retries the suspend race
+  (`retryOnSuspendRace`), and `trimToResult` copies the kept frames out, so the peak holds the
+  buffer twice: 0010 measured 791 MiB for 900 s, and the bench projects about 1,009 MiB. A
+  20-minute context would need about 1.1 GB of output alone.
+- **Windows already render exactly.** `render(genome, ctx, {seed, duration, offset, voices})`
+  schedules any window of a timeline with `preRoll` (reverb decay, echo tail, longest event), and
+  an excerpt matches the same window of a full render within 0007's tolerance; `voices` limits a
+  render to some voices, and the bus is linear, so 0010 measured solo voices summing to the mix
+  within 2.1e-7 (`STEM_PEAK` 1e-6 in `test/engine/render.test.js`).
+- **Limits**: `MAX_DURATION` 900 s a genome (`src/engine/timeline.js`), so a 20-minute track is
+  several genomes, as 0007 left to this phase; `MAX_POINTS` 64 a trajectory; `MAX_VOICES` 16 and
+  `VOICE_ID` `^[a-z][a-z0-9-]{0,15}$`, which is part of every PRNG key (0003), so renaming a voice
+  changes its events; `COST_BUDGET` 560 node-seconds a second (`src/engine/cost.js`).
+- **Non-numeric globals**: `tuning`, `scale`, `key` and `pulse` are choices; `reverbDecay` sets
+  the impulse response and `delayTime` the delay, so neither can follow a trajectory (0006).
+- **Normalizing holds everything.** `normalize` (`src/domain/normalize.js`) runs up to 8 passes
+  of `limitTruePeak` and `integratedLoudness` over whole arrays; the limiter already works in
+  4,096-frame blocks internally, and the meter is K-weighting then 400 ms block powers
+  (`windowPowers`), both state that can carry across chunks.
+- **Export holds the PCM.** `exportRender` (`src/server/export-render.js`) renders, normalizes,
+  encodes all of it with `encodePcm24`, `writeWav` writes it whole, and `writeFlac` streams the
+  WAV to flac's stdin. The sidecar JSON (0015) names one genome, seed and window with
+  `pcmSha256`; no export route exists, only `src/server/render-cli.js`.
+- **The bench** (`scripts/bench.js`, 0016) times the example genome at 300 s and 720 s in child
+  processes under `/usr/bin/time -l` and projects peak RSS to 900 s.
+- **Store**: `sketches` rows name a candidate, notes and tags; no `tracks` or `exports` tables.
+  The job runner runs one job at a time, started only by a route.
+- **Phase 5 as planned**: `GET /api/vibes/:id/archive` (5h), direction vectors and projections as
+  pure functions (5g), each region's per-window features and embedding (5b), and 5e's job shape
+  with a cost estimate.
+
+**What has to change in the engine:** nothing in `render()`, `renderPlan`, the master bus or the
+voices. A section is a window of one genome, and a long window renders as chunks through the
+existing `offset` and `duration`, each with its own pre-roll. The changes are around the engine:
+
+- **Chunks** (6c): `renderChunks` in `src/server` renders a window in fixed chunks of a stated
+  length (about 120 s, chosen in 6c from the bench: a longer chunk spends less on pre-roll, which
+  is up to about 45 s with a 20 s reverb, and holds more), each through `renderOffline`, and yields
+  them in order. Chunk boundaries sit on multiples of the chunk length on the section's own
+  timeline, so a section always splits the same way.
+- **Streaming in the domain** (6a): stateful forms of the K-weighted meter, the true-peak meter
+  and the limiter that take one chunk at a time; today's whole-array functions call them, with
+  the same bits.
+- **Streaming files** (6a, 6c): a WAV writer that writes its header for a known frame count and
+  then appends chunks; a 32-bit float WAV for stems; the mix kept as a raw float file under the
+  data root between passes (461 MB on disk for 20 minutes); FLAC and MP3 encoded from a stream.
+- **Cost** (6c): `trackCost` in `src/domain`, the highest summed cost of the sections sounding at
+  once (two during a transition, as a crossfade renders both), and an estimate of render time.
+- **Reproducibility.** No stored genome and seed renders differently, so the engine version
+  doesn't move. A track's audio also depends on the chunk length, the crossfade law and the morph
+  and lane rules; they are constants in `src/engine` named in the manifest, and changing one
+  bumps the engine version like any other change to rendered audio (0009).
+
+**Shared helpers and their owners** (orchestrator rule 4):
+
+- 6a: the streaming meters and limiter, the streaming and float WAV writers.
+- 6b: the track tables and migration, `validateArrangement` and the arrangement's JSON shape,
+  the timeline page's modules (`track.html`, `track.js`, `timeline-view.js`), and the track
+  routes.
+- 6c: `sectionGenome` (a sketch's genome fitted to its section), `renderChunks`, the track render
+  job, the manifest, previews and `trackCost`; every later step's audio goes through them.
+- 6e adds `morphGenome` and 6f `applyLanes`, each in its own file, both called from
+  `sectionGenome`.
+- 6g owns the material panel; 6h the proposal prompt and parse.
+- 6b needs a migration, numbered by the orchestrator, as is any later step that finds it needs
+  one.
+
+### Steps
+
+Order: 6a ‖ 6b, then 6c, then 6d ‖ 6e, then 6f ‖ 6g, then 6h. The owner has a playable,
+exported crossfade track after 6c.
+
+#### 6a — Streaming meters, limiter and writers
+
+- **Builds:** in `src/domain`, `createLoudnessMeter`, `createTruePeakMeter` and
+  `createLimiter(gain, threshold, sampleRate)`, each taking chunks of any length and keeping its
+  filter, block and look-ahead state between them; `integratedLoudness`, `truePeak` and
+  `limitTruePeak` become one-chunk calls of them, with the same bits. A streaming `normalize` over
+  a source that can be read again from the start (the passes need it), returning the gain, the
+  loudness and the peak as today. In `src/server`, a WAV writer that writes the header for a
+  stated frame count and appends interleaved chunks, refusing a mismatched total, and the same
+  for 32-bit float WAV.
+- **Tiers:** domain, server.
+- **Tests first:** every existing meter, limiter and normalize test passes unchanged; on the
+  golden excerpts and 3341's signals, the streaming forms fed in chunks of 1, 127, 4,096 and
+  48,000 frames give bits equal to the whole-array forms; a limiter whose look-ahead spans a chunk
+  edge reduces the peak as the whole-array one does; streaming normalize of a 30 s signal equals
+  `normalize`; the WAV writer's file equals `writeWav`'s for the same PCM, and a short total throws;
+  the float WAV reads back exactly.
+- **Records:** writes 0060: the streaming forms, equality as the rule, the float WAV. Amends
+  0008, 0011 and 0012.
+- **Parallel:** with 6b. Review: yes (it sits under every excerpt's features; the reviewer checks
+  that no rated or cached audio changes).
+
+#### 6b — Tracks and a hand-made timeline
+
+- **Builds:**
+  - **Tables** (irreplaceable, one migration): `tracks` (vibe, name, removed marks) and
+    `track_revisions` (track, arrangement JSON, a note, createdAt), append-only like vibe
+    revisions, and `track_exports` (revision, kind, folder, manifest hash, createdAt), a log of
+    what was exported.
+  - **The arrangement** (`validateArrangement` in `src/domain`, in 0020's descriptor style):
+    `length` and `arc` the owner gave (both optional for a hand-made track), `sections` in order,
+    each a live sketch of the track's vibe, the `offset` on its sketch's timeline, and `seconds`;
+    `transitions` between neighbors, each `crossfade` with `seconds` (default 8, at most half the
+    shorter section); `lanes` (empty until 6f); and `proposal`, the generation id it came from or
+    null. The track's length follows from the sections less the overlaps. A section may run past
+    its sketch's duration only as the owner's choice above (extend) allows, up to 900 s.
+  - **The timeline page** (`track.html`): sections as a row of blocks scaled to time, each with
+    its sketch's intent and a player for its own window; add a sketch from the vibe's list; move
+    a section left or right; set its seconds and offset by fields and by dragging an edge; set a
+    transition's length; Save makes a revision. Keyboard: every action has a key and a button, no
+    drag needed. Earlier revisions are listed and can be opened and saved as the newest. Plain
+    words (0032); Safari 17.6.
+- **Tiers:** domain, server, web.
+- **Tests first:** a valid arrangement passes and each malformed one (an unknown or removed
+  sketch, a sketch of another vibe, a transition longer than half a section, an offset past the
+  sketch's end) fails with its path; the length is the sum less the overlaps; saving twice keeps
+  both revisions; a removed track keeps its rows; the migration runs over phase 5's last shape;
+  the timeline's layout and its key actions are DOM-free modules with tests.
+- **Records:** writes 0061: the tables, the arrangement shape, one vibe per track, extending a
+  section, and the page. Amends 0021 and 0032.
+- **Parallel:** with 6a. Review: yes (an irreplaceable table, a migration, a Safari page).
+
+#### 6c — Rendering and exporting a track
+
+- **Builds:**
+  - **Section genomes**: `sectionGenome(arrangement, index, genomes)` gives each section the
+    sketch's genome, extended when the section needs it; the first section keeps its fade-in and
+    the last its fade-out, and the rest play no master fade inside the track.
+  - **Render**: an owner-started job (`track-render`) that renders each section's window plus its
+    transitions' overlaps through `renderChunks`, mixes neighbors with an equal-power crossfade,
+    writes the raw mix to a temp float file, and normalizes it to the vibe's loudness target under
+    the ceiling with 6a's streaming forms. Progress counts chunks ("rendering section 2 of 5,
+    chunk 3 of 6"); cancel stops at the next chunk and removes the temp files. The confirm states
+    the estimate from `trackCost` and the last run's speed.
+  - **Preview**: the normalized mix as MP3 (4i's `lame` path), derived and cached by the
+    revision's hash, played on the timeline with the current position marked. A **seam preview**
+    renders 30 s around one transition, so an edit can be heard without a full render.
+  - **Export**: WAV and FLAC (0012) and a manifest in a folder named for the track and revision
+    under the data root's `exports/`: every section's canonical genome, seed, window and
+    transitions, the chunk length, the crossfade law, the loudness, the engine version, and
+    `pcmSha256`, built like 0015's sidecar. `rerenderTrack(manifest)` renders it again and checks
+    the hash.
+  - **Bench**: `./scripts/bench --track` renders a 20-minute track of the golden genomes, render
+    alone and with export, and a 10-minute one, under `/usr/bin/time -l`, against the 1 GiB
+    ceiling. Each case stays under 5 minutes (agent rule 9).
+- **Tiers:** engine (the crossfade and chunk constants), domain (`sectionGenome`, `trackCost`),
+  server, web.
+- **Tests first:** chunk seams match a single render within 0007's tolerance (acceptance 2), and a
+  section splits the same way each time; a two-section track's overlap is the equal-power sum
+  of the two windows; a track renders, exports, and re-renders from its manifest to the same
+  hash; cancel removes the temp files and keeps the revision; the export refuses a folder that
+  exists, as 0015 does; the job starts only from its route; the seam preview equals that span of
+  the full render before normalizing. Tests render short sections (seconds, not minutes), per
+  agent rule 11.
+- **Records:** writes 0062: chunks and their length, section genomes, the crossfade law, the
+  temp file, previews, the export folder and manifest, the estimate, and the bench's numbers and
+  ceiling. Amends 0010, 0015 and 0016.
+- **Parallel:** none (6d to 6h build on it). Review: yes (the render path and its memory, with a
+  performance pass; a file-writing route, with a security pass).
+
+#### 6d — Stems
+
+- **Builds:** an export option: one stem per voice id across the track, each rendered as the
+  track is with `voices` limited to that id in every section (and its morph instances, once 6e
+  lands), mixed with the same crossfades, scaled by the mix's normalize gain and never limited,
+  written as 32-bit float WAV beside the mix, and listed in the manifest. The confirm gives the
+  extra time, about one track render per stem.
+- **Tiers:** server.
+- **Tests first:** on a short two-section track the stems sum to the mix before the limiter within
+  a peak of 1e-5, at least 100 dB under (acceptance 5); a voice id in only one section is silent
+  elsewhere; a stem sample over 1.0 is kept, not clipped; the manifest lists each stem's hash.
+- **Records:** writes 0063: stems by voice id, the gain, float WAV, the error bound. Amends 0062.
+- **Parallel:** with 6e; 6e adds its morph instances to the stem grouping after both merge, named
+  in its brief. Review: no (reads 6c's path; the orchestrator reads the diff).
+
+#### 6e — Morph transitions
+
+- **Builds:** `morphGenome(outgoing, incoming, seconds, curve)` in `src/domain`, chosen per
+  transition in place of a crossfade. The outgoing section's genome is extended across the
+  transition and becomes the morph, on its own timeline, so it plays exactly the outgoing section
+  until the morph starts:
+  - each numeric parameter both hold (globals, macros, and matched voices' parameters, a voice
+    matched by id and type) becomes a trajectory from its value at the morph's start to the
+    incoming value, along its scale, which is the vector view's encoded space (0005), with the
+    transition's curve;
+  - a voice whose type, choices or flags differ, or that only one side has, plays as two
+    instances: the outgoing one's level falls to the floor across the transition, and the incoming
+    one (renamed with a suffix when its id is taken) rises from it;
+  - `reverbDecay` and `delayTime` stay at the outgoing values, and the incoming section takes
+    over through a short crossfade (4 s) at the morph's end, which also hands its voices' events
+    from the morph's seed to the incoming section's own;
+  - a morph that would change `tuning`, `scale`, `key` or `pulse`, exceed `MAX_VOICES`, or pass a
+    trajectory's 64 points falls back to a crossfade, and the timeline says why.
+
+  A morph's cost is both sections', like a crossfade's; `trackCost` reads it.
+- **Tiers:** domain, web (the transition's kind and curve).
+- **Tests first:** acceptance 6's three checks on scripted pairs; a parameter already a
+  trajectory keeps its points before the morph; a renamed instance keeps the 16-character id limit;
+  each fallback gives its reason; the morph genome validates and lints under the vibe.
+- **Records:** writes 0064: morph as the outgoing genome extended, encoded-space interpolation,
+  two instances, the end crossfade, fallbacks. Amends 0062.
+- **Parallel:** with 6d (see 6d). Review: yes.
+
+#### 6f — Macro automation lanes
+
+- **Builds:** a lane per macro across the track: breakpoints in track seconds with 0007's curves,
+  each an offset from −0.5 to 0.5 (0 is no change). `applyLanes` writes each section's macros as
+  its own value plus the lane's offset, as a trajectory sampled at the union of both breakpoints
+  and every 10 s, clamped to 0–1, within 64 points. Lanes are drawn under the timeline, edited by
+  fields and dragging, and saved in the arrangement.
+- **Tiers:** domain, web.
+- **Tests first:** acceptance 7; a lane across a seam gives both sections the same offset there; a
+  lane with no points changes no genome; a dense lane is capped at 64 points and still matches at
+  its breakpoints; the lane editor is a DOM-free module.
+- **Records:** writes 0065: offsets rather than replacement (the sketch's own macro motion is
+  kept), sampling, the point cap. Amends 0006 and 0061.
+- **Parallel:** with 6g. Both edit `track.js`'s wiring and the arrangement's validation, each
+  adding its own module and key; the second to merge rebases those. Review: yes (Safari).
+
+#### 6g — Material from phase 5 and the reference arc
+
+- **Builds:** the timeline's material panel lists the vibe's sketches, the archive's elites by
+  cell (5h's route, with the cell's axis words), and each sketch's position on the brief's
+  directions (5g). Placing an elite keeps it as a sketch first, since sections name sketches; a
+  section can be steered along a direction with 5g's job and the result swapped in, as a new
+  revision. An attached reference region (5c) can be the arc target: its per-window features
+  (5b) stretched to the track's length, drawn under the timeline beside each section's measured
+  features.
+- **Tiers:** server (reads only), web.
+- **Tests first:** an elite placed becomes a sketch and a section; positions match 5g's
+  projections; the stretched arc has the region's windows at the right track times; with no
+  archive, directions or regions the panel lists sketches alone.
+- **Records:** writes 0066: what the panel lists, elites as sketches, the arc target. Amends 0057.
+- **Parallel:** with 6f (see 6f). Review: yes (Safari).
+
+#### 6h — The proposed structure
+
+- **Builds:** "Propose" on a new track: the owner gives a length (3–20 minutes) and an arc in
+  words ("10 min: emerge, plateau, dissolve"), and one model request (operator `arrange`, through
+  the queue) gets the brief, the arc, the reference arc's numbers when one is set, and a line per
+  sketch (id, intent, notes, tags, duration, features, macros) and per archive elite, at most 24,
+  without genomes, so the context stays short. It answers sections, transitions (crossfade or
+  morph) and lanes as an arrangement; one repair round on validation errors. The proposal is
+  stored as the track's first revision with its generation id, opens in the timeline, and nothing
+  renders until the owner starts it. The confirm states the request and its time.
+- **Tiers:** domain (the prompt and parse), server, web.
+- **Tests first:** against the fake omlx, the prompt holds every listed sketch and the arc and
+  stays under a stated token count; a valid answer becomes a revision with its generation; an
+  invalid one gets one repair with the errors; a proposal off the length by more than 5% is a
+  finding the repair names; editing saves new revisions and leaves the proposal's; nothing is
+  rendered by proposing.
+- **Records:** writes 0067: the prompt, the answer shape, repair, the length rule, and storing a
+  proposal as a revision. Amends 0024.
+- **Parallel:** none. Then the orchestrator logs the pending owner checks.
+
+**Pending owner checks** (after 6c and after 6h, on mbp2015 and mbp2026):
+
+- Place three sketches by hand, render, play the preview through, and listen at each crossfade;
+  export and open the FLAC elsewhere.
+- Try a morph between two sketches that share voices and between two that don't, and say whether
+  each sounds like one piece changing.
+- Draw a brightness lane over a whole track and listen for it.
+- Ask for a 10-minute proposal with an arc, then reorder, resize and retime it, and say how much
+  editing it needed.
+
+**Result:**
 
 ## Phase 7 — Album builder
 
@@ -2901,3 +3239,10 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   target); uploaded audio never plays in a render. The acceptance means model-in-the-loop CMA-ES
   (0054). Waiting on the owner: `cma` for 5e (or numpy written here), and numpy rather than
   `botorch` for 5f.
+- 2026-11-07: phase 6 expanded, planned against phases 4 and 5 as written. The owner chose
+  "proposal, then edit": they give a length and an arc, the model proposes sections from their
+  sketches, and they reorder, resize and retime them before rendering. Their goal is "get closer
+  to being able to put together some songs", so a hand-made crossfade track renders and exports
+  after 6a–6c, before morphs, lanes and the proposal. Read from the engine: nothing in `render()`
+  changes; a long section renders as chunks through the existing excerpt windows, and the
+  meters, limiter and WAV writer gain streaming forms with the same bits. No package is needed.
