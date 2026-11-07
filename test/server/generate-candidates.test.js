@@ -448,6 +448,9 @@ describe("generateCandidates keeps what phase 8 trains on", () => {
       expect(generation.requestParams).toEqual(sentParams(omlx.requests[i]));
       expect(generation).toMatchObject({ retries: [], error: null });
     }
+    expect(generations[0]?.requestParams).toMatchObject({
+      chat_template_kwargs: { enable_thinking: config.queue.thinking },
+    });
     expect(generations.map((g) => g.reasoning)).toEqual(["cold, slow", null, null]);
     expect(candidates.map((c) => c.rejectedGenome)).toEqual([null, tooQuiet]);
   });

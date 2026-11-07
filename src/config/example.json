@@ -13,7 +13,8 @@
     "maxWaitMs": 300000,
     "maxTokens": 10752,
     "contextBudgetTokens": 8192,
-    "sendResponseFormat": false
+    "sendResponseFormat": false,
+    "thinking": true
   },
   "dataRoot": "~/Library/Application Support/Ambient Studio/",
   "fieldRecordings": null,

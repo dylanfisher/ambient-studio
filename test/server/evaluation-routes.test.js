@@ -97,7 +97,12 @@ describe("the evaluation job", () => {
     const evaluation = await ok("GET", `/api/evaluations/${job.result.evaluationId}`);
     expect((await ok("GET", "/api/evaluations")).evaluations).toEqual([evaluation]);
     const { params, report } = evaluation;
-    expect(params).toMatchObject({ vibeIds, count: 16, sendResponseFormat: false });
+    expect(params).toMatchObject({
+      vibeIds,
+      count: 16,
+      sendResponseFormat: false,
+      thinking: true,
+    });
     expect(report.overall).toMatchObject({
       requested: 48,
       made: 48,
@@ -134,6 +139,8 @@ describe("the evaluation job", () => {
     expect(report.latencyMs.repair.count).toBe(5);
     expect(report.firstTokenMs.firstTry.count).toBe(48);
     expect(report.responseFormat).toBe("notSent");
+    // The fake sends no reasoning text, as a model that honoured thinking off would.
+    expect(report.reasoning).toEqual({ answered: 53, withReasoning: 0 });
     expect(report.stopped).toBeNull();
 
     // Every vibe used the run's one stream seed, outside any session.

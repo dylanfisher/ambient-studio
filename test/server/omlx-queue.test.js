@@ -302,6 +302,18 @@ describe("createOmlxQueue", () => {
     expect((await next).text).toBe("after");
   });
 
+  test.each([true, false])(
+    "asks the chat template to think or not, as queue.thinking (%s) says",
+    async (thinking) => {
+      const { omlx, queue } = await setup({ thinking });
+      omlx.script({ tokens: ["{}"] });
+      const { params } = await queue.request(ask());
+      const body = /** @type {Record<string, any>} */ (omlx.requests[0]?.body);
+      expect(body.chat_template_kwargs).toEqual({ enable_thinking: thinking });
+      expect(params.chat_template_kwargs).toEqual({ enable_thinking: thinking });
+    },
+  );
+
   test("sends response_format only when the config says to", async () => {
     const { omlx, queue } = await setup({ sendResponseFormat: true });
     omlx.script({ tokens: ["{}"] });

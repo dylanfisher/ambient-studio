@@ -22,6 +22,7 @@ import { wilsonInterval } from "./wilson-interval.js";
  * @property {number} latencyMs
  * @property {number | null} firstTokenMs
  * @property {boolean} failed
+ * @property {boolean} reasoned whether reasoning text came back beside the answer
  */
 
 /**
@@ -80,6 +81,9 @@ export const RESPONSE_FORMAT_RESULT = Object.freeze({
  * @property {{ firstTry: Percentiles | null, repair: Percentiles | null }} latencyMs
  * @property {{ firstTry: Percentiles | null, repair: Percentiles | null }} firstTokenMs
  * @property {ResponseFormatResult} responseFormat
+ * @property {{ answered: number, withReasoning: number }} reasoning of the answered generations,
+ *   how many came back with reasoning text: with `queue.thinking` off, any at all says omlx or
+ *   the model's chat template ignored the switch
  * @property {string | null} stopped why the run stopped before it made every candidate
  */
 
@@ -178,6 +182,7 @@ function timingPercentiles(timings, read) {
  */
 export function evaluationReport({ runs, responseFormat, stopped }) {
   const timings = runs.flatMap((r) => r.timings);
+  const answered = timings.filter((t) => !t.failed);
   return {
     vibes: runs.map(({ outcomes, timings: _, ...vibe }) => ({
       ...vibe,
@@ -190,6 +195,10 @@ export function evaluationReport({ runs, responseFormat, stopped }) {
     latencyMs: timingPercentiles(timings, (t) => t.latencyMs),
     firstTokenMs: timingPercentiles(timings, (t) => t.firstTokenMs),
     responseFormat,
+    reasoning: {
+      answered: answered.length,
+      withReasoning: answered.filter((t) => t.reasoned).length,
+    },
     stopped,
   };
 }

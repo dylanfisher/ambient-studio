@@ -152,6 +152,7 @@ describe("loadConfig", () => {
     "queue.maxTokens": true,
     "queue.contextBudgetTokens": Number.MAX_VALUE,
     "queue.sendResponseFormat": "false",
+    "queue.thinking": 1,
     dataRoot: "relative/folder",
     fieldRecordings: 7,
     server: null,

@@ -327,6 +327,8 @@ export function createOmlxQueue({ omlx, queue, clock, jitter, onRetry }) {
       stream_options: { include_usage: true },
       n: 1,
       max_tokens: queue.maxTokens,
+      // A request field omlx passes to the model's chat template, not an omlx setting.
+      chat_template_kwargs: { enable_thinking: queue.thinking },
       ...request.sampling,
       ...(queue.sendResponseFormat && request.responseFormat
         ? {

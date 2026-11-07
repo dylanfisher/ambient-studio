@@ -16,6 +16,7 @@ const timing = (latencyMs, repairRound = 0) => ({
   latencyMs,
   firstTokenMs: latencyMs / 10,
   failed: false,
+  reasoned: true,
 });
 
 /** @param {number} vibeId @param {ReturnType<typeof outcome>[]} outcomes @param {number} [requested] */
@@ -132,6 +133,25 @@ describe("evaluationReport", () => {
       repair: { count: 1, p50: 9000, p90: 9000, p95: 9000, max: 9000 },
     });
     expect(report.firstTokenMs.firstTry).toMatchObject({ count: 3, p50: 200 });
+  });
+
+  test("counts the answers that came back with reasoning text, failures left out", () => {
+    const report = evaluationReport({
+      runs: [
+        {
+          ...run(1, [outcome(null)]),
+          timings: [
+            timing(1000),
+            { ...timing(2000), reasoned: false },
+            { ...timing(3000, 1), reasoned: false },
+            { repairRound: 0, latencyMs: 50, firstTokenMs: null, failed: true, reasoned: false },
+          ],
+        },
+      ],
+      responseFormat: "notSent",
+      stopped: null,
+    });
+    expect(report.reasoning).toEqual({ answered: 3, withReasoning: 1 });
   });
 
   test("with no repairs there are no repair percentiles", () => {

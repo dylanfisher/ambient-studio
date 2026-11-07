@@ -23,6 +23,7 @@ import { getVibe } from "./vibe-store.js";
  * @property {number} seed the stream seed every vibe's request group uses
  * @property {string} model
  * @property {boolean} sendResponseFormat
+ * @property {boolean} thinking
  * @property {number} maxTokens
  */
 
@@ -61,6 +62,7 @@ export function evaluationJob(app, { vibeIds, count }) {
       seed: Math.floor(app.random() * STREAM_SEEDS),
       model: config.omlx.model,
       sendResponseFormat: config.queue.sendResponseFormat,
+      thinking: config.queue.thinking,
       maxTokens: config.queue.maxTokens,
     };
     /** @type {VibeRun[]} */
@@ -126,6 +128,7 @@ export function evaluationJob(app, { vibeIds, count }) {
         latencyMs: g.latencyMs,
         firstTokenMs: g.firstTokenMs,
         failed: g.error !== null,
+        reasoned: g.reasoning !== null,
       }));
     }
     const report = evaluationReport({
