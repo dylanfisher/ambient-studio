@@ -1381,3 +1381,17 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   it SQLite reused a replaced render's id, so a stale `/audio/:renderId` URL could serve other
   audio. `captureRatedAudio` writes the FLAC once per heard identity. 25 s excerpt with checks and
   features: 1.0–2.6 s; a cache hit 0.2 ms; a capture 150 ms. 852 tests. 0026 is provisional.
+- 2026-11-06: 2i merged as 114927d (Opus: 285k tokens, 156 tool calls, 27.7 min, then a fix round
+  at 313k, 45 calls, 9.3 min; reviewer Sonnet: 105k tokens, 39 tool calls, 6.6 min, PASS with
+  findings taken before merge; fixes read by the orchestrator). JSON routes over 2c–2h for vibes,
+  revisions and notes, sessions, candidate and excerpt jobs, job status and cancel, and ratings:
+  thumbs, macro more/less with the macro's value over the heard window, A/B and sketches. Ratings
+  name the render heard, are checked whole before `captureRatedAudio` runs, so a refused rating
+  keeps nothing, and are filed under the vibe's current revision. The server draws each A/B pair's
+  `orderSeed` and recomputes `leftSide = abOrder(orderSeed)` when the rating arrives; over seeds
+  0–199 side a is on the left 53.5% of the time. Stopping a session cancels its jobs and, through
+  `queue.cancel()`, its queued omlx requests, which holds because one job runs at a time. Every
+  POST reads a JSON body, so a cross-site form gets a 415; text fields are capped (name 200,
+  brief 4,000, notes 2,000, 32 tags of 64). A test ties the rating enums to 0001's CHECK lists.
+  Acceptance 4 passes: every rating kind read back whole after a restart on the same root. 877
+  tests.
