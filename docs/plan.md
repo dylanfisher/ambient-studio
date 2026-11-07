@@ -2446,3 +2446,8 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
 - 2026-11-07: owner: "add the web package you need. start 4a and 4c." Read as approval of phase
   4's packages: `torch` 2.15.0, `transformers` 5.22.2 and `numpy` 2.5.4 added to the sidecar
   (venv 804 MB). The CLAP checkpoint is fetched in 4b, not now.
+- 2026-11-07: 4c merged as 66fc1ec (Opus: 181k tokens, 77 calls, 40.7 min; read by the
+  orchestrator, no reviewer, as it adds no subsystem and crosses no process boundary). A tie is
+  half a win each way, live thumbs are pointwise items, macro feedback stays out, a fold's
+  candidate is a genome, and the key hashes ids and producers. With today's data the set holds
+  8 thumbs and no folds. 0043 is provisional on calls 3 and 4 until the owner confirms them.
