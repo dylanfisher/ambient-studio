@@ -3281,3 +3281,13 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   3.8 min; reviewer Sonnet: 65k tokens, 13 calls, 1.5 min, PASS with minor findings taken: scroll
   kept only on the way to A/B, a revised pair hides as one on the server, marks belong to the
   excerpt). The gate passes, 1493 tests.
+- 2026-11-07: 4g merged as e565382 (Opus: 183k tokens, 76 calls, 11.5 min; read by the
+  orchestrator). The brief page's "What you like" card reads the model under the vibe's current
+  key, asking the sidecar for the producer and model code only once a model file exists. 4e merged
+  after it (Opus: 253k tokens, 114 calls, 19.8 min; read by the orchestrator): a session-bootstrap
+  interval (2,000 resamples, seeded), louder-wins on the heard loudest 3 s, and one derived report
+  file. The merge's conflicts were resolved by keeping both sides, and "A/B choice" is now defined
+  once in preference-minimum.js. The gate failed once after 4g's merge on a test in
+  render.test.js while 4e's builder loaded the machine; it passed alone, on six concurrent runs
+  and on the next two gates. That is its second load-only failure, so it is now hunted, not
+  watched: next time, keep the failing test's name and message. The gate passes, 1533 tests.
