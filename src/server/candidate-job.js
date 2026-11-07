@@ -189,6 +189,7 @@ export function candidateJob(app, { vibeId, sessionId, count, explore }) {
           playable,
           features,
           misses,
+          control: false,
           onStep: (step) =>
             job.progress(done, count, generationStepText(step, 0, count, JOB_STEP.revising)),
           onCandidate: async (revised) => {

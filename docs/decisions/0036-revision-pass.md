@@ -6,7 +6,8 @@
   candidates and their request group),
   [0026](0026-job-runner-and-excerpt-renders.md) (what the candidates job does after a render)
   and [0031](0031-fewer-waits-after-first-evaluation.md) (the candidates job's steps, and the
-  candidates route's `pair` field).
+  candidates route's `pair` field). Amended by [0040](0040-revision-evaluation.md) (the control
+  arm's ask).
 
 ## Context
 
@@ -130,3 +131,12 @@ job after its rows are stored, as a first try's does (0024).
   status. 3h's control arm reuses `followUp` and the ask without items 4 and 5.
 - Whether omlx's prefix cache reuses the replayed turns shows only in the owner's run, in the
   revisions' first-token times.
+
+## Amendments
+
+- 2026-11-07: from step 3h ([0040](0040-revision-evaluation.md)). The control arm's ask
+  (`controlAsk`) leaves out items 4 and 5 as planned, and also opens with "Your genome was
+  rendered." and asks for a revision that "fits the brief and the ranges better", since an ask
+  that said the excerpt was measured and gave no measurement would hint at one. The treatment's
+  ask is unchanged. `reviseCandidate` takes `control`, stores a control revision with operator
+  `revise-control`, refuses one with a session, and refuses to revise a revision of either arm.

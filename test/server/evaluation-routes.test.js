@@ -104,6 +104,7 @@ describe("the evaluation job", () => {
     expect(params).toMatchObject({
       vibeIds,
       count: 16,
+      revise: false,
       sendResponseFormat: false,
       thinking: true,
     });
@@ -146,6 +147,8 @@ describe("the evaluation job", () => {
     // The fake sends no reasoning text, as a model that honoured thinking off would.
     expect(report.reasoning).toEqual({ answered: 53, withReasoning: 0 });
     expect(report.stopped).toBeNull();
+    expect(report.overall.revision).toBeNull();
+    expect(report.revisionTiming).toBeNull();
 
     // Every vibe used the run's one stream seed, outside any session.
     for (const vibe of report.vibes) {
@@ -173,6 +176,22 @@ describe("the evaluation job", () => {
     expect(counted(report.overall.schemaValid.beforeRepair)).toEqual({ count: all, of: all });
     expect(counted(report.overall.schemaValid.afterRepair)).toEqual({ count: all, of: all });
     expect(counted(report.overall.valid.beforeRepair)).toEqual({ count: lintPasses, of: all });
+  });
+
+  test("revise: true starts revision mode, stored in the params and the report", async () => {
+    const { omlx, server, ok, drive, loadSeeds } = await setup();
+    const [vibeId] = await loadSeeds();
+    // A rejected answer is neither rendered nor revised, so the run makes no excerpt.
+    omlx.script({ tokens: ["no genome"] });
+    const job = await ok("POST", "/api/evaluations", { vibeIds: [vibeId], count: 1, revise: true });
+    await drive(server.jobs.settled(job.id));
+    const { result } = await ok("GET", `/api/jobs/${job.id}`);
+    const { params, report } = await ok("GET", `/api/evaluations/${result.evaluationId}`);
+    expect(params.revise).toBe(true);
+    expect(report.overall.revision).toMatchObject({ measured: 0, revised: 0 });
+    expect(report.vibes[0].ranges).toEqual(
+      /** @type {any} */ (SEED_VIBES["cold-dorian"]).softTargets.features,
+    );
   });
 
   test("starts only from its route: the server and the seed vibes start nothing", async () => {
@@ -291,6 +310,7 @@ describe("the evaluation job", () => {
       [{ vibeIds: [vibeId], count: 65 }, /count/],
       [{ vibeIds: [vibeId] }, /count/],
       [{ vibeIds: [vibeId], count: 4, seed: 1 }, /unknown fields seed/],
+      [{ vibeIds: [vibeId], count: 4, revise: "yes" }, /revise must be true or false/],
     ];
     for (const [body, message] of refused) {
       const reply = await server.api("POST", "/api/evaluations", body);

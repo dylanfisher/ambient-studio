@@ -44,7 +44,13 @@ import { getVibe, listNotes } from "./vibe-store.js";
  */
 const STREAM_ID = ":generation";
 /** The stream's draws for candidate i are `(seed, STREAM_ID, i, slot)`. */
-const SLOT = Object.freeze({ temperature: 0, samplingSeed: 1, candidateSeed: 2, revisionSeed: 3 });
+const SLOT = Object.freeze({
+  temperature: 0,
+  samplingSeed: 1,
+  candidateSeed: 2,
+  revisionSeed: 3,
+  controlSeed: 4,
+});
 const TEMPERATURE = Object.freeze({ min: 0.6, max: 1 });
 const TOP_P = 0.95;
 /** omlx takes a signed 32-bit sampling seed; candidate seeds use the PRNG's full range. */
@@ -103,6 +109,22 @@ export const revisedGroupName = (requestGroup) => `${requestGroup}-revisions`;
  */
 export const revisionSeed = (seed, index) =>
   Math.floor(drawer(seed, STREAM_ID)(index, SLOT.revisionSeed) * CANDIDATE_SEEDS);
+
+/**
+ * The request group of an evaluation's control-arm revisions (decision 0040), apart from the
+ * treatment's so a DPO pair from one group never mixes the arms.
+ * @param {string} requestGroup the first tries'
+ */
+export const controlGroupName = (requestGroup) => `${requestGroup}-controls`;
+
+/**
+ * The render seed of the control-arm revision of candidate `index` (from 0), slot 4 of the
+ * stream, so it never shares a seed with the treatment's revision or the first try (0040).
+ * @param {number} seed the stream seed
+ * @param {number} index
+ */
+export const controlSeed = (seed, index) =>
+  Math.floor(drawer(seed, STREAM_ID)(index, SLOT.controlSeed) * CANDIDATE_SEEDS);
 
 /**
  * The hashes of the recordings the voice can play: a genome naming another is repaired.

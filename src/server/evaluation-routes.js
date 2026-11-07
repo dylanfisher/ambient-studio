@@ -1,5 +1,5 @@
-// The evaluation routes (decision 0030): start an evaluation over some vibes as a job, and read
-// the stored reports. Nothing else starts one.
+// The evaluation routes (decision 0030): start an evaluation over some vibes as a job, in
+// revision mode (0040) or not, and read the stored reports. Nothing else starts one.
 /** @import { App, Route } from "./routing.js" */
 /** @import { Store } from "./store.js" */
 import { EVALUATION_COUNT } from "../domain/evaluation-size.js";
@@ -58,9 +58,14 @@ export const EVALUATION_ROUTES = [
     method: "POST",
     path: "/api/evaluations",
     handle: async ({ app, body }) => {
-      const given = fields(await body(), ["vibeIds", "count"]);
+      const given = fields(await body(), ["vibeIds", "count", "revise"]);
       const vibeIds = readVibeIds(app.store, given);
       const count = integer(given, "count", { min: 1, max: EVALUATION_COUNT.max });
+      // Left out, the run tests generation alone, as every evaluation did before 0040.
+      const revise = given.revise ?? false;
+      if (typeof revise !== "boolean") {
+        throw new HttpError(400, `revise must be true or false, got ${show(revise)}`);
+      }
       // One at a time: a second would double the hours omlx is held, and is most likely a
       // second click.
       const unfinished = unfinishedJob(app);
@@ -70,7 +75,7 @@ export const EVALUATION_ROUTES = [
           unfinished.id,
         );
       }
-      return app.jobs.add(EVALUATION_JOB, evaluationJob(app, { vibeIds, count }));
+      return app.jobs.add(EVALUATION_JOB, evaluationJob(app, { vibeIds, count, revise }));
     },
   },
   {

@@ -2,7 +2,7 @@
 // what the excerpt missed.
 import { expect, test } from "vitest";
 import { featuresText } from "../../src/domain/features-text.js";
-import { revisionAsk } from "../../src/domain/revision-ask.js";
+import { controlAsk, revisionAsk } from "../../src/domain/revision-ask.js";
 import { targetsText } from "../../src/domain/targets-text.js";
 
 const features = {
@@ -50,4 +50,19 @@ test("restates the locks, then gives the ranges, the features and each miss", ()
 test("leaves the locks out when none are in force", () => {
   const ask = revisionAsk({ locks: [], ranges, features, misses: [miss] });
   expect(ask).not.toContain("Locked by the owner");
+});
+
+test("the control's ask keeps the locks, the ranges and the closing, with no measurement or miss", () => {
+  const terms = { locks: [{ path: "reverbDecay", value: 2 }], ranges };
+  const control = controlAsk(terms);
+  const treatment = revisionAsk({ ...terms, features, misses: [miss] });
+  expect(control).toContain("Locked by the owner; keep these values exactly:\nreverbDecay = 2");
+  expect(control).toContain(targetsText(ranges));
+  expect(control).not.toContain(featuresText(features));
+  expect(control).not.toContain("Measured");
+  expect(control).not.toContain(miss.message);
+  expect(control).toContain("fits the brief and the ranges better");
+  // The two asks end on the same sentence, so both arms may answer unchanged.
+  const last = (/** @type {string} */ ask) => ask.split("\n").at(-1);
+  expect(last(control)).toBe(last(treatment));
 });

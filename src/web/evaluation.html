@@ -25,7 +25,10 @@
           failed answer one chance to fix it, and reports how often that worked and how long
           each request took. Run one after changing a brief's rules, or when sessions give many
           rejected candidates. To get something to listen to, start a session from a brief
-          instead.
+          instead. With the revision test ticked it also renders each answer's excerpt, and
+          sends every one that misses one of the brief's feature ranges back to the model twice:
+          once with its measurements and once without, to find out whether hearing the
+          measurements helps.
         </p>
         <p id="status" class="status" role="status" aria-live="polite">Loading…</p>
       </div>
@@ -40,12 +43,16 @@
           <legend>Briefs to test</legend>
           <div id="briefChoices" class="choices"></div>
         </fieldset>
+        <label class="check small"
+          ><input id="reviseInput" type="checkbox" title="Also tests the revision step: renders each answer, and sends one that misses a feature range back twice, with and without its measurements. Suggests 32 candidates per brief and takes about three times as long." />
+          Also test the revision step</label
+        >
         <div class="row">
           <label class="small"
             >Candidates per brief
             <input id="countInput" type="number" min="1" step="1" size="4" title="How many candidates to ask the model for, for each ticked brief. More gives a surer result but takes longer: about a minute per candidate." />
           </label>
-          <button id="startButton" class="button primary" type="button" title="Asks you to confirm, then starts the test: the model is asked for this many candidates for each ticked brief. Takes about a minute per candidate, and makes no audio.">Start the model test</button>
+          <button id="startButton" class="button primary" type="button" title="Asks you to confirm, then starts the test: the model is asked for this many candidates for each ticked brief. Without the revision test it takes about a minute per candidate and makes no audio.">Start the model test</button>
         </div>
         <div id="jobBox" class="stack"></div>
       </section>
@@ -70,15 +77,29 @@
             “Worked” means the answer had the right format and followed every rule of the brief.
             An answer that didn't was sent back to the model once with what was wrong, to fix.
           </p>
+          <div id="reportRevision" class="callout" hidden>
+            <h3>Does hearing the measurements help?</h3>
+            <p id="reportRevisionMeaning"></p>
+            <p class="small muted">
+              Each first try that missed a feature range, or failed a render check, was revised
+              twice from the same first try: once told what its excerpt measured and what it
+              missed, once told only the ranges again. “Inside” means the excerpt misses no range
+              and fails no check.
+            </p>
+          </div>
           <div class="grid" id="reportTallies"></div>
           <h3>Time per request</h3>
           <p class="small muted">From sending the request to the end of the answer.</p>
           <p id="latencyFirst" class="small"></p>
           <p id="latencyRepair" class="small"></p>
+          <p id="latencyTreatment" class="small" hidden></p>
+          <p id="latencyControl" class="small" hidden></p>
           <h3>Time until the model starts answering</h3>
           <p class="small muted">Most of a request's time goes here when the model thinks before it writes.</p>
           <p id="firstTokenFirst" class="small"></p>
           <p id="firstTokenRepair" class="small"></p>
+          <p id="firstTokenTreatment" class="small" hidden></p>
+          <p id="firstTokenControl" class="small" hidden></p>
           <p id="responseFormat" class="small"></p>
         </section>
       </div>
@@ -127,6 +148,10 @@
           <dt>Why answers still failed after the fix</dt>
           <dd data-part="rejectsAfter"></dd>
         </dl>
+        <div class="stack" data-part="revision" hidden>
+          <h4>Revision test</h4>
+          <dl class="facts small" data-part="revisionFacts"></dl>
+        </div>
       </div>
     </template>
   </body>

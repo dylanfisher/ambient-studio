@@ -1,9 +1,15 @@
 // A model test's numbers in plain words (decisions 0030 and 0032). No DOM here, so the wording
 // is tested.
-/** @import { Rate, ResponseFormatResult, Tally } from "../domain/evaluation-report.js" */
+/** @import { Rate, ResponseFormatResult, RevisionModeTally, Tally } from "../domain/evaluation-report.js" */
 /** @import { Percentiles } from "../domain/percentiles.js" */
-import { RESPONSE_FORMAT_RESULT } from "../domain/evaluation-report.js";
+/** @import { FeatureRanges } from "../domain/target-schema.js" */
+import {
+  RESPONSE_FORMAT_RESULT,
+  REVISION_TEST,
+  REVISION_VERDICT,
+} from "../domain/evaluation-report.js";
 import { REJECT_REASON } from "../domain/reject-reason.js";
+import { rangeWords, TARGET_FEATURES } from "../domain/target-schema.js";
 
 /** The share that counts as working well: phase 2 asks for 90% after one fix. */
 const GOOD = 0.9;
@@ -116,4 +122,104 @@ export function meaningText({ valid, schemaValid, truncated }) {
     meaning += ` ${truncated} answer${truncated === 1 ? " was" : "s were"} cut off before finishing, which usually means the model spent its length limit before writing the answer.`;
   }
   return meaning;
+}
+
+/**
+ * A tally's revision test, or null for one without: a run outside revision mode, and every
+ * report stored before decision 0040, which has no `revision` field.
+ * @param {Partial<RevisionModeTally>} tally
+ */
+const revisionOf = (tally) => tally.revision ?? null;
+
+/** @param {number} p */
+const pText = (p) => `p = ${p.toPrecision(2)}`;
+
+/**
+ * @param {Rate | null} rate
+ * @returns {string} the count with its interval, or a dash when nothing was counted
+ */
+const shareText = (rate) => (rate === null ? "–" : `${rateText(rate)}. ${rangeText(rate)}`);
+
+/**
+ * @param {FeatureRanges} ranges
+ * @returns {string} such as `low-end share at most 0.5`
+ */
+function rangesText(ranges) {
+  const parts = Object.entries(TARGET_FEATURES).flatMap(([name, { feature }]) => {
+    const range = ranges[name];
+    return range === undefined ? [] : [`${feature.label} ${rangeWords(range, feature.unit)}`];
+  });
+  return parts.length === 0 ? "no ranges" : parts.join("; ");
+}
+
+/**
+ * What the revision test says, in a sentence or two; null without one.
+ * @param {Partial<RevisionModeTally>} tally the overall tally, whose verdict is the acceptance
+ */
+export function revisionVerdictText(tally) {
+  const revision = revisionOf(tally);
+  if (revision === null) return null;
+  const { revised, verdict, p, afterTreatment } = revision;
+  const fixed = `${afterTreatment?.count ?? 0} of ${revised}`;
+  if (verdict === REVISION_VERDICT.inconclusive) {
+    return `Inconclusive: only ${revised} first tries missed a range and were revised, and the test needs at least ${REVISION_TEST.minimumPairs}. Run it again with more candidates per brief.`;
+  }
+  const test = pText(/** @type {number} */ (p));
+  if (verdict === REVISION_VERDICT.passes) {
+    return `The measurements help: of ${revised} revised first tries, the revision that was told its measurements landed inside every range more often than the one that wasn't (${test}, under ${REVISION_TEST.alpha}).`;
+  }
+  if (verdict === REVISION_VERDICT.askingAgain) {
+    return `The gain comes from asking again: the revision told its measurements fixed ${fixed} first tries, but not clearly more than the revision that wasn't told them (${test}). The measurements don't earn their place yet; decide whether to keep the revision step.`;
+  }
+  return `The revision step didn't help: the revision told its measurements fixed none of ${revised} first tries (${test}).`;
+}
+
+/**
+ * @param {{ treatment: number, control: number }} counts
+ */
+const armsText = ({ treatment, control }) =>
+  `${treatment} with the measurements, ${control} without`;
+
+/**
+ * The revision test's facts for one tally, as term and value, or null without one.
+ * @param {Partial<RevisionModeTally & { ranges: FeatureRanges, revisionId: number }>} tally a
+ *   brief's tally adds the ranges it used
+ * @returns {[string, string][] | null}
+ */
+export function revisionFacts(tally) {
+  const revision = revisionOf(tally);
+  if (revision === null) return null;
+  const { pairs, p } = revision;
+  /** @type {[string, string][]} */
+  const facts = [];
+  if (tally.ranges !== undefined) {
+    facts.push([
+      "Ranges this test used",
+      `${rangesText(tally.ranges)} (brief version ${tally.revisionId})`,
+    ]);
+  }
+  facts.push(
+    ["Inside every range, first tries", shareText(revision.firstTries)],
+    ["Missed and revised twice", String(revision.revised)],
+    ["Inside after revising with the measurements", shareText(revision.afterTreatment)],
+    ["Inside after revising without them", shareText(revision.afterControl)],
+    [
+      "First tries inside, counting the revision with the measurements",
+      shareText(revision.firstTriesAfterTreatment),
+    ],
+    [
+      "Which revisions landed inside",
+      `both: ${pairs.both}; only the one with the measurements: ${pairs.treatmentOnly}; only the one without: ${pairs.controlOnly}; neither: ${pairs.neither}.`,
+    ],
+    [
+      "Paired test",
+      p === null
+        ? `inconclusive, fewer than ${REVISION_TEST.minimumPairs} revised`
+        : `${pText(p)} that the measurements make no difference`,
+    ],
+    ["Came back unchanged", armsText(revision.unchanged)],
+    ["Too long to send", armsText(revision.overBudget)],
+    ["Rejected", armsText(revision.rejected)],
+  );
+  return facts;
 }

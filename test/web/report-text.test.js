@@ -6,6 +6,8 @@ import {
   rateText,
   rejectsText,
   responseFormatText,
+  revisionFacts,
+  revisionVerdictText,
   timeText,
 } from "../../src/web/report-text.js";
 
@@ -27,6 +29,8 @@ function reportOf(reasons) {
           finalReason: /** @type {any} */ (finalReason),
         })),
         timings: [],
+        ranges: {},
+        revision: null,
       },
     ],
     responseFormat: "notSent",
@@ -116,5 +120,120 @@ describe("what a result means", () => {
   test("nothing answered says there is nothing to judge", () => {
     const { overall } = reportOf(times(2, ["requestFailed", "requestFailed"]));
     expect(meaningText(overall)).toMatch(/^No answer came back/);
+  });
+});
+
+// Revision mode (decision 0040).
+/**
+ * A one-brief revision-mode report: `fits` first tries inside, then pairs of [treatment,
+ * control] inside.
+ * @param {number} fits
+ * @param {[boolean, boolean][]} pairs
+ */
+function revisionReportOf(fits, pairs) {
+  const arm = (/** @type {boolean} */ inside) => ({
+    inside,
+    unchanged: false,
+    overBudget: false,
+    rejected: false,
+  });
+  /** @type {import("../../src/domain/evaluation-report.js").FirstTryOutcome[]} */
+  const firstTries = [
+    ...Array.from({ length: fits }, () => ({
+      inside: /** @type {const} */ (true),
+      treatment: null,
+      control: null,
+    })),
+    ...pairs.map(([t, c]) => ({
+      inside: /** @type {const} */ (false),
+      treatment: arm(t),
+      control: arm(c),
+    })),
+  ];
+  return evaluationReport({
+    runs: [
+      {
+        vibeId: 1,
+        revisionId: 4,
+        name: "bells",
+        requestGroup: "vibe-1-stream-1",
+        ranges: { lowEndShare: [null, 0.5] },
+        requested: firstTries.length,
+        outcomes: firstTries.map(() => ({ firstReason: null, finalReason: null })),
+        timings: [],
+        revision: { firstTries, timings: { treatment: [], control: [] } },
+      },
+    ],
+    responseFormat: "notSent",
+    stopped: null,
+  });
+}
+
+/** @param {number} n @param {[boolean, boolean]} pair */
+const pairs = (n, pair) => Array.from({ length: n }, () => pair);
+
+describe("the revision test in plain words", () => {
+  test("a report stored before revision mode, without its fields, has no revision facts", () => {
+    // The shape a report had before 0040: no `revision`, `ranges` or `revisionTiming`.
+    const old = {
+      requested: 16,
+      made: 16,
+      answered: 16,
+      valid: {
+        beforeRepair: { count: 15, of: 16, share: 0.9375, low: 0.72, high: 0.99 },
+        afterRepair: { count: 16, of: 16, share: 1, low: 0.81, high: 1 },
+      },
+      schemaValid: {
+        beforeRepair: { count: 16, of: 16, share: 1, low: 0.81, high: 1 },
+        afterRepair: { count: 16, of: 16, share: 1, low: 0.81, high: 1 },
+      },
+      truncated: 0,
+      requestFailed: 0,
+      rejects: { firstTry: {}, afterRepair: {} },
+    };
+    expect(revisionFacts(/** @type {any} */ (old))).toBeNull();
+    expect(revisionVerdictText(/** @type {any} */ (old))).toBeNull();
+    expect(meaningText(/** @type {any} */ (old))).toMatch(/^The model follows/);
+  });
+
+  test("below 20 revised first tries the verdict is inconclusive and gives no p", () => {
+    const { overall } = revisionReportOf(2, pairs(10, [true, false]));
+    expect(revisionVerdictText(overall)).toMatch(/^Inconclusive: only 10 first tries/);
+    expect(revisionVerdictText(overall)).not.toMatch(/p =/);
+  });
+
+  test("a pass says the measurements help, with its p", () => {
+    const { overall } = revisionReportOf(4, [
+      ...pairs(5, [true, true]),
+      ...pairs(9, [true, false]),
+      [false, true],
+      ...pairs(5, [false, false]),
+    ]);
+    expect(revisionVerdictText(overall)).toMatch(/^The measurements help/);
+    expect(revisionVerdictText(overall)).toContain("p = 0.011");
+    const facts = Object.fromEntries(/** @type {[string, string][]} */ (revisionFacts(overall)));
+    expect(facts["Inside every range, first tries"]).toMatch(/^4 of 24 \(17%\)/);
+    expect(facts["Inside after revising with the measurements"]).toMatch(/^14 of 20/);
+    expect(facts["Inside after revising without them"]).toMatch(/^6 of 20/);
+    expect(facts["Which revisions landed inside"]).toBe(
+      "both: 5; only the one with the measurements: 9; only the one without: 1; neither: 5.",
+    );
+  });
+
+  test("a fix that doesn't beat the control says the gain comes from asking again", () => {
+    const { overall } = revisionReportOf(0, [
+      ...pairs(6, [true, false]),
+      ...pairs(6, [false, true]),
+      ...pairs(8, [false, false]),
+    ]);
+    expect(revisionVerdictText(overall)).toMatch(/^The gain comes from asking again/);
+  });
+
+  test("a brief's card names the ranges the test used", () => {
+    const [vibe] = revisionReportOf(1, [[true, false]]).vibes;
+    const facts = Object.fromEntries(
+      /** @type {[string, string][]} */ (revisionFacts(/** @type {any} */ (vibe))),
+    );
+    expect(facts["Ranges this test used"]).toBe("low-end share at most 0.5 (brief version 4)");
   });
 });

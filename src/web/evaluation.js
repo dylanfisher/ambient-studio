@@ -1,5 +1,5 @@
-// The model test page (decisions 0030 and 0032): start a test over the ticked briefs, follow its
-// job, and read the stored results in plain words. The briefs added from starting points start
+// The model test page (decisions 0030, 0032 and 0040): start a test over the ticked briefs, with
+// or without the revision test, follow its job, and read the stored results in plain words. The briefs added from starting points start
 // ticked. A test holds the shared model for a long while, so starting one asks to confirm, and
 // its button stays off until the test finishes. A model test is an evaluation in the API.
 /** @import { JobStatus } from "./job-progress.js" */
@@ -27,6 +27,8 @@ import {
   rateText,
   rejectsText,
   responseFormatText,
+  revisionFacts,
+  revisionVerdictText,
   timeText,
 } from "./report-text.js";
 import { statusLine } from "./status-line.js";
@@ -34,6 +36,7 @@ import { statusLine } from "./status-line.js";
 const status = statusLine();
 const page = elementsById({
   briefChoices: HTMLElement,
+  reviseInput: HTMLInputElement,
   countInput: HTMLInputElement,
   startButton: HTMLButtonElement,
   jobBox: HTMLElement,
@@ -44,15 +47,28 @@ const page = elementsById({
   reportParams: HTMLElement,
   reportStopped: HTMLElement,
   reportMeaning: HTMLElement,
+  reportRevision: HTMLElement,
+  reportRevisionMeaning: HTMLElement,
   reportTallies: HTMLElement,
   latencyFirst: HTMLElement,
   latencyRepair: HTMLElement,
+  latencyTreatment: HTMLElement,
+  latencyControl: HTMLElement,
   firstTokenFirst: HTMLElement,
   firstTokenRepair: HTMLElement,
+  firstTokenTreatment: HTMLElement,
+  firstTokenControl: HTMLElement,
   responseFormat: HTMLElement,
 });
 page.countInput.value = String(EVALUATION_COUNT.default);
 page.countInput.max = String(EVALUATION_COUNT.max);
+// The suggested count follows the mode, but a count the owner typed is kept.
+page.reviseInput.onchange = () => {
+  const [from, to] = page.reviseInput.checked
+    ? [EVALUATION_COUNT.default, EVALUATION_COUNT.revise]
+    : [EVALUATION_COUNT.revise, EVALUATION_COUNT.default];
+  if (Number(page.countInput.value) === from) page.countInput.value = String(to);
+};
 const start = jobControl(page.startButton);
 
 /** @type {any[]} every stored test, oldest first */
@@ -82,6 +98,8 @@ function tallyCard(title, tally, maxTokens, withMeaning) {
     failed: HTMLElement,
     rejectsFirst: HTMLElement,
     rejectsAfter: HTMLElement,
+    revision: HTMLElement,
+    revisionFacts: HTMLElement,
   });
   card.title.textContent = `${title}: ${tally.made} of ${tally.requested} asked for were made`;
   card.meaning.hidden = !withMeaning;
@@ -96,6 +114,17 @@ function tallyCard(title, tally, maxTokens, withMeaning) {
   card.failed.textContent = `${tally.requestFailed} (the model was busy, too slow or stopped; these are left out of the rates above)`;
   card.rejectsFirst.textContent = rejectsText(tally.rejects.firstTry);
   card.rejectsAfter.textContent = rejectsText(tally.rejects.afterRepair);
+  const facts = revisionFacts(tally);
+  card.revision.hidden = facts === null;
+  card.revisionFacts.replaceChildren(
+    ...(facts ?? []).flatMap(([term, value]) => {
+      const dt = document.createElement("dt");
+      dt.textContent = term;
+      const dd = document.createElement("dd");
+      dd.textContent = value;
+      return [dt, dd];
+    }),
+  );
   return card.root;
 }
 
@@ -110,11 +139,17 @@ function showReport(index) {
   const briefs = report.vibes.map((/** @type {any} */ vibe) => vibe.name).join(", ");
   page.reportParams.textContent =
     `Asked for ${params.count} candidates for each of ${report.vibes.length} brief${report.vibes.length === 1 ? "" : "s"} (${briefs}), ` +
-    `from the model ${params.model}. Random seed ${params.seed}, which lets the same test be asked again.`;
+    `from the model ${params.model}. Random seed ${params.seed}, which lets the same test be asked again.` +
+    (params.revise === true
+      ? " With the revision test: each answer that missed was revised twice, with and without its measurements."
+      : "");
   page.reportStopped.hidden = report.stopped === null;
   page.reportStopped.textContent =
     report.stopped === null ? "" : `The test stopped early: ${report.stopped}`;
   page.reportMeaning.textContent = meaningText(report.overall);
+  const verdict = revisionVerdictText(report.overall);
+  page.reportRevision.hidden = verdict === null;
+  page.reportRevisionMeaning.textContent = verdict ?? "";
   page.reportTallies.replaceChildren(
     tallyCard("All briefs", report.overall, params.maxTokens, false),
     // One brief's card would repeat the overall one.
@@ -126,6 +161,26 @@ function showReport(index) {
   page.latencyRepair.textContent = `Fixes: ${timeText(report.latencyMs.repair)}`;
   page.firstTokenFirst.textContent = `First answers: ${timeText(report.firstTokenMs.firstTry)}`;
   page.firstTokenRepair.textContent = `Fixes: ${timeText(report.firstTokenMs.repair)}`;
+  // Reports stored before the revision test have no revisionTiming.
+  const arms = report.revisionTiming ?? null;
+  for (const [element, line] of /** @type {[HTMLElement, string][]} */ ([
+    [
+      page.latencyTreatment,
+      `Revisions with the measurements: ${timeText(arms?.latencyMs.treatment ?? null)}`,
+    ],
+    [page.latencyControl, `Revisions without them: ${timeText(arms?.latencyMs.control ?? null)}`],
+    [
+      page.firstTokenTreatment,
+      `Revisions with the measurements: ${timeText(arms?.firstTokenMs.treatment ?? null)}`,
+    ],
+    [
+      page.firstTokenControl,
+      `Revisions without them: ${timeText(arms?.firstTokenMs.control ?? null)}`,
+    ],
+  ])) {
+    element.hidden = arms === null;
+    element.textContent = arms === null ? "" : line;
+  }
   page.responseFormat.textContent = responseFormatText(report.responseFormat);
   for (const [i, item] of [...page.reportList.children].entries()) {
     // The list runs newest first.
@@ -204,11 +259,14 @@ const startTest = oneAtATime(async () => {
   const vibeIds = tickedBriefs();
   if (vibeIds.length === 0) throw new Error("Tick at least one brief to test.");
   const count = Number(page.countInput.value);
+  const revise = page.reviseInput.checked;
   const total = count * vibeIds.length;
+  const cost = revise
+    ? `With the revision test it renders each answer and asks again twice for each one that misses, so it sends up to three requests per candidate: about ${2 * total} minutes, at a minute a request.`
+    : `That takes about ${total} minutes, and makes no audio.`;
   if (
     !confirm(
-      `Ask the model for ${total} candidates (${count} for each of ${vibeIds.length} briefs)? ` +
-        `That takes about ${total} minutes, and makes no audio.`,
+      `Ask the model for ${total} candidates (${count} for each of ${vibeIds.length} briefs)? ${cost}`,
     )
   ) {
     status.say("Not started.");
@@ -216,7 +274,7 @@ const startTest = oneAtATime(async () => {
   }
   start.wait();
   try {
-    const { job, refused } = await startJob(EVALUATIONS_PATH, { vibeIds, count });
+    const { job, refused } = await startJob(EVALUATIONS_PATH, { vibeIds, count, revise });
     status.say(refused ? `${refused} Showing that test's progress.` : "The model test started.");
     status.run(() => follow(job));
   } catch (error) {

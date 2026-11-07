@@ -2,7 +2,8 @@
 
 - **Date:** 2026-11-06
 - **Status:** accepted; provisional: owner to confirm; amended by
-  [0034](0034-feature-ranges-as-soft-targets.md) (the seed vibes' feature ranges)
+  [0034](0034-feature-ranges-as-soft-targets.md) (the seed vibes' feature ranges) and
+  [0040](0040-revision-evaluation.md) (revision mode, which renders and revises)
 
 ## Context
 
@@ -158,3 +159,12 @@ unconstrained genomes. It never runs against omlx.
   and no other soft target; 3h's builder may not change them. Since the seed's draft is compared
   deeply, each edited file is a new seed: a vibe the owner loaded before keeps `{}` and no
   longer counts as the seed, which shows as not loaded and loads again as a new vibe.
+- 2026-11-07: from step 3h ([0040](0040-revision-evaluation.md)). `POST /api/evaluations` takes
+  an optional `revise`, false when left out; `params` records it. With it true the run renders
+  each valid first try, which the rejected "rendering each valid genome" alternative above
+  turned down for plain runs, and revises each that misses twice, the treatment and the
+  control; renders still run only between requests. Each vibe's tally gains `ranges`, and each
+  tally `revision`, null outside revision mode; the report gains `revisionTiming`. A cancel
+  between requests now stores the report too, as a failed request does. The page offers "Also
+  test the revision step" and suggests 32 a vibe with it (`EVALUATION_COUNT.revise`). Reports
+  stored before have none of these fields and display as before.

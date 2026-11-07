@@ -1,7 +1,9 @@
 // The revision of a first try whose excerpt missed a feature range or failed a render check
 // (decision 0036): one follow-up turn on its round-0 prompt, with the measurements, answered
 // through the same parse, lock, validate, lint and repair path as a first try, and stored as its
-// own candidate. It runs only inside the owner's candidates job.
+// own candidate. It runs only inside the owner's candidates job, and in the owner's evaluation,
+// which also asks for the control arm's revision: the same follow-up without the measurements
+// (decision 0040).
 /** @import { Config } from "../config/config.js" */
 /** @import { Features } from "../domain/extract-features.js" */
 /** @import { Finding } from "../domain/lint-result.js" */
@@ -16,7 +18,7 @@ import { followUp } from "../domain/follow-up.js";
 import { lintResult } from "../domain/lint-result.js";
 import { OPERATOR } from "../domain/operator.js";
 import { estimateTokens, promptText } from "../domain/prompt-tokens.js";
-import { revisionAsk } from "../domain/revision-ask.js";
+import { controlAsk, revisionAsk } from "../domain/revision-ask.js";
 import { checkRevision, keep, LLM_SOURCE, requestCandidate } from "./generate-candidates.js";
 import { getGeneration, getGenome } from "./generation-store.js";
 import { genomeHash } from "./genome-hash.js";
@@ -48,6 +50,8 @@ export const isUnchanged = (candidate) =>
  * @property {ReadonlySet<string>} playable from `playableHashes`
  * @property {Features} features the first try's excerpt, measured
  * @property {readonly Finding[]} misses from `excerptMisses`, at least one
+ * @property {boolean} control the evaluation's control arm: the ask leaves out `features` and
+ *   `misses`, and the revision is stored with operator `revise-control`, outside any session
  * @property {CandidateHook | undefined} [onCandidate] called as the revision is stored
  * @property {StepHook | undefined} [onStep]
  */
@@ -67,7 +71,7 @@ function roundZero(store, generationId) {
 
 /**
  * Revises `firstTry` once and stores the revision with the first try as its parent and operator
- * `revise`. An answer that returns the first try's genome is stored with
+ * `revise`, or `revise-control` for the control arm. An answer that returns the first try's genome is stored with
  * `operatorParams.unchanged` true, on its genome and seed. A follow-up over the context budget
  * isn't trimmed, since its earlier turns must match what was sent: it isn't sent, and an
  * unchanged revision with a `revisionOverBudget` finding and no generation says so. A request
@@ -79,9 +83,12 @@ function roundZero(store, generationId) {
  * @returns {Promise<Candidate>}
  */
 export async function reviseCandidate(store, queue, firstTry, options) {
-  const { config, locks, seed, index } = options;
-  if (firstTry.operator === REVISE) {
+  const { config, locks, seed, index, control } = options;
+  if (firstTry.operator === REVISE || firstTry.operator === REVISE_CONTROL) {
     throw new Error(`candidate ${firstTry.id} is a revision, and a revision is never revised`);
+  }
+  if (control && options.sessionId !== null) {
+    throw new Error("a control-arm revision is made only in an evaluation, outside any session");
   }
   if (firstTry.genomeId === null || firstTry.generationId === null) {
     throw new Error(`candidate ${firstTry.id} has no genome or no generation to revise`);
@@ -93,7 +100,9 @@ export async function reviseCandidate(store, queue, firstTry, options) {
   if (!row) throw new Error(`there is no genome ${firstTry.genomeId}`);
   const first = roundZero(store, firstTry.generationId);
   const answer = { [ANSWER_KEY.intent]: firstTry.intent, [ANSWER_KEY.genome]: row.genome };
-  const ask = revisionAsk({ locks, ranges, features: options.features, misses: options.misses });
+  const ask = control
+    ? controlAsk({ locks, ranges })
+    : revisionAsk({ locks, ranges, features: options.features, misses: options.misses });
   const prompt = followUp(/** @type {ChatMessage[]} */ (first.prompt), answer, ask);
 
   /** @type {Batch} */
@@ -118,7 +127,7 @@ export async function reviseCandidate(store, queue, firstTry, options) {
     seed: unchanged ? firstTry.seed : seed,
     source: LLM_SOURCE,
     parentIds: [firstTry.id],
-    operator: REVISE,
+    operator: control ? REVISE_CONTROL : REVISE,
     operatorParams: { unchanged },
   });
 
