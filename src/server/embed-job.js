@@ -21,7 +21,9 @@ import { listRenders } from "./render-store.js";
  */
 
 /**
- * The job. A failure stops it with the file named, and the rows written before it stay.
+ * The job. A rated-audio file that is missing, or a file the sidecar fails on, doesn't stop
+ * the rest: the job embeds every other file, then fails naming each file that failed, so the
+ * owner sees every one and the rows written stay. A cancel stops it at once.
  * @param {App} app
  * @returns {(job: JobContext) => Promise<EmbedJobResult>}
  */
@@ -35,12 +37,16 @@ export function embedJob(app) {
 
     /** @type {{ source: EmbeddingSource, file: string }[]} */
     const wanted = [];
+    /** @type {string[]} */
+    const failed = [];
     for (const row of listRatedAudio(app.store)) {
       if (row.removedAt !== null) continue;
+      const file = join(app.paths.ratedAudio, row.file);
       const source = { ratedAudioId: row.id, renderId: null };
-      if (!findEmbedding(app.store, source, producer)) {
-        wanted.push({ source, file: join(app.paths.ratedAudio, row.file) });
-      }
+      if (findEmbedding(app.store, source, producer)) continue;
+      // Rated audio is irreplaceable, so a missing file is a failure, not a skip.
+      if (existsSync(file)) wanted.push({ source, file });
+      else failed.push(`${file} is missing`);
     }
     for (const row of listRenders(app.store, PRODUCER)) {
       const file = join(app.paths.renderCache, row.file);
@@ -51,12 +57,24 @@ export function embedJob(app) {
       }
     }
 
+    let embedded = 0;
     for (const [index, { source, file }] of wanted.entries()) {
       progress(index, wanted.length, JOB_STEP.embeddingExcerpt(index + 1, wanted.length));
       signal.throwIfAborted();
-      await embedAudio(app, embedder, source, file, signal);
+      try {
+        await embedAudio(app, embedder, source, file, signal);
+        embedded++;
+      } catch (error) {
+        if (signal.aborted) throw error;
+        failed.push(/** @type {Error} */ (error).message);
+      }
     }
     progress(wanted.length, wanted.length, null);
-    return { producer, dropped, embedded: wanted.length };
+    if (failed.length > 0) {
+      throw new Error(
+        `embedded ${embedded} excerpts, and ${failed.length} failed:\n${failed.join("\n")}`,
+      );
+    }
+    return { producer, dropped, embedded };
   };
 }

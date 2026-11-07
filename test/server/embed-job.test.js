@@ -2,7 +2,7 @@
 // no row under the sidecar's producer, rebuilds when the producer changes, and a sidecar
 // failure fails the job naming the file and keeps the rows already written.
 /** @import { TestApp } from "../support/test-app.js" */
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { NO_CHECKPOINT_CACHE } from "../../src/server/embed-audio.js";
@@ -72,6 +72,10 @@ async function setup() {
   render(3, PRODUCER);
   await mkdir(app.paths.renderCache, { recursive: true });
   await writeFile(join(app.paths.renderCache, kept.file), "audio");
+  await mkdir(app.paths.ratedAudio, { recursive: true });
+  for (const file of ["drone-7.flac", "drone-8.flac"]) {
+    await writeFile(join(app.paths.ratedAudio, file), "audio");
+  }
   const ratedAudioIds = [filled.rated_audio, second.id];
   return { ...made, checkpointCache, ratedAudioIds, kept };
 }
@@ -158,32 +162,65 @@ test("a producer change drops the old rows and embeds everything again", async (
   expect(count?.n).toBe(3);
 });
 
-test("a sidecar failure fails the job naming the file, and keeps the rows written", async () => {
-  const { app, sidecar, ratedAudioIds } = await setup();
+/** @param {TestApp["app"]} app */
+const rowCount = (app) => app.store.db.prepare("SELECT count(*) AS n FROM embeddings").get()?.n;
+
+test("a file the sidecar fails on doesn't stop the rest, and the job fails naming it", async () => {
+  const { app, sidecar, ratedAudioIds, kept } = await setup();
   sidecar.script(
     { do: "answer", result: EMBEDDER },
-    { do: "answer", result: { windows: 3 }, floats: VECTOR },
     { do: "error", error: "embed_audio raised ValueError: ffmpeg can't decode it" },
+    { do: "answer", result: { windows: 3 }, floats: VECTOR },
+    { do: "answer", result: { windows: 3 }, floats: VECTOR },
   );
-  const file = join(app.paths.ratedAudio, "drone-8.flac");
+  const file = join(app.paths.ratedAudio, "drone-7.flac");
   await expect(embedJob(app)(job())).rejects.toThrow(
-    `embedding ${file} failed: sidecar request embed_audio failed: embed_audio raised ValueError: ffmpeg can't decode it`,
+    `embedded 2 excerpts, and 1 failed:\nembedding ${file} failed: sidecar request embed_audio failed: embed_audio raised ValueError: ffmpeg can't decode it`,
   );
-  const source = { ratedAudioId: /** @type {number} */ (ratedAudioIds[0]), renderId: null };
-  expect(findEmbedding(app.store, source, EMBEDDER.producer)).toBeDefined();
-  const count = app.store.db.prepare("SELECT count(*) AS n FROM embeddings").get();
-  expect(count?.n).toBe(1);
+  const second = { ratedAudioId: /** @type {number} */ (ratedAudioIds[1]), renderId: null };
+  expect(findEmbedding(app.store, second, EMBEDDER.producer)).toBeDefined();
+  const rendered = { ratedAudioId: null, renderId: kept.id };
+  expect(findEmbedding(app.store, rendered, EMBEDDER.producer)).toBeDefined();
+  expect(rowCount(app)).toBe(2);
 });
 
-test("a vector of the wrong length fails the job and stores nothing", async () => {
+test("a missing rated-audio file is a failure named at the end, after the rest", async () => {
+  const { app, sidecar } = await setup();
+  const missing = join(app.paths.ratedAudio, "drone-7.flac");
+  await rm(missing);
+  const vector = { do: /** @type {const} */ ("answer"), result: { windows: 3 }, floats: VECTOR };
+  sidecar.script({ do: "answer", result: EMBEDDER }, vector, vector);
+  await expect(embedJob(app)(job())).rejects.toThrow(
+    `embedded 2 excerpts, and 1 failed:\n${missing} is missing`,
+  );
+  expect(await embeddedFiles(sidecar)).not.toContain(missing);
+  expect(rowCount(app)).toBe(2);
+});
+
+test("every failure is named, a wrong-length vector among them", async () => {
   const { app, sidecar } = await setup();
   sidecar.script(
     { do: "answer", result: EMBEDDER },
     { do: "answer", result: { windows: 3 }, floats: [1, 0] },
+    { do: "error", error: "embed_audio raised ValueError: no audio" },
+    { do: "answer", result: { windows: 3 }, floats: VECTOR },
   );
-  await expect(embedJob(app)(job())).rejects.toThrow(/wrote 8 bytes for .*, not 4 floats/);
-  const count = app.store.db.prepare("SELECT count(*) AS n FROM embeddings").get();
-  expect(count?.n).toBe(0);
+  const error = await embedJob(app)(job()).catch((/** @type {Error} */ e) => e);
+  expect(String(error)).toMatch(/embedded 1 excerpts, and 2 failed:/);
+  expect(String(error)).toMatch(/wrote 8 bytes for .*drone-7\.flac, not 4 floats/);
+  expect(String(error)).toMatch(/embedding .*drone-8\.flac failed: .*no audio/);
+  expect(rowCount(app)).toBe(1);
+});
+
+test("a cancel stops the job at once rather than being counted as a failure", async () => {
+  const { app, sidecar } = await setup();
+  sidecar.script({ do: "answer", result: EMBEDDER }, { do: "hang" });
+  const controller = new AbortController();
+  const run = embedJob(app)({ signal: controller.signal, progress: () => undefined });
+  await sidecar.waitForReceived(2);
+  controller.abort(new Error("job 1 was cancelled"));
+  await expect(run).rejects.toThrow(/cancelled/);
+  expect(await embeddedFiles(sidecar)).toHaveLength(1);
 });
 
 test("with no checkpoint folder in the config the job fails and starts no sidecar", async () => {
