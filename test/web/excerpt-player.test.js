@@ -2,7 +2,13 @@
 // width of the card, over an audio element with no controls of its own. Checked on fakes:
 // EventTargets with the fields the player reads and writes.
 import { expect, test } from "vitest";
-import { clockTime, SEEK_STEPS, switchPlayback, wirePlayer } from "../../src/web/excerpt-player.js";
+import {
+  clockTime,
+  playAudio,
+  SEEK_STEPS,
+  switchPlayback,
+  wirePlayer,
+} from "../../src/web/excerpt-player.js";
 
 function fakeParts() {
   const audio = Object.assign(new EventTarget(), {
@@ -10,7 +16,11 @@ function fakeParts() {
     duration: Number.NaN,
     paused: true,
     seeking: false,
+    readyState: 1,
+    /** @type {Error | null} what the next play rejects with */
+    refuse: /** @type {Error | null} */ (null),
     play() {
+      if (audio.refuse) return Promise.reject(audio.refuse);
       audio.paused = false;
       audio.dispatchEvent(new Event("play"));
       return Promise.resolve();
@@ -92,24 +102,55 @@ test("the bar goes back to the start when the source changes", () => {
   expect(time.textContent).toBe("0:00 / –:––");
 });
 
-test("switching plays the other excerpt from the same point and pauses the first", async () => {
+/** Lets a rejected play's catch run; no timers. */
+const settle = () => Promise.resolve().then(() => {});
+
+test("switching plays the other excerpt from the same point and pauses the first", () => {
   const left = /** @type {any} */ (fakeParts().audio);
   const right = /** @type {any} */ (fakeParts().audio);
-  await left.play();
+  const fail = (/** @type {Error} */ error) => {
+    throw error;
+  };
+  left.play();
   left.currentTime = 7.25;
-  await switchPlayback(left, right);
+  switchPlayback(left, right, fail);
   expect(left.paused).toBe(true);
   expect(right.paused).toBe(false);
   expect(right.currentTime).toBe(7.25);
 
   // Switching to the one already playing changes nothing.
   right.currentTime = 9;
-  await switchPlayback(right, right);
+  switchPlayback(right, right, fail);
   expect(right).toMatchObject({ paused: false, currentTime: 9 });
 
   // From a paused side it still starts at that side's point.
   right.pause();
   right.currentTime = 3;
-  await switchPlayback(right, left);
+  switchPlayback(right, left, fail);
   expect(left).toMatchObject({ paused: false, currentTime: 3 });
+});
+
+test("a side whose metadata hasn't loaded takes the time once it has", () => {
+  const left = /** @type {any} */ (fakeParts().audio);
+  const right = /** @type {any} */ (fakeParts().audio);
+  left.currentTime = 12;
+  right.readyState = 0;
+  switchPlayback(left, right, () => {});
+  expect(right.currentTime).toBe(0);
+  right.readyState = 1;
+  fire(right, "loadedmetadata");
+  expect(right.currentTime).toBe(12);
+});
+
+test("an AbortError from switching fast is not reported, and any other refusal is", async () => {
+  const left = /** @type {any} */ (fakeParts().audio);
+  const right = /** @type {any} */ (fakeParts().audio);
+  /** @type {Error[]} */
+  const reported = [];
+  right.refuse = Object.assign(new Error("interrupted by pause"), { name: "AbortError" });
+  switchPlayback(left, right, (error) => reported.push(error));
+  left.refuse = Object.assign(new Error("not allowed"), { name: "NotAllowedError" });
+  playAudio(left, (error) => reported.push(error));
+  await settle();
+  expect(reported.map(({ name }) => name)).toEqual(["NotAllowedError"]);
 });

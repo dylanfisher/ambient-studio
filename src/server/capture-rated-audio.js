@@ -50,7 +50,7 @@ export async function captureRatedAudio(store, { ratedAudio }, renderId, recordi
   const file = `${genomeId}-seed${seed}-${duration}s-engine${ENGINE_VERSION}-${target}LUFS.flac`;
   await mkdir(ratedAudio, { recursive: true });
   const temp = await mkdtemp(join(ratedAudio, ".capture-"));
-  try {
+  const keep = async () => {
     const staged = join(temp, file);
     const wav = join(temp, "heard.wav");
     await writeWav(wav, encodePcm24(channels), { channelCount: channels.length, sampleRate });
@@ -70,7 +70,21 @@ export async function captureRatedAudio(store, { ratedAudio }, renderId, recordi
       );
     }
     return addRatedAudio(store, { ...heard, file, pcmSha256, gainDb });
-  } finally {
-    await rm(temp, { recursive: true });
+  };
+  /** @type {RatedAudio} */
+  let kept;
+  try {
+    kept = await keep();
+  } catch (error) {
+    // A cleanup that fails too is reported with the capture's own error, which it must not hide.
+    await rm(temp, { recursive: true }).catch((/** @type {Error} */ cleanup) => {
+      throw new Error(
+        `${/** @type {Error} */ (error).message}; removing ${temp} afterwards failed too: ${cleanup.message}`,
+        { cause: error },
+      );
+    });
+    throw error;
   }
+  await rm(temp, { recursive: true });
+  return kept;
 }

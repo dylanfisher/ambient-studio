@@ -8,12 +8,12 @@ import { bindQuickAbKeys, keyLabel, QUICK_AB_KEYS } from "../../src/web/quick-ab
 const CHOSEN = {
   playLeft: "ArrowLeft",
   playRight: "ArrowRight",
-  chooseLeft: "a",
-  chooseRight: "d",
-  same: "s",
-  skip: "w",
-  playPause: " ",
-  undo: "z",
+  chooseLeft: "KeyA",
+  chooseRight: "KeyD",
+  same: "KeyS",
+  skip: "KeyW",
+  playPause: "Space",
+  undo: "KeyZ",
 };
 
 /** @param {{ tagName: string, type?: string, isContentEditable?: boolean } | null} focused */
@@ -29,12 +29,13 @@ function page(focused = null) {
   const state = { focused };
   bindQuickAbKeys(/** @type {any} */ (target), actions, () => /** @type {any} */ (state.focused));
   /**
-   * @param {string} key
-   * @param {Partial<{ shiftKey: boolean, metaKey: boolean, ctrlKey: boolean, altKey: boolean, repeat: boolean }>} [more]
+   * @param {string} code
+   * @param {Partial<{ shiftKey: boolean, metaKey: boolean, ctrlKey: boolean, altKey: boolean, repeat: boolean, isComposing: boolean }>} [more]
    */
-  const press = (key, more = {}) => {
+  const press = (code, more = {}) => {
     const event = Object.assign(new Event("keydown", { cancelable: true }), {
-      key,
+      code,
+      isComposing: false,
       shiftKey: false,
       metaKey: false,
       ctrlKey: false,
@@ -62,20 +63,21 @@ test("every key does what it names, and takes the browser's default", () => {
   }
 });
 
-test("letters work with Shift or Caps Lock, and not with Cmd, Ctrl or Alt", () => {
+test("letters work with Shift, and not with Cmd, Ctrl or Alt or while composing", () => {
   const { ran, press } = page();
-  press("D", { shiftKey: true });
-  press("a", { metaKey: true });
-  press("s", { ctrlKey: true });
-  press("w", { altKey: true });
+  press("KeyD", { shiftKey: true });
+  press("KeyA", { metaKey: true });
+  press("KeyS", { ctrlKey: true });
+  press("KeyW", { altKey: true });
+  press("KeyZ", { isComposing: true });
   expect(ran).toEqual(["chooseRight"]);
 });
 
 test("a held key acts once", () => {
   const { ran, press } = page();
-  press("d");
-  press("d", { repeat: true });
-  press("d", { repeat: true });
+  press("KeyD");
+  press("KeyD", { repeat: true });
+  press("KeyD", { repeat: true });
   expect(ran).toEqual(["chooseRight"]);
 });
 
@@ -102,7 +104,7 @@ test("keys still fire on a focused button, switch or seek bar", () => {
     { tagName: "INPUT", type: "range" },
   ]) {
     const { ran, press } = page(focused);
-    press(" ");
+    press("Space");
     press("ArrowRight");
     expect(ran, focused.type ?? focused.tagName).toEqual(["playPause", "playRight"]);
   }
@@ -110,7 +112,7 @@ test("keys still fire on a focused button, switch or seek bar", () => {
 
 test("other keys pass through", () => {
   const { ran, press } = page();
-  expect(press("q").defaultPrevented).toBe(false);
+  expect(press("KeyQ").defaultPrevented).toBe(false);
   expect(press("Tab").defaultPrevented).toBe(false);
   expect(ran).toEqual([]);
 });

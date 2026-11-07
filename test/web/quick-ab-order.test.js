@@ -88,21 +88,54 @@ test("switching to random keeps out the pairs already rated", () => {
   expect(keys).not.toContain(rated);
 });
 
-test("undo puts back the pair and the champion from before the last rating", () => {
+test("undo puts back the pair and the champion from before the last rating, and keeps the mode", () => {
   const order = createQuickAbOrder(IDS, { mode: "champion", random: draws(0.6, 0.1) });
   const first = order.pair();
   order.rate("b");
+  const second = order.pair();
   order.setMode("random");
-  const drawn = order.pair();
   order.rate("a");
   expect(order.undo()).toBe(true);
-  expect(order.pair()).toEqual(drawn);
+  expect(order.pair()).toEqual(second);
   expect(order.mode()).toBe("random");
   expect(order.undo()).toBe(true);
-  expect(order.mode()).toBe("champion");
   expect(order.pair()).toEqual(first);
   expect(order.champion()).toBe(first?.[0]);
+  expect(order.mode()).toBe("random");
   expect(order.undo()).toBe(false);
+});
+
+test("switching mode keeps the pair shown, and applies from the next one", () => {
+  const order = createQuickAbOrder(IDS, { mode: "champion", random: draws(0.3, 0.8) });
+  const shown = order.pair();
+  order.setMode("random");
+  expect(order.pair()).toEqual(shown);
+  order.setMode("champion");
+  expect(order.pair()).toEqual(shown);
+});
+
+test("a rating that wasn't saved doesn't count as rated, and undo doesn't bring it back", () => {
+  const order = createQuickAbOrder([1, 2, 3], { mode: "random", random: draws(0) });
+  const failed = /** @type {[number, number]} */ (order.pair());
+  order.rate("a");
+  order.rate("a");
+  order.forget(failed);
+  order.undo();
+  // All three are left: the one undone, the one that failed to save, and the last.
+  expect(order.remaining()).toBe(3);
+  order.remember(failed);
+  expect(order.remaining()).toBe(2);
+});
+
+test("random mode leaves out the pairs the session rated before", () => {
+  const order = createQuickAbOrder([1, 2, 3], {
+    mode: "random",
+    random: draws(0),
+    prior: ["1-2", "2-3"],
+  });
+  expect(key(order.pair())).toBe("1-3");
+  order.rate("a");
+  expect(order.pair()).toBeNull();
 });
 
 test("fewer than two candidates make no pair", () => {

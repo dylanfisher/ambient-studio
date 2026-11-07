@@ -51,7 +51,8 @@ come out equal to the row's, or the capture throws and keeps nothing. The PCM is
 WAV in the capture's temp folder and encoded to FLAC as before, so the FLAC and its hash are made
 the same way. The rating routes pass the recordings index lazily (`jobRecordings`), read only
 when an excerpt is rendered again. A second rating of the same excerpt reuses the row and
-renders nothing.
+renders nothing. When a capture fails after making its temp folder and removing that folder
+fails too, the error names both, the capture's first, so the cleanup can't hide the cause.
 
 **Measured** on mbp2021 under `nice -n 10`, at a load average of 2.5 with a parallel builder
 running, two seeds each:
@@ -73,39 +74,59 @@ first capture costs roughly the excerpt's render time less its feature measureme
 duration (`0:12 / 0:25`), and a range input from 0 to `SEEK_STEPS` (1000) across the card.
 Dragging shows where it will land without moving playback; letting go (`change`) sets
 `currentTime`, so the played tracker sees `seeking`/`seeked` as before (0028). A new `src` resets
-it through `emptied`. The session cards, the session page's comparison, the lineage page and the
+it through `emptied`. Every play goes through `playAudio`, which ignores the AbortError a pause
+or a new source gives a play still starting (switching sides fast does it constantly) and
+reports any other refusal. The session cards, the session page's comparison, the lineage page and the
 Quick A/B page all use it; no page has `<audio controls>`, which a test checks. CSS hides the
 player when its audio element is hidden.
 
 **The Quick A/B page** (`quick-ab.html?id=<session>`), opened by a Quick A/B link on the session
-page. The pool is the session's candidates with an excerpt; `poolOf` in `quick-ab.js` is the one
-place 4j leaves the hidden ones out. The order (`quick-ab-order.js`, no DOM, its draws injected):
+page. The pool is the session's candidates with an excerpt; `poolOf` in `quick-ab-session.js`
+is the one place 4j leaves the hidden ones out. The order (`quick-ab-order.js`, no DOM, its
+draws injected):
 
 - **Champion** (the default): the pool is shuffled; the first is the champion and the rest
   challengers in turn. Choosing a side keeps that side as champion against the next challenger.
   A tie keeps the champion. A skip uses up the challenger: it has had its turn, and the next
   challenger comes. The pool runs out when every candidate has had a turn (n − 1 pairs).
-- **Random**, a checkbox: each pair is drawn from the pairs not yet rated on the page.
-- Neither mode draws a pair already rated on the page. Switching mode applies from the next pair:
-  switching to champion starts a new round of every other candidate against the champion so
+- **Random**, a checkbox: each pair is drawn from the pairs not yet rated, on the page or by a
+  live rating of this session from before (read from `GET /api/vibes/:vibeId/ratings`, matched
+  to candidates by genome and seed).
+- Neither mode draws a pair already rated on the page. A rating that failed to save doesn't
+  count as rated until it is saved, so random mode can draw that pair again.
+- Switching mode applies from the next pair: the pair shown stays, half heard or not.
+  Switching to champion starts a new round of every other candidate against the champion so
   far, skipping pairs already rated.
-- Undo (Z) removes the last rating with `POST …/ab-ratings/:id/remove` and puts the order back as
-  it was before it, mode included, so that pair is shown again; Z again goes back further.
+- Undo (Z) puts back the pair and the champion from before the last rating, so that pair is
+  shown again; Z again goes back further. The mode stays as the switch shows it.
 - When the pool runs out, the page says so and names the last one chosen.
 
 Each pair is drawn by the existing `POST …/ab-pairs`, so the sides come from a logged seed, and
 each rating goes through `POST …/ab-ratings` under the session's id with that seed, built by
 `abRatingBody` (`ab-rating.js`, shared with the session page's comparison). Ratings rows are
-unchanged, so 4c's training sets read them as they read any other. Because capture now takes a
-second or two, the page shows the next pair at once and sends ratings one after another in the
-background; a failed one is shown on the status line, and Undo of it only restores the order.
-The page doesn't start the next pair playing by itself.
+unchanged, so 4c's training sets read them as they read any other.
+
+**Saving in the background** (`quick-ab-session.js`, no DOM, tested over a fake fetch). Because
+capture takes a second or two, the page shows the next pair at once and queues each rating; the
+queue sends one at a time. A line under the progress says how many are saving and lists each
+that failed, with its error, until a Retry saves it; a later choice doesn't clear it. Leaving
+the page while any rating is queued, sending or failed asks first (`beforeunload`). Undo waits
+for the last rating's send, then asks the server to remove it, and only when that succeeds
+takes it off the page and restores the order; a failed remove leaves everything in place and
+shows why. Undo of a rating that never saved removes nothing on the server. When a pair's
+sides can't be drawn (`POST …/ab-pairs` fails), the pair stays the order's current pair, the
+choice buttons and keys do nothing, and Retry draws it again. One action runs at a time, so a
+key pressed while the next pair loads does nothing. The page doesn't start the next pair
+playing by itself.
 
 **Keys, on this page only** (`quick-ab-keys.js`, the one table): ← and → play the left or right
 excerpt from the point of the side heard last (`switchPlayback`), A chooses left, D right, S about
 the same, W skip, Space pauses or plays the side heard last, Z undoes. Each has a button that
-does the same and shows its key in a `<kbd>` from the table. Letters work with Shift or Caps
-Lock; Cmd, Ctrl and Alt leave a key to the browser. A held key acts once. The listener runs in
+does the same and shows its key in a `<kbd>` from the table. Keys are read by
+`KeyboardEvent.code`, the physical key, so Shift, Caps Lock and the keyboard layout don't change
+them; Cmd, Ctrl and Alt leave a key to the browser, and so does a key pressed while an input
+method is composing. A held key acts once. An arrow sets the other side's time at once when its
+metadata has loaded, and on `loadedmetadata` otherwise. The listener runs in
 the capture phase and takes the key's default, so Space on a focused button or the checkbox, and
 an arrow on a focused seek bar, does the page's action. While a text field, textarea, select or
 editable content has the focus, every key goes to it. This amends 0032 for this page because the
@@ -132,6 +153,9 @@ owner asked for keys here; every other page stays as 0032 has it.
   pool out; a skip is stored as a skip, and random mode can still draw that candidate.
 - **Waiting for each rating before the next pair** — rejected: it would add the capture's second
   or two to every choice.
+- **Undo restoring the mode too** — rejected in review: the switch would flip under the owner's
+  hand; undo is about the rating.
+- **Redrawing the pair on a mode switch** — rejected in review: it threw away a pair half heard.
 
 ## Consequences
 
@@ -144,3 +168,11 @@ owner asked for keys here; every other page stays as 0032 has it.
   same.
 - `lame` is a new system tool: `./scripts/setup` fails until it is installed (`brew install lame`).
 - A new page in `src/web/` needs the player for any audio, or the titles test fails.
+
+## Amendments
+
+- 2026-11-07: from the step's review, before merge. Failed saves stay listed until Retry and
+  block leaving the page; undo takes a rating off the page only after the server removed it; a
+  failed pair draw waits for Retry; a mode switch keeps the pair shown and undo keeps the mode;
+  plays ignore AbortError; keys are read by `code`; random mode leaves out the session's earlier
+  live ratings; a failed capture cleanup no longer hides the capture's error.

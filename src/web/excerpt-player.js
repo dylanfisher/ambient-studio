@@ -58,14 +58,8 @@ export function wirePlayer({ audio, toggle, time, seek }, onError) {
   };
 
   toggle.addEventListener("click", () => {
-    // A pause before playback starts rejects the play with an AbortError, which is not a fault.
-    if (audio.paused) {
-      audio.play().catch((/** @type {Error} */ error) => {
-        if (error.name !== "AbortError") onError(error);
-      });
-    } else {
-      audio.pause();
-    }
+    if (audio.paused) playAudio(audio, onError);
+    else audio.pause();
   });
   seek.addEventListener("input", () => {
     dragging = true;
@@ -115,18 +109,45 @@ export function mountPlayer(audio, onError) {
   return box;
 }
 
+/** `HTMLMediaElement.HAVE_METADATA`: the duration is known and `currentTime` can be set. */
+const HAVE_METADATA = 1;
+
+/**
+ * Starts playback. A pause or a new source before playback starts rejects the play with an
+ * AbortError, which switching sides fast does all the time and which is not a fault.
+ * @param {HTMLAudioElement} audio
+ * @param {(error: Error) => void} onError any other refusal
+ */
+export function playAudio(audio, onError) {
+  audio.play().catch((/** @type {Error} */ error) => {
+    if (error.name !== "AbortError") onError(error);
+  });
+}
+
 /**
  * Moves playback from one excerpt to the other at the same point, as Quick A/B's arrow keys do,
- * so the owner hears the same moment of both. Playing `to` again when it is already the one
- * playing does nothing.
+ * so the owner hears the same moment of both. An element whose metadata hasn't loaded can't
+ * take a time yet, so it gets it on `loadedmetadata`. Playing `to` again when it is already the
+ * one playing does nothing.
  * @param {HTMLAudioElement} from the side heard last
  * @param {HTMLAudioElement} to
- * @returns {Promise<void>} as `play()` returns it
+ * @param {(error: Error) => void} onError a play the browser refused
  */
-export function switchPlayback(from, to) {
+export function switchPlayback(from, to, onError) {
   if (from !== to) {
     from.pause();
-    to.currentTime = from.currentTime;
+    const at = from.currentTime;
+    if (to.readyState >= HAVE_METADATA) {
+      to.currentTime = at;
+    } else {
+      to.addEventListener(
+        "loadedmetadata",
+        () => {
+          to.currentTime = at;
+        },
+        { once: true },
+      );
+    }
   }
-  return to.paused ? to.play() : Promise.resolve();
+  if (to.paused) playAudio(to, onError);
 }

@@ -2,9 +2,9 @@
 // again and kept as FLAC, the exact normalized PCM the cached MP3 was encoded from, one row per
 // heard identity, with its PCM hash and gain.
 import { existsSync } from "node:fs";
-import { readdir, rm } from "node:fs/promises";
+import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { normalize } from "../../src/domain/normalize.js";
 import { ENGINE_VERSION } from "../../src/engine/engine-version.js";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
@@ -20,6 +20,20 @@ import { putRender } from "../../src/server/render-store.js";
 import { sha256Hex } from "../../src/server/sha256-hex.js";
 import { createVibe } from "../../src/server/vibe-store.js";
 import { tempStore } from "../support/temp-store.js";
+
+/** Set by a test to make removing a capture's temp folder fail, as a full disk can. */
+const cleanup = vi.hoisted(() => ({ fails: false }));
+vi.mock("node:fs/promises", async (original) => {
+  const real = /** @type {typeof import("node:fs/promises")} */ (await original());
+  return {
+    ...real,
+    /** @type {typeof real.rm} */
+    rm: async (path, options) => {
+      if (cleanup.fails && String(path).includes(".capture-")) throw new Error("EIO: i/o error");
+      return real.rm(path, options);
+    },
+  };
+});
 
 /** No genome here plays a field recording, so the capture is given an empty index. */
 const NO_RECORDINGS = async () => [];
@@ -97,6 +111,23 @@ test("refuses an excerpt that renders differently from its row", async () => {
     /came out different when rendered again/,
   );
   expect(existsSync(paths.ratedAudio)).toBe(false);
+});
+
+test("a cleanup that fails too doesn't hide why the capture failed", async () => {
+  const { store, paths, render } = await setup();
+  const { genomeId, seed, duration, target } = render;
+  // A rated file of this name with no row: the capture refuses to replace it.
+  const file = `${genomeId}-seed${seed}-${duration}s-engine${ENGINE_VERSION}-${target}LUFS.flac`;
+  await mkdir(paths.ratedAudio, { recursive: true });
+  await writeFile(join(paths.ratedAudio, file), "");
+  cleanup.fails = true;
+  try {
+    await expect(captureRatedAudio(store, paths, render.id, NO_RECORDINGS)).rejects.toThrow(
+      /already in .* with no rated_audio row.*; removing .*\.capture-.* afterwards failed too: EIO/s,
+    );
+  } finally {
+    cleanup.fails = false;
+  }
 });
 
 test("a second capture of the same excerpt reuses the row and its file", async () => {

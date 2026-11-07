@@ -1,33 +1,34 @@
 // Quick A/B's keys (decision 0048), the one page with keys since 0032 removed them elsewhere,
 // because the owner asked for them here. This table is the one place they are written: the
-// listener reads it and the page shows each key on its button. A letter works with Shift or
-// Caps Lock; Cmd, Ctrl and Alt leave a key to the browser. A held key acts once, so holding D
+// listener reads it and the page shows each key on its button. Keys are read by
+// `KeyboardEvent.code`, the physical key, so Shift, Caps Lock and the keyboard layout don't
+// change them; Cmd, Ctrl and Alt leave a key to the browser, and so does a key typed while an
+// input method is composing. A held key acts once, so holding D
 // can't rate several pairs. While a field you type in has the focus, every key goes to it.
 
-/** Each action's key, as `KeyboardEvent.key` gives it, in lower case for a letter. */
+/** Each action's key, as `KeyboardEvent.code` names it. */
 export const QUICK_AB_KEYS = Object.freeze({
   playLeft: "ArrowLeft",
   playRight: "ArrowRight",
-  chooseLeft: "a",
-  chooseRight: "d",
-  same: "s",
-  skip: "w",
-  playPause: " ",
-  undo: "z",
+  chooseLeft: "KeyA",
+  chooseRight: "KeyD",
+  same: "KeyS",
+  skip: "KeyW",
+  playPause: "Space",
+  undo: "KeyZ",
 });
 
 /** How a button shows a key that isn't a letter. */
 const SHOWN = new Map([
   ["ArrowLeft", "←"],
   ["ArrowRight", "→"],
-  [" ", "Space"],
 ]);
 
 /**
- * The key as its button shows it: an arrow, Space, or the capital letter.
- * @param {string} key
+ * The key as its button shows it: an arrow, Space, or the letter.
+ * @param {string} code
  */
-export const keyLabel = (key) => SHOWN.get(key) ?? key.toUpperCase();
+export const keyLabel = (code) => SHOWN.get(code) ?? code.replace(/^Key/, "");
 
 /** @typedef {keyof typeof QUICK_AB_KEYS} QuickAbAction */
 
@@ -70,8 +71,8 @@ export function bindQuickAbKeys(target, actions, focused) {
     "keydown",
     (event) => {
       const press = /** @type {KeyboardEvent} */ (event);
-      if (press.metaKey || press.ctrlKey || press.altKey) return;
-      const name = byKey.get(press.key.length === 1 ? press.key.toLowerCase() : press.key);
+      if (press.metaKey || press.ctrlKey || press.altKey || press.isComposing) return;
+      const name = byKey.get(press.code);
       if (!name || takesTyping(focused())) return;
       press.preventDefault();
       if (!press.repeat) actions[name]();
