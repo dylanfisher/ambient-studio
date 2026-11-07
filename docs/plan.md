@@ -66,7 +66,7 @@ unneeded stays unused rather than being given to another step.
 | 0041 | The sidecar process and protocol | 4a | — |
 | 0042 | CLAP packages, checkpoint and embeddings | 4b | [written](decisions/0042-clap-embeddings.md) |
 | 0043 | Training sets, ties, folds and the model key | 4c | — |
-| 0044 | Bayesian Bradley–Terry with a global prior | 4d | — |
+| 0044 | Bayesian Bradley–Terry with a global prior | 4d | [written](decisions/0044-bayesian-bradley-terry.md), provisional |
 | 0045 | Held-out agreement, the minimum and the baselines | 4e | — |
 | 0046 | Ranking, wildcards and the pair picker | 4f | — |
 | 0047 | The "what you like" summary | 4g | — |
