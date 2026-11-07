@@ -1458,3 +1458,14 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   root, omlx address unreachable, three seeded candidates): the owner tried the pages and called
   them a good start. No faults reported; the per-item listening and keyboard checks above stay
   open for the first real session.
+- 2026-11-06: the studio's omlx key, merged (Sonnet: 72k tokens, 18 tool calls, 8.9 min; read by
+  the orchestrator). omlx requires an API key on every request (its settings refuse
+  unauthenticated inference), which no phase 2 step knew; the owner chose a key of the studio's
+  own, revocable apart from the live site's. `omlx.apiKey` is required in the config, which is
+  refused when group or others can read it; the queue sends it as a bearer token and nowhere else
+  (not in `params`, errors, retry events or logs); a 401 or 403 fails at once with an
+  owner-facing message. AGENTS.md's secrets line now names this one secret. The orchestrator wrote
+  the owner's config at their request (model `Qwen3.6-35B-A3B-oQ4e-mtp`, the model behind omlx's
+  recent requests in its own log; recordings in `~/Music/Field Recordings`; mode 600) with the key
+  left as a placeholder for the owner to paste. omlx's own stats put that model at about 1,700
+  prompt tokens a second and 88 output tokens a second, well above the queue's assumed 100 and 20.
