@@ -61,7 +61,7 @@ unneeded stays unused rather than being given to another step.
 | 0036 | The revision pass ("ears") | 3d | [written](decisions/0036-revision-pass.md) |
 | 0037 | `sessionId` on candidates, nudge and branch | 3e | [written](decisions/0037-nudge-and-branch.md) |
 | 0038 | Explore | 3f | [written](decisions/0038-explore.md) |
-| 0039 | Lineage tree and the steering controls | 3g | — |
+| 0039 | Lineage tree and the steering controls | 3g | [written](decisions/0039-lineage-and-steering-controls.md) |
 | 0040 | Revision evaluation against a control | 3h | — |
 
 ## Phase 1 — Engine, schema and macros
@@ -2139,3 +2139,27 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   in a test only when the render is what it checks. The checkers' configuration hasn't changed
   this phase (only `scripts/dupes-allow.txt`), so they still skip `tmp/`,
   `.claude/worktrees/`, `node_modules/` and `.venv/`.
+- 2026-11-07: 3g merged as 73b1c2e (Opus: 290k tokens, 115 calls, 27.2 min, then fix rounds of
+  5.4 min and 39 s; reviewer Sonnet: 90k tokens, 17 calls, 5.3 min, FAIL; second reviewer Sonnet:
+  56k tokens, 9 calls, 2.3 min, PASS). `GET /api/vibes/:id/lineage` lists every session candidate
+  of the vibe with its parents, `pair`, excerpt, thumbs and sketch flag, leaving out evaluation
+  and `revise-control` candidates and folding unchanged revisions into their first try; rejected
+  ones only with `includeRejected=true`. The lineage page draws the tree as nested lists, each
+  node playable with "explore from here" and "nudge from here". Session cards gained the ranges
+  readout (range misses and failed checks, counted by `excerptMisses`), lock controls with the
+  macro offer, the vibe's locks with unlock, and explore and nudge. Operator names live in
+  `src/domain/operator.js`; the explore and nudge default counts moved to `src/domain` and the
+  page sends them. The first review failed the step: in Safari a click on Lock let a poll hide the
+  card and its macro offer unseen, and the default counts were written into the page titles as
+  well as the server. A card now holds its pair's swap while a rating or lock request is in
+  flight or an offer is unanswered. Both pages were driven in headless Chromium. 1290 tests.
+  Acceptance 4 passes. The steer-controls template is copied into both pages, with a test that
+  the copies stay equal.
+- 2026-11-07: pending owner checks after 3g, on mbp2015 (Safari 17.6) and mbp2026, as the phase
+  lists them: revised cards and their first try on 8 candidates of a seed vibe with ranges, and
+  whether the revision moved toward the brief; a locked voice and its macros holding across
+  explored children; nudge at small, medium and large; the lineage page after two rounds of
+  exploring, playing and exploring from a first-round node; each seed vibe's ranges on the brief
+  page. Also: in Safari, pick a lock path and press Lock while a revised pair waits to swap; the
+  card and its offer should stay until answered. The seed files changed in 3b, so load the seeds
+  again (or type ranges onto the loaded vibes) before checking them.
