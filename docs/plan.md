@@ -3277,3 +3277,7 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   constant columns and thin components carry no term, and the model code's hash is in the key).
   `readModelCode` and `fitModels` stay unexported until 4e uses them. A model with no terms
   predicts variance 0; 4e and 4f must say "no model yet" for it rather than rank on it.
+- 2026-11-07: 4j merged as 012a3d0 (Opus: 290k tokens, 127 calls, 22.4 min, then a fix round of
+  3.8 min; reviewer Sonnet: 65k tokens, 13 calls, 1.5 min, PASS with minor findings taken: scroll
+  kept only on the way to A/B, a revised pair hides as one on the server, marks belong to the
+  excerpt). The gate passes, 1493 tests.
