@@ -1,6 +1,7 @@
 // Reads the fields of a JSON request body and the ids in a path (decision 0027). Each throws a
 // 400 (a bad body) or a 404 (a bad id in the path) naming the field and what it got, so the UI
 // can show the message as it is.
+import { DIRECTION_CHARS } from "../domain/explore-direction.js";
 import { isObject } from "../engine/is-object.js";
 import { show } from "../engine/validation-error.js";
 import { HttpError } from "./routing.js";
@@ -17,8 +18,7 @@ export const MAX_CHARS = Object.freeze({
   tag: 64,
   // A lock path: `voices.`, a 16-character voice id and a parameter name fit with room to spare.
   lockPath: 64,
-  // An explore's direction is one line, as "slower" or "less bell" (decision 0038).
-  direction: 200,
+  direction: DIRECTION_CHARS,
 });
 /** The most tags one sketch may carry. */
 export const MAX_TAGS = 32;

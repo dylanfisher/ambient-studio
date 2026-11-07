@@ -7,6 +7,7 @@
 /** @import { App, Route } from "./routing.js" */
 /** @import { Session } from "./session-store.js" */
 import { applyLocks } from "../domain/apply-locks.js";
+import { NOT_ONE_LINE } from "../domain/explore-direction.js";
 import { lockRefusal, STEP_SIZE } from "../domain/nudge.js";
 import { currentExcerpt } from "./candidate-excerpt.js";
 import {
@@ -124,12 +125,6 @@ const DUPLICATE = Object.freeze({
   [EXPLORE]: (id) =>
     `This session is already making this explore (job ${id}). Wait for it to finish, or cancel it.`,
 });
-
-/**
- * What a one-line direction may not hold: a control character (line breaks, tab, NUL, DEL and
- * NEL among them) or a line or paragraph separator.
- */
-const NOT_ONE_LINE = /[\p{Cc}\u2028\u2029]/u;
 
 /**
  * An explore's direction, or null when the body gives none or only white space (decision 0038).
