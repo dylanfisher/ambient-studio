@@ -42,6 +42,10 @@ describe("spectralFlatness", () => {
     expect(spectralFlatness([bandLimited(whiteNoise(6), 22050)], SAMPLE_RATE)).toBeGreaterThan(0.8);
   });
 
+  test("throws at a sample rate whose Nyquist is under the band's 16 kHz top", () => {
+    expect(() => spectralFlatness([whiteNoise(1)], 22050)).toThrow(/16000 Hz/);
+  });
+
   test("silence has no flatness", () => {
     expect(spectralFlatness([new Float32Array(SAMPLE_RATE)], SAMPLE_RATE)).toBeNull();
   });

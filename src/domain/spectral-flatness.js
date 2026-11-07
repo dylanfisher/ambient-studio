@@ -23,6 +23,11 @@ const HIGHEST_HZ = 16000;
 export function spectralFlatness(channels, sampleRate) {
   const first = Math.ceil((LOWEST_HZ * FRAME) / sampleRate);
   const last = Math.floor((HIGHEST_HZ * FRAME) / sampleRate);
+  if (last > FRAME / 2) {
+    throw new Error(
+      `spectral flatness reads up to ${HIGHEST_HZ} Hz, over the Nyquist of ${sampleRate} Hz`,
+    );
+  }
   const bins = last - first + 1;
   let sum = 0;
   let frames = 0;

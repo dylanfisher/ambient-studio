@@ -22,7 +22,8 @@ export function stereoWidth(channels) {
     mid += ((l + r) / 2) ** 2;
     side += ((l - r) / 2) ** 2;
   }
-  // mid + side is the channels' mean power, so the gate reads the same level as a frame's.
+  // (mid + side) / length is the mean over samples of (l² + r²) / 2, the channels' average mean
+  // square, gated at the level a silent frame is.
   if ((mid + side) / left.length < SILENT_FRAME_POWER) return null;
   return side / (mid + side);
 }
