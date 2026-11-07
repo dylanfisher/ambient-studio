@@ -3246,3 +3246,7 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   after 6a–6c, before morphs, lanes and the proposal. Read from the engine: nothing in `render()`
   changes; a long section renders as chunks through the existing excerpt windows, and the
   meters, limiter and WAV writer gain streaming forms with the same bits. No package is needed.
+- 2026-11-07: phases 5 and 6 planned (Opus planner: 237k tokens, 55 calls, 25.7 min for both;
+  merged as 05f2ffc and 83dce79). Owner's choices: reference uploads used to set a brief's
+  targets, guide generation and steer by sound, never rendered; phase 5 before 6; tracks are an
+  LLM proposal the owner edits on a timeline; at an owner gate, keep building and batch the asks.
