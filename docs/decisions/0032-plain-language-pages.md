@@ -17,11 +17,11 @@ per unique action". Later the same day: "need a way to undo something. e.g. if i
 brightness, then less brightness, those both show attached to the card. i would think they
 cancel each other out."
 
-Step 2m changes the server at the same time (record 0031):
-a candidates job renders its own excerpts, a job identical to one queued or running is a 409
-naming it, job progress gains a `step` sentence, and a new thumbs or macro choice replaces the
-candidate's earlier one, with routes to remove a feedback row or an A/B rating. The pages here
-are written to read correctly against main before 2m and against 2m after it.
+Step 2m changes the server at the same time (record 0031): a candidates job renders its own
+excerpts, a job identical to one queued or running is a 409 naming it, job progress gains a
+`step` sentence, and a new thumbs or macro choice replaces the candidate's earlier one, with
+routes to remove a feedback row or an A/B rating. The pages here are written for the server with
+2m; the progress text still reads a missing `step`, but the choices and their removal need 2m.
 
 ## Decision
 
@@ -76,17 +76,18 @@ button is off while any job of the session is unfinished, since the runner runs 
 anyway. Render missing excerpts is a recovery action: it shows only when a candidate has no
 excerpt and no job of the session is running.
 
-**Choices on a card.** A candidate's current choices are its newest live thumbs row and its
-newest live row per macro (`liveChoices` in `live-feedback.js`), read from the brief's ratings.
-So more brightness then less brightness reads as less whether or not the server has marked the
-older row removed, and the page reads correctly before 2m and after. Thumbs are a toggle pair:
-pressing the active one again removes its row (`POST …/feedback/:feedbackId/remove`); pressing the
-other posts a new row. A macro's `—` removes its row; Less or More posts one; the choice already
-shown sends nothing. After an A/B rating an Undo button removes it
+**Choices on a card.** A candidate's current choices are the `feedback` field of its entry in
+`GET /api/sessions/:id/candidates` (0031): its live thumbs and one live row per macro. That is
+the one source for the fact; the page does not work out which row is newest. The page reads it
+again after each change. Thumbs are a toggle pair: pressing the active one again removes its
+row (`POST …/feedback/:feedbackId/remove`); pressing the other posts a new row. A macro's `—`
+removes its row; Less or More posts one; the choice already shown sends nothing. A remove marks
+every live row of that candidate, kind and macro undone, so a pair of live rows made before 2m
+cannot bring an older choice back. After an A/B rating an Undo button removes it
 (`POST …/ab-ratings/:ratingId/remove`). While a card's request is pending every control on that
 card is off, with a title saying so; a failed request puts the controls back to what the server
-last confirmed and the status line says why. Before 2m the remove routes are a 404, which shows as
-that error.
+last confirmed and the status line says why. The A/B count on a card and the sketch badge still
+read the brief's ratings.
 
 **Look.** `studio.css` uses zinc greys on white (and their dark counterparts under
 `prefers-color-scheme: dark`), cards with a 1px border, an 8px radius and a faint shadow, 14px
@@ -113,6 +114,9 @@ structure follows shadcn/ui; no code is taken from it. Still no nesting, `:has()
   chosen (played or used) or last rated. Rating a card other than the one chosen last chooses it,
   so that rating's time taken is near 0 s. The owner can ask for per-card clocks if the number
   matters.
+- **Picking the newest live row on the page** (`liveChoices`, from the brief's ratings) —
+  rejected: a clear then showed an older live row, and it made the page a second source for what
+  the server decides. The server removes all of them and reports the live state.
 - **Showing every feedback row on the card** — rejected: the owner reads two opposite choices as
   cancelling out; the card shows the current one, and the brief page still lists every row.
 
@@ -123,5 +127,5 @@ structure follows shadcn/ui; no code is taken from it. Still no nesting, `:has()
 - `test/web/pages.test.js` lists `brief.html` in place of `vibe.html`; an old bookmark to
   `vibe.html` is a 404.
 - The pages read job progress through `jobProgress` only, so a new job kind needs a title there.
-- When 2m's session GET exposes each candidate's live feedback, `liveChoices` can read it instead
-  of the brief's ratings; until then the brief's rows are read after each change.
+- A job button is turned back on when following its job fails (a poll that throws), and the
+  status line shows the error; a reload follows the job again if it still runs.

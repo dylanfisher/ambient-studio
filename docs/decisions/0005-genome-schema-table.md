@@ -178,3 +178,7 @@ If `tsc` can't express that, the builder of step 1c records what it did instead.
   no default, so a voice that omits it is an error, and the schema text shows it as `required`.
   `schemaText()` leaves out the voice types with such a parameter, and the prompt adds their
   lines only when the folder holds recordings, so the base text stays 2,931 characters.
+- 2026-11-06: from step 2m ([0031](0031-fewer-waits-after-first-evaluation.md)). The schema text no longer uses the
+  `name~` notation described under "Schema text" above. The name is written plainly and `(T)`
+  follows the default when the parameter may be a trajectory: `cutoff 100..2000 Hz =600 (T)
+  low-pass`. The text is 2,982 characters, under the 3,000 this record's test holds.

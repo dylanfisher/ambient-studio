@@ -142,3 +142,12 @@ unconstrained genomes. It never runs against omlx.
   a sentence on what the result means. "Working well" in that sentence is phase 2's 90% after one
   fix; "low first time" is under 50%. The seed vibes are "starting points" on the dashboard, added
   with a button. The stored report is unchanged.
+- 2026-11-06: from step 2m ([0031](0031-fewer-waits-after-first-evaluation.md)).
+  - **`params.thinking`.** An evaluation's `params` records `queue.thinking`, the value sent as
+    `chat_template_kwargs.enable_thinking` with every request.
+  - **`report.reasoning`.** The report gains `reasoning: {answered, withReasoning}`: of the
+    generations that were answered, how many came back with reasoning text. With thinking off, a
+    `withReasoning` above 0 says omlx or the template ignored the switch.
+  - **A second evaluation.** `POST /api/evaluations` while any evaluation is queued or running is
+    a 409 with body `{error, jobId}`, `jobId` naming the unfinished job and `error` the sentence
+    "An evaluation is already queued or running (job N). Wait for it to finish, or cancel it."

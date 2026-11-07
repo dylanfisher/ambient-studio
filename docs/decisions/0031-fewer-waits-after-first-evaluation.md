@@ -5,9 +5,10 @@
   [0019](0019-config-file-and-paths.md) (`queue.thinking`),
   [0022](0022-omlx-queue.md) (the request body and a per-request `onRetry`),
   [0024](0024-prompt-parse-repair-generation.md) (the schema notation and the generation hooks),
-  [0026](0026-job-runner-and-excerpt-renders.md) (progress steps) and
+  [0026](0026-job-runner-and-excerpt-renders.md) (progress steps),
   [0027](0027-session-api-and-ratings.md) (duplicate jobs, the candidate job's renders, and
-  feedback states and removal).
+  feedback states and removal) and
+  [0030](0030-seed-vibes-and-evaluation.md) (the evaluation's params and report, and its 409 body).
 
 ## Context
 
