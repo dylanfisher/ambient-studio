@@ -16,13 +16,18 @@ import { fileURLToPath } from "node:url";
 /**
  * What the fake does with one request. `answer` writes `{ id, result }`; `error` writes
  * `{ id, error }`; `hold` keeps `result` until a later step with `release`; `hang` never
- * answers and stays alive after stdin closes, as a Python stuck inside a method would; `crash` writes `stderr` and exits with `code`; `garbage` writes `line` as it is.
- * `release` answers every held request after this step's own answer, newest first.
+ * answers and stays alive after stdin closes, as a Python stuck inside a method would;
+ * `crash` writes `stderr` and exits with `code`; `garbage` writes `line` as it is.
+ * `release` answers every held request after this step's own answer, newest first, and
+ * `together` sends all of those answers in one write. `split` writes an answer in two halves,
+ * the second a turn of the event loop after the first has gone.
  * @typedef {object} Step
  * @property {"answer" | "error" | "hold" | "hang" | "crash" | "garbage"} do
  * @property {unknown} [result]
  * @property {string} [error]
  * @property {boolean} [release]
+ * @property {boolean} [together]
+ * @property {boolean} [split]
  * @property {string} [stderr]
  * @property {number} [code]
  * @property {string} [line]
@@ -42,12 +47,16 @@ import { fileURLToPath } from "node:url";
  * @property {() => Promise<Received[]>} received every request read, in order
  * @property {(count: number) => Promise<void>} waitForReceived resolves once `count` requests
  *   have been read, checking once a turn of the event loop
+ * @property {(count: number) => void} blockUntilWritten returns once the fakes have handed
+ *   `count` writes to stdout's pipe, blocking the event loop meanwhile so the client can't read
+ *   them yet; throws after 20 s, which only a fake that never writes reaches
  * @property {() => Promise<void>} remove deletes the temp folder
  */
 
 const STEPS = "steps.json";
 const STARTS = "starts";
 const RECEIVED = "received.jsonl";
+const WRITTEN = "written";
 const PARENT = "--parent";
 
 /**
@@ -90,6 +99,13 @@ export async function fakeSidecar({ underParent = false } = {}) {
     async waitForReceived(count) {
       while ((await lines(join(dir, RECEIVED))).length < count) await tick();
     },
+    blockUntilWritten(count) {
+      const deadline = performance.now() + 20_000;
+      const path = join(dir, WRITTEN);
+      while (readFileSync(path, { encoding: "utf8", flag: "a+" }).length < count) {
+        if (performance.now() > deadline) throw new Error(`the fake wrote fewer than ${count}`);
+      }
+    },
     remove: () => rm(dir, { recursive: true }),
   };
 }
@@ -106,10 +122,28 @@ function serve(dir) {
   // Writes to a pipe are asynchronous on macOS, so the exit waits for stderr to take the text.
   /** @param {string} text @param {number} code */
   const exit = (text, code) => process.stderr.write(text, () => process.exit(code));
+  // One character in WRITTEN per write stdout's pipe has taken.
+  /** @param {string} text */
+  const send = (text) =>
+    new Promise((resolve) =>
+      process.stdout.write(text, () => {
+        appendFileSync(join(dir, WRITTEN), ".");
+        resolve(undefined);
+      }),
+    );
   /** @param {unknown} answer */
-  const write = (answer) => process.stdout.write(`${JSON.stringify(answer)}\n`);
-  createInterface({ input: process.stdin }).on("line", (line) => {
-    const request = JSON.parse(line);
+  const line = (answer) => `${JSON.stringify(answer)}\n`;
+  /** @param {unknown} answer @param {boolean} [split] */
+  const write = async (answer, split = false) => {
+    const text = line(answer);
+    if (!split) return send(text);
+    const half = Math.floor(text.length / 2);
+    await send(text.slice(0, half));
+    await tick();
+    return send(text.slice(half));
+  };
+  createInterface({ input: process.stdin }).on("line", (text) => {
+    const request = JSON.parse(text);
     const index = readFileSync(join(dir, RECEIVED), { encoding: "utf8", flag: "a+" })
       .split("\n")
       .filter((entry) => entry !== "").length;
@@ -122,15 +156,18 @@ function serve(dir) {
       return;
     }
     const { id } = request;
-    if (step.do === "answer") write({ id, result: step.result });
-    else if (step.do === "error") write({ id, error: step.error });
+    const own = step.do === "answer" ? { id, result: step.result } : undefined;
+    if (own && !(step.release && step.together)) void write(own, step.split);
+    else if (step.do === "error") void write({ id, error: step.error });
     else if (step.do === "hold") held.push({ id, result: step.result });
     else if (step.do === "hang") setInterval(() => undefined, 60_000);
-    else if (step.do === "garbage") process.stdout.write(`${step.line}\n`);
+    else if (step.do === "garbage") void send(`${step.line}\n`);
     else if (step.do === "crash") exit(step.stderr ?? "", step.code ?? 1);
     if (step.release) {
-      for (const answer of held.reverse()) write(answer);
+      const answers = held.reverse();
       held = [];
+      if (step.together) void send([own, ...answers].filter(Boolean).map(line).join(""));
+      else for (const answer of answers) void write(answer);
     }
   });
 }

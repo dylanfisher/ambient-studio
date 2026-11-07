@@ -31,37 +31,49 @@ def version(params: dict[str, Any]) -> dict[str, Any]:
 HANDLERS: dict[str, Handler] = {"ping": ping, "version": version}
 
 
-def answer(line: str, methods: dict[str, Method], handlers: dict[str, Handler]) -> dict[str, Any]:
+def _error(id: int | None, message: str) -> str:
+    return json.dumps({"id": id, "error": message})
+
+
+def answer(line: bytes, methods: dict[str, Method], handlers: dict[str, Handler]) -> str:
+    """The answer to one request line, encoded as JSON without its newline."""
     try:
-        request: object = json.loads(line)
-    except json.JSONDecodeError as error:
-        return {"id": None, "error": f"the request isn't JSON: {error}"}
+        request: object = json.loads(line.decode("utf-8"))
+    except UnicodeDecodeError as error:
+        return _error(None, f"the request isn't UTF-8: {error}")
+    except (json.JSONDecodeError, RecursionError) as error:
+        return _error(None, f"the request isn't JSON: {error}")
     if not isinstance(request, dict):
-        return {"id": None, "error": "the request isn't a JSON object"}
+        return _error(None, "the request isn't a JSON object")
     fields: dict[str, Any] = request  # pyright: ignore[reportUnknownVariableType]
     id = fields.get("id")
     if not isinstance(id, int) or isinstance(id, bool):
-        return {"id": None, "error": "the request has no whole-number id"}
+        return _error(None, "the request has no whole-number id")
     method = fields.get("method")
     if not isinstance(method, str) or method not in methods:
-        return {"id": id, "error": f"{method} is not a sidecar method"}
+        return _error(id, f"{method} is not a sidecar method")
     params = fields.get("params")
     wrong = mismatch(methods[method]["params"], params, "params")
     if wrong is not None:
-        return {"id": id, "error": f"{method}: {wrong}"}
+        return _error(id, f"{method}: {wrong}")
     try:
         result = handlers[method](params)  # pyright: ignore[reportArgumentType]
     except Exception as error:
         # The traceback goes to stderr, which the server logs; the answer carries the message.
         traceback.print_exc(file=sys.stderr)
-        return {"id": id, "error": f"{method} raised {type(error).__name__}: {error}"}
-    return {"id": id, "result": result}
+        return _error(id, f"{method} raised {type(error).__name__}: {error}")
+    try:
+        # NaN and infinities are refused: JavaScript's JSON.parse can't read them.
+        return json.dumps({"id": id, "result": result}, allow_nan=False)
+    except (TypeError, ValueError) as error:
+        return _error(id, f"{method} returned a result that isn't JSON: {error}")
 
 
 def serve(
-    lines: Iterable[str], write: Callable[[str], None], handlers: dict[str, Handler] = HANDLERS
+    lines: Iterable[bytes], write: Callable[[str], None], handlers: dict[str, Handler] = HANDLERS
 ) -> None:
-    """Answers each line of `lines` with one line passed to `write`, until `lines` ends."""
+    """Answers each line of `lines` with one line passed to `write`, until `lines` ends. Lines
+    are bytes, so one that isn't UTF-8 is answered like any other bad line."""
     methods = load_methods()
     if set(handlers) != set(methods):
         raise ValueError(
@@ -69,4 +81,4 @@ def serve(
             f"({', '.join(sorted(methods))})"
         )
     for line in lines:
-        write(f"{json.dumps(answer(line, methods, handlers))}\n")
+        write(f"{answer(line, methods, handlers)}\n")

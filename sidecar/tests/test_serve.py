@@ -8,10 +8,11 @@ import pytest
 from ambient_sidecar.serve import HANDLERS, Handler, serve
 
 
-def run(*lines: str, handlers: dict[str, Handler] = HANDLERS) -> list[dict[str, Any]]:
+def run(*lines: str | bytes, handlers: dict[str, Handler] = HANDLERS) -> list[dict[str, Any]]:
     """The answers `serve` writes for `lines`, each parsed from its own line."""
     written: list[str] = []
-    serve([f"{line}\n" for line in lines], written.append, handlers)
+    raw = [line if isinstance(line, bytes) else line.encode("utf-8") for line in lines]
+    serve([line + b"\n" for line in raw], written.append, handlers)
     assert all(text.endswith("\n") and text.count("\n") == 1 for text in written)
     return [json.loads(text) for text in written]
 
@@ -76,3 +77,26 @@ def test_handlers_must_match_the_protocols_methods() -> None:
     handlers = {name: handler for name, handler in HANDLERS.items() if name != "version"}
     with pytest.raises(ValueError, match="version"):
         run(request(1, "ping"), handlers=handlers)
+
+
+def test_a_line_that_is_not_utf8_is_an_error_answer_and_the_loop_keeps_reading() -> None:
+    [answer, after] = run(b'{"id": 1, "method": "\xff"}', request(2, "ping"))
+    assert answer["id"] is None
+    assert answer["error"].startswith("the request isn't UTF-8: ")
+    assert after == {"id": 2, "result": {}}
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), object()])
+def test_a_result_json_cannot_encode_is_an_error_answer_and_the_loop_keeps_reading(
+    value: object,
+) -> None:
+    def odd(params: dict[str, Any]) -> dict[str, Any]:
+        return {"value": value}
+
+    [answer, after] = run(
+        request(1, "ping"), request(2, "version"), handlers={**HANDLERS, "ping": odd}
+    )
+    assert answer["id"] == 1
+    assert answer["error"].startswith("ping returned a result that isn't JSON: ")
+    assert after["id"] == 2
+    assert "result" in after

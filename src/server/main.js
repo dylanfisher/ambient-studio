@@ -214,10 +214,17 @@ export async function startServer(
       // A job left running would write to the closed store, and its omlx request or render
       // would hold the process open. Cancelling a finished job leaves it as it is.
       for (const { id } of jobs.list()) jobs.cancel(id);
-      await jobs.idle();
-      await closed;
-      await sidecar.stop();
-      store.close();
+      // Whatever fails above, the sidecar's process still ends and the store still closes.
+      try {
+        await jobs.idle();
+        await closed;
+      } finally {
+        try {
+          await sidecar.stop();
+        } finally {
+          store.close();
+        }
+      }
     },
   };
 }

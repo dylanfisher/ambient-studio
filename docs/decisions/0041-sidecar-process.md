@@ -45,9 +45,12 @@ unknown method or wrong params before starting anything, and fails a request who
 doesn't match. The loop refuses wrong params with an error answer, and refuses to start when its
 handlers and the file's methods differ.
 
-**What the loop answers.** A line that isn't a JSON object, or has no whole-number `id`, gets
-`{id: null, error}`. An unknown method, wrong params, or a method that raises gets `{id, error}`;
-a raise also prints its traceback to stderr. Then it reads the next line. The loop exits when
+**What the loop answers.** It reads stdin as bytes, so a line that isn't UTF-8 is a bad line
+like any other. A line that isn't UTF-8, isn't JSON, isn't a JSON object, or has no
+whole-number `id` gets `{id: null, error}`. An unknown method, wrong params, a method that
+raises, or a result `json.dumps` can't encode (NaN and infinities included, with
+`allow_nan=False`, since `JSON.parse` can't read them) gets `{id, error}`; a raise also prints
+its traceback to stderr. Then it reads the next line, so no request line stops the loop. The loop exits when
 stdin closes. Its answers go to a copy of stdout, and file descriptor 1 and `sys.stdout` are
 pointed at stderr, so a library that prints (torch and transformers do) can't put a line among
 the answers. The loop imports only the standard library; torch is imported by the methods that
@@ -79,11 +82,19 @@ and a process that exits with nothing in flight is logged.
 **Stopping the server.** `stop()` cancels the jobs and waits for them, closes the HTTP server,
 then calls the client's `stop()`, which kills the process, fails anything still in flight with
 `... the server is stopping`, and resolves once every process it started has closed; then the
-store closes.
+store closes. Those last two steps run in a `finally`, so a failure waiting on the jobs or the
+HTTP server still ends the sidecar and closes the store. Once `stop()` has begun, the client
+refuses every request (`sidecar request ping refused: the server is stopping`) instead of
+starting a process nothing would kill.
+
+**A kill that fails.** A kill error other than ESRCH (the group already gone) still fails every
+request in flight, clears their timers and marks the process closed, so `stop()` doesn't wait
+on a close that may never come; the error is thrown after that.
 
 **Tests.** The client is tested against `test/support/fake-sidecar.js`, a Node process that
 reads the same requests and does what each scripted step says: answer, error, hold until a later
-step releases it, hang, crash, or write a line as given. It can run under a parent process that
+step releases it, hang, crash, or write a line as given. An answer can be split across two
+writes, or several answers sent in one, to check the client's line buffering. It can run under a parent process that
 passes its stdio through, as uv does, to check the group kill. `testApp()` gives `app.sidecar`
 over the fake. Pytest drives the loop with lists of lines, and `python -m ambient_sidecar` as a
 subprocess for the stdout redirect.

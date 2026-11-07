@@ -2,7 +2,7 @@
 // a crash, a cancel or a line that isn't JSON each ending the process and failing the request
 // with its method named, and the next request starting a fresh process.
 import { setImmediate as tick } from "node:timers/promises";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { createSidecarClient } from "../../src/server/sidecar-client.js";
 import { fakeClock } from "../support/fake-clock.js";
 import { fakeSidecar } from "../support/fake-sidecar.js";
@@ -244,4 +244,79 @@ test("the sidecar's stderr goes to the log a line at a time", async () => {
   fake.script({ do: "crash", stderr: "first\nsecond\n", code: 2 });
   await expect(client.request("ping", {})).rejects.toThrow(/exited with code 2/);
   expect(logged).toEqual(["sidecar: first", "sidecar: second"]);
+});
+
+test("a request after stop has begun is refused and starts no process", async () => {
+  const { fake, client } = await setup();
+  const stopping = client.stop();
+  await expect(client.request("ping", {})).rejects.toThrow(
+    "sidecar request ping refused: the server is stopping",
+  );
+  await stopping;
+  await expect(client.request("ping", {})).rejects.toThrow(/refused/);
+  expect(await fake.starts()).toEqual([]);
+});
+
+test("a kill that fails still fails what is in flight and lets stop resolve", async () => {
+  const { fake, client, clock } = await setup();
+  fake.script({ do: "hold", result: VERSION }, { do: "hang" });
+  const version = client.request("version", {});
+  const ping = client.request("ping", {});
+  const versionFailed = expect(version).rejects.toThrow(/^sidecar request version timed out/);
+  const pingFailed = expect(ping).rejects.toThrow(
+    "sidecar request ping failed: the sidecar was stopped because version timed out",
+  );
+  await fake.waitForReceived(2);
+  const pid = await onlyPid(fake);
+  const realKill = process.kill.bind(process);
+  const kill = vi.spyOn(process, "kill").mockImplementation((target, signal) => {
+    if (target < 0) throw Object.assign(new Error("kill EPERM"), { code: "EPERM" });
+    return realKill(target, signal);
+  });
+  try {
+    // The first request's timer fires first and its kill throws out of the advance; the second
+    // request must already have failed with its timer cleared.
+    expect(() => clock.advance(TIMEOUT_MS)).toThrow("kill EPERM");
+  } finally {
+    kill.mockRestore();
+  }
+  await versionFailed;
+  await pingFailed;
+  expect(await clock.waitFor((pending) => pending.length === 0)).toBeUndefined();
+  await client.stop();
+  realKill(-pid, "SIGKILL");
+  await gone(pid);
+});
+
+test("an answer split across two writes is read as one", async () => {
+  const { fake, client } = await setup();
+  fake.script({ do: "answer", result: VERSION, split: true });
+  expect(await client.request("version", {})).toEqual(VERSION);
+});
+
+test("two answers in one write are each matched to their request", async () => {
+  const { fake, client } = await setup();
+  fake.script(
+    { do: "hold", result: VERSION },
+    { do: "answer", result: {}, release: true, together: true },
+  );
+  const version = client.request("version", {});
+  const ping = client.request("ping", {});
+  expect(await Promise.all([version, ping])).toEqual([VERSION, {}]);
+});
+
+test("a timed-out process's late answer touches only that process, not the next", async () => {
+  const { fake, client, clock, logged } = await setup();
+  fake.script({ do: "answer", result: {} }, { do: "answer", result: VERSION });
+  const ping = client.request("ping", {});
+  // The first answer is in the pipe but unread when the timeout ends its process.
+  fake.blockUntilWritten(1);
+  clock.advance(TIMEOUT_MS);
+  const version = client.request("version", {});
+  await expect(ping).rejects.toThrow(/^sidecar request ping timed out/);
+  expect(await version).toEqual(VERSION);
+  const received = await fake.received();
+  expect(received.map(({ request }) => request.id)).toEqual([1, 2]);
+  expect(new Set(received.map(({ pid }) => pid)).size).toBe(2);
+  expect(logged).toEqual([]);
 });

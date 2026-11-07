@@ -46,3 +46,16 @@ def test_a_print_inside_a_method_goes_to_stderr_not_the_answers() -> None:
     assert done.returncode == 0, done.stderr
     assert done.stdout == '{"id": 1, "result": {}}\n'
     assert "Loading checkpoint..." in done.stderr
+
+
+def test_a_line_that_is_not_utf8_on_stdin_is_answered_and_the_loop_goes_on() -> None:
+    done = subprocess.run(
+        [sys.executable, "-m", "ambient_sidecar"],
+        input=b'{"id": 1, "method": "\xff"}\n{"id": 2, "method": "ping", "params": {}}\n',
+        capture_output=True,
+        timeout=60,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr
+    answers = [json.loads(line) for line in done.stdout.splitlines()]
+    assert [answer["id"] for answer in answers] == [None, 2]

@@ -12,13 +12,12 @@ def main() -> None:
     answers = os.fdopen(os.dup(1), "w", encoding="utf-8")
     os.dup2(2, 1)
     sys.stdout = sys.stderr
-    stdin = open(sys.stdin.fileno(), encoding="utf-8", closefd=False)  # noqa: SIM115
 
     def write(text: str) -> None:
         answers.write(text)
         answers.flush()
 
-    serve(iter(stdin.readline, ""), write)
+    serve(iter(sys.stdin.buffer.readline, b""), write)
 
 
 if __name__ == "__main__":

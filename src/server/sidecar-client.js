@@ -31,7 +31,8 @@ export const SIDECAR_LAUNCH = {
  *   => Promise<Record<string, unknown>>} request sends one request, starting the process if none
  *   is running; rejects with a message naming the method
  * @property {() => Promise<void>} stop kills the process, failing what is in flight, and
- *   resolves once it has exited; a later request starts a new one
+ *   resolves once it has exited; every request after it is refused, so none starts a process
+ *   nothing would kill
  */
 
 /**
@@ -49,6 +50,7 @@ export const SIDECAR_LAUNCH = {
  * @property {boolean} ended set once the process is being stopped or has exited
  * @property {string} lastStderr the last non-empty line of stderr, for a crash's message
  * @property {Promise<void>} closed resolves once the process and its stdio have closed
+ * @property {() => void} markClosed resolves `closed`
  */
 
 /** @typedef {Record<string, string>} Fields field name to type, as the protocol writes them */
@@ -105,9 +107,12 @@ export function createSidecarClient({ launch, timeoutMs, clock, log }) {
   let nextId = 1;
   /** @type {Running | undefined} */
   let running;
-  /** Every process started that hasn't closed, ended ones included, for `stop` to wait on. */
-  /** @type {Set<Running>} */
+  /**
+   * Every process started that hasn't closed, ended ones included, for `stop` to wait on.
+   * @type {Set<Running>}
+   */
   const unclosed = new Set();
+  let stopped = false;
 
   /**
    * Kills the process group and fails every request in flight with `why(method)`. The group,
@@ -119,13 +124,15 @@ export function createSidecarClient({ launch, timeoutMs, clock, log }) {
     if (proc.ended) return;
     proc.ended = true;
     if (running === proc) running = undefined;
+    /** @type {unknown} */
+    let killFailed;
     const { pid } = proc.child;
     if (pid !== undefined) {
       try {
         process.kill(-pid, "SIGKILL");
       } catch (error) {
         // The group is already gone when the process exited by itself.
-        if (/** @type {NodeJS.ErrnoException} */ (error).code !== "ESRCH") throw error;
+        if (/** @type {NodeJS.ErrnoException} */ (error).code !== "ESRCH") killFailed = error;
       }
     }
     for (const pending of proc.inFlight.values()) {
@@ -133,6 +140,11 @@ export function createSidecarClient({ launch, timeoutMs, clock, log }) {
       pending.reject(new Error(why(pending.method)));
     }
     proc.inFlight.clear();
+    if (killFailed !== undefined) {
+      // No close may follow a kill that failed, so `stop` would wait on it forever.
+      proc.markClosed();
+      throw killFailed;
+    }
   }
 
   /**
@@ -185,7 +197,7 @@ export function createSidecarClient({ launch, timeoutMs, clock, log }) {
     // Its own process group, so `end` can kill Python along with uv.
     const child = spawn(launch.command, launch.args, { cwd: launch.cwd, detached: true });
     /** @type {() => void} */
-    let markClosed = () => undefined;
+    let resolveClosed = () => undefined;
     /** @type {Running} */
     const proc = {
       child,
@@ -193,11 +205,12 @@ export function createSidecarClient({ launch, timeoutMs, clock, log }) {
       ended: false,
       lastStderr: "",
       closed: new Promise((resolve) => {
-        markClosed = () => {
-          unclosed.delete(proc);
-          resolve();
-        };
+        resolveClosed = resolve;
       }),
+      markClosed: () => {
+        unclosed.delete(proc);
+        resolveClosed();
+      },
     };
     unclosed.add(proc);
     let stdout = "";
@@ -231,7 +244,7 @@ export function createSidecarClient({ launch, timeoutMs, clock, log }) {
         proc,
         (method) => `sidecar request ${method} failed: can't start the sidecar: ${error.message}`,
       );
-      markClosed();
+      proc.markClosed();
     });
     child.on("close", (code, signal) => {
       if (stderr.trim() !== "") {
@@ -242,7 +255,7 @@ export function createSidecarClient({ launch, timeoutMs, clock, log }) {
       const last = proc.lastStderr === "" ? "" : `: ${proc.lastStderr}`;
       if (!proc.ended && proc.inFlight.size === 0) log(`the sidecar ${how} while idle${last}`);
       end(proc, (method) => `sidecar request ${method} failed: the sidecar ${how}${last}`);
-      markClosed();
+      proc.markClosed();
     });
     return proc;
   }
@@ -259,6 +272,11 @@ export function createSidecarClient({ launch, timeoutMs, clock, log }) {
       if (wrong) return Promise.reject(new Error(`sidecar request ${method}: ${wrong}`));
       const cancelled = () => new Error(`sidecar request ${method} was cancelled`);
       if (signal?.aborted) return Promise.reject(cancelled());
+      if (stopped) {
+        return Promise.reject(
+          new Error(`sidecar request ${method} refused: the server is stopping`),
+        );
+      }
       running ??= start();
       const proc = running;
       const id = nextId++;
@@ -297,6 +315,7 @@ export function createSidecarClient({ launch, timeoutMs, clock, log }) {
       });
     },
     async stop() {
+      stopped = true;
       if (running) {
         end(running, (method) => `sidecar request ${method} failed: the server is stopping`);
       }
