@@ -5,6 +5,7 @@
 /** @import { Paths } from "../config/paths.js" */
 /** @import { JobRunner } from "./job-runner.js" */
 /** @import { OmlxQueue } from "./omlx-queue.js" */
+/** @import { SidecarClient } from "./sidecar-client.js" */
 /** @import { Store } from "./store.js" */
 
 /**
@@ -17,6 +18,7 @@
  * @property {(line: string) => void} log
  * @property {OmlxQueue} queue the one omlx queue; only jobs send to it
  * @property {JobRunner} jobs
+ * @property {SidecarClient} sidecar the one sidecar client; only jobs send to it
  * @property {() => number} random a draw in [0, 1), for stream and order seeds
  * @property {Map<number, number[]>} sessionJobs the ids of the jobs each session added since
  *   start-up, so stopping it can cancel them

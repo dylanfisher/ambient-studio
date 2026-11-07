@@ -1,0 +1,12 @@
+{
+  "methods": {
+    "ping": {
+      "params": {},
+      "result": {}
+    },
+    "version": {
+      "params": {},
+      "result": { "package": "string", "python": "string" }
+    }
+  }
+}
