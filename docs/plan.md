@@ -72,6 +72,16 @@ unneeded stays unused rather than being given to another step.
 | 0047 | The "what you like" summary | 4g | — |
 | 0048 | Quick A/B, the excerpt player and MP3 playback audio | 4i | — |
 | 0049 | The session table, hiding and rating marks | 4j | — |
+| 0050 | Reference uploads: formats, files, regions, ffmpeg decoding | 5a | — |
+| 0051 | Region analysis and ranges from a region | 5b | — |
+| 0052 | References in the prompt | 5c | — |
+| 0053 | Search space, proposals, ask/tell and the objective | 5d | — |
+| 0054 | Model-in-the-loop CMA-ES, and which optimizer the acceptance means | 5e | — |
+| 0055 | Owner-in-the-loop preferential BO | 5f | — |
+| 0056 | CLAP directions, sliders and the reference target | 5g | — |
+| 0057 | The MAP-Elites archive and the map view | 5h | — |
+| 0058 | Breeding | 5i | — |
+| 0059 | The optimizer evaluation | 5j | — |
 
 ## Phase 1 — Engine, schema and macros
 
@@ -1632,19 +1642,400 @@ added on 2026-11-07 at the owner's request, to rate faster before the model need
 
 ## Phase 5 — Optimizers
 
-**Goal:** search inside the vibe's constraints, not only through the LLM. **Acceptance:**
-preference-based BO or CMA-ES over the macros and selected raw parameters never moves a locked value
-and never renders or presents a genome the linter rejects; a MAP-Elites archive on two or three
-owner-chosen axes fills its cells and the map view plays a cell on click; breeding makes children
-from two sketches by LLM crossover plus mutation; CLAP text directions become sliders and reference
-audio becomes a target region. Optimizers propose through `fromVector` (0005), and the archive's
-descriptors are computed on the same excerpt windows the owner rates. Gains are measured against the
-preference model, whose own held-out error bounds the claim, and spot-checked with owner A/B pairs.
-Owner-in-the-loop preferential BO (a query budget in the tens) and model-in-the-loop CMA-ES
-(hundreds of render-and-embed evaluations, an owner-started job with a stated budget) are different
-tools; the phase's records say which the acceptance means. Linter-rejected points are penalized, and
-locks remove their paths from the vector. **Gate:** `./scripts/check`; archive coverage and the
-optimizer's agreement with the preference model in Result. **Result:**
+**Goal:** search inside the vibe's constraints, not only through the LLM, and let the owner aim
+generation and search at parts of a reference recording.
+
+**Acceptance, as measurable checks:**
+
+1. **References.** A file in each accepted format uploads and decodes; a region marked on it has
+   features equal to `extractFeatures` on the same decoded samples, and a CLAP embedding. Uploads
+   and regions are append-only, with a migration tested over the previous shape.
+2. **A region sets targets and guides generation.** Ranges proposed from a region validate and
+   contain its median for every feature they name. A first prompt with two regions attached holds
+   each one's numbers and words, under the budget with 0038's seed-sized vibe, a base and six
+   examples.
+3. **No locked value moves and no linter-rejected genome is shown.** Over 1,000 seeded asks each
+   of CMA-ES, preferential BO, the archive's emitter and breeding's mutation, under three locks (a
+   macro, a voice parameter, a whole voice): every stored child keeps its locked values, no locked
+   path is in a search vector, and no genome failing lint is rendered, offered in A/B or shown.
+4. **The model-in-the-loop optimizer beats an equal budget of nudges.** Per vibe, CMA-ES's best is
+   compared with the best of a control: as many nudges from the same base, scored the same way.
+   - By the model: the share of runs CMA-ES wins and the mean score difference with a bootstrap
+     95% interval. It counts only when 4e's held-out agreement for the vibe has a lower bound above
+     0.5; otherwise "inconclusive: the model doesn't yet beat chance on held-out pairs".
+   - By the owner: blind A/B pairs of the two bests. An exact one-sided binomial test on decided
+     pairs passes at p < 0.05 over at least 12 (10 of 12 gives p = 0.019); below 12, "inconclusive,
+     waiting on data".
+5. **The archive fills and plays.** On two or three owner-chosen axes, a fill job reports coverage
+   (filled cells over cells) beside the coverage of the same budget of nudges from the same
+   starts. Every filled cell plays its elite on click or Enter, and descriptors are read from the
+   excerpt windows the owner rates.
+6. **Breeding** makes children of two sketches by LLM crossover plus mutation; each stores both
+   parents, its operator and source.
+7. **Sliders.** A typed direction becomes a slider, each card shows its position on it, and a steer
+   job toward either end moves its shown children's mean position that way (tested with a scripted
+   embedder, logged in the owner's run).
+
+**Gate:** `./scripts/check` with the sidecar's pytest; coverage and the optimizer evaluation in
+Result. omlx only through the queue, the sidecar only through its client, fakes for both in
+tests. Acceptance 4 waits on ratings and on the owner starting 5j; "inconclusive, waiting on
+data" is an allowed result.
+
+**The acceptance means model-in-the-loop CMA-ES (5e)**, recorded in 0054, because:
+
+- the preference model (4d) scores each point, so a run of a hundred evaluations costs CPU
+  minutes, not listening hours, and never reaches omlx;
+- its gain can be tested against a control on equal terms, an equal budget of 3e's nudges, by
+  the model and then by a dozen owner pairs;
+- preferential BO (5f) spends tens of owner ratings to reach one point per run, too few to test.
+  It is built as a tool whose every query is also an A/B rating for 4d, which phase 4 lacks; its
+  acceptance is check 3 alone.
+
+**Settled by the owner on 2026-11-07, when phase 5 was expanded:**
+
+- **Reference uploads are in phase 5.** The owner uploads a file, marks regions, and each region is
+  analysed with the existing features plus a CLAP embedding.
+- **A region has three uses:** (a) set a brief's targets from its features (0034's ranges); (b)
+  guide generation, described in the prompt as numbers and words; (c) steer by sound, its
+  embedding a target that search and sliders move toward.
+- **Non-goal: uploaded audio never plays in a render.** The recording voice (0029) plays only the
+  configured recordings folder, and nothing copies an upload there. Also out: stems from a
+  reference, matching its melody or harmony, and sending its audio to omlx.
+- **Uploads and regions are irreplaceable**: a migration, append-only rows, files in backups.
+
+**Waiting on the owner before 5e and 5f** (AGENTS.md reserves both):
+
+- **CMA-ES (5e).** Recommended: `cma` (pycma), Hansen's reference implementation, pure Python on
+  the `numpy` already installed, with box bounds built in; pinned at approval. Alternative: about
+  120 lines of numpy after Hansen's `purecma`, no dependency, but the step-size and covariance
+  updates and their tests are then ours.
+- **Preferential BO (5f).** Recommended: no package; a Gaussian process with a pairwise probit
+  likelihood and Laplace posterior is 4d's linear algebra again, in numpy. Alternative:
+  `botorch`'s `PairwiseGP` with EUBO, which brings `gpytorch`, `linear_operator`, `scipy` and
+  `pyro-ppl`.
+- **MAP-Elites (5h)** needs none: the grid lives in `src/domain` and its emitter is the nudge.
+- **Ratings.** Acceptance 4 needs 4e's minimum (provisionally 40 pairs over 3 sessions, per vibe)
+  and 12 spot-check pairs. On 2026-11-07: 0 A/B ratings, some thumbs, sessions on all three
+  briefs. Quick A/B (4i) and 5f both add pairs; rating one vibe deeply gets there first.
+- **The first map's axes**, chosen on the brief page once 5h lands (dark to bright by static to
+  evolving reads as centroid by loudness range).
+
+**What the code holds today** (read at `bf0f64d`; phase 4 as planned, since 4b and 4i are being
+built and 4d–4h follow):
+
+- **Vector view** (`src/engine/vector-view.js`): `vectorPaths`, `toVector`, `fromVector` and
+  `fromVectorUnchecked` over number and int paths only (0005, 0037). Voices, types, choices and
+  recordings have no path, so a search moves numbers inside one base's structure; structure
+  changes come from the model.
+- **The nudge is the nearest thing to an ask** (`nudge` in `src/domain/nudge.js`): free paths are
+  `vectorPaths` less `lockedPaths` and `fixedByVibe`, and each draw runs `fromVectorUnchecked`,
+  `validateGenome`, `applyLocks`, a repeat check on `canonicalGenome`, then `lintGenome`, at most
+  `NUDGE_DRAWS` (4) a child, rejected draws stored. The chain lives inside `nudge`.
+- **Jobs**: `createJobRunner` runs one job at a time, started only by a route. `nudgeJob` (source
+  `mutation`) and `candidateJob` (which explore reuses) store `parentIds`, `locks`, `operator` and
+  `operatorParams`. `OPERATOR` (`src/domain/operator.js`) holds `revise`, `revise-control`,
+  `nudge` and `explore`; the spec's sources `crossover`, `optimizer` and `breeding` are unused.
+- **Prompt** (`buildPrompt`): brief, constraints, `targetsText`, locks, notes, examples, then the
+  ask or explore's base; trimming drops examples, then the base. A seed-sized prompt with a base
+  is about 4,300 of 8,192 tokens (0038).
+- **Soft targets**: `validateTargets` checks `softTargets.features` and keeps other keys (0034),
+  which 3b left for phase 5's directions. References, directions and axes go there with no
+  migration, versioned by the brief's revisions.
+- **Features**: `extractFeatures(raw, heard)` on 48 kHz audio (`requireMeterSampleRate`) and
+  `normalize`'s result; nine `FEATURE_NAMES`, the two raw levels taking no range; excerpts are
+  `EXCERPT_SECONDS` (25), cached in `renders` by window, target and `PRODUCER`.
+- **Decoding**: `decodeRecording` (`src/server/load-samples.js`) reads WAV, FLAC and AIFF through
+  node-web-audio-api for the `fieldRecordings` folder (0029). ffmpeg 9.0.2 is installed and called
+  only by `scripts/loudness-oracle.js` and test fixtures; `readFlacPcm` is the neighbor for a CLI
+  read with `execFile`.
+- **HTTP**: `readJson` takes `application/json` up to `MAX_BODY_BYTES` (1 MiB); no route takes a
+  file. **Data root** (`src/config/paths.js`): `studio.db`, `renders/`, `rated_audio/`,
+  `backups/`; `backup.js` copies the database and rated audio.
+- **Sidecar** (0041): protocol params are `string`, `number` or `boolean`, so vectors and scores
+  pass as files under the data root; `ping` and `version` today.
+- **Stored reports**: `evaluations` (`params`, `report`), used by the generation evaluations and
+  4e. **Sketches**: rows naming a candidate, notes and tags.
+- **Phase 4 as planned**: 4b's `embed_audio`, `embed_text` and derived `embeddings`; 4d's `fit`
+  and `predict` (mean and variance per item, variance of a pair's difference); 4e's agreement and
+  minimum; 4i's quick A/B, excerpt player and MP3 playback through `lame`; 4j's session table and
+  hiding. 0043 leaves "more / less like this" for phase 5; this phase doesn't read it (0053).
+
+**Shared helpers and their owners** (orchestrator rule 4):
+
+- 5a: the reference tables and migration, `paths().references`, `decodeWithFfmpeg`, the upload
+  route, the backup's new folder.
+- 5b: the region analysis rows and `rangesFromRegion`.
+- 5c: validation of the steering keys of `softTargets`, which 5g and 5h extend; `referencesText`.
+- 5d: first commit, behavior unchanged, moves nudge's chain into `proposeGenome` and the free-path
+  rule into `searchPaths`, which every optimizer and the emitter call. Then the ask/tell methods,
+  the file format, and `searchScore`, the one objective.
+- 5e: the search job's shape (budget, cost estimate, progress, cancel, control arm), reused by 5g's
+  steer job, 5h's fill job and 5j.
+- 5g: direction vectors and projections. 5h: `buildArchive` and its route.
+- Each step that adds a job adds its operator and its row in 0031's table.
+- 5a needs a migration; phase 4 holds 0006–0008, so it asks the orchestrator for the number, as
+  does any step that finds it needs one.
+
+### Steps
+
+Order: 5a ‖ 5d, then 5b ‖ 5e, then 5c ‖ 5f, then 5g, then 5h ‖ 5i, then 5j. References come first
+so uses (a) and (b) reach the owner after 5b and 5c, before any optimizer. 5d's first commit (the
+moved chain) is on main before 5e starts, and 5e builds on 5d's merge.
+
+#### 5a — Reference uploads and regions
+
+- **Builds:** a References page, linked from the dashboard and each brief.
+  - **Upload.** `POST /api/references` streams an `application/octet-stream` body (the file name
+    in a header) to a temp file under the data root, hashing as it goes, at most 1 GiB. `ffprobe`
+    then reads it. Accepted: WAV, AIFF, FLAC, MP3, AAC or ALAC in M4A, Ogg Vorbis and Opus, 10 s to
+    60 min, 1 or 2 channels. Anything else is a 400 naming the reason, with the temp file removed.
+    A kept file becomes `<dataRoot>/references/<sha256>.<ext>`; the same bytes twice give one file
+    and one row.
+  - **Tables** (irreplaceable, one migration): `reference_files` (hash, the owner's file name,
+    format, duration, channels, rate, size) and `reference_regions` (file, start and end seconds,
+    label, note), both with removed marks. Changing a region marks it "replaced" and adds its
+    successor; removing a file keeps its bytes.
+  - **Decoding** by `decodeWithFfmpeg(path, start, end)`: `execFile` with `-ss` and `-t` after
+    `-i`, `-f f32le -ac 2 -ar 48000` to stdout, so a region is 48 kHz stereo as the meter needs,
+    and a mono file plays in both channels as 0029's voice does.
+  - **The page**: a peak strip from a derived peaks file, start and end fields (drag on the strip
+    as a shortcut, never the only way), play through 4i's player with MP3 playback audio made from
+    the decode, a label and note. Plain words (0032); Safari 17.6.
+  - **Backups** copy `references/`.
+- **Tiers:** config, server, web.
+- **Tests first:** fixtures are made by ffmpeg from seeded noise and sines, as 0029's are; nothing
+  committed is a real recording. Each accepted format uploads and decodes; a text file, a 5 s file
+  and a 4-channel file are 400s that leave nothing behind; an oversize body is a 413; the same
+  bytes twice give one row; a region decodes to the frames its bounds name, the same twice;
+  replacing and removing keep the old rows; the migration runs over phase 4's last shape; a
+  backup holds the folder; the region form is a DOM-free module.
+- **Records:** writes 0050: formats, limits, location and naming, the tables, ffmpeg as the one
+  decoder (0029 measured `decodeAudioData` on WAV, FLAC and AIFF only), the route, and the
+  non-goal. Amends 0019, 0021 and 0025.
+- **Parallel:** with 5d. Review: yes (an irreplaceable table, a migration, a Safari page), with a
+  security pass on the upload: paths, size, the CLI's arguments.
+
+#### 5b — Region analysis and ranges from a region (use a)
+
+- **Builds:** an owner-started Analyse job per region.
+  - **Features** on `EXCERPT_SECONDS` windows hopped by half a window, so a region is read as an
+    excerpt is; one shorter than a window is read whole. Each window is normalized to the asking
+    brief's target (0018's −16 LUFS on the References page), then `extractFeatures`.
+  - **Embedding**: the windows go to 4b's `embed_audio` as a 48 kHz WAV under the data root, and
+    the region's embedding is their unit-normalized mean, 4b's rule for long excerpts.
+  - **Storage**: derived rows keyed by region, target and producers, rebuilt when one changes,
+    like `renders`; whether they join 4b's `embeddings` table follows 0042's shape.
+  - **Ranges**: `rangesFromRegion(windows)` in `src/domain` proposes the 10th to 90th percentile
+    per feature, widened to a stated minimum width and clamped to 0034's bounds, never for the two
+    raw levels (a mastered level says nothing a genome can match). "Set ranges from a region" on
+    the brief page fills the form beside the current ranges; nothing changes until the owner saves.
+- **Tiers:** domain, server, web.
+- **Tests first:** stored features equal `extractFeatures` on the decoded, normalized window; a
+  60 s region gives three or more windows and a 15 s one gives one; the proposal holds each
+  window's median, is never under the minimum width, validates, and never names a raw level;
+  with the fake sidecar the embedding is the normalized mean, and a sidecar failure fails the job
+  naming the region and keeps the features; the form fills without saving.
+- **Records:** writes 0051: windows, target, raw levels, percentiles and widths, derived rows.
+  Amends 0034.
+- **Parallel:** with 5e. Review: yes (the sidecar boundary).
+
+#### 5c — A region in the prompt (use b)
+
+- **Builds:** the owner attaches up to two analysed regions to a brief, saved as
+  `softTargets.references` in a new revision, so each generation records what it read. An
+  unknown or removed region is a 400 naming it. `referencesText` writes a section after the
+  ranges: per region, the label and note quoted as JSON (0038's rule for owner text), its median
+  features as `featuresText` writes them, and up to five words from a fixed vocabulary in
+  `src/domain` (about 60 plain words, "dark", "airy", "pulsing"), the nearest by CLAP text-to-audio
+  similarity, so the words are measured. The section says to aim at the measurements, not copy
+  the recording. Trimming drops examples, then references, then the base; explore, breeding and
+  revisions read it as part of the first prompt.
+- **Tiers:** domain, server (validation, cached vocabulary embeddings), web.
+- **Tests first:** acceptance 2's prompt and budget; a note with a quote and a line break can't
+  end its line; examples go before references; words come out in similarity order with a scripted
+  embedder; a revision without references prompts byte for byte as today.
+- **Records:** writes 0052: attaching, the section, the vocabulary, trimming, token cost. Amends
+  0024 and 0034.
+- **Parallel:** with 5f; no shared files. 5i builds on this section; its brief names it.
+
+#### 5d — Search space, proposals and ask/tell
+
+- **Builds:**
+  - **First commit**, behavior unchanged: `proposeGenome(start, paths, vector, {locks,
+    constraints, seen})` and `searchPaths(genome, locks, constraints, chosen)` move out of `nudge`,
+    which calls both.
+  - **Search space**: the macros, plus raw paths the owner picks from `searchPaths` on the job
+    form (none by default), at most 24 dimensions; locked and vibe-fixed paths are never offered.
+  - **Protocol**: `optimizer_start(spec_path)`, `optimizer_ask(run_id, count, out_path)` and
+    `optimizer_tell(run_id, points_path, scores_path)`, arrays as JSON files under
+    `<dataRoot>/search/<run>/`. Python returns points in [0, 1]^d; Node decodes, lints, renders,
+    embeds and scores. State is written after each tell, so a run continues after a sidecar
+    restart; a failure fails the job and is reported, never retried.
+  - **Rejected points** are stored as rejected candidates, never rendered, and told the
+    generation's worst valid score minus one standard deviation (−1 when none is valid).
+  - **Objective** (`searchScore` in `src/domain`): 4d's posterior mean minus κ standard deviations
+    (κ = 1), a lower bound that keeps the search where the model has evidence. 5g adds terms.
+- **Tiers:** domain, server, sidecar.
+- **Tests first:** every nudge test passes on the first commit; `searchPaths` drops a locked
+  macro, a locked voice and a fixed `key`; pytest round-trips start, ask and tell on a scripted
+  optimizer, and a restarted sidecar continues from the state file; a rejected point is stored,
+  unrendered and penalized; acceptance 3's 1,000 asks with the fake sidecar; `searchScore` orders
+  scripted means and variances by the bound.
+- **Records:** writes 0053: the space, the moved chain, the protocol, state files, the penalty, the
+  objective, and why macro feedback isn't read (one excerpt's wish about one macro is too sparse to
+  steer a search). Amends 0037 and 0041.
+- **Parallel:** with 5a. Review: yes (a new subsystem, the sidecar boundary).
+
+#### 5e — Model-in-the-loop CMA-ES
+
+- **Builds:** an owner-started Search from a candidate (operator `optimize`, source `optimizer`):
+  CMA-ES from the base's vector, starting step 0.12 (nudge's medium), population about
+  4 + 3 ln d, budget in evaluations (default 96, at most 400). An evaluation is a proposal, an
+  excerpt, features, an embedding and a `predict`.
+  - **Cost first**: the confirm gives evaluations × (render + embed seconds) from the last run's
+    medians, or 4b's bench before any, and says it uses no omlx. Progress per generation; cancel
+    keeps every row.
+  - **Shown**: every evaluated point is a session candidate with run, generation and point in
+    `operatorParams`; the session shows the best 4, no two nearer than a stated CLAP distance, the
+    rest folded under them in 4j's table.
+  - **Control arm** (a switch): the same budget of medium nudges from the base, scored the same
+    way, operator `optimize-control`, never shown.
+  - A vibe with no fitted model is refused with the reason. An identical search queued or running
+    is a 409.
+- **Tiers:** server, sidecar, web.
+- **Tests first:** pytest: on a quadratic in [0, 1]^8 the best after 200 evaluations is within 0.05
+  of the optimum, and one seed gives one run. Node, scripted scorer: the job stops at budget; the
+  shown 4 follow score and distance; the control runs as many nudges; cancel keeps rows; the
+  estimate is the formula on scripted timings; no model is a 409; locks hold.
+- **Records:** writes 0054: settings, budget and estimate, what is shown, the control arm, and
+  which optimizer the acceptance means. Amends 0031.
+- **Parallel:** with 5b. Review: yes (new subsystem, the sidecar boundary, renders and embeds in
+  one job).
+
+#### 5f — Owner-in-the-loop preferential BO
+
+- **Builds:** "Search by ear" from a candidate (operator `optimize-ear`, source `optimizer`), over
+  at most 12 dimensions (the macros by default), in quick A/B's champion mode (4i). Each query
+  pits the run's best against one new point, the best of 1,000 seeded draws near it by expected
+  improvement under a pairwise-probit GP with a Laplace posterior. The next excerpt renders while
+  the owner listens. Budget in queries (default 20), stop any time; the best is shown in the
+  session. Each answer is an ordinary rating with the session's id, so it trains 4d too; a skip
+  tells nothing, a tie is a tie (0043); a rejected point is told as a loss and never shown.
+- **Tiers:** sidecar, server, web (4i's page in BO mode).
+- **Tests first:** pytest: with simulated choices on a known utility in [0, 1]^4, the best after
+  30 queries is nearer the optimum than the start in at least 9 of 10 seeds; a hand-worked
+  two-point posterior. Node: a page rating is stored as quick A/B's and told; a skip isn't; a
+  rejected point never reaches the page; the next excerpt is ready before it's asked for; locks
+  hold.
+- **Records:** writes 0055: the GP, kernel, likelihood, acquisition, budget, ties and skips, and
+  why its acceptance is check 3. Amends 0048.
+- **Parallel:** with 5c. Review: yes (sidecar boundary; the A/B page in Safari: name
+  `card-hold.js` and what holds a card, as phase 3's retrospective asks).
+
+#### 5g — CLAP directions, sliders and the reference target (use c)
+
+- **Builds:**
+  - **Directions** typed on the brief page as two ends ("dry" to "underwater"), saved in
+    `softTargets.directions`; the far end alone runs from the mean of the vibe's excerpt
+    embeddings. A direction is the unit difference of the ends' `embed_text`.
+  - **Position**: each card shows its projection on each direction, scaled so 0 is the vibe's
+    least excerpt and 1 its most.
+  - **Sliders**: a card's slider from less to more, and Steer starts 5e's job at a small budget
+    (default 32) scoring the projection toward the setting, plus a small weight on 4d's score when
+    a model exists. A vibe with no ratings can still steer.
+  - **Reference target**: an attached region can be a `searchScore` term, similarity to its
+    embedding with a weight, offered as "toward this region" beside the sliders.
+  - Directions, projections and region terms are pure functions in `src/domain` over stored
+    embeddings, so phase 6 can read them for sections and automation.
+- **Tiers:** domain, server, web.
+- **Tests first:** a direction is the normalized difference; projections order cards; steering
+  toward "more" raises the shown children's mean projection over the base's and toward "less"
+  lowers it; a region term pulls the scripted best toward the region; no model still steers; a
+  revision without directions scores as before.
+- **Records:** writes 0056: directions, the default far end, the scale, the steer job, the region
+  term, phase 6's use. Amends 0034 and 0053.
+- **Parallel:** none (changes 5d's objective and 5e's job, and the brief and session pages).
+  Review: yes (session page in Safari: name `card-hold.js`).
+
+#### 5h — The MAP-Elites archive and the map view
+
+- **Builds:**
+  - **Axes**, two or three in `softTargets.axes`: a ranged feature, a macro's mean over the
+    window, a direction's projection or similarity to an attached region; each with ends and bins
+    (8 a side for two axes, 6 for three, at most 256 cells). Ends default to the vibe's range, or
+    the 10th and 90th percentile of its excerpts.
+  - **The archive** (`buildArchive`, derived, rebuilt on each read of `GET
+    /api/vibes/:id/archive`): every live valid candidate with a current excerpt lands in the cell
+    its excerpt's descriptors name; the elite is the best by `searchScore`, or with no model the
+    fewest range misses, then the newest. Phase 6 and phase 7's gap filling read the same route.
+  - **Fill job** (operator `elite`, budget default 200, 5e's estimate): each step nudges, at the
+    medium step through `proposeGenome`, an elite next to an empty cell. An optional share of steps
+    (0 by default) asks the model through explore with a direction toward the empty side, and the
+    confirm then states the omlx requests. The control: the same budget of nudges from the same
+    starts.
+  - **The map view**: an HTML table of cell buttons with each elite's intent and score, arrow keys
+    between cells, click or Enter plays through 4i's player, and explore, nudge and keep as sketch
+    on the open cell. Plain words; Safari 17.6.
+- **Tiers:** domain, server, web.
+- **Tests first:** scripted candidates land in their cells and the elite follows the rule with and
+  without a model; removed and invalid ones are left out; axis ends from ranges and percentiles;
+  the fill job stops at budget, starts only from elites beside empty cells, and keeps locks; both
+  coverages count from the cells; the grid module is DOM-free and arrows move one cell; a cell
+  plays its elite.
+- **Records:** writes 0057: axes, the derived archive, elites, the emitter and explore share,
+  coverage and control, the map view. Amends 0031 and 0032.
+- **Parallel:** with 5i. Both add to `src/domain/operator.js`, `src/server/session-routes.js` and
+  0031's table; the second to merge rebases those. Review: yes (the map page in Safari).
+
+#### 5i — Breeding
+
+- **Builds:** pick two sketches on the brief page and Breed (operator `breed`, source `breeding`):
+  by default 4 children by LLM crossover, each then mutated once.
+  - **Crossover** is a fresh first prompt like explore's (0038) with "Parent A" and "Parent B"
+    sections, each a canonical genome with the live locks applied, asking for one child taking
+    parts of both; then `requestCandidate`, one repair and the revision pass, both parents in
+    `parentIds`. Trimming drops examples, references, parent B, then parent A.
+  - **Mutation**: one small-step nudge of each valid child through `proposeGenome`.
+  - The confirm states the omlx requests and their time from recent request times.
+- **Tiers:** domain (the parents section), server, web.
+- **Tests first:** against the fake omlx the prompt holds both parents after locks, under budget
+  with 0038's seed-sized vibe; children store both parents, operator and source; a parent that
+  can't take the locks is a 409; mutations keep locks over 1,000 seeded draws; B is trimmed before
+  A; a removed sketch can't be picked.
+- **Records:** writes 0058: two-parent prompts, mutation after crossover, defaults, trimming, and
+  why no voice-wise programmatic crossover (two genomes rarely share voice ids, so swaps mostly
+  fail lint). Amends 0024 and 0038.
+- **Parallel:** with 5h (shared files named there). Review: yes.
+
+#### 5j — The optimizer evaluation
+
+- **Builds:** an owner-started Optimizer test: per chosen vibe with a model, 3 runs of 5e with its
+  control from bases the owner picks or the vibe's top-ranked. Stored in `evaluations`, per vibe:
+  4e's agreement and acceptance 4's verdict rule; each run's two bests, the share CMA-ES wins and
+  the mean difference with a bootstrap interval; blind spot-check pairs (sides by seed) queued in
+  quick A/B, then wins and the binomial p or "inconclusive, waiting on data"; archive coverage
+  against its control from the last fill jobs; timings against the estimate.
+- **Tiers:** domain (the report), server, web.
+- **Tests first:** the win share and interval match a hand count; a lower agreement bound at or
+  under 0.5 gives the inconclusive verdict whatever the scores; 10 of 12 gives p = 0.019 and 11
+  pairs read "inconclusive"; spot-check ratings store session and sides; a vibe with no model is
+  left out with the reason.
+- **Records:** writes 0059: runs, control, verdicts, why 12 pairs, the report. Amends 0045.
+- **Parallel:** none. Then the orchestrator stops: the owner starts the test once one vibe meets
+  4e's minimum and rates the pairs, and the numbers go in Result.
+
+**Pending owner checks** (after 5c, 5g and 5h, on mbp2015 and mbp2026):
+
+- Upload a reference recording, mark two regions, play them, and read their features against what
+  you hear; set ranges from one and say whether the proposal is the right width.
+- Attach a region, ask for 8 candidates, and say whether they move toward it; read the stored
+  prompt's reference section.
+- Type two directions, move each slider both ways, and listen to the steered children.
+- Choose two axes, fill the map, click through it: neighboring cells should differ the way their
+  axes say.
+- Breed two sketches and say whether the children sound like both.
+
+**Result:**
 
 ## Phase 6 — Track builder
 
@@ -2502,3 +2893,11 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   playback with rated audio kept FLAC; pairs from one session; champion stays with a random
   switch; arrows play, A/D choose, S same, W skip. The owner has run sessions for all three
   briefs. 4b and 4i start in parallel.
+- 2026-11-07: phase 5 expanded, planned against phase 4 as written (4a and 4c merged, 4b and 4i
+  being built). Owner: "i want to make sure our workflow supports being able to upload a song or
+  audio file and analyze parts of it that i want to use as inspiration for future seeds and
+  candidates." Added as 5a–5c, ahead of the optimizers: upload, regions analysed with the features
+  and a CLAP embedding, and the owner's three uses (a brief's ranges, the prompt, a search
+  target); uploaded audio never plays in a render. The acceptance means model-in-the-loop CMA-ES
+  (0054). Waiting on the owner: `cma` for 5e (or numpy written here), and numpy rather than
+  `botorch` for 5f.
