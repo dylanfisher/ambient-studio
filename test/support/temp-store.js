@@ -7,6 +7,7 @@ import { paths } from "../../src/config/paths.js";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
 import { addEvaluation } from "../../src/server/evaluation-store.js";
 import { addCandidate, addGeneration, putGenome } from "../../src/server/generation-store.js";
+import { setHidden } from "../../src/server/hide-store.js";
 import { setLock } from "../../src/server/lock-store.js";
 import { addFeedback, addRatedAudio, addRating, addSketch } from "../../src/server/rating-store.js";
 import { startSession, stopSession } from "../../src/server/session-store.js";
@@ -159,6 +160,8 @@ export function fillStore(store) {
     value: droneGenome.width,
     voiceType: null,
   });
+  const [hide] = setHidden(store, [candidate.id], true);
+  if (!hide) throw new Error("fillStore's hide wrote no row");
   return {
     vibes: vibe.id,
     vibe_revisions: vibeRevisionId,
@@ -173,5 +176,6 @@ export function fillStore(store) {
     sketches: sketch.id,
     evaluations: evaluation.id,
     locks: lock.id,
+    candidate_hides: hide.id,
   };
 }

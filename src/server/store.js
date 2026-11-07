@@ -44,6 +44,7 @@ export const TABLE = /** @type {const} */ ({
   sketches: "sketches",
   evaluations: "evaluations",
   locks: "locks",
+  candidateHides: "candidate_hides",
   renders: "renders",
   embeddings: "embeddings",
 });
