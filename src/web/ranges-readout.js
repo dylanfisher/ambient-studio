@@ -5,7 +5,7 @@
 /** @import { Features } from "../domain/extract-features.js" */
 /** @import { LintResult } from "../domain/lint-result.js" */
 /** @import { FeatureRanges } from "../domain/target-schema.js" */
-import { checkTargets } from "../domain/check-targets.js";
+import { excerptMisses } from "../domain/excerpt-misses.js";
 import { featureText, featureValue, roundFeature } from "../domain/feature-names.js";
 import { RANGES_KEY, rangeWords, TARGET_FEATURES } from "../domain/target-schema.js";
 
@@ -26,7 +26,8 @@ import { RANGES_KEY, rangeWords, TARGET_FEATURES } from "../domain/target-schema
  *   names each failed check's rule; `misses` counts ranges missed and checks failed
  */
 export function rangesReadout(features, ranges, checks) {
-  const missedPaths = new Set(checkTargets(features, ranges).findings.map(({ path }) => path));
+  const misses = excerptMisses(features, checks, ranges);
+  const missedPaths = new Set(misses.map(({ path }) => path));
   const rows = Object.entries(TARGET_FEATURES).flatMap(([name, { feature }]) => {
     const range = ranges[name];
     if (range === undefined) return [];
@@ -54,5 +55,5 @@ export function rangesReadout(features, ranges, checks) {
     failed.length === 0
       ? ""
       : ` Fails ${failed.length} render check${failed.length === 1 ? "" : "s"}: ${failed.join(", ")}.`;
-  return { rows, failed, misses: missed + failed.length, text: rangesText + checksText };
+  return { rows, failed, misses: misses.length, text: rangesText + checksText };
 }

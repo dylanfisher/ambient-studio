@@ -381,9 +381,10 @@ async function lockWork(card, work) {
     await work();
   } finally {
     card.locking = false;
-    await loadLocks();
-    // The card was held while the request and any offer were pending; it may swap now.
+    // The card was held while the request was pending; it may swap now, even if the reload
+    // below fails. An offer still unanswered keeps holding it.
     showPairs();
+    await loadLocks();
   }
 }
 

@@ -86,3 +86,12 @@ describe("titles the modules set", () => {
     expect(button).toEqual({ disabled: false, title: "Starts a job for the test page." });
   });
 });
+
+test("the steer-controls template is the same in every page that has it", () => {
+  /** @param {string} page */
+  const template = (page) =>
+    /<template id="steer-controls">[\s\S]*?<\/template>/.exec(html(page))?.[0] ?? null;
+  const [session, lineage] = ["session.html", "lineage.html"].map(template);
+  expect(session).not.toBeNull();
+  expect(lineage).toBe(session);
+});
