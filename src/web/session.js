@@ -1,9 +1,12 @@
-// The session page (decisions 0028 and 0032): the candidate grid, one card per candidate with its
-// excerpt, its rating controls and its details; the A/B view; and the session's jobs, each with
-// its progress, followed until they finish. Of a revised pair, one card shows and links the
-// other (0036). Each card also reads its features against its brief's ranges, locks its values
-// (0035), and explores or nudges from it (0039). Played fraction and time taken are measured
-// here as decision 0027 defines them.
+// The session page (decisions 0028 and 0032): the candidate table, one row per candidate with
+// its excerpt, its rating controls and, behind More controls, the rest; the A/B view; and the
+// session's jobs, each with its progress, followed until they finish. A candidate's row sits
+// under the one it was made from, carries its A/B marks, and can be hidden into the hidden
+// panel, and the page keeps its scroll across a trip to Quick A/B or the A/B view (0049). Of a
+// revised pair, one row shows and links the other (0036). Each row also reads its features
+// against its brief's ranges, locks its values (0035), and explores or nudges from it (0039).
+// Played fraction and time taken are measured here as decision 0027 defines them. A "card" in
+// this file is one candidate's row and its More controls, a `<tbody>` of the table.
 /** @import { FeatureRanges } from "../domain/target-schema.js" */
 /** @import { LintResult } from "../domain/lint-result.js" */
 /** @import { AbCandidate } from "./ab-view.js" */
@@ -16,9 +19,11 @@ import { OPERATOR } from "../domain/operator.js";
 import { MACRO_DIRECTIONS, THUMBS } from "../domain/rating-values.js";
 import { validateTargets } from "../domain/validate-targets.js";
 import { MACROS } from "../engine/genome-schema.js";
+import { abMarks, markText } from "./ab-marks.js";
 import { abView } from "./ab-view.js";
 import { getJson, jobPath, postJson, sessionPath, startJob, VIBES_PATH } from "./api.js";
 import { trackAudio } from "./audio-player.js";
+import { candidateRows } from "./candidate-rows.js";
 import { createSelection } from "./candidate-selection.js";
 import { createCardHold } from "./card-hold.js";
 import { cloneTemplate } from "./clone-template.js";
@@ -36,6 +41,7 @@ import { intentText, originText, rejectText } from "./origin-text.js";
 import { createPairSwap } from "./pair-swap.js";
 import { createPlayedTracker } from "./played-tracker.js";
 import { rangesReadout } from "./ranges-readout.js";
+import { scrollMemory } from "./scroll-memory.js";
 import { statusLine } from "./status-line.js";
 import { steerControls } from "./steer-controls.js";
 
@@ -55,7 +61,10 @@ const page = elementsById({
   stopButton: HTMLButtonElement,
   jobBox: HTMLElement,
   gridView: HTMLElement,
-  candidateGrid: HTMLElement,
+  candidateTable: HTMLTableElement,
+  hiddenBox: HTMLElement,
+  hiddenSummary: HTMLElement,
+  hiddenTable: HTMLTableElement,
   noCandidates: HTMLElement,
   rejectedBox: HTMLElement,
   rejectedSummary: HTMLElement,
@@ -65,9 +74,13 @@ const idText = new URLSearchParams(location.search).get("id");
 if (idText === null) throw new Error("session.html needs ?id=<session id>");
 const sessionId = Number(idText);
 const SESSION = sessionPath(sessionId);
+/** What the page says before the session has a candidate, as session.html has it. */
+const NO_CANDIDATES = page.noCandidates.textContent;
 
-/** The parts of a candidate card in session.html. */
+/** The parts of a candidate's row in session.html. */
 const CARD_PARTS = Object.freeze({
+  nameCell: HTMLElement,
+  branch: HTMLElement,
   heading: HTMLElement,
   rowId: HTMLElement,
   thumbsBadge: HTMLElement,
@@ -83,6 +96,12 @@ const CARD_PARTS = Object.freeze({
   up: HTMLButtonElement,
   down: HTMLButtonElement,
   compare: HTMLButtonElement,
+  hide: HTMLButtonElement,
+  expand: HTMLButtonElement,
+  moreRow: HTMLElement,
+  abBadge: HTMLElement,
+  wins: HTMLElement,
+  losses: HTMLElement,
   macros: HTMLElement,
   note: HTMLTextAreaElement,
   tags: HTMLInputElement,
@@ -125,11 +144,12 @@ const CARD_PARTS = Object.freeze({
  *   the live choices, one per thumbs and per macro (decision 0031)
  * @property {{ firstTryId: number, revisionId: number, shownId: number } | null} pair a first
  *   try and its revision, and which the server would show (decision 0036)
+ * @property {boolean} hidden whether the owner hid it (decision 0049)
  */
 
 /**
- * A card in the grid. It is updated in place when its excerpt lands, so a note being typed in
- * it keeps its text and the focus.
+ * A candidate's row in the table. It is updated in place when its excerpt lands, so a note
+ * being typed in it keeps its text and the focus.
  * @typedef {object} Card
  * @property {Candidate} candidate
  * @property {string} label "Candidate 3", numbered among the session's first tries from 1, or
@@ -207,16 +227,36 @@ const choicesOf = (card) => card.candidate.feedback;
 /** @param {Card} card */
 function showPlayed(card) {
   if (!card.tracker) return;
-  const compared = rated.ratings.filter(
-    (row) =>
-      row.sessionId === sessionId &&
-      [row.a, row.b].some(
-        (side) => side.genomeId === card.candidate.genomeId && side.seed === card.candidate.seed,
-      ),
-  ).length;
-  card.parts.played.textContent =
-    `Played ${percent(card.tracker.fraction())}.` +
-    (compared === 0 ? "" : ` Compared ${compared === 1 ? "once" : `${compared} times`}.`);
+  card.parts.played.textContent = `Played ${percent(card.tracker.fraction())}.`;
+}
+
+/** @param {number} count */
+const times = (count) => (count === 1 ? "once" : `${count} times`);
+
+/**
+ * The card's A/B marks: whether it was compared in this session at all, and a mark per live
+ * win and per live loss (decision 0049).
+ * @param {Card} card
+ */
+function showMarks(card) {
+  const { wins, losses, compared } = abMarks(rated.ratings, sessionId, card.candidate);
+  const { abBadge } = card.parts;
+  abBadge.textContent = compared === 0 ? "Not compared" : `Compared ${compared}`;
+  abBadge.className = compared === 0 ? "badge muted" : "badge";
+  abBadge.title =
+    compared === 0
+      ? "Not yet in an A/B comparison of this session."
+      : `In ${compared} A/B comparison${compared === 1 ? "" : "s"} of this session, ties and skips included.`;
+  for (const [part, count, words] of /** @type {const} */ ([
+    [card.parts.wins, wins, ["▲", "Chosen"]],
+    [card.parts.losses, losses, ["▼", "Not chosen"]],
+  ])) {
+    part.hidden = count === 0;
+    part.textContent = markText(count, words[0]);
+    const said = `${words[1]} ${times(count)} in A/B.`;
+    part.title = said;
+    part.ariaLabel = said;
+  }
 }
 
 /**
@@ -240,6 +280,7 @@ function showRated(card) {
   }
   parts.sketchBadge.hidden = !rated.sketches.some((row) => row.candidateId === card.candidate.id);
   showPlayed(card);
+  showMarks(card);
 }
 
 /** @param {Card} card */
@@ -250,6 +291,20 @@ const ratingButtons = (card) => [
   card.parts.compare,
   ...Object.values(card.macros).flatMap(({ less, clear, more }) => [less, clear, more]),
 ];
+
+/** What a card's hide button says and does, by whether the card is hidden now. */
+const HIDE_BUTTON = Object.freeze({
+  shown: {
+    text: "Hide",
+    title:
+      "Hides this candidate: it moves to Hidden candidates at the bottom of the page and leaves Quick A/B. Its ratings are kept, and the lineage page still shows it.",
+  },
+  hidden: {
+    text: "Show again",
+    title:
+      "Shows this candidate in the table again, under the one it was made from, and puts it back in Quick A/B.",
+  },
+});
 
 /** Turns every card's rating controls on or off, saying why when off. */
 function showCardControls() {
@@ -263,6 +318,19 @@ function showCardControls() {
           ? "Turned off while your last choice for this candidate is saved."
           : null;
     for (const button of ratingButtons(card)) offBecause(button, why);
+    if (why === null && card.candidate.hidden) {
+      offBecause(
+        card.parts.compare,
+        "Turned off because this candidate is hidden, so it isn't compared. Press Show again first.",
+      );
+    }
+    // Hiding is not a rating: a stopped session, or a card with no excerpt, can hide.
+    const hide = card.candidate.hidden ? HIDE_BUTTON.hidden : HIDE_BUTTON.shown;
+    card.parts.hide.textContent = hide.text;
+    card.parts.hide.disabled = card.busy;
+    card.parts.hide.title = card.busy
+      ? "Turned off while your last change to this candidate is saved."
+      : hide.title;
     card.steer.off(
       stopped
         ? "This session is stopped, so it takes no more jobs. Explore or nudge from the lineage page, or start a new session from the brief page."
@@ -599,6 +667,44 @@ function macroChoice(card, macro, direction) {
   });
 }
 
+/**
+ * The candidates a hide of the card names: its own, or both of its revised pair, which take one
+ * place in the table (decision 0049).
+ * @param {Card} card
+ */
+function hideIds({ candidate: { id, pair } }) {
+  return pair === null ? [id] : [pair.firstTryId, pair.revisionId];
+}
+
+/**
+ * Hides the card into the hidden panel, or shows it in the table again. Its ratings stay.
+ * @param {Card} card
+ */
+async function toggleHidden(card) {
+  if (card.busy) return;
+  const hidden = !card.candidate.hidden;
+  const ids = hideIds(card);
+  card.busy = true;
+  showCardControls();
+  try {
+    if (hidden) {
+      for (const other of cards) if (ids.includes(other.candidate.id)) other.parts.audio.pause();
+      if (marked && ids.includes(marked.candidate.id)) unmark();
+    }
+    await postJson(`${SESSION}/hidden`, { candidateIds: ids, hidden });
+    await loadCandidates();
+    status.say(
+      hidden
+        ? `${card.label} hidden. Hidden candidates, at the bottom of the page, lists it.`
+        : `${card.label} is shown in the table again.`,
+    );
+  } finally {
+    card.busy = false;
+    showCardControls();
+    showPairs();
+  }
+}
+
 /** @param {Card} card */
 function keepSketch(card) {
   return rateCard(card, async () => {
@@ -628,11 +734,21 @@ function unmark() {
   marked = null;
 }
 
+/** Where the page was scrolled, kept per tab while the owner is at Quick A/B or the A/B view. */
+const scrollKept = () => scrollMemory(sessionStorage, `session ${sessionId} scroll`);
+
+/** Scrolls back to where the page was when the owner left it, if it kept a place. */
+function restoreScroll() {
+  const y = scrollKept().take();
+  if (y !== null) window.scrollTo(0, y);
+}
+
 const ab = abView({
   sessionId,
   status,
   onClose: () => {
     page.gridView.hidden = false;
+    status.run(async () => restoreScroll());
     unmark();
     // A pair's listening isn't time spent on the selected card.
     selection.restart();
@@ -670,6 +786,7 @@ async function compare(card) {
     b: firstExcerpt.renderId,
   });
   for (const other of cards) other.parts.audio.pause();
+  scrollKept().save(window.scrollY);
   page.gridView.hidden = true;
   ab.open(pair, { a: abCandidate(card), b: abCandidate(first) });
   status.say("Play both sides, then choose which is better.");
@@ -748,7 +865,7 @@ function showOther(card) {
  * @returns {Card}
  */
 function makeCard(candidate, number, revised) {
-  const parts = cloneTemplate("candidate-card", CARD_PARTS);
+  const parts = cloneTemplate("candidate-row", CARD_PARTS);
   mountPlayer(parts.audio, status.fail);
   /** @type {Record<string, MacroButtons>} */
   const macros = {};
@@ -822,6 +939,13 @@ function makeCard(candidate, number, revised) {
   parts.sketch.onclick = () => status.run(() => keepSketch(card));
   const compareOnce = oneAtATime(() => compare(card));
   parts.compare.onclick = () => status.run(compareOnce);
+  parts.hide.onclick = () => status.run(() => toggleHidden(card));
+  parts.expand.onclick = () => {
+    const open = parts.moreRow.hidden;
+    parts.moreRow.hidden = !open;
+    parts.expand.setAttribute("aria-expanded", String(open));
+    parts.expand.textContent = open ? "Fewer controls" : "More controls";
+  };
   parts.pairLink.onclick = () => showOther(card);
   // A swap held by the card runs again once it is free: a turn after the focus leaves, so the
   // focus has landed, and after a press ends (below), so the click lands first.
@@ -952,6 +1076,62 @@ const stopSession = oneAtATime(async () => {
   status.say(`Session ${sessionId} stopped. Start a new one from the brief page.`);
 });
 
+/**
+ * Puts each row in its table in the order given, moving only the rows out of place, so a row
+ * that stays where it was is never taken out of the page.
+ * @param {HTMLTableElement} table
+ * @param {readonly HTMLElement[]} rows
+ */
+function placeRows(table, rows) {
+  rows.forEach((row, i) => {
+    const at = table.tBodies[i];
+    if (at !== row) table.insertBefore(row, at ?? null);
+  });
+}
+
+/**
+ * Lays the cards out: each under the one it was made from, indented by its depth, and the
+ * hidden ones in the hidden panel (decision 0049).
+ */
+function layoutRows() {
+  const byId = new Map(cards.map((card) => [card.candidate.id, card]));
+  /** @param {number} id */
+  const cardOf = (id) => {
+    const card = byId.get(id);
+    if (!card) throw new Error(`the table names candidate ${id}, which has no row`);
+    return card;
+  };
+  const { shown, hidden } = candidateRows(cards.map((card) => card.candidate));
+  /**
+   * @param {number} id
+   * @param {number} depth
+   */
+  const indent = (id, depth) => {
+    const { parts } = cardOf(id);
+    parts.branch.textContent = depth > 0 ? "↳" : "";
+    parts.nameCell.style.setProperty("--depth", String(depth));
+    return parts.root;
+  };
+  placeRows(
+    page.candidateTable,
+    shown.map(({ id, depth }) => indent(id, depth)),
+  );
+  placeRows(
+    page.hiddenTable,
+    hidden.map((id) => indent(id, 0)),
+  );
+  page.candidateTable.hidden = shown.length === 0;
+  page.noCandidates.hidden = shown.length > 0;
+  page.noCandidates.textContent =
+    cards.length === 0
+      ? NO_CANDIDATES
+      : "Every candidate is hidden. Open Hidden candidates below to see them again.";
+  // A revised pair is one row in the panel, as in the table.
+  const places = hidden.filter((id) => cardOf(id).candidate.pair?.revisionId !== id).length;
+  page.hiddenBox.hidden = places === 0;
+  page.hiddenSummary.textContent = `Hidden candidates (${places})`;
+}
+
 async function loadRatings() {
   rated = await getJson(`${VIBES_PATH}/${session.vibeId}/ratings`);
   for (const card of cards) showRated(card);
@@ -985,15 +1165,14 @@ async function loadCandidates() {
     if (changed) showExcerpt(kept);
     return kept;
   });
+  layoutRows();
   for (const card of cards) {
-    if (!card.parts.root.isConnected) page.candidateGrid.append(card.parts.root);
     // Every card is made before any is named, so a parent made in this load has its label.
     card.parts.origin.textContent = originText(card.candidate, nameOf);
     showRated(card);
     showLocks(card);
   }
   showPairs();
-  page.noCandidates.hidden = cards.length > 0;
   showControls();
 
   page.rejectedBox.hidden = rejected.length === 0;
@@ -1030,6 +1209,17 @@ page.excerptsButton.onclick = () => status.run(renderExcerpts);
 page.stopButton.onclick = () => status.run(stopSession);
 // A press ends wherever the pointer is released, so the page listens, not the card. The click
 // that follows a pointerup is dispatched before the deferred swap runs.
+// The page restores its own scroll once the rows are loaded; the browser's would land before them.
+history.scrollRestoration = "manual";
+window.addEventListener("pagehide", () => {
+  // With the A/B view open, the place kept when it opened stands.
+  if (page.gridView.hidden) return;
+  status.run(async () => scrollKept().save(window.scrollY));
+});
+window.addEventListener("pageshow", (event) => {
+  // A page brought back from the back-forward cache is where it was; drop the place kept.
+  if (event.persisted) status.run(async () => scrollKept().take());
+});
 for (const type of ["pointerup", "pointercancel"]) {
   document.addEventListener(type, () => {
     for (const card of cards) card.hold.pointerUp();
@@ -1050,13 +1240,14 @@ status.run(async () => {
   await loadRatings();
   await loadCandidates();
   await loadLocks();
+  restoreScroll();
   const unfinished = session.jobs.filter((/** @type {any} */ job) => job.finishedAt === null);
   status.say(
     unfinished.length > 0
       ? "A job is running; candidates appear below as they are ready."
       : cards.length === 0
         ? "Press Ask for new candidates to begin."
-        : "Play a candidate, then rate it with the buttons on its card.",
+        : "Play a candidate, then rate it with the buttons on its row.",
   );
   for (const job of unfinished) status.run(() => follow(job));
   showControls();

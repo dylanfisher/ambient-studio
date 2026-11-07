@@ -28,16 +28,18 @@ export const PHASE = /** @type {const} */ ({
 
 /** @typedef {{ renderId: number, url: string, duration: number }} Excerpt */
 /** @typedef {{ id: number, genomeId: number, seed: number, excerpt: Excerpt }} Playable */
-/** @typedef {{ id: number, genomeId: number | null, seed: number, excerpt: Excerpt | null }} Candidate */
+/** @typedef {{ id: number, genomeId: number | null, seed: number, excerpt: Excerpt | null, hidden: boolean }} Candidate */
 
 /**
- * The candidates Quick A/B draws from: those with an excerpt to play. 4j's hidden candidates
- * are left out here (0048).
+ * The candidates Quick A/B draws from: those with an excerpt to play that the owner hasn't
+ * hidden on the session page (0048, 0049).
  * @param {Candidate[]} candidates
  * @returns {Playable[]}
  */
 export const poolOf = (candidates) =>
-  /** @type {Playable[]} */ (candidates.filter((candidate) => candidate.excerpt !== null));
+  /** @type {Playable[]} */ (
+    candidates.filter((candidate) => candidate.excerpt !== null && !candidate.hidden)
+  );
 
 /** @param {number} id */
 export const nameOf = (id) => `Candidate #${id}`;

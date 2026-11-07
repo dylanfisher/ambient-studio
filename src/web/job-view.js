@@ -1,6 +1,6 @@
 // A job's progress box on a page, from the page's `job-progress` template (decision 0032): what
-// it does, a badge for its state, a bar, its step sentence, the time it has run, and a Cancel
-// button while it hasn't finished.
+// it does, a badge for its state, a bar, its step sentence, why its excerpts weren't embedded
+// when it says (0042), the time it has run, and a Cancel button while it hasn't finished.
 /** @import { JobStatus } from "./job-progress.js" */
 import { cloneTemplate } from "./clone-template.js";
 import { jobProgress } from "./job-progress.js";
@@ -23,6 +23,7 @@ export function jobBox(onCancel) {
     bar: HTMLElement,
     fill: HTMLElement,
     step: HTMLElement,
+    notEmbedded: HTMLElement,
     error: HTMLElement,
   });
   /** @type {JobStatus | null} */
@@ -44,6 +45,8 @@ export function jobBox(onCancel) {
       parts.state.className = `badge ${tone}`;
       parts.elapsed.textContent = progress.elapsed;
       parts.step.textContent = progress.step;
+      parts.notEmbedded.hidden = progress.notEmbedded === null;
+      parts.notEmbedded.textContent = progress.notEmbedded ?? "";
       parts.error.hidden = progress.error === null;
       parts.error.textContent = progress.error ?? "";
       parts.cancel.hidden = progress.finished;

@@ -3,7 +3,8 @@
 - **Date:** 2026-11-07
 - **Status:** accepted; amends [0019](0019-config-file-and-paths.md) (adds
   `sidecar.checkpointCache`), [0021](0021-store-tables-and-append-only.md) (the `embeddings`
-  table) and [0041](0041-sidecar-process.md) (the `path` type)
+  table) and [0041](0041-sidecar-process.md) (the `path` type). Amended by
+  [0049](0049-session-table-hiding-marks.md) (the session page shows `notEmbedded`)
 
 ## Context
 
@@ -97,8 +98,8 @@ at once. With `checkpointCache` null it fails at once, saying to set it.
 **The candidates job** embeds each excerpt it renders after its features, first tries and
 revisions alike, when it has no row. It asks `embedder` once, at the first excerpt, without
 fetching. When the config's folder is null, or the checkpoint isn't in it, it embeds nothing,
-logs why once, and returns the reason as `notEmbedded`, null when it embedded. The session
-page doesn't show `notEmbedded` yet; step 4j shows it there. A sidecar failure while embedding
+logs why once, and returns the reason as `notEmbedded`, null when it embedded. The job's box on
+the session page shows the reason ([0049](0049-session-table-hiding-marks.md)). A sidecar failure while embedding
 fails the job, naming the file, like any other fault, since the owner set the sidecar up.
 
 **The timeout.** `sidecar.requestTimeoutMs` stays at 120 000 ms. Measured on mbp2021: fetching
@@ -171,3 +172,8 @@ weights are 589 MB against 744 MB.
   enough to do it.
 - The owner's config needs `sidecar.checkpointCache`; with `null`, nothing is embedded and each
   candidates job says so.
+
+## Amendments
+
+- 2026-11-07: from step 4j ([0049](0049-session-table-hiding-marks.md)). The session page shows
+  a finished candidates job's `notEmbedded` reason in its job box.

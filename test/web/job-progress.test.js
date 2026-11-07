@@ -27,6 +27,7 @@ describe("jobProgress", () => {
       fraction: 0.25,
       elapsed: "Running for 1 min 05 s.",
       error: null,
+      notEmbedded: null,
       finished: false,
     });
   });
@@ -75,6 +76,26 @@ describe("jobProgress", () => {
     expect(jobProgress(job({ kind: "explore" }), 3_000).title).toBe(
       "The model's variations of a candidate",
     );
+  });
+
+  test("a finished candidates job says why its excerpts weren't embedded", () => {
+    const reason =
+      "the config's sidecar.checkpointCache is null, so excerpts aren't embedded; set it to a folder for the CLAP checkpoint";
+    const finished = { state: "done", finishedAt: 9_000 };
+    expect(jobProgress(job({ ...finished, result: { notEmbedded: reason } }), 9_000)).toMatchObject(
+      {
+        notEmbedded:
+          "The config's sidecar.checkpointCache is null, so excerpts aren't embedded; set it to a folder for the CLAP checkpoint.",
+      },
+    );
+    expect(
+      jobProgress(job({ ...finished, result: { notEmbedded: null } }), 9_000).notEmbedded,
+    ).toBe(null);
+    // A job of another kind, or one still running, has no result to read.
+    expect(jobProgress(job({ kind: "nudge", ...finished, result: {} }), 9_000).notEmbedded).toBe(
+      null,
+    );
+    expect(jobProgress(job({}), 9_000).notEmbedded).toBe(null);
   });
 
   test("a kind the page doesn't know is an error, not a blank title", () => {
