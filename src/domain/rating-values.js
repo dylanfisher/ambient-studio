@@ -3,6 +3,6 @@
 
 /** What an A/B rating comes to: a side won, a tie, or the owner skipped the pair. */
 export const OUTCOMES = /** @type {const} */ (["a", "b", "tie", "skip"]);
-/** The directions thumbs and "more / less like this" feedback take. */
+/** The directions thumbs take, and the directions of more or less like this on a macro. */
 export const THUMBS = /** @type {const} */ (["up", "down"]);
 export const MACRO_DIRECTIONS = /** @type {const} */ (["more", "less"]);

@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Session · Ambient Studio</title>
+    <link rel="stylesheet" href="./studio.css" />
+    <script type="module" src="./session.js"></script>
+  </head>
+  <body>
+    <header>
+      <a id="vibeLink" href="./">Vibe</a>
+      <h1 id="pageTitle">Session</h1>
+      <p id="status" role="status" aria-live="polite">Loading…</p>
+    </header>
+    <main class="layout">
+      <div>
+        <div class="row" data-view="session">
+          <label
+            >Candidates to ask for
+            <input id="countInput" type="number" min="1" step="1" placeholder="default" size="6"
+          /></label>
+          <button data-action="askCandidates" type="button">Ask for candidates</button>
+          <button data-action="renderExcerpts" type="button">Render missing excerpts</button>
+          <button data-action="cancelJob" type="button">Cancel the job</button>
+          <button data-action="stopSession" type="button">Stop the session</button>
+        </div>
+        <p id="jobLine" class="readout muted">No job running.</p>
+
+        <div id="gridView" data-view="session">
+          <section aria-labelledby="candidates-heading">
+            <h2 id="candidates-heading">Candidates</h2>
+            <p id="noCandidates" class="muted">
+              None yet. Press <kbd>g</kbd> to ask for candidates.
+            </p>
+            <div id="candidateGrid" class="grid"></div>
+          </section>
+
+          <section class="card panel" aria-labelledby="ratingHeading">
+            <h2 id="ratingHeading">No candidate selected</h2>
+            <p id="selectedReadout" class="readout muted"></p>
+            <label for="noteText">Note, sent with thumbs or kept with a sketch</label>
+            <textarea id="noteText" rows="2"></textarea>
+            <label>Sketch tags, separated by commas <input id="tagsInput" size="40" /></label>
+            <div class="row">
+              <label>Macro <select id="macroSelect"></select></label>
+              <button data-action="moreLikeThis" type="button">More like this</button>
+              <button data-action="lessLikeThis" type="button">Less like this</button>
+            </div>
+            <div class="row">
+              <button data-action="thumbsUp" type="button">Thumbs up</button>
+              <button data-action="thumbsDown" type="button">Thumbs down</button>
+              <button data-action="keepSketch" type="button">Keep as sketch</button>
+              <button data-action="markAb" type="button">Mark for A/B</button>
+            </div>
+          </section>
+
+          <details id="rejectedBox" hidden>
+            <summary id="rejectedSummary">Rejected candidates</summary>
+            <ul id="rejectedList" class="list"></ul>
+          </details>
+        </div>
+
+        <section id="abView" aria-labelledby="ab-heading" data-view="ab" hidden>
+          <h2 id="ab-heading">Which is better?</h2>
+          <div class="ab">
+            <div id="abLeft" class="card">
+              <h3>Left <kbd>1</kbd></h3>
+              <p class="muted" id="abLeftName"></p>
+              <!-- biome-ignore lint/a11y/useMediaCaption: instrumental excerpts have no speech to caption -->
+              <audio id="abLeftAudio" controls preload="auto"></audio>
+              <p class="readout" id="abLeftReadout"></p>
+            </div>
+            <div id="abRight" class="card">
+              <h3>Right <kbd>2</kbd></h3>
+              <p class="muted" id="abRightName"></p>
+              <!-- biome-ignore lint/a11y/useMediaCaption: instrumental excerpts have no speech to caption -->
+              <audio id="abRightAudio" controls preload="auto"></audio>
+              <p class="readout" id="abRightReadout"></p>
+            </div>
+          </div>
+          <div class="row panel">
+            <button data-action="leftWins" type="button">Left is better</button>
+            <button data-action="tiePair" type="button">Tie</button>
+            <button data-action="rightWins" type="button">Right is better</button>
+            <button data-action="skipPair" type="button">Skip</button>
+            <button data-action="closePair" type="button">Close without rating</button>
+          </div>
+        </section>
+      </div>
+      <aside aria-label="Keys">
+        <dl id="keys-session" class="keys"></dl>
+        <dl id="keys-ab" class="keys" hidden></dl>
+      </aside>
+    </main>
+
+    <template id="candidate-card">
+      <article class="card" tabindex="-1">
+        <h3 data-part="heading">Candidate</h3>
+        <p data-part="intent"></p>
+        <!-- biome-ignore lint/a11y/useMediaCaption: instrumental excerpts have no speech to caption -->
+        <audio data-part="audio" controls preload="metadata" tabindex="-1"></audio>
+        <p class="readout muted" data-part="missing" hidden>
+          No current excerpt. Press <kbd>e</kbd> to render it.
+        </p>
+        <p class="readout" data-part="played"></p>
+        <p class="readout" data-part="features"></p>
+        <p class="readout" data-part="lint"></p>
+        <ul class="findings" data-part="findings"></ul>
+        <p class="readout muted" data-part="rated"></p>
+      </article>
+    </template>
+    <template id="rejected-item">
+      <li class="card">
+        <span data-part="line"></span>
+        <ul class="findings" data-part="findings"></ul>
+      </li>
+    </template>
+  </body>
+</html>

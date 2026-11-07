@@ -1,0 +1,275 @@
+/* The studio's one stylesheet. Written for Safari 17.6 and current browsers (decision 0028):
+   no nesting, no :has() in layout-critical rules, no light-dark(). */
+
+:root {
+  color-scheme: light dark;
+  --text: #1d1d1f;
+  --muted: #5b5b62;
+  --page: #f7f7f5;
+  --panel: #ffffff;
+  --line: #d6d6d2;
+  --accent: #0b57d0;
+  --focus: #e8710a;
+  --good: #1e7d32;
+  --bad: #b3261e;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 17px;
+  line-height: 1.45;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #ececec;
+    --muted: #a8a8b0;
+    --page: #17171a;
+    --panel: #222226;
+    --line: #3a3a40;
+    --accent: #8ab4f8;
+    --focus: #ffb35c;
+    --good: #81c995;
+    --bad: #f28b82;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--text);
+}
+
+header,
+main,
+footer {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0.75rem 1.25rem;
+}
+
+header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 1.5rem;
+  border-bottom: 1px solid var(--line);
+}
+
+h1 {
+  font-size: 1.5rem;
+  margin: 0;
+}
+
+h2 {
+  font-size: 1.15rem;
+  margin: 1.25rem 0 0.5rem;
+}
+
+h3 {
+  font-size: 1rem;
+  margin: 0 0 0.25rem;
+}
+
+a {
+  color: var(--accent);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+[role="status"] {
+  min-height: 1.5em;
+  margin: 0;
+  font-weight: 500;
+}
+
+[role="status"].failed {
+  color: var(--bad);
+}
+
+:focus-visible,
+.selected {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  cursor: pointer;
+}
+
+input,
+select,
+textarea {
+  padding: 0.3rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+}
+
+textarea {
+  width: 100%;
+}
+
+kbd {
+  display: inline-block;
+  min-width: 1.6em;
+  padding: 0 0.35em;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--panel);
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 0.9em;
+  text-align: center;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18rem;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.keys {
+  position: sticky;
+  top: 0.75rem;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.2rem 0.6rem;
+  margin: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  font-size: 0.9rem;
+}
+
+.keys dt {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.keys dd {
+  margin: 0;
+}
+
+.card {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(22rem, 1fr));
+  gap: 0.75rem;
+}
+
+.card audio {
+  width: 100%;
+  margin: 0.4rem 0;
+}
+
+.readout {
+  margin: 0.25rem 0;
+  font-size: 0.9rem;
+}
+
+.findings {
+  margin: 0.25rem 0;
+  padding-left: 1.2rem;
+  font-size: 0.9rem;
+  color: var(--bad);
+}
+
+.ok {
+  color: var(--good);
+}
+
+.marked {
+  border-color: var(--accent);
+  border-width: 2px;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.panel {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.ab {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.ab .playing {
+  border-color: var(--accent);
+  border-width: 2px;
+}
+
+fieldset {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.constraints {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+  gap: 0.6rem 1rem;
+}
+
+.field-name {
+  display: block;
+  font-weight: 500;
+}
+
+.constraints input[type="number"] {
+  width: 7rem;
+}
+
+.errors {
+  color: var(--bad);
+}
+
+/* Last, so it wins over a class that sets display at the same specificity. */
+[hidden] {
+  display: none;
+}

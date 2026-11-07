@@ -4,10 +4,34 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Ambient Studio</title>
+    <link rel="stylesheet" href="./studio.css" />
     <script type="module" src="./index.js"></script>
   </head>
   <body>
-    <h1>Ambient Studio</h1>
-    <p id="engine-version">Loading the engine modules…</p>
+    <header>
+      <h1>Ambient Studio</h1>
+      <p id="status" role="status" aria-live="polite">Loading the vibes…</p>
+    </header>
+    <main class="layout">
+      <section aria-labelledby="vibes-heading">
+        <div class="row">
+          <h2 id="vibes-heading">Vibes</h2>
+          <a href="./vibe.html">New vibe</a>
+        </div>
+        <ul id="vibeList" class="list"></ul>
+        <p id="noVibes" class="muted" hidden>No vibes yet. Press <kbd>n</kbd> to make one.</p>
+      </section>
+      <aside aria-label="Keys">
+        <dl id="keys-list" class="keys"></dl>
+      </aside>
+    </main>
+    <footer class="muted" id="engineVersion"></footer>
+    <template id="vibe-item">
+      <li class="card">
+        <h3><a href="./" data-part="link">vibe</a></h3>
+        <p data-part="brief"></p>
+        <p class="muted" data-part="edited"></p>
+      </li>
+    </template>
   </body>
 </html>
