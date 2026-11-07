@@ -6,10 +6,12 @@ Vectors are written to the file the request names as little-endian float32, sinc
 as file paths (decision 0041).
 """
 
+import functools
 import hashlib
 import math
 import shutil
 import subprocess
+from importlib.metadata import version as package_version
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -18,11 +20,11 @@ from numpy.typing import NDArray
 
 from ambient_sidecar.protocol import Handler
 
-CHECKPOINT = "laion/larger_clap_music"
+CHECKPOINT = "laion/clap-htsat-unfused"
 # The checkpoint's commit on the Hugging Face hub, so a later push to it can't change an
 # embedding under the same producer.
-REVISION = "a0b4534a14f58e20944452dff00a22a06ce629d1"
-# From the checkpoint's preprocessor_config.json and config.json; `load_clap` checks them.
+REVISION = "8fa0f1c6d0433df6e97c127f64b2a1d6c0dcda8a"
+# From the checkpoint's preprocessor_config.json and config.json; `load` checks them.
 SAMPLE_RATE = 48_000
 WINDOW_SAMPLES = 480_000
 DIMENSION = 512
@@ -30,14 +32,45 @@ DIMENSION = 512
 # four of mbp2021's ten cores leave the rest to omlx's CPU side and the server's renders.
 TORCH_THREADS = 4
 
-# Names the checkpoint and this file's source, which holds the decoding, the windowing and the
-# normalization: a change to any of them changes every embedding.
-PRODUCER = f"{CHECKPOINT}@{REVISION} clap-{hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}"
+# The packages whose code computes an embedding; their installed versions are in the producer.
+PACKAGES = ("torch", "transformers")
 
 Vectors = NDArray[np.float32]
 
 # What ffmpeg writes to stdout: raw float32 stereo at SAMPLE_RATE.
 DECODED = ("-f", "f32le", "-ac", "2", "-ar", str(SAMPLE_RATE), "-")
+
+
+def producer_of(packages: dict[str, str], ffmpeg: str, source: bytes) -> str:
+    """The checkpoint, the versions of the packages and ffmpeg that compute an embedding, and
+    the SHA-256 of this file's source, which holds the decoding, the windowing and the
+    normalization: a change to any of them changes the producer, and so every embedding."""
+    versions = " ".join(f"{name}-{packages[name]}" for name in sorted(packages))
+    digest = hashlib.sha256(source).hexdigest()
+    return f"{CHECKPOINT}@{REVISION} {versions} ffmpeg-{ffmpeg} clap-{digest}"
+
+
+def ffmpeg_path() -> str:
+    found = shutil.which("ffmpeg")
+    if found is None:
+        raise FileNotFoundError("ffmpeg isn't on the PATH; install it with brew install ffmpeg")
+    return found
+
+
+def ffmpeg_version() -> str:
+    """The version in `ffmpeg -version`'s first line, `ffmpeg version 9.0.2 Copyright ...`."""
+    done = subprocess.run([ffmpeg_path(), "-version"], capture_output=True, text=True, check=True)
+    words = done.stdout.split()
+    if words[:2] != ["ffmpeg", "version"] or len(words) < 3:
+        raise ValueError(f"ffmpeg -version printed {done.stdout[:80]!r}")
+    return words[2]
+
+
+@functools.cache
+def producer() -> str:
+    """This process's producer, read once: the packages installed and the source loaded."""
+    packages = {name: package_version(name) for name in PACKAGES}
+    return producer_of(packages, ffmpeg_version(), Path(__file__).read_bytes())
 
 
 class Model(Protocol):
@@ -70,11 +103,8 @@ def decode(path: Path) -> Vectors:
     ffmpeg decodes every one, which also resamples the rare file that isn't at 48 kHz."""
     if not path.is_file():
         raise FileNotFoundError(f"there is no audio file {path}")
-    ffmpeg = shutil.which("ffmpeg")
-    if ffmpeg is None:
-        raise FileNotFoundError("ffmpeg isn't on the PATH; install it with brew install ffmpeg")
     done = subprocess.run(
-        [ffmpeg, "-v", "error", "-nostdin", "-i", str(path), *DECODED],
+        [ffmpeg_path(), "-v", "error", "-nostdin", "-i", str(path), *DECODED],
         capture_output=True,
         check=False,
     )
@@ -137,7 +167,7 @@ def clap_handlers(checkpoint: Checkpoint) -> dict[str, Handler]:
         cache = Path(params["checkpointCache"])
         if params["fetch"]:
             checkpoint.fetch(cache)
-        return {"producer": PRODUCER, "dimension": DIMENSION, "ready": checkpoint.cached(cache)}
+        return {"producer": producer(), "dimension": DIMENSION, "ready": checkpoint.cached(cache)}
 
     def embed_audio(params: dict[str, Any]) -> dict[str, Any]:
         vector, count = embed_file(model(Path(params["checkpointCache"])), Path(params["audio"]))
