@@ -1,18 +1,21 @@
 """The preference model: Bayesian logistic Bradley-Terry with a Laplace posterior (decision 0044).
 
 An item's score is a weighted sum of its terms: its CLAP embedding projected on the top
-principal components of the global set's embeddings, each scaled to unit variance, and its
+principal components of the basis items' embeddings, each scaled to unit variance, and its
 features and macros, standardized. A pair is won with probability sigmoid(score difference plus
 the left/right bias); a thumbs up with sigmoid(score plus an intercept). The fit is the mode of
 the posterior under a Gaussian prior, found by Newton's method, and the posterior is the
 Gaussian whose precision is the Hessian there.
 
-A global fit, over every vibe, has a prior centered on zero and computes the basis: the
-projection and the standardization. A vibe's fit names the global model as its prior, takes its
-basis, and centers its prior on the global posterior mean. Sets, items and models are JSON files
-the server names by path (decision 0041); embeddings are float32 files, one row per item.
+A fit with no prior model is a vibe's prior: fitted on the other vibes' ratings under a prior
+centered on zero, it computes the basis (the projection and the standardization) from every
+item its file lists. A vibe's fit names that model as its prior, takes its basis, and centers
+its prior on that model's posterior mean. Sets, items and models are JSON files the server names
+by path (decision 0041); embeddings are float32 files, one row per item.
 """
 
+import functools
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -37,16 +40,30 @@ HYPERPARAMETERS = (
     "interceptScale",
     "thumbsWeight",
 )
-# The server's own hyperparameter: the global model's key, which makes a vibe's key change when
-# its prior does. The fit reads the prior from the file the set names instead.
-SERVER_ONLY = ("globalModel",)
+# The server's own hyperparameters, which make a key change when what it names does: a vibe's
+# prior model's key, and the key of the sets a prior's basis comes from. The fit reads the prior
+# and the basis items from the set file instead.
+SERVER_ONLY = ("globalModel", "basis")
+# The hash of this file, which every set names, so the model key changes with the model code.
+MODEL_CODE = "modelCode"
 
-# A singular value below this share of the largest is noise, not a component.
-RANK_TOLERANCE = 1e-6
+# A component whose variance is below this share of the largest component's is dropped:
+# whitening would scale it up by over 30 times, and a candidate far out along it would get a
+# score variance its training items never showed.
+COMPONENT_VARIANCE_FLOOR = 1e-3
+# A feature or macro column whose spread is below this share of its mean's size (or of 1) holds
+# one value, and adds nothing.
+CONSTANT_TOLERANCE = 1e-9
 # Newton's method stops when no parameter moves more than this; a logistic loss with a Gaussian
 # prior is strictly convex, so it gets there in a few tens of steps at most.
 STEP_TOLERANCE = 1e-10
 MAX_ITERATIONS = 100
+
+
+@functools.cache
+def model_code() -> str:
+    """The SHA-256 of this file's source, read once per process."""
+    return f"preference-{hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}"
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -84,8 +101,13 @@ def _hyperparameters(record: dict[str, Any]) -> dict[str, float]:
         raise ValueError("the set has no hyperparameters object")
     values: dict[str, Any] = given  # pyright: ignore[reportUnknownVariableType]
     for key in values:
-        if key not in HYPERPARAMETERS and key not in SERVER_ONLY:
+        if key not in HYPERPARAMETERS and key not in SERVER_ONLY and key != MODEL_CODE:
             raise ValueError(f"the hyperparameters have {key}, which the fit doesn't read")
+    if values.get(MODEL_CODE) != model_code():
+        raise ValueError(
+            f"the set's {MODEL_CODE} is {values.get(MODEL_CODE)!r}, and this code is "
+            f"{model_code()!r}; the server must ask preference_code again"
+        )
     found: dict[str, float] = {}
     for key in HYPERPARAMETERS:
         value = values.get(key)
@@ -147,17 +169,19 @@ class Items:
 
 def _standardization(values: Floats) -> tuple[Floats, Floats]:
     """Each column's mean and standard deviation over its measured values. A column with fewer
-    than two values, or one value throughout, keeps a scale of 1, so it adds nothing."""
+    than two values, or one value throughout, gets a scale of 0, which `terms` reads as a term
+    of 0 for every item, so a candidate's value there can't move its score or variance."""
     width = values.shape[1]
     means = np.zeros(width)
-    scales = np.ones(width)
+    scales = np.zeros(width)
     for j in range(width):
         measured = values[~np.isnan(values[:, j]), j]
         if measured.size == 0:
             continue
         means[j] = measured.mean()
         spread = measured.std()
-        if measured.size >= 2 and spread > 0:
+        # A column of one value has a spread of rounding error, not exactly 0.
+        if measured.size >= 2 and spread > CONSTANT_TOLERANCE * max(abs(means[j]), 1.0):
             scales[j] = spread
     return means, scales
 
@@ -169,7 +193,9 @@ def make_basis(items: Items, pca_dimension: int) -> dict[str, Any]:
     component_scales = np.zeros(0)
     if items.count >= 2:
         _, singular, right = np.linalg.svd(items.embeddings - embedding_mean, full_matrices=False)
-        rank = np.count_nonzero(singular > singular[0] * RANK_TOLERANCE) if singular[0] > 0 else 0
+        variance = singular**2
+        floor = variance[0] * COMPONENT_VARIANCE_FLOOR
+        rank = np.count_nonzero(variance > floor) if variance[0] > 0 else 0
         kept = min(pca_dimension, rank)
         components = right[:kept].copy()
         # A component's sign is arbitrary; its largest loading is made positive so one set
@@ -193,14 +219,24 @@ def make_basis(items: Items, pca_dimension: int) -> dict[str, Any]:
 
 def terms(items: Items, basis: dict[str, Any]) -> Floats:
     """Each item's terms as a row: its components, features and macros, in that order. A
-    feature with no value takes the mean, so it adds nothing to the score."""
+    feature with no value takes the mean, and a column with a scale of 0 is 0, so neither adds
+    anything to the score."""
     components = np.array(basis["components"]).reshape(-1, items.dimension)
     projected = (items.embeddings - np.array(basis["embeddingMean"])) @ components.T
     projected = projected / np.array(basis["componentScales"])
-    features = (items.features - np.array(basis["featureMeans"])) / np.array(basis["featureScales"])
-    features = np.where(np.isnan(features), 0.0, features)
-    macros = (items.macros - np.array(basis["macroMeans"])) / np.array(basis["macroScales"])
+    features = _standardized(items.features, basis["featureMeans"], basis["featureScales"])
+    macros = _standardized(items.macros, basis["macroMeans"], basis["macroScales"])
     return np.hstack([projected, features, macros])
+
+
+def _standardized(values: Floats, means: list[float], scales: list[float]) -> Floats:
+    scale = np.array(scales)
+    usable = scale > 0
+    centered = values - np.array(means)
+    result: Floats = np.where(
+        usable & ~np.isnan(centered), centered / np.where(usable, scale, 1.0), 0.0
+    )
+    return result
 
 
 def term_names(clap: int, feature_names: list[str], macro_names: list[str]) -> list[str]:
@@ -377,5 +413,9 @@ def predict(params: dict[str, Any]) -> dict[str, Any]:
     return {"count": items.count}
 
 
+def preference_code(params: dict[str, Any]) -> dict[str, Any]:
+    return {"code": model_code()}
+
+
 def preference_handlers() -> dict[str, Handler]:
-    return {"fit": fit, "predict": predict}
+    return {"fit": fit, "predict": predict, "preference_code": preference_code}

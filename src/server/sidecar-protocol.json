@@ -30,6 +30,10 @@
         "iterations": "number"
       }
     },
+    "preference_code": {
+      "params": {},
+      "result": { "code": "string" }
+    },
     "predict": {
       "params": { "model": "path", "items": "path", "out": "path" },
       "result": { "count": "number" }

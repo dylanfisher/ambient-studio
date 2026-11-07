@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from numpy.typing import NDArray
 
-from ambient_sidecar.preference import LEFT_BIAS, preference_handlers
+from ambient_sidecar.preference import LEFT_BIAS, model_code, preference_handlers
 from ambient_sidecar.serve import HANDLERS, serve
 
 FEATURES = ["centroidMean", "onsetRate", "stereoWidth"]
@@ -19,6 +19,7 @@ HYPERPARAMETERS = {
     "biasScale": 1.0,
     "interceptScale": 2.0,
     "thumbsWeight": 1.0,
+    "modelCode": model_code(),
 }
 # Each feature's mean and spread in its own unit, so a fit that skips standardizing fails.
 FEATURE_CENTERS = np.array([1500.0, 0.5, 0.4])
@@ -169,7 +170,8 @@ def held_out_agreement(data: Synthetic, scores: Floats, seed: int) -> float:
 
 def test_the_fit_recovers_the_weights_signs_and_ranks_held_out_items(tmp_path: Path) -> None:
     data = Synthetic(200, seed=1)
-    set_path = write_set(tmp_path, "set", data, pairs_of(data, 200, seed=2))
+    # Fitted on the training half alone, so the basis never sees a held-out item.
+    set_path = write_set(tmp_path, "set", data, pairs_of(data, 200, seed=2), count=100)
     result = fit(set_path, tmp_path / "model.json")
     assert result["pairs"] == 200
     model = read_model(tmp_path / "model.json")
@@ -190,7 +192,8 @@ def test_variance_falls_as_pairs_are_added(tmp_path: Path) -> None:
     items = write_items(tmp_path, "items", data, list(range(100, 200)))
     variances: list[float] = []
     for count in (10, 40, 160):
-        set_path = write_set(tmp_path, f"set-{count}", data, pairs_of(data, count, seed=5))
+        pairs = pairs_of(data, count, seed=5)
+        set_path = write_set(tmp_path, f"set-{count}", data, pairs, count=100)
         model = tmp_path / f"model-{count}.json"
         fit(set_path, model)
         predicted = predict(model, items, tmp_path / f"scores-{count}.json")
@@ -228,7 +231,7 @@ def test_a_vibe_with_no_pairs_predicts_from_the_global_prior(tmp_path: Path) -> 
     assert all(v > g for v, g in zip(from_vibe["variance"], from_global["variance"], strict=True))
 
 
-def test_a_global_fit_with_no_ratings_at_all_predicts_zero_from_its_prior(tmp_path: Path) -> None:
+def test_a_prior_fit_with_no_ratings_at_all_predicts_zero(tmp_path: Path) -> None:
     data = Synthetic(10, seed=10)
     empty = write_set(tmp_path, "empty", data, [], count=0)
     result = fit(empty, tmp_path / "model.json")
@@ -236,7 +239,8 @@ def test_a_global_fit_with_no_ratings_at_all_predicts_zero_from_its_prior(tmp_pa
     items = write_items(tmp_path, "items", data, [0, 1])
     predicted = predict(tmp_path / "model.json", items, tmp_path / "scores.json")
     assert predicted["mean"] == [0.0, 0.0]
-    assert all(variance > 0 for variance in predicted["variance"])
+    # With no items, every column has no spread, so no term can tell two candidates apart.
+    assert predicted["variance"] == [0.0, 0.0]
 
 
 def test_thumbs_alone_fit_the_scores(tmp_path: Path) -> None:
@@ -246,7 +250,7 @@ def test_thumbs_alone_fit_the_scores(tmp_path: Path) -> None:
         {"item": i, "up": bool(rng.uniform() < 1 / (1 + np.exp(-data.utility[i])))}
         for i in range(100)
     ]
-    set_path = write_set(tmp_path, "set", data, [], thumbs=thumbs)
+    set_path = write_set(tmp_path, "set", data, [], thumbs=thumbs, count=100)
     result = fit(set_path, tmp_path / "model.json")
     assert (result["pairs"], result["thumbs"]) == (0, 100)
     model = read_model(tmp_path / "model.json")
@@ -321,7 +325,8 @@ def test_predict_refuses_items_with_other_feature_names(tmp_path: Path) -> None:
     [
         ({"pairs": [{"winner": 0, "loser": 99, "weight": 1.0, "winnerLeft": True}]}, "item 99"),
         ({"hyperparameters": {**HYPERPARAMETERS, "pcaDimension": -1}}, "pcaDimension"),
-        ({"hyperparameters": {"pcaDimension": 4}}, "weightScale"),
+        ({"hyperparameters": {"pcaDimension": 4, "modelCode": model_code()}}, "weightScale"),
+        ({"hyperparameters": {**HYPERPARAMETERS, "modelCode": "preference-old"}}, "modelCode"),
         ({"embeddings": "relative.f32"}, "absolute"),
     ],
 )
@@ -349,3 +354,42 @@ def test_an_embeddings_file_of_the_wrong_length_is_an_error_answer(tmp_path: Pat
         }
     )
     assert "12 bytes" in answer["error"]
+
+
+def test_preference_code_is_the_hash_every_set_must_name() -> None:
+    [answer] = run({"id": 1, "method": "preference_code", "params": {}})
+    assert answer == {"id": 1, "result": {"code": model_code()}}
+    assert model_code().startswith("preference-")
+
+
+def test_a_constant_or_unmeasured_column_cannot_move_a_candidates_variance(
+    tmp_path: Path,
+) -> None:
+    data = Synthetic(100, seed=23)
+    # Stereo width is the same on every training item, and onset rate is measured on one.
+    data.features[:, 2] = 0.4
+    set_path = write_set(tmp_path, "set", data, pairs_of(data, 60, seed=24))
+    record = json.loads(set_path.read_text())
+    for i, item in enumerate(record["items"]):
+        item["features"][1] = 0.5 if i == 0 else None
+    set_path.write_text(json.dumps(record))
+    fit(set_path, tmp_path / "model.json")
+
+    items = write_items(tmp_path, "items", data, [0, 0])
+    written = json.loads(items.read_text())
+    written["items"][1]["features"][1] = 1e6
+    written["items"][1]["features"][2] = 1e6
+    items.write_text(json.dumps(written))
+    predicted = predict(tmp_path / "model.json", items, tmp_path / "scores.json")
+    assert predicted["variance"][1] == predicted["variance"][0]
+    assert predicted["mean"][1] == predicted["mean"][0]
+
+
+def test_a_component_with_almost_no_variance_is_dropped(tmp_path: Path) -> None:
+    data = Synthetic(60, seed=25)
+    rng = np.random.default_rng(26)
+    # Two real directions, and noise whose variance is about 1e-6 of theirs.
+    plane = rng.standard_normal((60, 2)) @ rng.standard_normal((2, DIMENSION))
+    data.embeddings = (plane + 1e-3 * rng.standard_normal((60, DIMENSION))).astype(np.float32)
+    result = fit(write_set(tmp_path, "set", data, pairs_of(data, 20, seed=27)), tmp_path / "m")
+    assert result["clapDimension"] == 2
