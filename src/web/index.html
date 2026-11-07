@@ -10,6 +10,7 @@
   <body>
     <header>
       <h1>Ambient Studio</h1>
+      <a href="./evaluation.html">Evaluations</a>
       <p id="status" role="status" aria-live="polite">Loading the vibes…</p>
     </header>
     <main class="layout">
@@ -21,11 +22,29 @@
         <ul id="vibeList" class="list"></ul>
         <p id="noVibes" class="muted" hidden>No vibes yet. Press <kbd>n</kbd> to make one.</p>
       </section>
+      <section aria-labelledby="seeds-heading">
+        <h2 id="seeds-heading">Seed vibes</h2>
+        <p class="muted">
+          Starting points to load as vibes of your own, then edit. Each loads once while its vibe
+          is kept.
+        </p>
+        <ul id="seedList" class="list"></ul>
+      </section>
       <aside aria-label="Keys">
         <dl id="keys-list" class="keys"></dl>
       </aside>
     </main>
     <footer class="muted" id="engineVersion"></footer>
+    <template id="seed-item">
+      <li class="card">
+        <h3 data-part="name">seed</h3>
+        <p data-part="brief"></p>
+        <p>
+          <button type="button" data-part="load">Load it as a vibe</button>
+          <a href="./" data-part="loaded" hidden>Loaded</a>
+        </p>
+      </li>
+    </template>
     <template id="vibe-item">
       <li class="card">
         <h3><a href="./" data-part="link">vibe</a></h3>

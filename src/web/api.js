@@ -27,6 +27,12 @@ async function send(method, path, init) {
 /** The vibes route; a vibe's own routes are under it. */
 export const VIBES_PATH = "/api/vibes";
 
+/** The seed vibes route; `/<seed id>` under it loads one as a vibe. */
+export const SEED_VIBES_PATH = "/api/seed-vibes";
+
+/** The evaluations route: a POST starts one, a GET lists the reports and the running job. */
+export const EVALUATIONS_PATH = "/api/evaluations";
+
 /**
  * A session's route; its candidates, jobs and ratings are under it.
  * @param {number} sessionId

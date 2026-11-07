@@ -58,8 +58,9 @@ export const KEY_MAP = Object.freeze(
     list: [
       { action: "nextVibe", keys: ["j"], label: "next vibe" },
       { action: "previousVibe", keys: ["k"], label: "previous vibe" },
-      { action: "openVibe", keys: [ENTER], label: "open the vibe" },
+      { action: "openVibe", keys: [ENTER], label: "open the vibe, or load the seed" },
       { action: "newVibe", keys: ["n"], label: "new vibe" },
+      { action: "toEvaluations", keys: ["e"], label: "the evaluations" },
     ],
     vibe: [
       { action: "editBrief", keys: ["b"], label: "edit the brief" },
@@ -98,6 +99,18 @@ export const KEY_MAP = Object.freeze(
       { action: "cancelJob", keys: ["c"], label: "cancel the session's job" },
       { action: "stopSession", keys: ["Q"], label: "stop the session" },
       { action: "toVibe", keys: ["v"], label: "the vibe page" },
+    ],
+    evaluation: [
+      { action: "nextReport", keys: ["j"], label: "next report" },
+      { action: "previousReport", keys: ["k"], label: "previous report" },
+      leaveField,
+      {
+        action: "startEvaluation",
+        keys: ["S"],
+        label: "start an evaluation of the checked vibes, on omlx",
+      },
+      { action: "cancelEvaluation", keys: ["c"], label: "cancel the running evaluation" },
+      { action: "toList", keys: ["l"], label: "back to the vibe list" },
     ],
     ab: [
       { action: "playLeft", keys: ["1"], label: "play the left side" },
