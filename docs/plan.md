@@ -1539,3 +1539,50 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   commands, tooltips on everything, plain language, smaller type, a dashboard explaining the
   process, more progress detail, and a literal name for vibes. Steps 2m and 2n were added for
   this. The owner also listened to the first session's 25 s excerpts: "all sound pretty good".
+- 2026-11-06: 2m and 2n merged together, fast-forward to e1753ab, through an integration branch
+  that was reviewed as one tree. Effort per agent:
+  - 2m builder (Opus): 299k tokens, 232 tool calls, 50 min.
+  - 2n builder (Opus): 285k tokens, 124 tool calls, 22 min.
+  - Reviewer (Sonnet): 102k tokens, 30 tool calls, 5.3 min. PASS.
+  - Fix round (Sonnet): 84k tokens, 37 tool calls, 23 min.
+
+  What 2m changed:
+  - **Prompt notation.** The prompt writes `(T)` after a parameter's default where it wrote `name~`.
+  - **Thinking switch.** `queue.thinking` is sent as `chat_template_kwargs.enable_thinking` and
+    stored with each request and evaluation.
+  - **Automatic excerpts.** A candidates job renders each valid candidate's excerpt between model
+    requests.
+  - **One job per action.** A repeated job is refused with 409 `{error, jobId}`.
+  - **Progress.** It carries a plain step sentence.
+  - **Ratings.** Thumbs and macro feedback hold one live choice per candidate. A new choice marks
+    the old row removed as "replaced", and an undo marks every live row of that choice "undone".
+    Rows are never deleted.
+
+  What 2n changed:
+  - Ordinary navigation and buttons replace every key command.
+  - Every control has a full-sentence title, and every page has a muted help line.
+  - The dashboard opens with a card that explains the process.
+  - Pages say "brief" for vibe; routes and stored names are unchanged.
+  - The evaluation page becomes "Model test", in plain words.
+  - Jobs show a step sentence, a progress bar and elapsed time.
+  - Cards have Less | — | More controls and toggling thumbs.
+  - The look is shadcn-like, in 14px type.
+
+  What the review found:
+  - The two builders worked blind to each other's contract, and the review drove both together in
+    a browser. Results: one live state per choice, clear and undo working, and three quick asks
+    giving one job and two 409s.
+  - Should-fix: the owner's pre-2m rows hold two live choices, so clearing one brought the older
+    one back. The server now clears all of them, and the page reads choices from one source (the
+    candidates list).
+  - A failed poll no longer leaves the job buttons off.
+  - Stale parts of 0005 and 0030 were amended. Records 0031 and 0032.
+
+  Gate: 1068 tests, run twice. The orchestrator added `"thinking": true` to the owner's config so
+  it still loads.
+
+  Pending owner checks:
+  - In Safari 17.6 on mbp2015: layout and type size, tooltips, the segmented controls and dark mode.
+  - Whether the help wording is plain enough.
+  - A small model test with `thinking: false`. Reasoning should come back from none of the
+    requests, latency should fall from about 55 s, and validity should hold.
