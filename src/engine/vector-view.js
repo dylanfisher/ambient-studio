@@ -158,15 +158,15 @@ function moveEnds(descriptor, trajectory, moves) {
 }
 
 /**
- * A copy of `genome` with each path set from its position in `vector`. Positions outside 0..1
- * clamp to the range. Throws on a path that doesn't fit the genome, a length mismatch, or a
- * result that isn't a valid genome, such as fades longer than the timeline.
+ * A copy of `genome` with each path set from its position in `vector`, not validated, so a
+ * caller can report why a moved genome is invalid. Positions outside 0..1 clamp to the range.
+ * Throws on a path that doesn't fit the genome or a length mismatch.
  * @param {Genome} genome
  * @param {readonly string[]} paths
  * @param {readonly number[]} vector
- * @returns {Genome}
+ * @returns {Record<string, unknown>}
  */
-export function fromVector(genome, paths, vector) {
+export function fromVectorUnchecked(genome, paths, vector) {
   if (paths.length !== vector.length) {
     throw new Error(`fromVector: ${paths.length} paths but ${vector.length} values`);
   }
@@ -190,5 +190,20 @@ export function fromVector(genome, paths, vector) {
   for (const [trajectory, { descriptor, ...moves }] of trajectories) {
     moveEnds(descriptor, trajectory, moves);
   }
-  return requireGenome(copy, "fromVector gave an invalid genome");
+  return copy;
+}
+
+/**
+ * `fromVectorUnchecked`, validated. Throws as it does, and on a result that isn't a valid
+ * genome, such as fades longer than the timeline.
+ * @param {Genome} genome
+ * @param {readonly string[]} paths
+ * @param {readonly number[]} vector
+ * @returns {Genome}
+ */
+export function fromVector(genome, paths, vector) {
+  return requireGenome(
+    fromVectorUnchecked(genome, paths, vector),
+    "fromVector gave an invalid genome",
+  );
 }
