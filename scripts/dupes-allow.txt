@@ -40,7 +40,7 @@ literal "application/json" | files src/server/omlx-queue.js src/server/routing.j
 literal "ERR_STREAM_PREMATURE_CLOSE" | files src/server/serve-audio.js src/server/write-flac.js | Node's code for a stream closed early: a listener dropping a WAV in serve-audio, flac's stdin in write-flac
 literal "IPv6" | files src/server/allowed-host.js src/server/main.js | the address family Node reports: an interface's in allowed-host, the bound socket's in main; each brackets an IPv6 address for a URL or Host
 literal "name" | files src/domain/target-schema.js src/engine/tuning.js src/server/vibe-store.js | a feature entry's key, indexed in target-schema's bounds type; a tuning file's key in tuning.js; a vibe draft's field in vibe-store
-literal "macro" | files src/domain/lock-path.js src/server/rating-routes.js src/server/rating-store.js | a lock path's kind for a macro in lock-path, the macro feedback body's field naming the macro in rating-routes, a feedback kind in rating-store
+literal "macro" | files src/domain/lock-path.js src/domain/rating-values.js src/server/rating-routes.js | a lock path's kind for a macro in lock-path, the macro feedback body's field naming the macro in rating-routes, a feedback kind in rating-values
 literal "candidates" | files src/server/session-routes.js src/server/store.js | the kind of the job that asks for candidates in session-routes, the candidates table's name in store.js
 literal "recording" | files src/engine/descriptor.js src/engine/field-recording.js | the descriptor kind for a recording's hash, and the field-recording voice's type name
 literal "sha256" | files src/engine/descriptor.js src/server/sha256-hex.js | how the schema text names a recording's value, and the node:crypto algorithm name
