@@ -7,6 +7,7 @@ const TITLE = Object.freeze({
   candidates: "New candidates for this brief",
   excerpts: "Rendering missing excerpts",
   evaluation: "Model test",
+  agreement: "Taste model test",
   nudge: "Nudging a candidate",
   explore: "The model's variations of a candidate",
 });
