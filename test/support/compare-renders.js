@@ -3,6 +3,7 @@
 // against the windowed one.
 /** @import { Genome } from "../../src/engine/genome-schema.js" */
 /** @import { RenderResult } from "../../src/engine/render-plan.js" */
+/** @import { Samples } from "../../src/engine/render.js" */
 import { expect } from "vitest";
 import { SAMPLE_RATE } from "../../src/engine/render-plan.js";
 import { renderOffline } from "../../src/server/render-offline.js";
@@ -40,11 +41,11 @@ export function difference(result, reference) {
  * Renders `full` seconds from 0 and an excerpt of `length` seconds at `offset`, and checks the
  * excerpt against the same window of the full render within 0007's tolerance.
  * @param {Genome} genome
- * @param {{ seed: number; full: number; offset: number; length: number }} times
+ * @param {{ seed: number; full: number; offset: number; length: number; samples?: Samples }} times
  */
-export async function expectExcerptMatches(genome, { seed, full, offset, length }) {
-  const whole = await renderOffline(genome, { seed, duration: full });
-  const excerpt = await renderOffline(genome, { seed, duration: length, offset });
+export async function expectExcerptMatches(genome, { seed, full, offset, length, samples }) {
+  const whole = await renderOffline(genome, { seed, duration: full, samples });
+  const excerpt = await renderOffline(genome, { seed, duration: length, offset, samples });
   const from = Math.round(offset * SAMPLE_RATE);
   const window = {
     ...whole,
@@ -60,7 +61,7 @@ export async function expectExcerptMatches(genome, { seed, full, offset, length 
  * A render with every window created at once: without `suspend`, `render()` treats the context
  * as live.
  * @param {Genome} genome
- * @param {{ seed: number; duration: number }} options
+ * @param {{ seed: number; duration: number; samples?: Samples }} options
  */
 export const renderUpFront = (genome, options) =>
   renderOffline(genome, options, (ctx) =>

@@ -1,7 +1,8 @@
 # 0015. The export's sidecar JSON, file names and re-render check
 
 - **Date:** 2026-11-06
-- **Status:** accepted; provisional: owner to confirm
+- **Status:** accepted; provisional: owner to confirm; amended by
+  [0029](0029-sample-layer.md) (the `recordings` field)
 
 ## Context
 
@@ -92,3 +93,8 @@ the three files.
   ([0017](0017-phase-1-cli.md)). With `flac: false` no FLAC is written, and `files` and the
   returned paths have no `flac`; only the WAV and the JSON are staged and linked. `rerender`
   always writes the FLAC.
+- 2026-11-06: from step 2k ([0029](0029-sample-layer.md)). `exportRender` takes the recordings
+  folder's index as `recordings`, and `rerender` as its third input. When the genome plays a
+  field recording, the sidecar holds `recordings`, each file's path in the folder by its
+  SHA-256, before `genome`; `rerender` passes it on, so a recording gone from the folder fails
+  with the file's name. The render CLI takes `--recordings DIR` in both forms.

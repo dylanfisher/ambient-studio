@@ -34,6 +34,7 @@ export const FEATURE_EXTRACTOR = Object.freeze([
   "src/engine/effective-params.js",
   "src/engine/engine-version.js",
   "src/engine/event-slots.js",
+  "src/engine/field-recording.js",
   "src/engine/genome-schema.js",
   "src/engine/granular-cloud.js",
   "src/engine/highest-value.js",
@@ -61,4 +62,5 @@ export const FEATURE_EXTRACTOR = Object.freeze([
   "src/engine/validate-genome.js",
   "src/engine/validation-error.js",
   "src/engine/voice-registry.js",
+  "src/engine/window-buffer.js",
 ]);

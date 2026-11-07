@@ -4,6 +4,7 @@
 // expected hashes live in test/fixtures/golden/v<N>/<name>.json, one file per golden per engine
 // version, keyed by the kind of render and the platform. "raw" is the render quantized to
 // 24-bit; "normalized" is the PCM `exportRender` writes, after normalization and limiting.
+/** @import { RecordingEntry } from "../../src/server/recording-index.js" */
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
@@ -15,6 +16,8 @@ import { SAMPLE_RATE } from "../../src/engine/render-plan.js";
 import { requireGenome } from "../../src/engine/validate-genome.js";
 import { encodePcm24, FULL_SCALE, PCM24_BYTES } from "../../src/server/encode-pcm24.js";
 import { exportRender } from "../../src/server/export-render.js";
+import { loadSamples } from "../../src/server/load-samples.js";
+import { indexRecordings } from "../../src/server/recording-index.js";
 import { renderOffline } from "../../src/server/render-offline.js";
 import { rendererVersions } from "../../src/server/renderer-versions.js";
 
@@ -124,13 +127,25 @@ function goldenWindows(genome, kind) {
   ];
 }
 
+/**
+ * The synthetic recordings the golden genomes' recording voices name (decision 0029), made from
+ * noise and tones with ffmpeg at 44.1 kHz, so every golden of the voice runs the resampler.
+ */
+export const FIXTURE_RECORDINGS = join(root, "test/fixtures/recordings");
+
+/** @type {Promise<RecordingEntry[]> | undefined} */
+let fixtureIndex;
+/** The fixture folder's index, read once a process. */
+const fixtureRecordings = () => {
+  fixtureIndex ??= indexRecordings(FIXTURE_RECORDINGS);
+  return fixtureIndex;
+};
+
 /** @type {GoldenRender} */
 export async function renderRaw(genome, { seed, offset, duration }) {
-  const result = await renderOffline(requireGenome(genome, "a golden genome"), {
-    seed,
-    offset,
-    duration,
-  });
+  const normalized = requireGenome(genome, "a golden genome");
+  const { samples } = await loadSamples(normalized, await fixtureRecordings());
+  const result = await renderOffline(normalized, { seed, offset, duration, samples });
   return result.channels;
 }
 
@@ -171,6 +186,7 @@ export async function renderNormalized(genome, { seed, offset, duration }) {
       duration,
       target: normalized.loudness,
       outDir,
+      recordings: await fixtureRecordings(),
     });
     return decodeWav(await readFile(paths.wav));
   } finally {

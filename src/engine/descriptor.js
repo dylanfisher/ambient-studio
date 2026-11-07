@@ -48,7 +48,16 @@ import { show } from "./validation-error.js";
  * @property {When} [when]
  */
 
-/** @typedef {NumberDescriptor | EnumDescriptor | BoolDescriptor} Descriptor */
+/**
+ * A field recording, named by the SHA-256 of its file (decision 0029). It has no default: a
+ * voice that plays one names it.
+ * @typedef {object} RecordingDescriptor
+ * @property {"recording"} kind
+ * @property {string} description
+ * @property {When} [when]
+ */
+
+/** @typedef {NumberDescriptor | EnumDescriptor | BoolDescriptor | RecordingDescriptor} Descriptor */
 
 /** @typedef {Readonly<Record<string, Descriptor>>} DescriptorTable */
 
@@ -59,9 +68,11 @@ import { show } from "./validation-error.js";
  *   ? V
  *   : D extends { kind: "bool" }
  *     ? boolean
- *     : D extends { trajectory: true }
- *       ? number | Trajectory
- *       : number} ValueOf
+ *     : D extends { kind: "recording" }
+ *       ? string
+ *       : D extends { trajectory: true }
+ *         ? number | Trajectory
+ *         : number} ValueOf
  */
 
 /**
@@ -145,6 +156,22 @@ export function choice(spec) {
  * @returns {BoolDescriptor}
  */
 export const flag = (spec) => Object.freeze({ kind: "bool", ...spec });
+
+/** A recording's name: the SHA-256 of its file, in lowercase hex. */
+const RECORDING_HASH = /^[0-9a-f]{64}$/;
+
+/**
+ * @param {{ description: string }} spec
+ * @returns {RecordingDescriptor}
+ */
+export const recording = (spec) => Object.freeze({ kind: "recording", ...spec });
+
+/**
+ * Whether a descriptor names a field recording, which only the server can supply.
+ * @param {Descriptor} descriptor
+ * @returns {descriptor is RecordingDescriptor}
+ */
+export const isRecording = (descriptor) => descriptor.kind === "recording";
 
 /**
  * Whether a descriptor is a number or an int, the kinds with a range and a scale.
@@ -236,6 +263,14 @@ export function checkValue(descriptor, value, path, errors) {
     errors.push({ path, message: `must be one of ${values}, got ${show(value)}` });
     return undefined;
   }
+  if (isRecording(descriptor)) {
+    if (typeof value === "string" && RECORDING_HASH.test(value)) return value;
+    errors.push({
+      path,
+      message: `must be a listed recording's sha256, 64 lowercase hex characters, got ${show(value)}`,
+    });
+    return undefined;
+  }
   if (descriptor.kind === "bool") {
     if (typeof value === "boolean") return value;
     errors.push({ path, message: `must be true or false, got ${show(value)}` });
@@ -259,6 +294,7 @@ export function checkValue(descriptor, value, path, errors) {
  * @param {Descriptor} descriptor
  */
 export function valueText(descriptor) {
+  if (isRecording(descriptor)) return "sha256";
   if (!isNumeric(descriptor)) return choices(descriptor).join("|");
   const { kind, min, max, unit } = descriptor;
   return `${min}..${max}${unit ? ` ${unit}` : ""}${kind === "int" ? " int" : ""}`;

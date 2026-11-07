@@ -1,8 +1,8 @@
 // Reads the production registry only, so every voice added to it counts toward the limit.
 import { describe, expect, test } from "vitest";
 import { GLOBAL_PARAMS, MACROS, VOICE_PARAMS } from "../../src/engine/genome-schema.js";
-import { schemaText } from "../../src/engine/schema-text.js";
-import { voiceTypeIds } from "../../src/engine/voice-registry.js";
+import { recordingVoiceText, schemaText } from "../../src/engine/schema-text.js";
+import { selfContainedVoiceTypeIds, voiceTypeIds } from "../../src/engine/voice-registry.js";
 
 describe("schemaText", () => {
   test("stays under 3,000 characters for the full schema", () => {
@@ -17,7 +17,7 @@ describe("schemaText", () => {
       ...Object.keys(GLOBAL_PARAMS),
       ...Object.keys(MACROS),
       ...Object.keys(VOICE_PARAMS),
-      ...voiceTypeIds(),
+      ...selfContainedVoiceTypeIds(),
     ];
     for (const name of names)
       expect(text).toMatch(new RegExp(`(^ *(type )?"?|[{,])${name}\\b`, "m"));
@@ -42,5 +42,16 @@ describe("schemaText", () => {
     expect(text).toMatch(/^name~ .*up to 64.*timeline seconds/m);
     expect(text).toMatch(/^voices: up to 16 /m);
     expect(text).toMatch(/^ every voice, start and end in timeline seconds:$/m);
+  });
+
+  test("leaves out the recording voice, whose lines come apart for the prompt to add", () => {
+    expect(voiceTypeIds()).toContain("recording");
+    expect(schemaText()).not.toMatch(/"recording"/);
+    const text = recordingVoiceText();
+    expect(text).toMatch(/^ type "recording": /);
+    expect(text).toMatch(/^ {2}recording sha256 required /m);
+    expect(text).toMatch(/^ {2}cutoff~ 100\.\.20000 Hz =20000 /m);
+    // The prompt adds these lines and the list to the base text's 3,000.
+    expect(text.length).toBeLessThan(600);
   });
 });

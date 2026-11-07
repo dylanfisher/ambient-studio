@@ -3,10 +3,12 @@
 // the owner's request adds it to the job runner.
 /** @import { Candidate } from "./generation-store.js" */
 /** @import { JobContext } from "./job-runner.js" */
+/** @import { RecordingEntry } from "./recording-index.js" */
 /** @import { ExcerptRequest } from "./render-excerpt.js" */
 /** @import { App } from "./routing.js" */
 import { excerptRequest } from "./candidate-excerpt.js";
 import { generateCandidates } from "./generate-candidates.js";
+import { indexRecordings } from "./recording-index.js";
 import { renderExcerpts } from "./render-excerpt.js";
 
 /** How many candidates one request asks for when it doesn't say. */
@@ -20,6 +22,24 @@ const STREAM_SEEDS = 2 ** 32;
  * @typedef {{ candidateId: number, renderId: number }} CandidateRender
  */
 
+/** Each app's last index of its recordings folder, so a job re-reads only changed files. */
+/** @type {WeakMap<App, RecordingEntry[]>} */
+const lastIndex = new WeakMap();
+
+/**
+ * The recordings folder's index for one job (decision 0029), or none when the config sets no
+ * folder. Read once when the job starts, so every candidate and excerpt in it sees one index.
+ * @param {App} app
+ * @returns {Promise<RecordingEntry[]>}
+ */
+async function jobRecordings(app) {
+  const folder = app.config.fieldRecordings;
+  if (folder === null) return [];
+  const index = await indexRecordings(folder, lastIndex.get(app) ?? []);
+  lastIndex.set(app, index);
+  return index;
+}
+
 /**
  * @typedef {object} CandidateJobResult
  * @property {string} requestGroup
@@ -32,9 +52,10 @@ const STREAM_SEEDS = 2 ** 32;
  * @param {App} app
  * @param {Candidate[]} candidates
  * @param {JobContext} job
+ * @param {readonly RecordingEntry[]} recordings the job's index
  * @returns {Promise<CandidateRender[]>}
  */
-async function renderFor(app, candidates, job) {
+async function renderFor(app, candidates, job, recordings) {
   /** @type {{ candidate: Candidate, request: ExcerptRequest }[]} */
   const wanted = [];
   for (const candidate of candidates) {
@@ -46,6 +67,7 @@ async function renderFor(app, candidates, job) {
     app.paths.renderCache,
     wanted.map(({ request }) => request),
     job,
+    recordings,
   );
   return rendered.map(({ render }, i) => ({
     candidateId: /** @type {{ candidate: Candidate }} */ (wanted[i]).candidate.id,
@@ -63,6 +85,7 @@ async function renderFor(app, candidates, job) {
  */
 export function candidateJob(app, { vibeId, sessionId, count }) {
   return async (job) => {
+    const recordings = await jobRecordings(app);
     const cancelRequests = () => app.queue.cancel();
     job.signal.addEventListener("abort", cancelRequests);
     /** @type {Awaited<ReturnType<typeof generateCandidates>>} */
@@ -73,12 +96,13 @@ export function candidateJob(app, { vibeId, sessionId, count }) {
         seed: Math.floor(app.random() * STREAM_SEEDS),
         sessionId,
         locks: [],
+        recordings,
       });
     } finally {
       job.signal.removeEventListener("abort", cancelRequests);
     }
     const { requestGroup, candidates } = generated;
-    const excerpts = await renderFor(app, candidates, job);
+    const excerpts = await renderFor(app, candidates, job, recordings);
     return { requestGroup, candidateIds: candidates.map(({ id }) => id), excerpts };
   };
 }
@@ -91,5 +115,7 @@ export function candidateJob(app, { vibeId, sessionId, count }) {
  * @returns {(job: JobContext) => Promise<{ excerpts: CandidateRender[] }>}
  */
 export function excerptJob(app, candidates) {
-  return async (job) => ({ excerpts: await renderFor(app, candidates, job) });
+  return async (job) => ({
+    excerpts: await renderFor(app, candidates, job, await jobRecordings(app)),
+  });
 }

@@ -1,17 +1,19 @@
 // The render CLI (decision 0017): its argument parser, and runs on 3 s of the drone golden genome
 // into temp folders.
 import { execFile } from "node:child_process";
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { parseRenderArgs, renderCli } from "../../src/server/render-cli.js";
+import { FIXTURE_RECORDINGS } from "../support/golden.js";
 
 const run = promisify(execFile);
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const genomePath = join(root, "src/engine/genomes/drone.json");
+const recordingGenomePath = join(root, "src/engine/genomes/field-recording.json");
 
 /** @type {string} */
 let tmp;
@@ -44,6 +46,17 @@ describe("parseRenderArgs", () => {
       sidecarPath: "e.json",
       outDir: "o",
     });
+  });
+
+  test("reads the recordings folder in either form", () => {
+    expect(parseRenderArgs(["--from", "e.json", "--out", "o", "--recordings", "r"])).toEqual({
+      sidecarPath: "e.json",
+      outDir: "o",
+      recordingsDir: "r",
+    });
+    expect(
+      parseRenderArgs(["g.json", "--seed=1", "--duration=3", "--out=o", "--recordings=r"]),
+    ).toMatchObject({ genomePath: "g.json", recordingsDir: "r" });
   });
 
   test.each([
@@ -99,6 +112,35 @@ describe("renderCli", () => {
     const rerendered = await renderCli(["--from", exported.paths.json, "--out", again], () => {});
     expect(rerendered.sidecar.pcmSha256).toBe(exported.sidecar.pcmSha256);
     expect((await readdir(again)).length).toBe(3);
+  });
+
+  test("a genome that plays field recordings exports and re-renders through --from with --recordings", async () => {
+    const dir = join(tmp, "recordings");
+    const recordings = ["--recordings", FIXTURE_RECORDINGS];
+    const made = await renderCli(
+      [recordingGenomePath, "--seed", "2", "--duration", "3", "--out", dir, ...recordings],
+      () => {},
+    );
+    expect(made.sidecar.recordings).toEqual({
+      "810ab2357cb6dd62882afd92502fc013609b1bb326a5ff50873513b125fb0d3f": "brown-mono.flac",
+      d5b8145b3639bd1c0891315ece68c9ec5fa0e23924e485d94467ac0fbed4faa5: "noise-tone.wav",
+    });
+    const from = ["--from", made.paths.json];
+    const again = await renderCli(
+      [...from, "--out", join(tmp, "recordings-again"), ...recordings],
+      () => {},
+    );
+    expect(again.sidecar.pcmSha256).toBe(made.sidecar.pcmSha256);
+    // Without the folder, and from a folder missing a file, it fails naming the file.
+    await expect(renderCli([...from, "--out", join(tmp, "r3")], () => {})).rejects.toThrow(
+      /no recordings folder was given/,
+    );
+    const partial = join(tmp, "partial");
+    await mkdir(partial);
+    await copyFile(join(FIXTURE_RECORDINGS, "brown-mono.flac"), join(partial, "brown-mono.flac"));
+    await expect(
+      renderCli([...from, "--out", join(tmp, "r4"), "--recordings", partial], () => {}),
+    ).rejects.toThrow(/recording noise-tone\.wav \(sha256 d5b8145b/);
   });
 
   test("--no-flac writes only the WAV and the sidecar", async () => {

@@ -2,12 +2,14 @@
 // prints what it wrote. `./scripts/render` runs this file.
 /** @import { Export } from "./export-render.js" */
 import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { requireGenome } from "../engine/validate-genome.js";
 import { exportRender, rerender } from "./export-render.js";
+import { indexRecordings } from "./recording-index.js";
 
-const USAGE = `usage: ./scripts/render <genome.json> --seed N --duration S --out DIR [--offset S] [--no-flac]
-       ./scripts/render --from <export.json> --out DIR`;
+const USAGE = `usage: ./scripts/render <genome.json> --seed N --duration S --out DIR [--offset S] [--no-flac] [--recordings DIR]
+       ./scripts/render --from <export.json> --out DIR [--recordings DIR]`;
 
 /** Exit status for a command line the parser refuses. */
 const USAGE_EXIT = 2;
@@ -23,12 +25,14 @@ class UsageError extends Error {}
  * @property {number} offset timeline seconds
  * @property {boolean} flac
  * @property {string} outDir
+ * @property {string} [recordingsDir] the field-recordings folder, for a genome that plays one
  */
 
 /**
  * @typedef {object} Rerender
  * @property {string} sidecarPath
  * @property {string} outDir
+ * @property {string} [recordingsDir]
  */
 
 /**
@@ -61,6 +65,7 @@ function readArgs(argv) {
         out: { type: "string" },
         from: { type: "string" },
         "no-flac": { type: "boolean" },
+        recordings: { type: "string" },
       },
     });
   } catch (error) {
@@ -79,12 +84,15 @@ function readArgs(argv) {
 export function parseRenderArgs(argv) {
   const { values, positionals } = readArgs(argv);
   if (values.out === undefined) throw new UsageError("--out is required");
+  const folder = values.recordings === undefined ? {} : { recordingsDir: values.recordings };
   if (values.from !== undefined) {
-    const { from, out, ...others } = values;
+    const { from, out, recordings, ...others } = values;
     if (positionals.length > 0 || Object.keys(others).length > 0) {
-      throw new UsageError("--from takes only --out; the sidecar holds everything else");
+      throw new UsageError(
+        "--from takes only --out and --recordings; the sidecar holds everything else",
+      );
     }
-    return { sidecarPath: from, outDir: out };
+    return { sidecarPath: from, outDir: out, ...folder };
   }
   if (positionals.length !== 1) {
     throw new UsageError(`expected one genome file, got ${positionals.length}`);
@@ -99,6 +107,7 @@ export function parseRenderArgs(argv) {
         : numberArg("offset", values.offset, DECIMAL, "a number of seconds from 0"),
     flac: !values["no-flac"],
     outDir: values.out,
+    ...folder,
   };
 }
 
@@ -110,10 +119,14 @@ export function parseRenderArgs(argv) {
  */
 export async function renderCli(argv, print) {
   const args = parseRenderArgs(argv);
+  const recordings =
+    args.recordingsDir === undefined
+      ? undefined
+      : await indexRecordings(resolve(args.recordingsDir));
   /** @type {Export} */
   let exported;
   if ("sidecarPath" in args) {
-    exported = await rerender(args.sidecarPath, args.outDir);
+    exported = await rerender(args.sidecarPath, args.outDir, recordings);
   } else {
     const genome = requireGenome(
       JSON.parse(await readFile(args.genomePath, "utf8")),
@@ -127,6 +140,7 @@ export async function renderCli(argv, print) {
       target: genome.loudness,
       outDir,
       flac,
+      recordings,
     });
   }
   const { paths, sidecar } = exported;

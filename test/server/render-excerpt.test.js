@@ -11,11 +11,13 @@ import { integratedLoudness } from "../../src/domain/integrated-loudness.js";
 import { NEAR_SILENCE } from "../../src/domain/render-checks.js";
 import { excerptOffset } from "../../src/engine/excerpt-offset.js";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
+import recordingGenome from "../../src/engine/genomes/field-recording.json" with { type: "json" };
 import noiseBedGenome from "../../src/engine/genomes/noise-bed.json" with { type: "json" };
 import { requireGenome } from "../../src/engine/validate-genome.js";
 import { putGenome } from "../../src/server/generation-store.js";
 import { createJobRunner } from "../../src/server/job-runner.js";
 import { PRODUCER } from "../../src/server/producer.js";
+import { indexRecordings } from "../../src/server/recording-index.js";
 import {
   NORMALIZE_FAILED,
   renderExcerpt,
@@ -24,7 +26,7 @@ import {
 } from "../../src/server/render-excerpt.js";
 import { putRender } from "../../src/server/render-store.js";
 import { createVibe } from "../../src/server/vibe-store.js";
-import { decodeWav } from "../support/golden.js";
+import { decodeWav, FIXTURE_RECORDINGS } from "../support/golden.js";
 import { tempStore } from "../support/temp-store.js";
 
 v8.setFlagsFromString("--expose-gc");
@@ -96,6 +98,21 @@ describe("renderExcerpt", () => {
       raw: { loudness: expect.any(Number) },
       heard: { gainDb: expect.any(Number), centroidMean: expect.any(Number) },
     });
+  });
+
+  test("plays a genome's field recordings from the index it is given, and fails without one", async () => {
+    const { store, cache } = await setup();
+    const vibe = createVibe(store, { name: "f", brief: "b", constraints: {}, softTargets: {} });
+    const { id } = putGenome(store, vibe.id, recordingGenome);
+    const request = { genomeId: id, seed: SEED, target: TARGET };
+    await expect(renderExcerpt(store, cache, request)).rejects.toThrow(
+      /plays a field recording, and no recordings folder was given/,
+    );
+    const recordings = await indexRecordings(FIXTURE_RECORDINGS);
+    const { render } = await renderExcerpt(store, cache, request, recordings);
+    expect(render.checks).toEqual({ ok: true, findings: [] });
+    const channels = decodeWav(await readFile(join(cache, render.file)));
+    expect(Math.abs(integratedLoudness(channels, 48000) - TARGET)).toBeLessThanOrEqual(0.5);
   });
 
   test("reuses a cached excerpt, and renders again under another producer or target", async () => {

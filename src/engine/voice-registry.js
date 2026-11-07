@@ -7,7 +7,9 @@
 /** @import { MacroRow } from "./macro-table.js" */
 /** @import { VoiceSetup, VoiceWindow } from "./render.js" */
 import { bell } from "./bell.js";
+import { isRecording } from "./descriptor.js";
 import { drone } from "./drone.js";
+import { fieldRecording } from "./field-recording.js";
 import { VOICE_KEYS, VOICE_PARAMS } from "./genome-schema.js";
 import { granularCloud } from "./granular-cloud.js";
 import { checkMacroRows } from "./macro-table.js";
@@ -40,7 +42,7 @@ import { pad } from "./pad.js";
  * a list built while this module loads would hold it before it exists.
  * @returns {VoiceType[]}
  */
-const builtIn = () => [bell, drone, granularCloud, noiseBed, pad];
+const builtIn = () => [bell, drone, fieldRecording, granularCloud, noiseBed, pad];
 
 /** @type {Map<string, VoiceType> | undefined} */
 let registered;
@@ -97,6 +99,19 @@ export function unregisterVoice(type) {
 
 /** @returns {string[]} every registered voice type, sorted */
 export const voiceTypeIds = () => [...voices().keys()].sort();
+
+/**
+ * Whether a voice of this type plays a field recording, which only the server can supply: such a
+ * type has a `recording` parameter, and `randomGenome` and the base schema text leave it out
+ * (decision 0029).
+ * @param {string} type
+ * @returns {boolean}
+ */
+export const usesRecordings = (type) =>
+  Object.values(requireVoiceType(type).params).some(isRecording);
+
+/** @returns {string[]} the registered voice types that play no recording, sorted */
+export const selfContainedVoiceTypeIds = () => voiceTypeIds().filter((t) => !usesRecordings(t));
 
 /**
  * @param {string} type

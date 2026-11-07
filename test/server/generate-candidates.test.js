@@ -117,7 +117,13 @@ describe("generateCandidates", () => {
       { tokens: ['{"intent": "a drone", "genome": {"dura'], finishReason: "length" },
     );
     const { requestGroup, candidates } = await drive(
-      generateCandidates(vibe.id, 3, store, queue, { config, seed: 7, sessionId: null, locks }),
+      generateCandidates(vibe.id, 3, store, queue, {
+        config,
+        seed: 7,
+        sessionId: null,
+        locks,
+        recordings: [],
+      }),
     );
 
     // The repair of the second candidate is sent before the third candidate's request.
@@ -174,7 +180,13 @@ describe("generateCandidates", () => {
     addNote(store, { vibeId: vibe.id, text: "less shimmer" });
     omlx.script(says(answer(valid)), says(answer(valid)), says(answer(valid)), says(answer(valid)));
     const { requestGroup, candidates } = await drive(
-      generateCandidates(vibe.id, 4, store, queue, { config, seed: 11, sessionId: null, locks }),
+      generateCandidates(vibe.id, 4, store, queue, {
+        config,
+        seed: 11,
+        sessionId: null,
+        locks,
+        recordings: [],
+      }),
     );
     const bodies = omlx.requests.map((r) => r.body);
     const generations = listRequestGroup(store, requestGroup);
@@ -185,6 +197,7 @@ describe("generateCandidates", () => {
         locks,
         examples: [],
         budgetTokens: config.queue.contextBudgetTokens,
+        recordings: [],
       },
     );
     for (const [i, body] of bodies.entries()) {
@@ -208,7 +221,7 @@ describe("generateCandidates", () => {
     /** @param {Awaited<ReturnType<typeof setup>>} run */
     const generate = async (run) => {
       run.omlx.script(says(answer(valid)), says(answer(valid)));
-      const options = { config: run.config, seed: 3, sessionId: null, locks: [] };
+      const options = { config: run.config, seed: 3, sessionId: null, locks: [], recordings: [] };
       const made = await run.drive(
         generateCandidates(run.vibe.id, 2, run.store, run.queue, options),
       );
@@ -230,7 +243,13 @@ describe("generateCandidates", () => {
       says(badSchema),
     );
     const { requestGroup, candidates } = await drive(
-      generateCandidates(vibe.id, 4, store, queue, { config, seed: 5, sessionId: null, locks }),
+      generateCandidates(vibe.id, 4, store, queue, {
+        config,
+        seed: 5,
+        sessionId: null,
+        locks,
+        recordings: [],
+      }),
     );
     expect(candidates.map((c) => c.rejectReason)).toEqual([
       REJECT_REASON.noJson,
@@ -257,7 +276,13 @@ describe("generateCandidates", () => {
     const {
       candidates: [candidate],
     } = await drive(
-      generateCandidates(vibe.id, 1, store, queue, { config, seed: 9, sessionId: null, locks }),
+      generateCandidates(vibe.id, 1, store, queue, {
+        config,
+        seed: 9,
+        sessionId: null,
+        locks,
+        recordings: [],
+      }),
     );
     const [firstBody, repairBody] = omlx.requests.map((r) => r.body);
     expect(repairBody?.messages.slice(0, 2)).toEqual(firstBody?.messages);
@@ -271,9 +296,49 @@ describe("generateCandidates", () => {
     expect(getGeneration(store, candidate?.generationId ?? 0)?.repairRound).toBe(1);
   });
 
+  test("lists the recordings in the prompt, and repairs a genome naming one not in the index", async () => {
+    const { omlx, config, queue, store, vibe, drive } = await setup();
+    const { generateCandidates } = await load();
+    const listed = "1".repeat(64);
+    const recordings = [
+      { file: "rain.wav", hash: listed, duration: 30, channels: 2, sampleRate: 48000 },
+    ];
+    /** @param {string} hash */
+    const withRecording = (hash) => ({
+      ...valid,
+      voices: [...valid.voices, { id: "field", type: "recording", recording: hash, level: -20 }],
+    });
+    omlx.script(says(answer(withRecording("2".repeat(64)))), says(answer(withRecording(listed))));
+    const {
+      candidates: [candidate],
+    } = await drive(
+      generateCandidates(vibe.id, 1, store, queue, {
+        config,
+        seed: 9,
+        sessionId: null,
+        locks,
+        recordings,
+      }),
+    );
+    const [firstBody, repairBody] = omlx.requests.map((r) => r.body);
+    expect(firstBody?.messages[0].content).toContain(`${listed} 30 2 "rain.wav"`);
+    const index = valid.voices.length;
+    expect(repairBody?.messages[3].content).toContain(
+      `- $.voices[${index}].recording (schema): no recording in the folder has this sha256`,
+    );
+    expect(candidate?.rejectReason).toBe(null);
+    expect(listGenomes(store, vibe.id)).toHaveLength(1);
+  });
+
   test("a repair that would pass the context budget is not sent, and the candidate says so", async () => {
     // A budget the first prompt fits and the repair, which adds the answer, doesn't.
-    const probe = buildPrompt(revisionDraft, { notes: [], locks, examples: [], budgetTokens: 1e9 });
+    const probe = buildPrompt(revisionDraft, {
+      notes: [],
+      locks,
+      examples: [],
+      budgetTokens: 1e9,
+      recordings: [],
+    });
     const budget = estimateTokens(promptText(probe.messages)) + 50;
     const { omlx, config, queue, store, vibe, drive } = await setup({
       contextBudgetTokens: budget,
@@ -283,7 +348,13 @@ describe("generateCandidates", () => {
     const {
       candidates: [candidate],
     } = await drive(
-      generateCandidates(vibe.id, 1, store, queue, { config, seed: 9, sessionId: null, locks }),
+      generateCandidates(vibe.id, 1, store, queue, {
+        config,
+        seed: 9,
+        sessionId: null,
+        locks,
+        recordings: [],
+      }),
     );
     expect(omlx.requests).toHaveLength(1);
     if (!candidate) throw new Error("no candidate");
@@ -299,7 +370,7 @@ describe("generateCandidates", () => {
     const { omlx, config, queue, store, vibe, drive } = await setup();
     const { generateCandidates } = await load();
     omlx.script(says(answer(valid)));
-    const options = { config, seed: 2, sessionId: null, locks };
+    const options = { config, seed: 2, sessionId: null, locks, recordings: [] };
     await drive(generateCandidates(vibe.id, 1, store, queue, options));
     await expect(generateCandidates(vibe.id, 1, store, queue, options)).rejects.toThrow(
       /request group .* already exists/,
@@ -314,7 +385,13 @@ describe("generateCandidates", () => {
     expect(omlx.requests).toHaveLength(0);
     omlx.script(says(answer(valid)));
     await drive(
-      generateCandidates(vibe.id, 1, store, queue, { config, seed: 1, sessionId: null, locks }),
+      generateCandidates(vibe.id, 1, store, queue, {
+        config,
+        seed: 1,
+        sessionId: null,
+        locks,
+        recordings: [],
+      }),
     );
     expect(omlx.requests).toHaveLength(1);
   });
@@ -330,7 +407,13 @@ describe("generateCandidates keeps what phase 8 trains on", () => {
       says(answer(tooQuiet)),
     );
     const { requestGroup, candidates } = await drive(
-      generateCandidates(vibe.id, 2, store, queue, { config, seed: 4, sessionId: null, locks }),
+      generateCandidates(vibe.id, 2, store, queue, {
+        config,
+        seed: 4,
+        sessionId: null,
+        locks,
+        recordings: [],
+      }),
     );
     const generations = listRequestGroup(store, requestGroup);
     for (const [i, generation] of generations.entries()) {
@@ -345,7 +428,7 @@ describe("generateCandidates keeps what phase 8 trains on", () => {
     const { omlx, config, queue, store, vibe, drive } = await setup();
     const { generateCandidates } = await load();
     omlx.script(says(answer(valid)), { status: 500, body: "boom" });
-    const options = { config, seed: 6, sessionId: null, locks };
+    const options = { config, seed: 6, sessionId: null, locks, recordings: [] };
     await expect(drive(generateCandidates(vibe.id, 3, store, queue, options))).rejects.toThrow(
       "omlx answered HTTP 500: boom",
     );
@@ -374,7 +457,7 @@ describe("generateCandidates keeps what phase 8 trains on", () => {
     const { clock, omlx, config, queue, store, vibe } = await setup();
     const { generateCandidates } = await load();
     omlx.script(says(answer(tooQuiet)));
-    const options = { config, seed: 8, sessionId: null, locks };
+    const options = { config, seed: 8, sessionId: null, locks, recordings: [] };
     const work = generateCandidates(vibe.id, 2, store, queue, options);
     const settled = work.then(
       () => undefined,
@@ -403,7 +486,7 @@ describe("generateCandidates keeps what phase 8 trains on", () => {
     const { generateCandidates } = await load();
     const other = createVibe(store, { ...revisionDraft, name: "warm tide" });
     omlx.script(says(answer(valid)), says(answer(valid)));
-    const options = { config, seed: 12, sessionId: null, locks };
+    const options = { config, seed: 12, sessionId: null, locks, recordings: [] };
     const one = await drive(generateCandidates(vibe.id, 1, store, queue, options));
     const two = await drive(generateCandidates(other.id, 1, store, queue, options));
     expect(one.requestGroup).toBe(groupOf(vibe.id, 12));

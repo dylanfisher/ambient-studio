@@ -7,6 +7,7 @@
 /** @import { Genome } from "../engine/genome-schema.js" */
 /** @import { RenderResult } from "../engine/render-plan.js" */
 /** @import { JobContext } from "./job-runner.js" */
+/** @import { RecordingEntry } from "./recording-index.js" */
 /** @import { Render } from "./render-store.js" */
 /** @import { Store } from "./store.js" */
 import { existsSync } from "node:fs";
@@ -23,6 +24,7 @@ import { requireGenome } from "../engine/validate-genome.js";
 import { encodePcm24 } from "./encode-pcm24.js";
 import { requireFinite } from "./export-render.js";
 import { getGenome } from "./generation-store.js";
+import { loadSamples } from "./load-samples.js";
 import { PRODUCER } from "./producer.js";
 import { renderOffline } from "./render-offline.js";
 import { findRender, putRender } from "./render-store.js";
@@ -116,9 +118,11 @@ async function writeCached(folder, file, channels, sampleRate) {
  * @param {Store} store
  * @param {string} folder the render-cache folder
  * @param {ExcerptRequest} request
+ * @param {readonly RecordingEntry[]} [recordings] the recordings folder's index, which a genome
+ *   that plays a field recording needs; its files are decoded only when the excerpt isn't cached
  * @returns {Promise<Excerpt>}
  */
-export async function renderExcerpt(store, folder, { genomeId, seed, target }) {
+export async function renderExcerpt(store, folder, { genomeId, seed, target }, recordings) {
   const row = getGenome(store, genomeId);
   if (!row) throw new Error(`there is no genome ${genomeId} to render`);
   const genome = requireGenome(row.genome, `genome ${genomeId}`);
@@ -128,7 +132,8 @@ export async function renderExcerpt(store, folder, { genomeId, seed, target }) {
   const found = findRender(store, key);
   if (found && existsSync(join(folder, found.file))) return { render: found, cached: true };
 
-  const raw = await renderOffline(genome, { seed, duration, offset });
+  const { samples } = await loadSamples(genome, recordings);
+  const raw = await renderOffline(genome, { seed, duration, offset, samples });
   requireFinite(raw.channels);
   const { heard, checks } = heardAudio(raw, genome, target, renderChecks(raw, genome));
   const features = extractFeatures(raw, heard);
@@ -146,15 +151,16 @@ export async function renderExcerpt(store, folder, { genomeId, seed, target }) {
  * @param {string} folder the render-cache folder
  * @param {ExcerptRequest[]} requests
  * @param {JobContext} job
+ * @param {readonly RecordingEntry[]} [recordings] as `renderExcerpt` takes it
  * @returns {Promise<Excerpt[]>} in the order asked
  */
-export async function renderExcerpts(store, folder, requests, { signal, progress }) {
+export async function renderExcerpts(store, folder, requests, { signal, progress }, recordings) {
   /** @type {Excerpt[]} */
   const done = [];
   progress(0, requests.length);
   for (const request of requests) {
     signal.throwIfAborted();
-    done.push(await renderExcerpt(store, folder, request));
+    done.push(await renderExcerpt(store, folder, request, recordings));
     progress(done.length, requests.length);
   }
   return done;

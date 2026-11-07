@@ -44,6 +44,7 @@ async function renderDry(genome, seconds, windows) {
     from: 0,
     to: seconds,
     startFrame: 0,
+    samples: {},
     at: (time) => time,
     automate: (param, value) => {
       param.value = value(/** @type {any} */ (effectiveParams(genome, 0).voices[0]), 0);

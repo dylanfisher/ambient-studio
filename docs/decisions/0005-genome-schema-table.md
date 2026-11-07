@@ -1,7 +1,7 @@
 # 0005. The genome schema is one descriptor table, validated by code written here
 
 - **Date:** 2026-11-05
-- **Status:** accepted
+- **Status:** accepted; amended by [0029](0029-sample-layer.md) (a `recording` kind)
 
 ## Context
 
@@ -173,3 +173,8 @@ If `tsc` can't express that, the builder of step 1c records what it did instead.
     `effectiveParams` imports `effective-params.js`, which imports the registry back; when that
     voice's module is the first one loaded, a list built at load time would hold it before it
     exists.
+- 2026-11-06: from step 2k ([0029](0029-sample-layer.md)), provisional: owner to confirm. A fifth
+  descriptor kind, `recording`, holds the SHA-256 of a field recording in lowercase hex. It has
+  no default, so a voice that omits it is an error, and the schema text shows it as `required`.
+  `schemaText()` leaves out the voice types with such a parameter, and the prompt adds their
+  lines only when the folder holds recordings, so the base text stays 2,931 characters.
