@@ -123,7 +123,7 @@ async function loadSeeds() {
 async function loadSeed(id, name) {
   const vibe = await postJson(`${SEED_VIBES_PATH}/${encodeURIComponent(id)}`, {});
   await Promise.all([loadVibes(), loadSeeds()]);
-  status.say(`Loaded "${name}" as vibe ${vibe.id}.`);
+  status.say(`Loaded the seed ${name} as vibe ${vibe.id}.`);
   page.vibeList.querySelector("a")?.focus();
 }
 

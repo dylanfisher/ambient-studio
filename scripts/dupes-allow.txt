@@ -56,3 +56,4 @@ literal "abort" | files src/server/candidate-job.js src/server/evaluation-job.js
 literal "count" | files src/server/evaluation-routes.js src/server/session-routes.js | a body field of each route: candidates a session asks for, and candidates per vibe in an evaluation
 literal "/api/seed-vibes" | files src/server/vibe-routes.js src/web/api.js | the seed vibes route, declared by the server and requested by the pages, which talk to it only over HTTP and can't import it (map.md)
 literal "/api/evaluations" | files src/server/evaluation-routes.js src/web/api.js | the evaluations route, declared by the server and requested by the pages, which talk to it only over HTTP and can't import it (map.md)
+literal "evaluation" | files src/server/evaluation-routes.js src/web/evaluation.js | the evaluation job's kind on the server, and the evaluation page's view in its key table

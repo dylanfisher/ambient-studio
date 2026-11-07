@@ -105,7 +105,8 @@ function showReport(index) {
   page.firstTokenRepair.textContent = `Repairs: ${percentilesText(report.firstTokenMs.repair)}`;
   page.responseFormat.textContent = responseFormatText(report.responseFormat);
   for (const [i, item] of [...page.reportList.children].entries()) {
-    item.classList.toggle("selected", i === evaluations.length - 1 - index);
+    // The list runs newest first.
+    item.setAttribute("aria-current", String(i === evaluations.length - 1 - index));
   }
 }
 

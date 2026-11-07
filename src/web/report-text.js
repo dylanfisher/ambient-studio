@@ -24,7 +24,7 @@ export function rateText(rate) {
  * @param {Percentiles | null} found null when nothing was measured
  */
 export function percentilesText(found) {
-  if (found === null) return "none";
+  if (found === null) return "nothing measured";
   const { count, p50, p90, p95, max } = found;
   return `p50 ${seconds(p50)}, p90 ${seconds(p90)}, p95 ${seconds(p95)}, max ${seconds(max)} (${count} measured)`;
 }
@@ -34,7 +34,9 @@ export function percentilesText(found) {
  */
 export function rejectsText(counts) {
   const found = Object.entries(counts).filter(([, n]) => n > 0);
-  return found.length === 0 ? "none" : found.map(([reason, n]) => `${reason} ${n}`).join(", ");
+  return found.length === 0
+    ? "no rejects"
+    : found.map(([reason, n]) => `${reason} ${n}`).join(", ");
 }
 
 /** @type {Readonly<Record<ResponseFormatResult, string>>} */
