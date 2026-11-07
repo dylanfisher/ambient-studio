@@ -15,6 +15,7 @@
 /** @import { PlayedTracker } from "./played-tracker.js" */
 /** @import { StartJob, SteerControls } from "./steer-controls.js" */
 import { featuresText } from "../domain/features-text.js";
+import { macroTitles } from "../domain/macro-words.js";
 import { OPERATOR } from "../domain/operator.js";
 import { MACRO_DIRECTIONS, THUMBS } from "../domain/rating-values.js";
 import { validateTargets } from "../domain/validate-targets.js";
@@ -35,7 +36,6 @@ import { endedText, JOB_STATE } from "./job-progress.js";
 import { jobBox, TONE } from "./job-view.js";
 import { lockChoices } from "./lock-choices.js";
 import { macroOffer } from "./macro-offer.js";
-import { macroTitles } from "./macro-words.js";
 import { oneAtATime } from "./one-at-a-time.js";
 import { intentText, originText, rejectText } from "./origin-text.js";
 import { createPairSwap } from "./pair-swap.js";
