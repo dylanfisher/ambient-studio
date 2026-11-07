@@ -20,8 +20,29 @@ async function send(method, path, init) {
       cause: error,
     });
   }
-  if (!response.ok) throw new Error(value?.error ?? `${method} ${path}: ${response.status}`);
+  if (!response.ok) {
+    throw new ApiError(
+      value?.error ?? `${method} ${path}: ${response.status}`,
+      response.status,
+      value,
+    );
+  }
   return value;
+}
+
+/** A reply that isn't a 2xx: the server's message, with the status and the body it sent. */
+export class ApiError extends Error {
+  /**
+   * @param {string} message
+   * @param {number} status
+   * @param {any} body
+   */
+  constructor(message, status, body) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.body = body;
+  }
 }
 
 /** The vibes route; a vibe's own routes are under it. */
@@ -61,3 +82,22 @@ export const postJson = (path, body) =>
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
+
+/**
+ * Starts a job. The server refuses a job identical to one queued or running with a 409 naming
+ * it (decision 0031); then the page follows that job instead, and shows the server's sentence,
+ * since the owner's request is already being done.
+ * @param {string} path
+ * @param {Record<string, unknown>} body
+ * @returns {Promise<{ job: any, refused: string | null }>}
+ */
+export async function startJob(path, body) {
+  try {
+    return { job: await postJson(path, body), refused: null };
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 409) throw error;
+    const jobId = error.body?.jobId;
+    if (!Number.isInteger(jobId)) throw error;
+    return { job: await getJson(jobPath(jobId)), refused: error.message };
+  }
+}

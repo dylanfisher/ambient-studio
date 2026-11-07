@@ -1,13 +1,14 @@
-// The A/B view (decisions 0027 and 0028): two excerpts side by side in the order the server
-// drew, each with its own played tracker, rated a side, a tie or a skip. Time taken runs from
-// when the pair is shown.
+// The A/B view (decisions 0027, 0028 and 0032): two excerpts side by side in the order the
+// server drew, each with its own played tracker, rated a side, a tie or a skip, with an Undo for
+// the last rating. Time taken runs from when the pair is shown.
 /** @import { PlayedTracker } from "./played-tracker.js" */
 /** @import { StatusLine } from "./status-line.js" */
 import { OUTCOMES } from "../domain/rating-values.js";
 import { postJson, sessionPath } from "./api.js";
-import { seekBy, trackAudio } from "./audio-player.js";
+import { trackAudio } from "./audio-player.js";
 import { elementsById } from "./element-by-id.js";
 import { oneAtATime } from "./one-at-a-time.js";
+import { outcomeText } from "./outcome-text.js";
 import { createPlayedTracker } from "./played-tracker.js";
 
 const [, , TIE, SKIP] = OUTCOMES;
@@ -49,7 +50,16 @@ export function abView({ sessionId, status, onClose, onRated }) {
     abRightName: HTMLElement,
     abRightAudio: HTMLAudioElement,
     abRightReadout: HTMLElement,
+    abLeftWins: HTMLButtonElement,
+    abTie: HTMLButtonElement,
+    abRightWins: HTMLButtonElement,
+    abSkip: HTMLButtonElement,
+    abClose: HTMLButtonElement,
+    abUndoBox: HTMLElement,
+    abUndoLine: HTMLElement,
+    abUndo: HTMLButtonElement,
   });
+  const ratingButtons = [page.abLeftWins, page.abTie, page.abRightWins, page.abSkip];
   const elements = {
     left: {
       box: page.abLeft,
@@ -64,7 +74,7 @@ export function abView({ sessionId, status, onClose, onRated }) {
       readout: page.abRightReadout,
     },
   };
-  /** @type {{ pair: AbPair, left: Side, right: Side, active: Side, shownAt: number } | null} */
+  /** @type {{ pair: AbPair, left: Side, right: Side, shownAt: number } | null} */
   let shown = null;
   /** Unwires the sides' audio elements, which every pair reuses. */
   let wiring = new AbortController();
@@ -80,7 +90,6 @@ export function abView({ sessionId, status, onClose, onRated }) {
   /** @param {Side} next */
   function activate(next) {
     const { left, right } = current();
-    current().active = next;
     left.box.classList.toggle("active-side", next === left);
     right.box.classList.toggle("active-side", next === right);
   }
@@ -118,13 +127,6 @@ export function abView({ sessionId, status, onClose, onRated }) {
     return made;
   }
 
-  /** @param {Side} next */
-  async function play(next) {
-    activate(next);
-    otherOf(next).audio.pause();
-    if (next.audio.paused) await next.audio.play();
-  }
-
   function close() {
     if (!shown) return;
     shown.left.audio.pause();
@@ -140,17 +142,38 @@ export function abView({ sessionId, status, onClose, onRated }) {
   // One rating per pair: a second press while the first is posting does nothing.
   const rating = oneAtATime(() => send(/** @type {(typeof OUTCOMES)[number]} */ (chosen)));
   /** @param {(typeof OUTCOMES)[number]} outcome */
-  const rate = (outcome) => {
+  const rate = async (outcome) => {
     chosen = outcome;
-    return rating();
+    for (const button of ratingButtons) button.disabled = true;
+    try {
+      await rating();
+    } finally {
+      for (const button of ratingButtons) button.disabled = false;
+    }
   };
+
+  /** @type {any} the last rating stored, which Undo removes */
+  let last = null;
+  const undo = oneAtATime(async () => {
+    if (!last) throw new Error("No comparison to undo.");
+    page.abUndo.disabled = true;
+    try {
+      await postJson(`${sessionPath(sessionId)}/ab-ratings/${last.id}/remove`, {});
+    } finally {
+      page.abUndo.disabled = false;
+    }
+    last = null;
+    page.abUndoBox.hidden = true;
+    await onRated();
+    status.say("The last comparison was removed.");
+  });
 
   /** @param {(typeof OUTCOMES)[number]} outcome */
   async function send(outcome) {
     const { pair, left, right, shownAt } = current();
     const [aSide, bSide] = pair.leftSide === "a" ? [left, right] : [right, left];
     const timeTakenMs = performance.now() - shownAt;
-    await postJson(`${sessionPath(sessionId)}/ab-ratings`, {
+    last = await postJson(`${sessionPath(sessionId)}/ab-ratings`, {
       a: pair.a,
       b: pair.b,
       orderSeed: pair.orderSeed,
@@ -162,8 +185,11 @@ export function abView({ sessionId, status, onClose, onRated }) {
     close();
     await onRated();
     const played = (/** @type {Side} */ { tracker }) => `${Math.round(tracker.fraction() * 100)}%`;
+    const said = outcomeText({ outcome, leftSide: pair.leftSide });
+    page.abUndoLine.textContent = `Comparison saved: ${said}.`;
+    page.abUndoBox.hidden = false;
     status.say(
-      `A/B stored as ${outcome}: left played ${played(left)}, right ${played(right)}, ` +
+      `Comparison saved as ${said}: left played ${played(left)}, right ${played(right)}, ` +
         `${(timeTakenMs / 1000).toFixed(1)} s.`,
     );
   }
@@ -175,23 +201,14 @@ export function abView({ sessionId, status, onClose, onRated }) {
     return rate(leftWon ? leftSide : rightSide);
   };
 
+  page.abLeftWins.onclick = () => status.run(() => sideWins(true));
+  page.abRightWins.onclick = () => status.run(() => sideWins(false));
+  page.abTie.onclick = () => status.run(() => rate(TIE));
+  page.abSkip.onclick = () => status.run(() => rate(SKIP));
+  page.abClose.onclick = close;
+  page.abUndo.onclick = () => status.run(undo);
+
   return {
-    handlers: {
-      playLeft: () => play(current().left),
-      playRight: () => play(current().right),
-      playPause: async () => {
-        const { active } = current();
-        if (active.audio.paused) await play(active);
-        else active.audio.pause();
-      },
-      back: () => seekBy(current().active.audio, -1),
-      forward: () => seekBy(current().active.audio, 1),
-      leftWins: () => sideWins(true),
-      rightWins: () => sideWins(false),
-      tiePair: () => rate(TIE),
-      skipPair: () => rate(SKIP),
-      closePair: close,
-    },
     /**
      * @param {AbPair} pair
      * @param {{ a: AbCandidate, b: AbCandidate }} candidates by the pair's sides
@@ -203,7 +220,8 @@ export function abView({ sessionId, status, onClose, onRated }) {
       wiring = new AbortController();
       const left = side("left", onLeft);
       const right = side("right", onRight);
-      shown = { pair, left, right, active: left, shownAt: performance.now() };
+      shown = { pair, left, right, shownAt: performance.now() };
+      page.abUndoBox.hidden = true;
       activate(left);
       page.abView.hidden = false;
       page.abView.scrollIntoView();
