@@ -185,7 +185,7 @@ function fittedOn(vibe, prior) {
  * @param {AbortSignal} signal
  * @returns {Promise<string>}
  */
-async function readModelCode(app, signal) {
+export async function readModelCode(app, signal) {
   const { code } = await app.sidecar.request("preference_code", {}, { signal });
   return /** @type {string} */ (code);
 }

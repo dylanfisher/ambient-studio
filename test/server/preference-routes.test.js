@@ -35,3 +35,14 @@ test("a second POST while a fit job is unfinished is refused with its id", async
   expect(reply.status).toBe(409);
   expect(reply.json()).toMatchObject({ jobId: running.id });
 });
+
+test("GET /api/vibes/:vibeId/preference says there is no taste model yet", async () => {
+  const studio = await startStudio();
+  studios.push(studio);
+  const { vibe } = await studio.openSession();
+  const summary = await studio.ok("GET", `/api/vibes/${vibe.id}/preference`);
+  expect(summary).toMatchObject({ state: "none" });
+  expect(summary.text).toMatch(/^No taste model yet\. /);
+  const missing = await studio.server.api("GET", `/api/vibes/${vibe.id + 1}/preference`);
+  expect(missing.status).toBe(404);
+});

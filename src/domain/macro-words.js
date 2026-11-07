@@ -1,5 +1,6 @@
 // What more and less of each macro mean, in words, for the session page's choices and their
-// titles (decision 0032). A macro the schema adds without words here fails the titles test.
+// titles (decision 0032) and the taste summary (0047). A macro the schema adds without words
+// here fails the titles test.
 
 /** @type {Readonly<Record<string, { more: string, less: string }>>} */
 const WORDS = Object.freeze({
@@ -22,6 +23,12 @@ export function macroWords(macro) {
 }
 
 /**
+ * A macro's words after "should" or "to": "be brighter", "move more".
+ * @param {string} way one of `macroWords`' two
+ */
+export const macroVerb = (way) => `${/^(move|stay|sound)/.test(way) ? "" : "be "}${way}`;
+
+/**
  * The titles of a macro's Less, clear and More choices.
  * @param {string} macro
  */
@@ -29,7 +36,7 @@ export function macroTitles(macro) {
   const { more, less } = macroWords(macro);
   /** @param {string} way */
   const ask = (way) =>
-    `Tell the studio this candidate should ${/^(move|stay|sound)/.test(way) ? "" : "be "}${way}. Replaces any earlier ${macro} choice for this candidate.`;
+    `Tell the studio this candidate should ${macroVerb(way)}. Replaces any earlier ${macro} choice for this candidate.`;
   return {
     less: ask(less),
     clear: `Clear your ${macro} choice for this candidate, so it counts neither way.`,

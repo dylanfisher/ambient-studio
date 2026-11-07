@@ -66,6 +66,7 @@ const page = elementsById({
   ratingList: HTMLUListElement,
   noRatings: HTMLElement,
   revisionList: HTMLUListElement,
+  likedText: HTMLElement,
 });
 const idText = new URLSearchParams(location.search).get("id");
 const vibeId = idText === null ? null : Number(idText);
@@ -284,6 +285,21 @@ function showRatings({ ratings, feedback, sketches }) {
   page.noRatings.hidden = items.length > 0;
 }
 
+/**
+ * Fills "What you like" from the taste model (decision 0047). Apart from the rest of the page,
+ * since the server may start the sidecar to answer, and a failure there is shown in its place.
+ * @param {number} id
+ */
+async function showLiked(id) {
+  page.likedText.textContent = "Reading the taste model…";
+  try {
+    const { text } = await getJson(`${VIBES_PATH}/${id}/preference`);
+    page.likedText.textContent = text;
+  } catch (error) {
+    page.likedText.textContent = `Couldn't read the taste model: ${/** @type {Error} */ (error).message}`;
+  }
+}
+
 /** @param {number} id */
 async function load(id) {
   const [vibe, { revisions }, ratings] = await Promise.all([
@@ -323,6 +339,7 @@ async function load(id) {
     ...vibe.notes.map((/** @type {any} */ note) => lineItem(note.text, note.createdAt)),
   );
   showRatings(ratings);
+  void showLiked(id);
   page.revisionList.replaceChildren(
     ...[...revisions].reverse().map((/** @type {any} */ row, i) => {
       const item = cloneTemplate("revision-item", {
