@@ -185,7 +185,7 @@ function fittedOn(vibe, prior) {
  * @param {AbortSignal} signal
  * @returns {Promise<string>}
  */
-export async function readModelCode(app, signal) {
+async function readModelCode(app, signal) {
   const { code } = await app.sidecar.request("preference_code", {}, { signal });
   return /** @type {string} */ (code);
 }
@@ -203,7 +203,7 @@ export async function readModelCode(app, signal) {
  * @param {(n: number, of: number) => void} options.onVibe called before each vibe's fits
  * @returns {Promise<VibeModel[]>}
  */
-export async function fitModels(app, plan, { dimension, signal, onVibe }) {
+async function fitModels(app, plan, { dimension, signal, onVibe }) {
   /**
    * @param {PlannedModel} planned
    * @param {{ prior: string | null, basisItems?: Item[] }} input
