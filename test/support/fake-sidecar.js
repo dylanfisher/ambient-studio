@@ -22,7 +22,9 @@ import { fileURLToPath } from "node:url";
  * `together` sends all of those answers in one write. `split` writes an answer in two halves,
  * the second a turn of the event loop after the first has gone. `floats` is written to the
  * request's `out` param as little-endian float32 before the step's answer, as the sidecar
- * writes a vector.
+ * writes a vector. `scores` answers a `predict`: it writes to `out` a mean for each item in the
+ * request's `items` file, that item's feature at index `feature` (0 for null), and `variance`
+ * for each.
  * @typedef {object} Step
  * @property {"answer" | "error" | "hold" | "hang" | "crash" | "garbage"} do
  * @property {unknown} [result]
@@ -34,6 +36,7 @@ import { fileURLToPath } from "node:url";
  * @property {number} [code]
  * @property {string} [line]
  * @property {number[]} [floats]
+ * @property {{ feature: number, variance: number }} [scores]
  */
 
 /**
@@ -114,6 +117,21 @@ export async function fakeSidecar({ underParent = false } = {}) {
 }
 
 /**
+ * A `predict` answer that scores each item by one of its features.
+ * @param {{ params: { items: string } }} request
+ * @param {{ feature: number, variance: number }} by
+ */
+function scores({ params }, { feature, variance }) {
+  /** @type {{ items: { features: (number | null)[] }[] }} */
+  const { items } = JSON.parse(readFileSync(params.items, "utf8"));
+  return {
+    mean: items.map((item) => item.features[feature] ?? 0),
+    variance: items.map(() => variance),
+    covariance: items.map(() => items.map(() => 0)),
+  };
+}
+
+/**
  * The fake's own loop, run by `launch`. The client runs one process at a time, so the step a
  * request takes is the count of requests every process received before it.
  * @param {string} dir
@@ -160,6 +178,8 @@ function serve(dir) {
     }
     const { id } = request;
     if (step.floats) writeFileSync(request.params.out, new Float32Array(step.floats));
+    if (step.scores)
+      writeFileSync(request.params.out, JSON.stringify(scores(request, step.scores)));
     const own = step.do === "answer" ? { id, result: step.result } : undefined;
     if (own && !(step.release && step.together)) void write(own, step.split);
     else if (step.do === "error") void write({ id, error: step.error });

@@ -119,11 +119,17 @@ function itemsOf({ pairs, thumbs }) {
  * unless another session rated the same excerpt; 4e's folds use this.
  * @param {Store} store
  * @param {string} embeddingProducer
- * @param {{ modelCode: string, heldOutSession?: number | null }} options `modelCode` names the
- *   sidecar's preference code, from its `preference_code` method
+ * @param {{ modelCode: string, heldOutSession?: number | null,
+ *   hyperparameters?: Readonly<Record<string, number>> }} options `modelCode` names the
+ *   sidecar's preference code, from its `preference_code` method; `hyperparameters` replaces
+ *   `HYPERPARAMETERS`, as 4e's features-only baseline does with a `pcaDimension` of 0
  * @returns {ModelPlan}
  */
-export function modelPlan(store, embeddingProducer, { modelCode, heldOutSession = null }) {
+export function modelPlan(
+  store,
+  embeddingProducer,
+  { modelCode, heldOutSession = null, hyperparameters: given = HYPERPARAMETERS },
+) {
   /** @param {number} ratedAudioId */
   const embedded = (ratedAudioId) =>
     findEmbedding(store, { ratedAudioId, renderId: null }, embeddingProducer) !== undefined;
@@ -132,7 +138,7 @@ export function modelPlan(store, embeddingProducer, { modelCode, heldOutSession 
     modelKey(set, { featureProducer: PRODUCER, embeddingProducer, hyperparameters });
   /** @param {{ sessionId: number }} row */
   const kept = (row) => row.sessionId !== heldOutSession;
-  const base = { ...HYPERPARAMETERS, modelCode };
+  const base = { ...given, modelCode };
 
   const vibes = listVibes(store).map((vibe) => {
     const read = readTrainingSet(store, vibe.id);
