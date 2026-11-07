@@ -130,3 +130,15 @@ unconstrained genomes. It never runs against omlx.
   validator's errors, and the seed test fails first.
 - An evaluation's candidates and generations are ordinary rows with source `llm` and no session;
   phase 8 can read them as it reads a session's.
+
+## Amendments
+
+- 2026-11-06: from step 2n ([0032](0032-plain-language-pages.md)). The evaluation page is
+  "Model test", started with a button and a confirm instead of Shift+S, and off until the test
+  finishes. Its results are in plain words: "Worked first time", "Worked after one fix", each with
+  its 95% Wilson interval said as "with this few tries, the true rate is probably between 64% and
+  96%"; "Cut off before finishing"; time per request as the median, 9 in 10 and the slowest
+  (p95 is no longer shown); "Model was asked for JSON format: not sent / accepted / refused"; and
+  a sentence on what the result means. "Working well" in that sentence is phase 2's 90% after one
+  fix; "low first time" is under 50%. The seed vibes are "starting points" on the dashboard, added
+  with a button. The stored report is unchanged.

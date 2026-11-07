@@ -148,3 +148,12 @@ and time taken. Safari itself is the owner's check on mbp2015.
   evaluations. The polling interval moved to `src/web/poll-ms.js`, which both job pages import.
   Known: a focused vibe checkbox on the evaluation page takes every key but Esc, as this
   record's rule for checkboxes says, so `S`, `c`, `j` and `k` wait until Esc leaves it.
+- 2026-11-06: from step 2n ([0032](0032-plain-language-pages.md)). The key commands are
+  removed, with `key-map.js` and `bind-keys.js`: the owner asked for "a more traditional nav
+  structure and UI pattern" in place of "the vim style keybindings". Every page has a top bar and
+  plain buttons and links; Tab, Enter and Space are the keyboard support, so the rules above for
+  keys in fields, held keys and the capture listener no longer apply, and the known checkbox
+  problem from 2l is gone. `vibe.html` is now `brief.html`. The session page rates from
+  buttons on each candidate card, each card keeps its own note and tags, and a card is updated in
+  place when its excerpt lands instead of replaced. Choosing a candidate no longer moves the
+  focus. Time taken still runs from when the candidate was chosen or last rated.
