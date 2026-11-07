@@ -1586,3 +1586,19 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   - Whether the help wording is plain enough.
   - A small model test with `thinking: false`. Reasoning should come back from none of the
     requests, latency should fall from about 55 s, and validity should hold.
+- 2026-11-06: model tests after 2m, on Cold dorian drone with 16 candidates each.
+  - **Test 2:** `(T)` notation, thinking on. 12 of 16 worked first time and 15 after one fix.
+    Median request 57 s, and all 20 answers came back with reasoning. The 9 schema errors left
+    were trajectories written as bare arrays (6) and brightness written as a bare array (3).
+  - **Fix (b11cb8a):** the schema text gives a `{"points": ...}` example. The brightness rule
+    stops reading as a ramp.
+  - **Correction (b38ae92):** b11cb8a called brightness "one number". Brightness may be a
+    trajectory, so the rule now says it stays within the range the whole time.
+  - **Test 3:** thinking off (Sonnet fixes: 60k tokens, 21 calls, 2.9 min; then 38k, 9 calls,
+    2.3 min). 14 of 16 worked first time and 16 of 16 after one fix. Median request 6.6 s,
+    slowest 9 s, first token 0.2 s, and no answer came back with reasoning (0 of 18), so omlx
+    honoured the switch. The genomes were as varied as with thinking on. The two first-try
+    misses were a drone given 3 partials (the minimum is 4).
+  - **Decision:** the owner's config keeps `queue.thinking` false.
+  - **Caching:** omlx's prefix cache already reuses about 1,224 of the prompt's 2,300 tokens, so
+    prompt reading costs under a second. Time went to generating thinking tokens.
