@@ -2,7 +2,8 @@
 
 - **Date:** 2026-11-06
 - **Status:** accepted; provisional: owner to confirm; amended by
-  [0036](0036-revision-pass.md) (the candidates job revises after a render)
+  [0036](0036-revision-pass.md) (the candidates job revises after a render) and
+  [0048](0048-quick-ab-player-mp3.md) (the cache holds MP3s; capture renders the excerpt again)
 
 ## Context
 
@@ -132,3 +133,11 @@ normalizing, measuring and writing one excerpt took 1.04–1.09 s for the drone 
   A first try with a miss is revised once, and the revision's excerpt rendered, before the next
   first try. The job checks for a cancel after measuring and before the revision request. An
   unchanged revision isn't rendered.
+- 2026-11-07: from step 4i ([0048](0048-quick-ab-player-mp3.md)). The render cache holds each
+  excerpt as a 320 kbps constant-bit-rate MP3 from the `lame` CLI, named as above with `.mp3`,
+  and no WAV. A row whose file is not an MP3 counts as not cached and is rendered again, its WAV
+  deleted. `captureRatedAudio` no longer reads the cached file: it renders the row's window
+  again (`renderHeardAgain`), checks that the gain and the render checks match the row, and
+  encodes that PCM to the FLAC, so the rated file and its PCM hash are made from the exact
+  normalized samples as before. A first capture now takes about as long as the render, 0.8 s
+  for the drone golden and 2.3 s for `example.json`, instead of 150 ms.

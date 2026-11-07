@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Quick A/B · Ambient Studio</title>
+    <link rel="stylesheet" href="./studio.css" />
+    <script type="module" src="./quick-ab.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <nav class="nav" aria-label="Pages">
+        <a class="brand" href="./" title="Opens the dashboard: how the studio works, and every brief.">Ambient Studio</a>
+        <a href="./#briefs" aria-current="page" title="Opens the list of briefs on the dashboard, where you open one or write a new one.">Briefs</a>
+        <a href="./evaluation.html" title="Opens the model test page, which checks how often the model follows your briefs. It makes no audio.">Model test</a>
+      </nav>
+    </header>
+    <main class="page">
+      <div class="page-head">
+        <p class="crumbs small muted">
+          <a href="./#briefs" title="Goes back to the list of briefs.">Briefs</a> /
+          <a id="briefLink" href="./" title="Opens this session's brief, to edit it or read every rating.">Brief</a> /
+          <a id="sessionLink" href="./session.html" title="Goes back to this session's page, with every candidate and its own controls.">Session</a> /
+        </p>
+        <h1 id="pageTitle">Quick A/B</h1>
+        <p class="help muted">
+          This session's candidates, two at a time: listen, then choose the better one, and the
+          next pair comes at once. The one you choose stays to meet the next candidate, until
+          every candidate has had a turn; turn on Random pairs to hear pairs in any order
+          instead, never the same pair twice. The keys are on the buttons: ← and → play the left
+          and right excerpt from the same point, A or D chooses left or right, S says they are
+          about the same, W skips, Space pauses or plays, and Z undoes the last choice. Keys do
+          nothing while you are typing in a field.
+        </p>
+        <p id="status" class="status" role="status" aria-live="polite">Loading…</p>
+      </div>
+
+      <section class="card stack" aria-labelledby="quick-heading">
+        <div class="row">
+          <h2 id="quick-heading">Which is better?</h2>
+          <span class="spacer"></span>
+          <label class="small"
+            ><input id="randomSwitch" type="checkbox" title="Draws pairs in a random order instead of keeping the one you chose, never the same pair twice. Changing it starts from the next pair." />
+            Random pairs</label
+          >
+        </div>
+        <p id="progressLine" class="small muted"></p>
+        <div class="row">
+          <p id="saveLine" class="small" role="status" aria-live="polite"></p>
+          <button id="retry" class="button outline small" type="button" hidden title="Sends the choices that weren't saved again, and draws the next pair again if that failed.">Retry</button>
+        </div>
+        <ul id="failedList" class="list small"></ul>
+        <div id="pairView" class="ab" hidden>
+          <div id="leftBox" class="card stack">
+            <h3>Left</h3>
+            <p class="muted small" id="leftName"></p>
+            <!-- biome-ignore lint/a11y/useMediaCaption: instrumental excerpts have no speech to caption -->
+            <audio id="leftAudio" preload="auto" title="Plays the left excerpt. Starting it pauses the right one."></audio>
+            <p class="small" id="leftPlayed"></p>
+            <div class="row">
+              <button id="playLeft" class="button outline" type="button" title="Plays the left excerpt from the point the other one is at, and pauses the other.">Play left</button>
+            </div>
+          </div>
+          <div id="rightBox" class="card stack">
+            <h3>Right</h3>
+            <p class="muted small" id="rightName"></p>
+            <!-- biome-ignore lint/a11y/useMediaCaption: instrumental excerpts have no speech to caption -->
+            <audio id="rightAudio" preload="auto" title="Plays the right excerpt. Starting it pauses the left one."></audio>
+            <p class="small" id="rightPlayed"></p>
+            <div class="row">
+              <button id="playRight" class="button outline" type="button" title="Plays the right excerpt from the point the other one is at, and pauses the other.">Play right</button>
+            </div>
+          </div>
+        </div>
+        <p id="doneLine" class="callout" hidden></p>
+        <div class="row">
+          <button id="chooseLeft" class="button primary" type="button" title="Saves that the left excerpt is better, and shows the next pair.">Left is better</button>
+          <button id="same" class="button secondary" type="button" title="Saves that the two are about as good as each other, and shows the next pair. The one that stays is kept.">About the same</button>
+          <button id="chooseRight" class="button primary" type="button" title="Saves that the right excerpt is better, and shows the next pair.">Right is better</button>
+          <button id="skip" class="button outline" type="button" title="Saves that you couldn't choose, and shows the next pair with a new candidate.">Skip</button>
+          <button id="playPause" class="button outline" type="button" title="Pauses the excerpt that is playing, or plays the one you heard last.">Play or pause</button>
+          <button id="undo" class="button outline" type="button" title="Removes the last choice you saved, and brings its pair back to choose again.">Undo</button>
+        </div>
+      </section>
+    </main>
+
+    <template id="failed-save">
+      <li class="item row errors">
+        <span data-part="line"></span>
+        <button class="button outline small" type="button" data-part="discard" title="Gives up on this choice: it is never saved, and its pair can come up again.">Discard</button>
+      </li>
+    </template>
+  </body>
+</html>

@@ -1,23 +1,42 @@
-// Capturing a heard excerpt as rated audio (decision 0026): the cached WAV kept as FLAC, one
-// row per heard identity, with its PCM hash and gain.
+// Capturing a heard excerpt as rated audio (decisions 0026 and 0048): the excerpt rendered
+// again and kept as FLAC, the exact normalized PCM the cached MP3 was encoded from, one row per
+// heard identity, with its PCM hash and gain.
 import { existsSync } from "node:fs";
-import { readdir, readFile } from "node:fs/promises";
+import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
+import { normalize } from "../../src/domain/normalize.js";
 import { ENGINE_VERSION } from "../../src/engine/engine-version.js";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
+import { requireGenome } from "../../src/engine/validate-genome.js";
 import { captureRatedAudio } from "../../src/server/capture-rated-audio.js";
 import { checkRatedAudio } from "../../src/server/check-rated-audio.js";
+import { encodePcm24 } from "../../src/server/encode-pcm24.js";
 import { putGenome } from "../../src/server/generation-store.js";
 import { readFlacPcm } from "../../src/server/read-flac-pcm.js";
 import { renderExcerpt } from "../../src/server/render-excerpt.js";
+import { renderOffline } from "../../src/server/render-offline.js";
 import { putRender } from "../../src/server/render-store.js";
 import { sha256Hex } from "../../src/server/sha256-hex.js";
 import { createVibe } from "../../src/server/vibe-store.js";
 import { tempStore } from "../support/temp-store.js";
 
-/** Bytes of the plain header `writeWav` writes before the PCM. */
-const WAV_HEADER_BYTES = 44;
+/** Set by a test to make removing a capture's temp folder fail, as a full disk can. */
+const cleanup = vi.hoisted(() => ({ fails: false }));
+vi.mock("node:fs/promises", async (original) => {
+  const real = /** @type {typeof import("node:fs/promises")} */ (await original());
+  return {
+    ...real,
+    /** @type {typeof real.rm} */
+    rm: async (path, options) => {
+      if (cleanup.fails && String(path).includes(".capture-")) throw new Error("EIO: i/o error");
+      return real.rm(path, options);
+    },
+  };
+});
+
+/** No genome here plays a field recording, so the capture is given an empty index. */
+const NO_RECORDINGS = async () => [];
 
 /** @type {(() => Promise<void>)[]} */
 const cleanups = [];
@@ -40,14 +59,24 @@ async function setup() {
   return { ...made, vibeId: vibe.id, render };
 }
 
-test("writes the heard excerpt as a FLAC whose decoded PCM matches its row", async () => {
+test("writes the heard excerpt as a FLAC of the exact normalized PCM, whose hash checks", async () => {
   const { store, paths, render } = await setup();
-  const rated = await captureRatedAudio(store, paths, render.id);
+  const rated = await captureRatedAudio(store, paths, render.id, NO_RECORDINGS);
 
   const flac = join(paths.ratedAudio, rated.file);
   const pcm = await readFlacPcm(flac);
-  const wav = await readFile(join(paths.renderCache, render.file));
-  expect(Buffer.from(pcm).equals(wav.subarray(WAV_HEADER_BYTES))).toBe(true);
+  const genome = requireGenome(droneGenome, "the drone golden");
+  const raw = await renderOffline(genome, {
+    seed: render.seed,
+    duration: render.duration,
+    offset: render.offset,
+    samples: {},
+  });
+  const heard = normalize(raw.channels, raw.sampleRate, {
+    target: -18,
+    ceiling: genome.ceiling,
+  });
+  expect(Buffer.from(pcm).equals(encodePcm24(heard.channels))).toBe(true);
   expect(rated).toMatchObject({
     genomeId: render.genomeId,
     seed: render.seed,
@@ -61,10 +90,50 @@ test("writes the heard excerpt as a FLAC whose decoded PCM matches its row", asy
   expect(await checkRatedAudio(store, paths.ratedAudio)).toBe(1);
 });
 
+test("needs no lossless file in the render cache, and leaves nothing beside the MP3", async () => {
+  const { store, paths, render } = await setup();
+  expect(await readdir(paths.renderCache)).toEqual([render.file]);
+  // The MP3 is only for playback: the FLAC is made without it.
+  await rm(join(paths.renderCache, render.file));
+  await captureRatedAudio(store, paths, render.id, NO_RECORDINGS);
+  expect(await readdir(paths.renderCache)).toEqual([]);
+  expect(await checkRatedAudio(store, paths.ratedAudio)).toBe(1);
+});
+
+test("refuses an excerpt that renders differently from its row", async () => {
+  const { store, paths, render } = await setup();
+  const features = /** @type {{ heard: { gainDb: number } }} */ (render.features);
+  const { render: drifted } = putRender(store, {
+    ...render,
+    features: { ...features, heard: { ...features.heard, gainDb: features.heard.gainDb + 1 } },
+  });
+  await expect(captureRatedAudio(store, paths, drifted.id, NO_RECORDINGS)).rejects.toThrow(
+    /came out different when rendered again/,
+  );
+  expect(existsSync(paths.ratedAudio)).toBe(false);
+});
+
+test("a cleanup that fails too doesn't hide why the capture failed", async () => {
+  const { store, paths, render } = await setup();
+  const { genomeId, seed, duration, target } = render;
+  // A rated file of this name with no row: the capture refuses to replace it.
+  const file = `${genomeId}-seed${seed}-${duration}s-engine${ENGINE_VERSION}-${target}LUFS.flac`;
+  await mkdir(paths.ratedAudio, { recursive: true });
+  await writeFile(join(paths.ratedAudio, file), "");
+  cleanup.fails = true;
+  try {
+    await expect(captureRatedAudio(store, paths, render.id, NO_RECORDINGS)).rejects.toThrow(
+      /already in .* with no rated_audio row.*; removing .*\.capture-.* afterwards failed too: EIO/s,
+    );
+  } finally {
+    cleanup.fails = false;
+  }
+});
+
 test("a second capture of the same excerpt reuses the row and its file", async () => {
   const { store, paths, render } = await setup();
-  const first = await captureRatedAudio(store, paths, render.id);
-  const second = await captureRatedAudio(store, paths, render.id);
+  const first = await captureRatedAudio(store, paths, render.id, NO_RECORDINGS);
+  const second = await captureRatedAudio(store, paths, render.id, NO_RECORDINGS);
   expect(second).toEqual(first);
   expect(await readdir(paths.ratedAudio)).toEqual([first.file]);
 });
@@ -72,8 +141,8 @@ test("a second capture of the same excerpt reuses the row and its file", async (
 test("two captures of one excerpt at once both return the one row", async () => {
   const { store, paths, render } = await setup();
   const [a, b] = await Promise.all([
-    captureRatedAudio(store, paths, render.id),
-    captureRatedAudio(store, paths, render.id),
+    captureRatedAudio(store, paths, render.id, NO_RECORDINGS),
+    captureRatedAudio(store, paths, render.id, NO_RECORDINGS),
   ]);
   expect(b).toEqual(a);
   expect(await readdir(paths.ratedAudio)).toEqual([a.file]);
@@ -82,10 +151,12 @@ test("two captures of one excerpt at once both return the one row", async () => 
 test("a render made under another producer, or an unknown one, is refused", async () => {
   const { store, paths, render } = await setup();
   const { render: stale } = putRender(store, { ...render, producer: "engine-1 features-old" });
-  await expect(captureRatedAudio(store, paths, stale.id)).rejects.toThrow(
+  await expect(captureRatedAudio(store, paths, stale.id, NO_RECORDINGS)).rejects.toThrow(
     /made under producer engine-1 features-old/,
   );
-  await expect(captureRatedAudio(store, paths, 999)).rejects.toThrow(/no render 999/);
+  await expect(captureRatedAudio(store, paths, 999, NO_RECORDINGS)).rejects.toThrow(
+    /no render 999/,
+  );
   expect(existsSync(paths.ratedAudio)).toBe(false);
 });
 
@@ -102,7 +173,7 @@ test("an excerpt normalize couldn't lift is kept as rendered, with no gain", asy
     target: -18,
   });
   expect(quiet.render.features).toMatchObject({ heard: null });
-  const rated = await captureRatedAudio(store, paths, quiet.render.id);
+  const rated = await captureRatedAudio(store, paths, quiet.render.id, NO_RECORDINGS);
   expect(rated.gainDb).toBe(0);
   expect(await checkRatedAudio(store, paths.ratedAudio)).toBe(1);
 });

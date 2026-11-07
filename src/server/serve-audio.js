@@ -1,12 +1,13 @@
-// GET /audio/:renderId (decision 0025): a render-cache WAV by renders row id, with single byte
-// ranges as RFC 9110 §14 defines them. Safari's <audio> asks for ranges and won't seek without
-// them.
+// GET /audio/:renderId (decision 0025): a render-cache MP3 (0048) by renders row id, with
+// single byte ranges as RFC 9110 §14 defines them. Safari's <audio> asks for ranges and won't
+// seek without them.
 /** @import { RouteContext } from "./routing.js" */
 import { createReadStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import { fileInside } from "./file-inside.js";
 import { getRender } from "./render-store.js";
 import { HttpError } from "./routing.js";
+import { MP3_EXTENSION } from "./write-mp3.js";
 
 /**
  * What a Range header asks of a file: all of it, one inclusive byte span, or nothing it has.
@@ -58,6 +59,10 @@ export async function serveAudio({ request, response, params, app }) {
   const id = params.renderId ?? "";
   const render = /^[1-9]\d{0,15}$/.test(id) ? getRender(app.store, Number(id)) : undefined;
   if (!render) throw new HttpError(404, `no render ${id}`);
+  // A WAV cached before excerpts were MP3s is rendered again before it is played.
+  if (!render.file.endsWith(MP3_EXTENSION)) {
+    throw new HttpError(404, `render ${id} is not an MP3; render the excerpt again`);
+  }
   const file = await fileInside(app.paths.renderCache, [render.file]);
   if (!file) throw new HttpError(404, `render ${id} has no file in the render cache`);
   const { size } = file;
@@ -65,7 +70,7 @@ export async function serveAudio({ request, response, params, app }) {
   // so it sends the whole file, as RFC 9110 §13.1.5 requires when it doesn't.
   const range =
     request.headers["if-range"] === undefined ? readRange(request.headers.range, size) : WHOLE;
-  const headers = { "content-type": "audio/wav", "accept-ranges": "bytes" };
+  const headers = { "content-type": "audio/mpeg", "accept-ranges": "bytes" };
   if (range.kind === "unsatisfiable") {
     response.writeHead(416, { ...headers, "content-range": `bytes */${size}` });
     response.end();

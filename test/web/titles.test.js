@@ -7,6 +7,7 @@ import { DEFAULT_NUDGES } from "../../src/domain/nudge.js";
 import { RANGE_ENDS } from "../../src/domain/target-schema.js";
 import { MACROS } from "../../src/engine/genome-schema.js";
 import { constraintFields, fieldTitle } from "../../src/web/constraint-fields.js";
+import { PLAYER_TITLES } from "../../src/web/excerpt-player.js";
 import { jobControl } from "../../src/web/job-control.js";
 import { macroTitles } from "../../src/web/macro-words.js";
 import { steerTitles } from "../../src/web/steer-controls.js";
@@ -37,6 +38,10 @@ describe.each(PAGES)("%s", (page) => {
       .replace(/<[^>]*?\s(?:title|placeholder|aria-label)="([^"]*)"[^>]*>/g, " $1 ")
       .replace(/<[^>]*>/g, " ");
     expect(shown, page).not.toMatch(/vibe/i);
+  });
+
+  test("plays audio through the excerpt player, never the native controls (0048)", () => {
+    expect(html(page), page).not.toMatch(/<audio\b[^>]*\scontrols\b/);
   });
 
   test("starts with a short help paragraph", () => {
@@ -73,6 +78,10 @@ describe("titles the modules set", () => {
         expect(isSentence(title), macro).toBe(true);
       }
     }
+  });
+
+  test("the excerpt player's button and seek bar have a title", () => {
+    for (const title of Object.values(PLAYER_TITLES)) expect(isSentence(title), title).toBe(true);
   });
 
   test("a job button's title says why it is off while its job runs", () => {

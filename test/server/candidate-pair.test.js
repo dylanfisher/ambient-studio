@@ -105,7 +105,7 @@ async function setup() {
     if (measured !== null && genomeId !== null) {
       const duration = EXCERPT_SECONDS;
       const offset = excerptOffset(/** @type {any} */ (genome), seed, duration);
-      const file = `seeded-${candidate.id}.wav`;
+      const file = `seeded-${candidate.id}.mp3`;
       await mkdir(paths.renderCache, { recursive: true });
       await writeFile(join(paths.renderCache, file), "");
       const key = { genomeId, seed, offset, duration, target: -16, producer: PRODUCER };

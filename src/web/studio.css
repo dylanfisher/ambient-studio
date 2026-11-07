@@ -546,9 +546,34 @@ legend {
   align-content: start;
 }
 
-.candidate audio,
-.ab audio {
+/* The excerpt player (decision 0048): its button and time on one line, the seek bar under them
+   across the whole card. The audio element has no controls, so it takes no room. */
+.player {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.35rem 0.6rem;
+}
+
+.player input[type="range"] {
+  grid-column: 1 / -1;
   width: 100%;
+  margin: 0;
+  accent-color: var(--foreground);
+}
+
+/* A key on a Quick A/B button (0048). */
+kbd {
+  font: inherit;
+  font-size: 0.75em;
+  padding: 0 0.3em;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  opacity: 0.75;
+}
+
+.player-time {
+  font-variant-numeric: tabular-nums;
 }
 
 .selected {
@@ -643,9 +668,13 @@ details summary {
   display: none;
 }
 
-.lineage audio {
-  width: 100%;
+.lineage .player {
   max-width: 28rem;
+}
+
+/* A player goes with its audio element: a card hides the element when it has no excerpt. */
+audio[hidden] + .player {
+  display: none;
 }
 
 /* Last, so it wins over a class that sets display at the same specificity. */

@@ -1,5 +1,5 @@
-// GET /audio/:renderId: a render-cache WAV by renders row id, with byte ranges as RFC 9110
-// says, and nothing outside the render-cache folder (decision 0025).
+// GET /audio/:renderId: a render-cache MP3 (0048) by renders row id, with byte ranges as
+// RFC 9110 says, and nothing outside the render-cache folder (decision 0025).
 import { mkdir, symlink, writeFile } from "node:fs/promises";
 import { get } from "node:http";
 import { join } from "node:path";
@@ -17,7 +17,7 @@ afterEach(async () => {
 });
 
 /** 1000 bytes, each its index mod 251, so any slice is distinct from its neighbors. */
-const WAV = Buffer.from(Array.from({ length: 1000 }, (_, index) => index % 251));
+const MP3 = Buffer.from(Array.from({ length: 1000 }, (_, index) => index % 251));
 
 async function setup() {
   const server = await startTestServer();
@@ -43,18 +43,18 @@ async function setup() {
       checks: {},
     }).render.id;
   await mkdir(paths.renderCache);
-  await writeFile(join(paths.renderCache, "r.wav"), WAV);
-  return { ...server, addRender, id: addRender("r.wav") };
+  await writeFile(join(paths.renderCache, "r.mp3"), MP3);
+  return { ...server, addRender, id: addRender("r.mp3") };
 }
 
-test("a whole WAV is a 200 that says it takes ranges", async () => {
+test("a whole MP3 is a 200 that says it takes ranges", async () => {
   const { request, id } = await setup();
   const reply = await request("GET", `/audio/${id}`);
   expect(reply.status).toBe(200);
-  expect(reply.headers["content-type"]).toBe("audio/wav");
+  expect(reply.headers["content-type"]).toBe("audio/mpeg");
   expect(reply.headers["accept-ranges"]).toBe("bytes");
   expect(reply.headers["content-length"]).toBe("1000");
-  expect(reply.body.equals(WAV)).toBe(true);
+  expect(reply.body.equals(MP3)).toBe(true);
 });
 
 /**
@@ -77,9 +77,9 @@ test.each(SATISFIABLE)("%s is a 206 with exactly those bytes", async (range, fir
   expect(reply.status).toBe(206);
   expect(reply.headers["content-range"]).toBe(`bytes ${first}-${last}/1000`);
   expect(reply.headers["content-length"]).toBe(String(last - first + 1));
-  expect(reply.headers["content-type"]).toBe("audio/wav");
+  expect(reply.headers["content-type"]).toBe("audio/mpeg");
   expect(reply.headers["accept-ranges"]).toBe("bytes");
-  expect(reply.body.equals(WAV.subarray(first, last + 1))).toBe(true);
+  expect(reply.body.equals(MP3.subarray(first, last + 1))).toBe(true);
 });
 
 test.each(["bytes=1000-", "bytes=1000-2000", "bytes=-0", "bytes=99999999999999999999-"])(
@@ -99,7 +99,7 @@ test.each(["bytes=0-9,20-29", "bytes=20-10", "bytes=abc", "bytes=-", "items=0-9"
     const reply = await request("GET", `/audio/${id}`, { headers: { range } });
     expect(reply.status).toBe(200);
     expect(reply.headers["content-range"]).toBeUndefined();
-    expect(reply.body.equals(WAV)).toBe(true);
+    expect(reply.body.equals(MP3)).toBe(true);
   },
 );
 
@@ -109,7 +109,7 @@ test("a range with If-Range is ignored, since the server sends no validators", a
     headers: { range: "bytes=0-9", "if-range": '"abc"' },
   });
   expect(reply.status).toBe(200);
-  expect(reply.body.equals(WAV)).toBe(true);
+  expect(reply.body.equals(MP3)).toBe(true);
 });
 
 test("a HEAD gives the GET's headers and no body", async () => {
@@ -143,16 +143,24 @@ test.each([
 
 test("a row whose file is missing is a 404", async () => {
   const { request, addRender } = await setup();
-  const reply = await request("GET", `/audio/${addRender("gone.wav")}`);
+  const reply = await request("GET", `/audio/${addRender("gone.mp3")}`);
   expect(reply.status).toBe(404);
+});
+
+test("a row whose file is a WAV cached before MP3 is a 404 that says to render it again", async () => {
+  const { request, addRender, paths } = await setup();
+  await writeFile(join(paths.renderCache, "old.wav"), MP3);
+  const reply = await request("GET", `/audio/${addRender("old.wav")}`);
+  expect(reply.status).toBe(404);
+  expect(reply.json().error).toMatch(/not an MP3; render the excerpt again/);
 });
 
 test("a row whose file leaves the render-cache folder is a 404", async () => {
   const { request, addRender, paths } = await setup();
-  await writeFile(join(paths.renderCache, "..", "outside.wav"), WAV);
+  await writeFile(join(paths.renderCache, "..", "outside.mp3"), MP3);
   for (const file of [
-    "../outside.wav",
-    join(paths.renderCache, "..", "outside.wav"),
+    "../outside.mp3",
+    join(paths.renderCache, "..", "outside.mp3"),
     "/etc/hosts",
   ]) {
     const reply = await request("GET", `/audio/${addRender(file)}`);
@@ -162,26 +170,26 @@ test("a row whose file leaves the render-cache folder is a 404", async () => {
 
 test("a symlink in the render-cache folder to a file outside it is a 404", async () => {
   const { request, addRender, paths } = await setup();
-  const outside = join(paths.renderCache, "..", "outside.wav");
-  await writeFile(outside, WAV);
-  await symlink(outside, join(paths.renderCache, "link.wav"));
+  const outside = join(paths.renderCache, "..", "outside.mp3");
+  await writeFile(outside, MP3);
+  await symlink(outside, join(paths.renderCache, "link.mp3"));
   await symlink("..", join(paths.renderCache, "up"));
-  expect((await request("GET", `/audio/${addRender("link.wav")}`)).status).toBe(404);
-  expect((await request("GET", `/audio/${addRender("up/outside.wav")}`)).status).toBe(404);
+  expect((await request("GET", `/audio/${addRender("link.mp3")}`)).status).toBe(404);
+  expect((await request("GET", `/audio/${addRender("up/outside.mp3")}`)).status).toBe(404);
 });
 
 test("a symlink that stays inside the render-cache folder is served", async () => {
   const { request, addRender, paths } = await setup();
-  await symlink("r.wav", join(paths.renderCache, "alias.wav"));
-  const reply = await request("GET", `/audio/${addRender("alias.wav")}`);
+  await symlink("r.mp3", join(paths.renderCache, "alias.mp3"));
+  const reply = await request("GET", `/audio/${addRender("alias.mp3")}`);
   expect(reply.status).toBe(200);
-  expect(reply.body.equals(WAV)).toBe(true);
+  expect(reply.body.equals(MP3)).toBe(true);
 });
 
 test("a symlink loop in the render-cache folder is a 404 that names no server path", async () => {
   const { request, addRender, paths, logged } = await setup();
-  await symlink("loop.wav", join(paths.renderCache, "loop.wav"));
-  const reply = await request("GET", `/audio/${addRender("loop.wav")}`);
+  await symlink("loop.mp3", join(paths.renderCache, "loop.mp3"));
+  const reply = await request("GET", `/audio/${addRender("loop.mp3")}`);
   expect(reply.status).toBe(404);
   expect(reply.body.toString()).not.toContain(paths.renderCache);
   expect(logged).toEqual([]);
@@ -189,14 +197,14 @@ test("a symlink loop in the render-cache folder is a 404 that names no server pa
 
 test("a row whose file has a NUL in it is a 404", async () => {
   const { request, addRender, logged } = await setup();
-  expect((await request("GET", `/audio/${addRender("r.wav\0x")}`)).status).toBe(404);
+  expect((await request("GET", `/audio/${addRender("r\0x.mp3")}`)).status).toBe(404);
   expect(logged).toEqual([]);
 });
 
-test("a GET with an unread body and Connection: close gets the WAV and logs nothing", async () => {
+test("a GET with an unread body and Connection: close gets the MP3 and logs nothing", async () => {
   const { request, addRender, paths, logged, stop } = await setup();
-  await writeFile(join(paths.renderCache, "big.wav"), Buffer.alloc(4 << 20));
-  const reply = await request("GET", `/audio/${addRender("big.wav")}`, {
+  await writeFile(join(paths.renderCache, "big.mp3"), Buffer.alloc(4 << 20));
+  const reply = await request("GET", `/audio/${addRender("big.mp3")}`, {
     headers: { connection: "close", "content-length": 6 },
     body: "unread",
   });
@@ -207,8 +215,8 @@ test("a GET with an unread body and Connection: close gets the WAV and logs noth
 
 test("a directory in the render-cache folder is a 404", async () => {
   const { request, addRender, paths } = await setup();
-  await mkdir(join(paths.renderCache, "folder.wav"));
-  expect((await request("GET", `/audio/${addRender("folder.wav")}`)).status).toBe(404);
+  await mkdir(join(paths.renderCache, "folder.mp3"));
+  expect((await request("GET", `/audio/${addRender("folder.mp3")}`)).status).toBe(404);
 });
 
 test("POST to an audio URL is a 405 that lists GET and HEAD", async () => {
@@ -218,10 +226,10 @@ test("POST to an audio URL is a 405 that lists GET and HEAD", async () => {
   expect(reply.headers.allow).toBe("GET, HEAD");
 });
 
-test("a client that drops a WAV mid-stream logs nothing, and stop waits for the stream", async () => {
+test("a client that drops an MP3 mid-stream logs nothing, and stop waits for the stream", async () => {
   const { request, addRender, paths, origin, logged, stop } = await setup();
-  await writeFile(join(paths.renderCache, "big.wav"), Buffer.alloc(16 << 20));
-  const id = addRender("big.wav");
+  await writeFile(join(paths.renderCache, "big.mp3"), Buffer.alloc(16 << 20));
+  const id = addRender("big.mp3");
   await new Promise((resolve, reject) => {
     const outgoing = get(`${origin}/audio/${id}`, { agent: false }, (incoming) => {
       incoming.once("data", () => {

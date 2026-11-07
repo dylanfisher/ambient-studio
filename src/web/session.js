@@ -23,6 +23,7 @@ import { createSelection } from "./candidate-selection.js";
 import { createCardHold } from "./card-hold.js";
 import { cloneTemplate } from "./clone-template.js";
 import { elementsById } from "./element-by-id.js";
+import { mountPlayer } from "./excerpt-player.js";
 import { followJob } from "./follow-job.js";
 import { jobControl } from "./job-control.js";
 import { endedText, JOB_STATE } from "./job-progress.js";
@@ -47,6 +48,7 @@ const page = elementsById({
   pageTitle: HTMLElement,
   briefLink: HTMLAnchorElement,
   lineageLink: HTMLAnchorElement,
+  quickAbLink: HTMLAnchorElement,
   countInput: HTMLInputElement,
   askButton: HTMLButtonElement,
   excerptsButton: HTMLButtonElement,
@@ -747,6 +749,7 @@ function showOther(card) {
  */
 function makeCard(candidate, number, revised) {
   const parts = cloneTemplate("candidate-card", CARD_PARTS);
+  mountPlayer(parts.audio, status.fail);
   /** @type {Record<string, MacroButtons>} */
   const macros = {};
   /** @type {Card} */
@@ -1041,6 +1044,7 @@ status.run(async () => {
   page.briefLink.href = `./brief.html?id=${session.vibeId}`;
   page.briefLink.textContent = vibe.revision.name;
   page.lineageLink.href = `./lineage.html?id=${session.vibeId}&session=${sessionId}`;
+  page.quickAbLink.href = `./quick-ab.html?id=${sessionId}`;
   document.title = `Session ${sessionId}, ${vibe.revision.name} · Ambient Studio`;
   await loadRanges();
   await loadRatings();

@@ -4,14 +4,19 @@
 /** @import { PlayedTracker } from "./played-tracker.js" */
 /** @import { StatusLine } from "./status-line.js" */
 import { OUTCOMES } from "../domain/rating-values.js";
+import { abRatingBody, chosenOutcome } from "./ab-rating.js";
 import { postJson, sessionPath } from "./api.js";
 import { trackAudio } from "./audio-player.js";
 import { elementsById } from "./element-by-id.js";
+import { mountPlayer } from "./excerpt-player.js";
 import { oneAtATime } from "./one-at-a-time.js";
 import { outcomeText } from "./outcome-text.js";
 import { createPlayedTracker } from "./played-tracker.js";
 
 const [, , TIE, SKIP] = OUTCOMES;
+
+/** The class of the side heard last, which `studio.css` outlines. */
+export const ACTIVE_SIDE = "active-side";
 
 /**
  * A candidate on one side: its label and the excerpt heard.
@@ -60,6 +65,8 @@ export function abView({ sessionId, status, onClose, onRated }) {
     abUndo: HTMLButtonElement,
   });
   const ratingButtons = [page.abLeftWins, page.abTie, page.abRightWins, page.abSkip];
+  mountPlayer(page.abLeftAudio, status.fail);
+  mountPlayer(page.abRightAudio, status.fail);
   const elements = {
     left: {
       box: page.abLeft,
@@ -90,8 +97,8 @@ export function abView({ sessionId, status, onClose, onRated }) {
   /** @param {Side} next */
   function activate(next) {
     const { left, right } = current();
-    left.box.classList.toggle("active-side", next === left);
-    right.box.classList.toggle("active-side", next === right);
+    left.box.classList.toggle(ACTIVE_SIDE, next === left);
+    right.box.classList.toggle(ACTIVE_SIDE, next === right);
   }
 
   /**
@@ -171,38 +178,26 @@ export function abView({ sessionId, status, onClose, onRated }) {
   /** @param {(typeof OUTCOMES)[number]} outcome */
   async function send(outcome) {
     const { pair, left, right, shownAt } = current();
-    const [aSide, bSide] = pair.leftSide === "a" ? [left, right] : [right, left];
     const timeTakenMs = performance.now() - shownAt;
-    last = await postJson(`${sessionPath(sessionId)}/ab-ratings`, {
-      a: pair.a,
-      b: pair.b,
-      orderSeed: pair.orderSeed,
-      outcome,
-      aPlayedFraction: aSide.tracker.fraction(),
-      bPlayedFraction: bSide.tracker.fraction(),
-      timeTakenMs,
-    });
+    const played = { left: left.tracker.fraction(), right: right.tracker.fraction() };
+    last = await postJson(
+      `${sessionPath(sessionId)}/ab-ratings`,
+      abRatingBody(pair, outcome, played, timeTakenMs),
+    );
     close();
     await onRated();
-    const played = (/** @type {Side} */ { tracker }) => `${Math.round(tracker.fraction() * 100)}%`;
+    const percent = (/** @type {number} */ fraction) => `${Math.round(fraction * 100)}%`;
     const said = outcomeText({ outcome, leftSide: pair.leftSide });
     page.abUndoLine.textContent = `Comparison saved: ${said}.`;
     page.abUndoBox.hidden = false;
     status.say(
-      `Comparison saved as ${said}: left played ${played(left)}, right ${played(right)}, ` +
+      `Comparison saved as ${said}: left played ${percent(played.left)}, right ${percent(played.right)}, ` +
         `${(timeTakenMs / 1000).toFixed(1)} s.`,
     );
   }
 
-  /** @param {boolean} leftWon whether the side shown on the left won */
-  const sideWins = (leftWon) => {
-    const { leftSide } = current().pair;
-    const rightSide = leftSide === "a" ? "b" : "a";
-    return rate(leftWon ? leftSide : rightSide);
-  };
-
-  page.abLeftWins.onclick = () => status.run(() => sideWins(true));
-  page.abRightWins.onclick = () => status.run(() => sideWins(false));
+  page.abLeftWins.onclick = () => status.run(() => rate(chosenOutcome(current().pair, "left")));
+  page.abRightWins.onclick = () => status.run(() => rate(chosenOutcome(current().pair, "right")));
   page.abTie.onclick = () => status.run(() => rate(TIE));
   page.abSkip.onclick = () => status.run(() => rate(SKIP));
   page.abClose.onclick = close;

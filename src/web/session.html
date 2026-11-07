@@ -44,6 +44,7 @@
           <button id="askButton" class="button primary" type="button" title="Asks the local model for new candidates for this brief and renders a 25-second excerpt of each as it arrives. Takes about 1–2 minutes per candidate.">Ask for new candidates</button>
           <button id="excerptsButton" class="button outline" type="button" hidden title="Renders the excerpts that are missing, such as after a restart or a failed render. No model is asked; each excerpt takes a few seconds.">Render missing excerpts</button>
           <span class="spacer"></span>
+          <a id="quickAbLink" class="button outline" href="./quick-ab.html" title="Opens Quick A/B: this session's candidates in pairs, one after another, to compare with the keys or buttons. The one you choose stays to meet the next.">Quick A/B</a>
           <a id="lineageLink" class="button outline" href="./lineage.html" title="Opens the lineage page: every candidate of this brief's sessions, each under the one it was made from, to play and work from.">Lineage</a>
           <button id="stopButton" class="button destructive" type="button" title="Stops this session after you confirm: any running job is cancelled, and it takes no more candidates or ratings. Your ratings so far are kept.">Stop the session</button>
         </div>
@@ -68,14 +69,14 @@
             <h3>Left</h3>
             <p class="muted small" id="abLeftName"></p>
             <!-- biome-ignore lint/a11y/useMediaCaption: instrumental excerpts have no speech to caption -->
-            <audio id="abLeftAudio" controls preload="auto" title="Plays the left excerpt. Starting it pauses the right one."></audio>
+            <audio id="abLeftAudio" preload="auto" title="Plays the left excerpt. Starting it pauses the right one."></audio>
             <p class="small" id="abLeftReadout"></p>
           </div>
           <div id="abRight" class="card">
             <h3>Right</h3>
             <p class="muted small" id="abRightName"></p>
             <!-- biome-ignore lint/a11y/useMediaCaption: instrumental excerpts have no speech to caption -->
-            <audio id="abRightAudio" controls preload="auto" title="Plays the right excerpt. Starting it pauses the left one."></audio>
+            <audio id="abRightAudio" preload="auto" title="Plays the right excerpt. Starting it pauses the left one."></audio>
             <p class="small" id="abRightReadout"></p>
           </div>
         </div>
@@ -120,7 +121,7 @@
         <p class="small" data-part="intent"></p>
         <p class="small muted" data-part="origin"></p>
         <!-- biome-ignore lint/a11y/useMediaCaption: instrumental excerpts have no speech to caption -->
-        <audio data-part="audio" controls preload="metadata" title="Plays this candidate's 25-second excerpt. Starting it pauses any other excerpt."></audio>
+        <audio data-part="audio" preload="metadata" title="Plays this candidate's 25-second excerpt. Starting it pauses any other excerpt."></audio>
         <p class="small muted" data-part="missing" hidden>The excerpt is not ready yet. It is rendered right after the model answers.</p>
         <p class="small muted" data-part="played"></p>
         <div class="small" data-part="rangesBox" hidden>
