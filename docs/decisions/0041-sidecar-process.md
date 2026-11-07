@@ -3,7 +3,7 @@
 - **Date:** 2026-11-07
 - **Status:** accepted; amends [0019](0019-config-file-and-paths.md) (adds
   `sidecar.requestTimeoutMs`); amended by [0042](0042-clap-embeddings.md) (the `path` type,
-  numpy at start-up)
+  numpy at start-up) and [0044](0044-bayesian-bradley-terry.md) (`fit` and `predict`)
 
 ## Context
 
@@ -139,3 +139,6 @@ subprocess for the stdout redirect.
 - 2026-11-07: from step 4b ([0042](0042-clap-embeddings.md)). The protocol has a fourth type,
   `path`: an absolute file path, checked by both sides. The CLAP methods' module imports numpy
   when the loop starts, so the loop no longer imports the standard library alone.
+- 2026-11-07: from step 4d ([0044](0044-bayesian-bradley-terry.md)). `fit` and `predict` pass
+  the training set, the items and the model as JSON files and the embeddings as float32 files,
+  all by path; the loop imports `preference.py`, which needs numpy alone.

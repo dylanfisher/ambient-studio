@@ -7,6 +7,7 @@ import { join } from "node:path";
  * @property {string} renderCache cached excerpt renders
  * @property {string} ratedAudio the excerpts the owner rated, kept as heard
  * @property {string} backups
+ * @property {string} models preference models, derived, each named by its model key
  */
 
 /**
@@ -19,5 +20,6 @@ export function paths(dataRoot) {
     renderCache: join(dataRoot, "renders"),
     ratedAudio: join(dataRoot, "rated_audio"),
     backups: join(dataRoot, "backups"),
+    models: join(dataRoot, "models"),
   };
 }

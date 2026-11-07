@@ -5,6 +5,7 @@ import { EMBEDDING_ROUTES } from "./embedding-routes.js";
 import { EVALUATION_ROUTES } from "./evaluation-routes.js";
 import { LINEAGE_ROUTES } from "./lineage-routes.js";
 import { LOCK_ROUTES } from "./lock-routes.js";
+import { PREFERENCE_ROUTES } from "./preference-routes.js";
 import { RATING_ROUTES } from "./rating-routes.js";
 import { serveAudio } from "./serve-audio.js";
 import { SESSION_ROUTES } from "./session-routes.js";
@@ -20,4 +21,5 @@ export const ROUTES = [
   ...RATING_ROUTES,
   ...EVALUATION_ROUTES,
   ...EMBEDDING_ROUTES,
+  ...PREFERENCE_ROUTES,
 ];

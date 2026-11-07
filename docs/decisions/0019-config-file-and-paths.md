@@ -2,7 +2,8 @@
 
 - **Date:** 2026-11-06
 - **Status:** accepted; amended by [0041](0041-sidecar-process.md) and
-  [0042](0042-clap-embeddings.md) (the sidecar keys)
+  [0042](0042-clap-embeddings.md) (the sidecar keys), and by [0044](0044-bayesian-bradley-terry.md)
+  (the `models` folder)
 
 ## Context
 
@@ -122,3 +123,5 @@ only: `scripts/` and `test/` are tools, and a test stubs variables with `vi.stub
   or `null`, which turns embedding off. The example sets `null`; a test that sets it uses a
   folder in its temp root, and the owner-folder guard applies to it like any folder key
   ([0042](0042-clap-embeddings.md)).
+- 2026-11-07: from step 4d ([0044](0044-bayesian-bradley-terry.md)). `paths(dataRoot)` adds
+  `models` (`models/`), where each preference model is a file named by its model key.

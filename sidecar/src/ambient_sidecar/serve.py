@@ -15,6 +15,7 @@ from importlib.metadata import version as package_version
 from typing import Any
 
 from ambient_sidecar.clap import ClapCheckpoint, clap_handlers
+from ambient_sidecar.preference import preference_handlers
 from ambient_sidecar.protocol import Handler, Method, load_methods, mismatch
 
 
@@ -31,6 +32,7 @@ HANDLERS: dict[str, Handler] = {
     "ping": ping,
     "version": version,
     **clap_handlers(ClapCheckpoint()),
+    **preference_handlers(),
 }
 
 
