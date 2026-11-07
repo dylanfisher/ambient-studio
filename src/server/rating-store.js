@@ -1,6 +1,7 @@
 // What the owner heard and how they rated it: rated audio, A/B ratings, feedback and sketches
 // (decision 0021). Every rating names what was heard, never a renders row, since renders are
 // derived and get replaced.
+/** @import { MACRO_DIRECTIONS, OUTCOMES, THUMBS } from "../domain/rating-values.js" */
 /** @import { Removable, Row, Store } from "./store.js" */
 import { decode, insertRow, selectRow, selectRows, TABLE } from "./store.js";
 
@@ -50,12 +51,9 @@ import { decode, insertRow, selectRow, selectRows, TABLE } from "./store.js";
  * @property {number} timeTakenMs
  */
 
-/** What an A/B rating comes to: a side won, a tie, or the owner skipped the pair. */
-export const OUTCOMES = /** @type {const} */ (["a", "b", "tie", "skip"]);
-/** The feedback kinds, and the directions each takes. */
+/** The feedback kinds. The directions each takes are in ../domain/rating-values.js. */
 export const FEEDBACK_KIND = /** @type {const} */ ({ thumbs: "thumbs", macro: "macro" });
-export const THUMBS = /** @type {const} */ (["up", "down"]);
-export const MACRO_DIRECTIONS = /** @type {const} */ (["more", "less"]);
+export { MACRO_DIRECTIONS, OUTCOMES, THUMBS } from "../domain/rating-values.js";
 
 /** @typedef {RatingDraft & Removable & { id: number, createdAt: number }} Rating */
 
