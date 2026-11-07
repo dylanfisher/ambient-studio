@@ -20,13 +20,22 @@ and with nothing at all. Only numpy is allowed: no scikit-learn, no scipy.
 
 **The model.** An item's score is `w · φ(item)`. `φ` is, in order:
 
-- the embedding projected on the top **12** principal components of the global set's
-  embeddings, each divided by its standard deviation, so every component has unit variance;
-- each feature standardized by the global set's mean and standard deviation, a null (nothing
+- the embedding projected on the top **12** principal components of the basis items'
+  embeddings, each divided by its standard deviation, so every component has unit variance. A
+  component whose variance is below **1e-3** of the largest's (`COMPONENT_VARIANCE_FLOOR`) is
+  dropped: whitening would multiply it by over 30, and a candidate far out along a direction the
+  training items barely span would get a score variance they never showed;
+- each feature standardized by the basis items' mean and standard deviation, a null (nothing
   measurable) set to 0, the mean;
 - each macro's heard-window mean standardized the same way.
 
-That is 27 weights. A pair is won with probability `σ(w · (φ(winner) − φ(loser)) + b·s)`, where
+A feature or macro column with fewer than two measured values, or one value throughout (a spread
+below 1e-9 of its mean's size, `CONSTANT_TOLERANCE`, since a column of one float has a rounding
+spread), gets a scale of 0 and a **term of 0 for every item**: its weight learns nothing, and a
+candidate with any value there, however large, gets the same score and variance as with the
+mean.
+
+That is up to 27 weights. A pair is won with probability `σ(w · (φ(winner) − φ(loser)) + b·s)`, where
 `s` is +1 when the winner was on the left and −1 when on the right, so `b > 0` is a lean to the
 left. A thumbs up has probability `σ(w · φ(item) + c)`, at weight 1 against a win's 1. `b` and
 `c` are not part of an item's score: `predict` uses `w` alone.
@@ -38,13 +47,21 @@ the Gaussian at the mode whose precision is the Hessian there. The loss is stric
 the mode is unique and the iteration has no seed: nothing in it draws at random. A PCA
 component's sign is fixed by making its largest loading positive.
 
-**The global prior.** The fit job fits a **global model** first, on every live vibe's pairs and
-thumbs together, with a prior centered on zero. It also computes the basis (the projection and
-the standardization) from those items. Then each vibe's model uses the global model's basis and
-a prior centered on the global posterior mean. Each vibe's hyperparameters carry the global
-model's key (`globalModel`), so a rating in any vibe changes every vibe's key, as 0043 asks. A
-vibe with no ratings gets a model equal to its prior: the global mean with the vibe's own
-spread.
+**The global prior, over the other vibes.** For each vibe the fit job first fits a **prior
+model** on every *other* live vibe's pairs and thumbs, under the base prior centered on zero.
+Its set file lists every vibe's excerpts as items, the vibe's own included, and it computes the
+basis (the projection and the standardization) from all of them, so every vibe's prior and
+model share one basis. Then the vibe's model takes that basis and a prior centered on the prior
+model's posterior mean. So no rating counts twice: the vibe's own ratings shape its prior's
+mean only through the basis, never through the weights. The prior model's hyperparameters carry
+`basis`, the key of every vibe's set, because its items depend on them; the vibe's carry
+`globalModel`, the prior model's key. A rating in any vibe changes every key, as 0043 asks.
+Inputs that are the same give one key and share one file, as two vibes with no ratings do.
+
+With one vibe holding every rating, as today, its prior model is fitted on no ratings: its
+posterior is the base prior, mean zero, and the vibe's model is the base prior updated by its
+own ratings. A vibe with no ratings gets a model equal to its prior: the other vibes' mean with
+the vibe's own spread.
 
 **Prior strengths** (`HYPERPARAMETERS` in `src/server/preference-model.js`, written into every
 set file and every key; the sidecar holds no defaults):
@@ -53,36 +70,44 @@ set file and every key; the sidecar holds no defaults):
 |---|---|---|---|
 | `pcaDimension` | 12 | | the middle of the plan's 8–16; with features and macros, 27 weights against tens of pairs |
 | `weightScale` | 1.5 | variance 1.5² / 27 | an item's prior score has a standard deviation near 1.5, so a pair's prior difference near 2.1 logits: most pairs land between 10% and 90% |
-| `vibeScale` | 1.5 | variance 1.5² / 27 | how far a vibe's weights may sit from the global ones |
+| `vibeScale` | 1.5 | variance 1.5² / 27 | how far a vibe's weights may sit from its prior model's |
 | `biasScale` | 1 | variance 1 | a left lean of 1 logit is a 73% left win rate, more than any listener should show |
 | `interceptScale` | 2 | variance 4 | the thumbs-up rate is unknown, anywhere from 12% to 88% at one standard deviation |
 | `thumbsWeight` | 1 | | a thumbs counts as much as a win |
 
 Dividing by the term count keeps an item's prior spread the same if the dimension changes.
+`HYPERPARAMETERS` also carries `modelCode`, `preference-<SHA-256 of preference.py>`, which the
+sidecar's `preference_code` reports and `fit` checks against its own, so the key changes when the
+model code does, as `clap.py`'s hash changes the embedding producer.
 
-The vibe's prior covariance is `vibeScale²/27 · I`, **not** the global posterior covariance plus
-that. The global fit already holds the vibe's own ratings, so adding its covariance would count
-them twice and make the vibe more certain than its data; with one vibe holding every rating, as
-today, it would halve the variance. With `vibeScale` equal to `weightScale`, a vibe with no
-ratings is never more certain than the global model, and the prior's precision is fixed while
-the vibe's data grows, so the vibe's own ratings outweigh it once it has some. Both scales are
-placeholders until 4e's held-out agreement can compare others.
+The vibe's prior covariance is `vibeScale²/27 · I`, not the prior model's posterior covariance
+plus that. The prior's precision stays fixed while the vibe's data grows, so the vibe's own
+ratings outweigh it once it has some, and with `vibeScale` equal to `weightScale` a vibe with no
+ratings is never more certain than its prior model. Both scales are placeholders until 4e's
+held-out agreement can compare others.
+
+**Folds.** `modelPlan(store, producer, { modelCode, heldOutSession })` leaves one session's pairs
+and thumbs out of the vibe's set and out of every set that feeds a prior, so its excerpts are in
+no basis either, unless another session rated the same excerpt, which then is training data
+too. Each set's ids change, so each fold has its own keys. **4e must fit its folds through it**,
+with `fitModels`, so nothing from the held-out session reaches any file a fold's fit reads.
 
 **Items with no embedding are left out**, not fitted on features and macros alone. A rating or
 thumbs whose excerpt has no embedding under the embedder's producer leaves the set before the
-key is computed and is listed as `unembedded`, one entry per excerpt, as 0043 lists one with no
-features. An item with the CLAP terms set to the mean would be keyed the same before and after
+key is computed and is listed as `unembedded`, one entry per rating and excerpt, as 0043 lists
+one with no features; the job's counts are of distinct excerpts. An item with the CLAP terms set to the mean would be keyed the same before and after
 it was embedded, so a model fitted without its sound would be kept after the sound arrived; and
 a pair of an embedded and an unembedded side would read the unembedded one as average. The fit
 job asks the sidecar's `embedder` without fetching, and fails, with the reason, when the config
 names no checkpoint folder or the checkpoint isn't there: the owner runs the embed job first.
 
-**What it says it fitted.** The job's result gives, for the global model and each vibe, the key,
-whether the file was already there (`kept`), the A/B ratings (a tie once), the ties, the thumbs,
-the excerpts left out for no embedding or no features, and a sentence: "Fitted on 0 A/B choices
-and 8 thumbs; with no A/B choices, the left/right lean stays at its prior." or "No ratings to
-fit, so it predicts from the model over every brief." With no pairs the bias has no data, so its
-posterior is its prior.
+**What it says it fitted.** The job's result gives, for each vibe, its key and its prior model's,
+whether each file was already there (`kept`, `priorKept`), the A/B ratings (a tie once), the
+ties, the thumbs, the other vibes' ratings and thumbs, the distinct excerpts left out for no
+embedding or no features, and a sentence: "Fitted on 0 A/B choices and 8 thumbs; with no A/B
+choices, the left/right lean stays at its prior; no other brief has ratings, so it starts from
+the base prior." or "No ratings to fit, so it predicts from the model over the other briefs."
+With no pairs the bias has no data, so its posterior is its prior.
 
 **Files.** Under `<dataRoot>/models/`, one `<modelKey>.json` per model: derived data, named by
 the key, never versioned, never migrated. The job fits a key only when its file is missing; a
@@ -98,17 +123,19 @@ covariance, and the pair and thumbs counts. 4g reads weights and intervals from 
 - `fit {set, out}` → `{pairs, thumbs, items, clapDimension, iterations}`. The set file is JSON:
   `hyperparameters`, `featureNames`, `macroNames`, `embeddingDimension`, `embeddings` (an
   absolute path to float32 rows, one per item, in item order: the stored BLOBs end to end),
-  `prior` (the global model's path, or null for the global fit), `items` (each excerpt once:
+  `prior` (the prior model's path, or null for a prior model's own fit), `items` (each excerpt
+  once, a prior model's listing every basis item first:
   `features` with nulls, `macros`), `pairs` (`winner` and `loser` by item index, `weight`,
   `winnerLeft`) and `thumbs` (`item`, `up`).
 - `predict {model, items, out}` → `{count}`. The items file has the same names, dimension,
   embeddings and items; it must match the model's names or the request fails. `out` gets each
   item's `mean` and `variance` and the full `covariance`, so a pair's difference has variance
   `var(a) + var(b) − 2 cov(a, b)`.
+- `preference_code {}` → `{code}`: the model code the key names.
 
 **The route.** `POST /api/preference-models` starts the fit job, one at a time (a second gets a
-409 naming the first). Its progress counts the global model and each vibe. Nothing else starts
-it.
+409 naming the first). Its progress counts the vibes, each a prior model and its own. Nothing
+else starts it.
 
 **Threads and determinism.** CPU only; omlx is never asked. numpy's BLAS here is Accelerate,
 the same library torch uses, and its thread count can only be set by an environment variable
@@ -131,10 +158,15 @@ pairs, mbp2021 under another builder's load): 40 pairs 0.008 s, 200 pairs 0.03 s
   together (a test checks it) without another parameter.
 - **Fitting items with no embedding on features and macros alone** — rejected above: the key
   can't tell when their sound arrives, and the missing side reads as average.
-- **The global posterior covariance in the vibe's prior** — rejected above: it counts the vibe's
-  own ratings twice.
-- **A global fit over every vibe but the vibe's own** — rejected: the basis then comes from the
-  other vibes' items, and with one vibe holding every rating, as today, there would be no basis.
+- **One global fit over every vibe, the vibe's own included, as the prior** — rejected in review:
+  its mean already holds the vibe's ratings, so they would count twice.
+- **The prior model's posterior covariance in the vibe's prior** — rejected: a tighter prior that
+  later steps would read as evidence, for little gain while the scales are guesses.
+- **A prior model whose basis comes from the other vibes' excerpts alone** — rejected: with one
+  vibe holding every rating, as today, there would be no basis. The basis reads every vibe's
+  excerpts, features and embeddings only, never a rating's outcome.
+- **Leaving a constant column at scale 1** — rejected: a candidate with a large value there would
+  move its score by a weight its training never constrained.
 - **An unwhitened projection, or raw features** — rejected: a prior of one width per weight
   means the same only when every term has unit variance.
 - **Capping BLAS threads with `VECLIB_MAXIMUM_THREADS`** — rejected above. `threadpoolctl` would
@@ -144,10 +176,11 @@ pairs, mbp2021 under another builder's load): 40 pairs 0.008 s, 200 pairs 0.03 s
 ## Consequences
 
 - The owner runs the embed job, then the fit job. Today it fits 8 thumbs in one vibe, says so,
-  and leaves the bias at its prior; the other vibes predict from the global model.
+  and leaves the bias at its prior; its prior model is the base prior, and the other vibes
+  predict from a prior model fitted on its ratings.
 - Every model file is rebuilt when a rating, an embedding producer, the feature producer or a
-  hyperparameter changes. Old files stay in `models/` until deleted by hand.
-- 4e fits per fold through the same `fit`. Its features-only baseline can set `pcaDimension` to
+  hyperparameter or `preference.py` changes. Old files stay in `models/` until deleted by hand.
+- 4e fits each fold with `modelPlan(..., { heldOutSession })` and `fitModels`. Its features-only baseline can set `pcaDimension` to
   0, which the fit accepts, though it still reads an embeddings file; 4e decides whether to let
   the file be absent. 4f and 5d call `predict`; no Node wrapper exists yet.
 - The scales are guesses. 4e's held-out agreement is the first measure of them; changing one
