@@ -56,12 +56,13 @@ unneeded stays unused rather than being given to another step.
 | 0031 | Automatic excerpts, one job per action, progress steps, thinking switch, prompt notation | 2m | — |
 | 0032 | Plain-language studio pages, "brief" for vibe | 2n | — |
 | 0033 | Phase 3 features: low end, stereo width, tonality | 3a | — |
-| 0034 | Feature ranges as soft targets | 3b | — |
+| 0034 | Feature ranges as soft targets, and their calibration | 3b | — |
 | 0035 | Locks: paths, storage, enforcement, locks and macros | 3c (settles 0006's open question) | — |
 | 0036 | The revision pass ("ears") | 3d | — |
-| 0037 | Explore, nudge and branch | 3e | — |
-| 0038 | Lineage tree and the steering controls | 3f | — |
-| 0039 | Revision evaluation and its control | 3g | — |
+| 0037 | `sessionId` on candidates, nudge and branch | 3e | — |
+| 0038 | Explore | 3f | — |
+| 0039 | Lineage tree and the steering controls | 3g | — |
+| 0040 | Revision evaluation against a control | 3h | — |
 
 ## Phase 1 — Engine, schema and macros
 
@@ -943,30 +944,36 @@ one.
 **Acceptance, as measurable checks:**
 
 1. Every excerpt's features (2e's loudness, centroid and onset rate, plus 3a's low-end share,
-   stereo width and tonality) are written as text into the revision prompt, beside the vibe's
-   ranges each one misses.
-2. Over an owner-started evaluation of at least 48 candidates across the three seed vibes, the
-   share of valid candidates inside every one of their vibe's feature ranges is higher after one
-   revision than before. The report gives both shares with 95% Wilson intervals, the paired
-   counts (fixed, broken, unchanged) and an exact one-sided McNemar p on the discordant pairs, per
-   vibe and overall. The rise counts when p < 0.05 overall. A control arm, revised with the same
-   prompt but no features or misses, is reported beside it, so a rise from a second try alone is
-   told apart from one the features caused.
+   stereo width and tonality) are measured and stored, and every revision prompt carries the
+   revised candidate's features as text beside each range it misses.
+2. Revising with the measurements beats revising without them. In an owner-started evaluation
+   over the three seed vibes, every valid first try that misses one of its vibe's feature ranges
+   is revised twice from the same first try: once with its measured features and misses (the
+   treatment), once with the same ranges but no measurements (the control). The primary test is
+   an exact one-sided McNemar test on the pairs, treatment inside every range against control
+   inside every range; it passes when p < 0.05 overall over at least 20 revised first tries.
+   Below 20 the report says "inconclusive" and gives no p. Beside it the report gives, per vibe
+   and overall, the share inside every range before revision, after the treatment and after the
+   control, each with a 95% Wilson interval. When the treatment beats the first tries but not
+   the control, the report says the gain comes from asking again, the acceptance fails, and the
+   owner decides whether to keep the revision pass.
 3. Locks hold: across LLM answers, explore and nudge, every locked value in every stored child
    equals the locked value, proven by a test over scripted answers that change locked values and
    over 1,000 seeded nudges.
-4. Every candidate stores its parents and the operator that made it, and the lineage page shows
-   the vibe's tree with every node playable and "explore from here" on each.
+4. Every candidate stores its parents and the operator that made it (null for a root, a first
+   try from a plain request), and the lineage page shows the vibe's session candidates as a tree
+   with every node playable and "explore from here" on each.
 
 **Gate:** `./scripts/check`; the evaluation's numbers in Result; omlx reached only through the
-queue, with tests using a fake. Acceptance 2 waits on the owner starting the evaluation (3g).
+queue, with tests using a fake. Acceptance 2 waits on the owner starting the evaluation (3h).
 
-**Pending owner checks** (after 3f, on mbp2015 and mbp2026):
+**Pending owner checks** (after 3g, on mbp2015 and mbp2026):
 
 - Ask for 8 candidates on a seed vibe. Cards that were revised say so, with the first try one
   click away; listen to a few pairs and say whether the revision moved toward the brief.
-- Lock a voice and a macro on one card, explore from it, and listen: the locked parts should
-  sound the same across the children while the rest changes.
+- Lock a voice and the macros that move it on one card, explore from it, and listen: the locked
+  voice should sound the same across the children while the rest changes. A voice locked
+  without its macros still moves with them, as the owner settled.
 - Nudge at each step size and say whether small, medium and large sound like their names.
 - Open the lineage page after two rounds of exploring, play a node from the first round, and
   explore from it.
@@ -987,207 +994,343 @@ queue, with tests using a fake. Acceptance 2 waits on the owner starting the eva
   got worse.
 - **Nudge, without the model, is in phase 3** beside the model's explore: it costs no omlx time
   and proves locks most directly. Phase 5's optimizers build on its draws.
+- **The evaluation tests treatment against control** (2026-11-07, after the plan review): a
+  test against the first tries alone can't fail, since only candidates that missed are revised
+  and any second try lands inside the ranges some of the time.
 
 **What the code holds today** (read when this phase was expanded, at 9cb1c87):
 
 - `candidates` already has `parentIds`, `locks`, `operator` and `operatorParams`; every row
-  written so far has `[]`, `[]` and null. A lock is `{path, value}` with the vector view's paths
-  (0024), and `buildPrompt` writes them under "Locked by the owner". Both jobs pass `locks: []`.
+  written so far has `[]`, `[]` and null. It has no `sessionId`: `listSessionCandidates` finds a
+  session's candidates by joining `generations` (`src/server/generation-store.js:171`), so a
+  candidate made without a model request can't be found. A lock is `{path, value}` with the
+  vector view's paths (0024), and `buildPrompt` writes them under "Locked by the owner". Both
+  jobs pass `locks: []`.
+- `genomes` is unique on `(vibeId, genomeHash)`, so two candidates that reach one genome share
+  its row.
+- `generateCandidates` holds `ask`, `judge`'s caller, `keep` and `failedVerdict` as closures
+  inside it, and refuses a request group that already exists.
+- `buildRepairPrompt` is the first prompt, the parsed answer as an assistant turn, and one user
+  turn (0024).
 - `softTargets` is a free JSON object on each vibe revision, stored, shown under "Advanced" on
   the brief page, and checked by nothing. Every seed vibe has `{}`.
 - `featuresText()` (2e) writes raw and heard features as one line and is shown on each card; no
   prompt uses it yet.
-- The evaluation job generates only; it renders nothing. The candidates job renders each valid
-  candidate's excerpt between model requests (0031).
+- The evaluation job generates only; it renders nothing, and its count goes up to 64 a vibe
+  (`EVALUATION_COUNT`). The candidates job renders each valid candidate's excerpt between model
+  requests (0031).
 - The owner's config has `queue.thinking` false: a request takes about 7 s, and omlx's prefix
-  cache already reuses about half of the prompt, so a revision sent as a follow-up turn of its
-  candidate's conversation reads its shared prefix almost free.
+  cache already reused about half of the first prompt in the model tests. A follow-up turn sent
+  with its first prompt's turns byte for byte gives the cache the chance to reuse them; whether
+  it does, with the live site's requests in between, shows only in the owner's run, which logs
+  first-token times.
 
-**Shared helpers and their owners** (orchestrator rule 4): `FEATURE_NAMES` and each feature's
-unit and rounding, read by `featuresText`, the range table and the page, are 3a's; the range
-table, `targetsText()` and `checkTargets()` are 3b's; the lock shape, `applyLocks()`,
-`lockedPaths()` and the `locks` store functions are 3c's; the candidate job's flow (generate,
-render, revise, render) is 3d's, and 3e adds its jobs beside it in their own file rather than
-editing that flow; `buildFollowUp()`, the follow-up turn that both revision and explore send, is
-3d's, and 3e calls it; the lineage route is 3f's. The control arm and the McNemar test are 3g's.
-Only 3c adds a migration; any other step that finds it needs one stops and asks the orchestrator
-for the next number.
+**Shared helpers and their owners** (orchestrator rule 4):
+
+- 3a: `FEATURE_NAMES` and each feature's unit and rounding, read by `featuresText`, the range
+  table and the pages.
+- 3b: the range table, `targetsText()` and `checkTargets()`.
+- 3c: the lock shape, `applyLocks()`, `lockedPaths()`, `macrosMoving()`, the `locks` store
+  functions, and migration 0004.
+- 3d: the first commit moves `ask`, `keep` and `failedVerdict` out of `generateCandidates` into
+  functions every operator calls, with no change in behavior; 3e and 3f build on it. Also
+  `followUp()` in `src/domain`, the one function that adds an assistant turn and an ask to a
+  first prompt, which `buildRepairPrompt` and the revision both call; the candidates job's flow
+  (generate, render, revise, render); and the shown-card rule and the `pair` field.
+- 3e: migration 0005 (`candidates.sessionId`) and the job-conflict rules for explore and nudge
+  in 0031's table, which 3f adds its row to.
+- Each step adds its own `JOB_STEP` sentences.
+- 3g: the lineage route. 3h: the control arm and the McNemar test.
+- A step that finds it needs another migration stops and asks the orchestrator for the number.
 
 ### Steps
 
-Order: 3a ‖ 3c, then 3b, then 3d ‖ 3e, then 3f, then 3g.
+Order: 3a ‖ 3c, then 3b, then 3d ‖ 3e, then 3f, then 3g, then 3h. 3e is built on 3d's first
+commit (the moved helpers), named in its brief by sha.
 
 #### 3a — More features
 
-- **Builds:** three heard features in `src/domain`, added to `extractFeatures`: low-end share
-  (the fraction of spectral power below 150 Hz, over the whole excerpt), stereo width (the
-  mid/side power ratio, in dB, so mono reads as none measurable and wide reads high), and
-  tonality (mean spectral flatness over frames, 0 for pure tones, near 1 for white noise). Each
-  is finite or null like 2e's. `FEATURE_NAMES` lists every feature the ranges and the prompt may
-  name, raw and heard, with its unit and the rounding `featuresText` uses; `featuresText` reads
-  it. Integrated loudness is left out of `FEATURE_NAMES`, since every heard excerpt is normalized
-  to the vibe's target. The new files join `FEATURE_EXTRACTOR`, so `PRODUCER` changes and every
-  cached excerpt renders again when next asked for (derived data).
+- **Builds:** three heard features in `src/domain`, added to `extractFeatures`:
+  - low-end share: the fraction of spectral power below 150 Hz over the whole excerpt;
+  - stereo width: side power over mid plus side power, from 0 (mono) to 1 (all side), with
+    independent channels near 0.5;
+  - tonality: mean spectral flatness over frames, 0 for pure tones and near 1 for white noise.
+
+  Each is finite or null like 2e's. `FEATURE_NAMES` lists every feature the ranges and the
+  prompt may name, raw and heard, with its unit and the rounding `featuresText` uses;
+  `featuresText` reads it. Integrated loudness is left out of `FEATURE_NAMES`, since every heard
+  excerpt is normalized to the vibe's target. The new files join `FEATURE_EXTRACTOR`, so
+  `PRODUCER` changes and every cached excerpt renders again when next asked for (derived data).
 - **Tiers:** domain.
 - **Tests first:** a 60 Hz sine reads a low-end share near 1 and a 1 kHz sine near 0; identical
-  channels read stereo width as none measurable, and independent noise in each channel within
-  1 dB of 0 dB; a sine's tonality is under 0.05 and white noise's over 0.8; `featuresText` names
-  every entry of `FEATURE_NAMES`; `extractFeatures` twice on the same samples is identical; the
-  feature-extractor closure test passes with the new files.
+  channels read a stereo width of 0, independent noise in each channel within 0.05 of 0.5, and
+  opposite channels 1; a sine's tonality is under 0.05 and white noise's over 0.8;
+  `featuresText` names every entry of `FEATURE_NAMES`; `extractFeatures` twice on the same
+  samples is identical; the feature-extractor closure test passes with the new files.
 - **Records:** writes 0033: the three features, why these (an excerpt's bass weight, width and
-  noisiness are what the brief describes and 2e doesn't measure), cutoffs and frames, and why
-  loudness is left out. Amends 0023.
+  noisiness are what a brief describes and 2e doesn't measure), cutoffs and frames, width as a
+  share so mono is a measured 0, and why loudness is left out. Amends 0023.
 - **Parallel:** with 3c. Review: yes.
 
 #### 3b — Feature ranges as soft targets
 
 - **Builds:** in `src/domain`, a range table in the descriptor style of 0020: one optional
-  `[low, high]` per entry of `FEATURE_NAMES`, either end open (`null`). `softTargets` becomes
-  `{features: {...}}`, validated on every revision save; `{}` stays valid and means no ranges, so
-  stored revisions need no migration. `targetsText()` writes the ranges for the prompt;
-  `checkTargets(features, ranges)` returns 2b's lint result type, one finding per miss naming the
-  feature, its value and the range, with an unmeasurable value a miss. The brief page replaces the
-  soft-targets JSON field with a form built from the table, like the rules form. Each seed vibe
-  gets ranges written from its brief, committed before any evaluation: ranges shaped to make 3g
-  pass would make its result meaningless, so 3g's builder may not change them.
+  `[low, high]` per entry of `FEATURE_NAMES`, either end open (`null`). Ranges live at
+  `softTargets.features`, validated on every revision save. Other keys of `softTargets` are
+  kept as the owner saved them and ignored, since revisions are irreplaceable and phase 5's CLAP
+  directions will sit beside the ranges; `{}` stays valid and means no ranges, so no migration
+  is needed. `targetsText()` writes the ranges for the prompt; from this step on, every first
+  prompt carries them (0024 left soft targets out until now), so the first tries already know
+  the ranges and the revision adds only the measurements. `checkTargets(features, ranges)`
+  returns 2b's lint result type, one finding per miss with path `features.<name>`, rule
+  `target`, and a message naming the value and the range; an unmeasurable value is a miss. The
+  brief page replaces the soft-targets JSON field with a form built from the table, like the
+  rules form, and lists any other saved keys read-only.
+- **Seed ranges, calibrated before they're fixed.** Before writing them, the builder measures the
+  features of genomes that pass each seed vibe's linter: the goldens 2l adapted to each vibe and
+  200 `randomGenome` draws filtered by the vibe's lint, rendered as excerpts in a temp root. The
+  spread goes in 0034, and each range is written from the brief and that spread, so that a
+  stated share of the draws (about half) misses at least one range. This calibrates how often a
+  first try misses; it says nothing about whether revisions fix them, so it can't bias 3h. The
+  ranges are committed here, and 3h's builder may not change them.
 - **Tiers:** domain, server (validation on save), web.
 - **Tests first:** a valid range set passes and each malformed one (low above high, an unknown
-  feature, a non-number) fails with its path; `{}` passes; `checkTargets` on a fixture's features
-  finds exactly the misses scripted into its ranges, and a null value is a miss; saving a revision
-  with bad ranges is a 400 that names the feature; each seed vibe's ranges validate; the form
-  module, DOM-free, turns the table into fields and back.
-- **Records:** writes 0034: the shape, open ends, a null value as a miss, why integrated loudness
-  has no range, and the rule against tuning seed ranges to the evaluation. Amends 0024 (soft
-  targets enter the prompt) and 0030 (the seed vibes).
-- **Parallel:** none (it needs 3a's names, and 3d and 3e need it).
+  feature, a non-number) fails with its path; `{}` passes, and a `softTargets` with another key
+  saves and keeps it; `checkTargets` on a fixture's features finds exactly the misses scripted
+  into its ranges, and a null value is a miss; saving a revision with bad ranges is a 400 that
+  names the feature; each seed vibe's ranges validate; a first prompt holds `targetsText`'s
+  lines; the form module, DOM-free, turns the table into fields and back.
+- **Records:** writes 0034: the shape, open ends, a null value as a miss, kept keys, the ranges
+  in the first prompt, why integrated loudness has no range, the calibration and its numbers,
+  and the rule against tuning seed ranges to the evaluation. Amends 0024 (soft targets enter the
+  prompt) and 0030 (the seed vibes).
+- **Parallel:** none (it needs 3a's names, and 3d to 3h need it).
 
 #### 3c — Locks
 
 - **Builds:** the lock shape widened (0024 allowed it): `{path, value}` where the path names a
   global parameter, a macro, a voice parameter of any kind (number, int, choice, flag, or a whole
   trajectory), or a whole voice by id (`voices.pad`), with `value` the canonical JSON taken from
-  the candidate it was locked on. In `src/domain`: `validateLock` against the schema;
-  `applyLocks(genome, locks)` writes every locked value into a genome, inserting a locked voice
-  the genome dropped, and returns the genome and the paths it had to change; `lockedPaths` gives
-  the vector paths a set of locks covers. Locks belong to a vibe and stay until the owner removes
-  them: a `locks` table (irreplaceable; removing one marks it removed), with migration 0004 and a
-  test over the previous shape. Routes: lock a path from a candidate, unlock, list. In
-  `generateCandidates`, locks are read from the store, written into the prompt as today, and
-  applied to every parsed answer before validation; the candidate stores the locks in force and,
-  in `operatorParams`, the paths the model changed, so the evaluation can count them. Settles
-  0006's question as the owner chose: a locked raw value still follows the macros.
+  the candidate it was locked on. In `src/domain`:
+  - `validateLock` against the schema.
+  - `applyLocks(genome, locks)` writes every locked value into a parsed answer after it has been
+    filled out to canonical form, so a parameter the model left out is filled from the lock and
+    counted as omitted, not changed. It inserts a locked voice the genome dropped. A lock on a
+    parameter of a voice the answer lacks, or whose type changed, is a lint finding with rule
+    `lock`, which goes to the repair round. It returns the genome and the paths it changed and
+    filled.
+  - `lockedPaths(locks, genome)` gives the vector paths the locks cover: a whole trajectory
+    covers its `.start` and `.end`, a number lock on a parameter the genome holds as a
+    trajectory covers the one path it becomes once applied, and a whole voice covers every
+    numeric path of that voice. Choices and flags have no vector path and are covered by
+    `applyLocks` alone.
+  - `macrosMoving(path)` lists the macros whose rows move a parameter (0006), for the lock
+    control's offer.
+
+  Locks belong to a vibe and stay until the owner removes them: a `locks` table (irreplaceable;
+  removing one marks it removed), with migration 0004 and a test over the previous shape.
+  Locking a path that is live marks the old row removed as "replaced"; locking a whole voice
+  marks the live locks inside it removed as "covered"; locking a path inside a locked voice is
+  refused. Routes: lock a path from a candidate, unlock, list. `generateCandidates` keeps `locks`
+  as an explicit argument: the session's candidates job passes the vibe's live locks and the
+  evaluation passes none, so a lock the owner set on a seed vibe never reaches an evaluation.
+  The candidate stores the locks in force and, in `operatorParams`, the paths changed and
+  filled. Settles 0006's question as the owner chose: a locked raw value still follows the
+  macros.
 - **Tiers:** domain, server.
 - **Tests first:** each path kind round-trips through `validateLock`, and an unknown parameter, a
   voice id the candidate lacks and a value outside its descriptor are refused; `applyLocks` on a
-  genome that changed every locked value restores each one and lists them, and puts back a
-  dropped voice; against the fake omlx, an answer that changes two locked values is stored with
-  both restored and both paths listed; a lock removed is gone from the next prompt and its row
-  is still there; a locked genome that fails lint after the locks are applied goes to the repair
-  round with the lint findings, not the lock changes.
+  genome that changed every locked value restores each one and lists them as changed, one that
+  left a locked parameter out lists it as filled, and a dropped voice is put back; a lock on a
+  parameter of a missing or retyped voice gives a `lock` finding; `lockedPaths` for a whole
+  trajectory, a number over a trajectory and a whole voice; `macrosMoving` against the macro
+  table; against the fake omlx, an answer that changes two locked values is stored with both
+  restored and both paths listed; a whole-voice lock keeps the first prompt under the budget; a
+  lock removed is gone from the next prompt and its row is still there; replacing and covering
+  mark the old rows; the evaluation's prompt has no locks while the vibe has some.
 - **Records:** writes 0035: lock paths and values, locks per vibe, applying rather than rejecting
-  (a rejected answer costs a request and the model's other ideas), the changed-paths count, and
-  locks and macros. Amends 0006, 0021 and 0024.
+  (a rejected answer costs a request and the model's other ideas), changed against filled,
+  overlapping locks, and locks and macros. Amends 0005 (lock paths beyond the vector view),
+  0006, 0021 and 0024.
 - **Parallel:** with 3a. Review: yes (a new irreplaceable table and a migration).
 
 #### 3d — The revision pass
 
-- **Builds:** in the candidates job, after a valid candidate's excerpt renders, its features are
-  checked with `checkTargets` and its render checks read. A candidate with a miss or a failed
-  check gets one revision request: `buildFollowUp(prompt, answer, ask)` sends the candidate's
-  original messages, the model's answer as the assistant turn, and a user turn with
-  `featuresText`, the misses and failed checks, and the ask to revise once or return the genome
-  unchanged if it fits the vibe as it is. The revision goes through the same parse, lock, validate
-  and lint path, with one repair round, and becomes its own candidate with `parentIds` naming the
-  first try and operator `revise`; its excerpt renders and its features are checked. The grid
-  shows the one of the pair that misses fewer ranges, the revision on a tie, and marks the other
-  as its first try or its revision. A vibe with no ranges still revises on failed checks. An unchanged genome is stored as
-  a candidate with the same genome row, so the count of "kept as is" is exact. The step sentence
-  says "measuring candidate 3 of 8" and "revising candidate 3 of 8".
-- **Tiers:** domain (`buildFollowUp`, the ask), server.
-- **Tests first:** against the fake omlx: a candidate inside every range gets no revision; one
-  outside a range gets one request whose last user turn holds `featuresText`'s line and the miss,
-  and whose earlier turns equal the original request's byte for byte (so omlx's prefix cache can
-  reuse them); the revision is stored with its parent and operator, its excerpt renders, and the
-  pair's shown card follows the rule; a revision that fails to parse gets a repair round and,
-  failing that, leaves the first try shown; a cancel between the render and the revision stops
-  the job with every row stored; the follow-up stays under the context budget and trims examples
-  first.
-- **Records:** writes 0036: when a candidate is revised, the follow-up turn, which card is
-  shown, unchanged answers, and why one round. Amends 0024, 0026 and 0031.
-- **Parallel:** with 3e. 3d owns the candidates job; 3e's jobs live in their own file and call
-  `buildFollowUp` from 3d's branch, so 3e rebases onto 3d before merge. Review: yes.
+- **Builds:** first commit: `ask`, `keep` and `failedVerdict` move out of `generateCandidates`
+  into functions any operator calls, behavior unchanged and every existing test passing. Then
+  `followUp(messages, answer, ask)` in `src/domain`, which `buildRepairPrompt` is rewritten to
+  call. In the candidates job, after a valid candidate's excerpt renders, its features are checked
+  with `checkTargets` and its render checks read. A candidate with a miss or a failed check gets
+  one revision request:
+  - **Prompt.** The candidate's first prompt (its round-0 generation's messages, never a repair
+    round's), then its genome after locks as the assistant turn, as `JSON.stringify` like the
+    repair, then one ask. The ask restates the vibe's current locks, then gives `featuresText`,
+    the misses and failed checks, and asks for one revision or the genome unchanged if it fits
+    the vibe as it is. A revision is never revised again. A follow-up over the context budget
+    isn't trimmed, since its earlier turns must match the first prompt; it is skipped and noted
+    on the candidate as `revisionOverBudget`, like `repairOverBudget`.
+  - **Requests.** The revisions of one job form their own request group, named from the first
+    tries' group, and use each first try's sampling.
+  - **Result.** The answer goes through the same parse, lock, validate and lint path, with one
+    repair round, and becomes its own candidate with `parentIds` naming the first try and operator
+    `revise`. It gets its own seed from the job's stream, so its excerpt and ratings never share a
+    heard identity with the first try. Its excerpt renders and its features are checked. An
+    answer that returns the genome unchanged is stored as a `revise` candidate with
+    `operatorParams.unchanged` true, on the same genome row and the first try's seed, and is
+    neither rendered nor shown.
+  - **Shown card.** The candidates route gives each first try that has a revision a `pair` field
+    (first try, revision, which is shown), chosen by the owner's rule: fewer misses, the revision
+    on a tie. The session page shows the chosen card and links the other. A card whose excerpt is
+    playing isn't replaced until it stops.
 
-#### 3e — Explore, nudge and branch
+  The step sentence says "measuring candidate 3 of 8" and "revising candidate 3 of 8".
+- **Tiers:** domain (`followUp`, the ask), server, web (the shown card only; 3g adds the rest).
+- **Tests first:**
+  - The moved helpers pass every existing generation test unchanged.
+  - Against the fake omlx, a candidate inside every range gets no revision. One outside a range
+    gets one request whose last user turn holds `featuresText`'s line, the miss and the current
+    locks, and whose earlier turns equal its round-0 request byte for byte, a repaired first try
+    included.
+  - The revision is stored with its parent, operator and its own seed, and its excerpt renders;
+    the `pair` field follows the rule on a fewer-misses, a more-misses and a tied fixture.
+  - An unchanged answer is stored and neither rendered nor shown.
+  - A revision that fails to parse gets a repair round and, failing that, leaves the first try
+    shown.
+  - A follow-up over the budget is skipped with its note.
+  - A cancel between the render and the revision stops the job with every row stored.
+  - `buildRepairPrompt`'s existing tests pass through `followUp`.
+  - The page module that swaps cards waits while the card's audio plays.
+- **Records:** writes 0036: when a candidate is revised, the follow-up turn and what it replays,
+  no trimming, the request group, seeds, which card is shown, unchanged answers, and why one
+  round. Amends 0024, 0026 and 0031.
+- **Parallel:** with 3e, once its first commit is on its branch. Review: yes.
 
-- **Builds:** two operators on a base candidate, from any session of the vibe, which is what
-  branching is: the base may be any node in the lineage, so the owner returns to an old branch by
-  exploring from it.
-  - **Explore** (operator `explore`): N children (default 4) by the model, each a follow-up turn
-    on the base's conversation asking for a variation that keeps the locks and changes the rest,
-    with an optional one-line direction from the owner ("slower", "less bell"). Locks apply as in
-    3c, and children go through the revision pass like any candidate.
-  - **Nudge** (operator `nudge`, no omlx): N children (default 8) by seeded moves in the vector
-    view (0005) over the unlocked numeric paths and the macros, at a step size of small, medium or
-    large (a normal step of 0.05, 0.12 or 0.25 in [0, 1], clipped), decoded by `fromVector`, then
-    `applyLocks` and lint. A draw that fails lint is stored as a rejected candidate and drawn
-    again, at most 4 times a child, so no unlinted genome is ever rendered or shown.
-  Each is a job (one job per action, 409 on a repeat, 0031) whose children store the base in
-  `parentIds`, and the operator's parameters (direction, step size, seed) in `operatorParams`.
+#### 3e — Nudge and branch
+
+- **Builds:** migration 0005 adds `sessionId` to `candidates` (null for evaluation candidates),
+  filled for existing rows from their generation's session, and `listSessionCandidates` reads it,
+  so a candidate made without a model request is still found; a test runs it over 0004's shape.
+  Nudge (operator `nudge`, no omlx): N children (default 8) of a base candidate by seeded moves in
+  the vector view (0005) over the paths `lockedPaths` leaves free and the macros, at a step size of
+  small, medium or large (a normal step of 0.05, 0.12 or 0.25 in [0, 1], clipped), decoded by
+  `fromVector`, then `applyLocks` and lint.
+  - **Failed draws.** A draw that fails lint, or lands on the base's or a sibling's genome (an
+    int rounding back, a clipped step), is stored as a rejected candidate and drawn again, at most
+    4 times a child, so no unlinted or repeated genome is ever rendered or shown.
+  - **Children.** They keep the base's seed, so a child differs from its base only in its genome.
+    Their excerpts render and their features are checked and shown, but they aren't revised: they
+    have no conversation to follow up.
+  - **Branching** is nudging or exploring (3f) from any node, in any session of the vibe, so the
+    owner returns to an old branch by working from it.
+  - **Jobs.** The children store the base in `parentIds` and the step size and seed in
+    `operatorParams`. Nudge is a job. 0031's conflict table gains its rule: a nudge identical to
+    one queued or running (same base, step size and count) is a 409. A different base, or a nudge
+    while a candidates job runs, queues behind it.
 - **Tiers:** domain (the nudge), server.
-- **Tests first:** 1,000 seeded nudges with three locks (a macro, a voice parameter, a whole
-  voice) leave every locked value equal to its lock, and no locked path moves in the vector
-  (acceptance 3, with 3c's scripted answers); a nudge is the same for the same seed; a draw that
-  fails lint is stored rejected and redrawn, and a child that fails four times is reported, not
-  shown; explore against the fake omlx sends N follow-ups whose shared turns equal the base's
-  request, stores children with the base as parent, and its answers' changes to locked values
-  are restored; exploring from a candidate of an earlier session works; a second identical
-  explore while one runs is a 409.
-- **Records:** writes 0037: branching as exploring from any node, the two operators, step sizes,
-  redraws, and why nudge is in phase 3. Amends 0027.
-- **Parallel:** with 3d. Review: yes.
+- **Tests first:** migration 0005 over a 0004 database with session and evaluation candidates
+  fills `sessionId` from their generations and leaves the evaluation's null; 1,000 seeded nudges
+  with three locks (a macro, a voice parameter, a whole voice) leave every locked value equal to
+  its lock, and no locked path moves in the vector (acceptance 3, with 3c's scripted answers); a
+  nudge is the same for the same seed; a draw that fails lint, and one equal to its base, is
+  stored rejected and redrawn, and a child that fails four times is reported, not shown; nudge
+  children appear in their session's candidate list; nudging from a candidate of an earlier
+  session works; a second identical nudge while one runs is a 409, and one on another base
+  queues.
+- **Records:** writes 0037: `sessionId` on candidates, branching as working from any node, the
+  nudge, step sizes, failed draws, seeds, no revision for nudges, and why nudge is in phase 3.
+  Amends 0021, 0027 and 0031.
+- **Parallel:** with 3d, built on 3d's first commit. Review: yes (a migration).
 
-#### 3f — Lineage and the steering controls
+#### 3f — Explore
 
-- **Builds:** `GET /api/vibes/:id/lineage`: every candidate of the vibe with its parents,
-  operator, session, shown or first-try status, rating marks and sketch flag, valid ones only by
-  default. A lineage page drawing the tree as nested lists (keyboard and screen-reader friendly,
-  no canvas), each node with its intent, operator, a player for its excerpt and "explore from
-  here"; rejected candidates hidden behind a switch. On the session page's cards: the features
-  against the vibe's ranges (each miss marked), "first try" and "revision" when a pair exists,
-  lock controls (a voice, a macro, or a parameter picked from a list), the vibe's current locks
-  with unlock, and explore and nudge buttons with the direction field and step size. Plain words
-  and titles on every control (0032); written for Safari 17.6.
+- **Builds:** explore (operator `explore`): N children (default 4) of a base candidate by the
+  model. Each is a fresh first prompt, `buildPrompt` with one more section holding the base's
+  genome and the ask for a variation that keeps the locks and changes the rest, with an optional
+  one-line direction from the owner ("slower", "less bell"). It's never a follow-up turn, so
+  exploring from a revision, a nudge child or an explore child never chains turns, and the prompt
+  carries the vibe's current brief, notes and locks rather than the base's. Children go through
+  3d's helpers (parse, locks, validate, lint, one repair round), each with its own seed, then the
+  revision pass like any first try. They store the base in `parentIds` and the direction in
+  `operatorParams`. 0031's conflict table gains explore's row, on the same terms as nudge's.
+- **Tiers:** domain (the prompt section), server.
+- **Tests first:** against the fake omlx, explore sends N requests whose prompts hold the base's
+  genome and the direction, stores children with the base as parent, and restores answers'
+  changes to locked values; exploring from a nudge child and from a revision sends a first prompt
+  with no earlier turns; the base section is trimmed after the examples and before failing the
+  budget; children are revised when they miss a range; a second identical explore while one runs
+  is a 409.
+- **Records:** writes 0038: explore as a fresh prompt, the base section, directions, and
+  revision of explore children. Amends 0024 and 0031.
+- **Parallel:** none (it needs 3d and 3e merged). Review: yes.
+
+#### 3g — Lineage and the steering controls
+
+- **Builds:** `GET /api/vibes/:id/lineage`: every session candidate of the vibe (evaluation and
+  control-arm candidates left out, unchanged revisions folded into their first try) with its
+  parents, operator (null for a root), session, `pair` status, rating marks and sketch flag,
+  valid ones only by default. A lineage page drawing the tree as nested lists (keyboard and
+  screen-reader friendly, no canvas), each node with its intent, operator, a player for its
+  excerpt and "explore from here" and "nudge from here"; rejected candidates hidden behind a
+  switch. On the session page's cards:
+  - the features against the vibe's ranges, each miss marked;
+  - lock controls (a voice, a macro, or a parameter picked from a list), which offer to lock the
+    macros `macrosMoving` names too;
+  - the vibe's current locks, with unlock;
+  - explore and nudge buttons, with the direction field and step size.
+
+  Plain words and titles on every control (0032); written for Safari 17.6.
 - **Tiers:** server (the route), web.
-- **Tests first:** the route over a scripted tree of three generations returns every node with
-  its parents, and a node made in an earlier session sits under its parent; the tree builder and
-  the ranges readout are DOM-free modules with tests; a lineage page load through the HTTP client
-  returns every module it imports; a lock posted from the card's control reads back in the list.
-- **Records:** writes 0038: the lineage route and page, nested lists over a drawn graph, and the
+- **Tests first:** the route over a scripted tree of three generations, with an evaluation
+  candidate, a control-arm candidate and an unchanged revision mixed in, returns every session
+  node with its parents and leaves the other three out; a node made in an earlier session sits
+  under its parent; the tree builder, the ranges readout and the macro offer are DOM-free modules
+  with tests; a lineage page load through the HTTP client returns every module it imports; a lock
+  posted from the card's control, with its macros, reads back in the list.
+- **Records:** writes 0039: the lineage route and page, nested lists over a drawn graph, and the
   card controls. Amends 0032.
 - **Parallel:** none. Then the orchestrator logs the pending owner checks above.
 
-#### 3g — The revision evaluation
+#### 3h — The revision evaluation
 
-- **Builds:** the evaluation job gains a revision mode: for each vibe it generates `count`
-  candidates as before, renders each valid one, checks its ranges, and revises every candidate
-  with a miss twice from the same first try, once with features (3d's follow-up) and once in the
-  control arm (the same turn with the features and misses taken out, asking only for a better fit
-  to the brief). Both revisions render and are checked. The report adds, per vibe and overall:
-  the share inside every range before revision, after the revision and after the control, each
-  with a Wilson interval; the paired counts for each arm; an exact one-sided McNemar p; how many
-  revisions came back unchanged; and how many locked values the model changed (zero locks in the
-  seed runs, so it reads 0). Control-arm candidates are stored with operator `revise-control`
-  and never shown in a session. Older reports, without these fields, still display.
+- **Builds:** the evaluation job gains a revision mode. For each vibe it:
+  1. generates `count` first tries as before, with no locks;
+  2. renders each valid one and checks its ranges;
+  3. revises every first try with a miss twice: once through 3d's revision (the treatment), and
+     once in the control arm, the same follow-up turn with the ranges restated but the measured
+     features, misses and failed checks taken out, asking for a better fit to the brief;
+  4. renders and checks both revisions.
+
+  Control-arm candidates are stored with operator `revise-control` and never shown in a session.
+  The report adds, per vibe and overall:
+  - the share of valid first tries inside every range, and of revised pairs inside after the
+    treatment and after the control, each with a Wilson interval;
+  - the paired counts: both inside, treatment only, control only, neither;
+  - the exact one-sided McNemar p on treatment only against control only, or "inconclusive"
+    below 20 revised first tries;
+  - the share of first tries inside after the treatment, against before;
+  - how many revisions in each arm came back unchanged;
+  - the vibe revision ids and the ranges the run used, so a later edit to a vibe's ranges is
+    visible against it.
+
+  The page's count field suggests 32 a vibe in revision mode, enough for about 20 revised first
+  tries if half miss, as 3b's calibration aims for. Reports stored before 3h, without these
+  fields, still display.
 - **Tiers:** domain (the report, the exact McNemar test), server, web.
-- **Tests first:** the exact McNemar p matches hand-worked values (for example 9 fixed, 1 broken
-  gives p ≈ 0.011); against a fake omlx scripted so 10 of 16 first tries miss, 7 revisions fix
-  and 1 breaks while the control fixes 2, the report reads those shares, counts and p; the
-  control's prompt holds no feature text; a report stored before 3g still renders; the job starts
-  only from its route.
-- **Records:** writes 0039: the revision mode, the control arm and why it's there, the paired
-  test, and that ranges were fixed before the run. Amends 0030.
+- **Tests first:**
+  - The exact McNemar p matches hand-worked values: 9 against 1 gives p = 11/1024.
+  - Against a fake omlx scripted with 24 first tries, 12 of which miss, the report reads those
+    counts and p. In the script the treatment fixes 10 and the control 2, one of them also fixed
+    by the treatment, so treatment only is 9 and control only 1.
+  - A run with 10 revised first tries reads "inconclusive".
+  - The control's prompt holds the ranges and no feature text, and the treatment's holds both.
+  - The evaluation passes no locks while the seed vibe has some.
+  - A report stored before 3h still renders.
+  - The job starts only from its route.
+- **Records:** writes 0040: the revision mode, the control arm and why it's the comparison, the
+  paired test, the minimum, the suggested count, and that ranges were fixed before the run.
+  Amends 0030.
 - **Parallel:** none. Then the orchestrator stops: the owner starts the evaluation (the three
-  seed vibes, 16 candidates each, on omlx), and its numbers go in Result.
+  seed vibes, 32 candidates each, on omlx), and its numbers go in Result.
 
 **Result:**
 
@@ -1860,3 +2003,19 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   settled four choices: a locked raw value still follows the macros; the owner writes a vibe's
   feature ranges; after a revision the grid shows the card that misses fewer ranges, the
   revision on a tie; nudge is built in phase 3.
+- 2026-11-07: review of the phase 3 expansion (fresh context, Sonnet: 100k tokens, 14 tool calls,
+  3.0 min), seven blocking findings, all taken. The owner chose to test the revision against a
+  control arm that sees the ranges but not the measurements, since a test against the first
+  tries alone couldn't fail. Also taken:
+  - the evaluation reads "inconclusive" below 20 revised first tries, and 3b calibrates the seed
+    ranges before fixing them;
+  - `sessionId` on candidates (migration 0005), since nudge children have no model request;
+  - the follow-up replays only the round-0 prompt, is never trimmed and never chains, and
+    explore became its own step (3f) with a fresh prompt;
+  - locks stay an explicit argument, so evaluations get none;
+  - 3d moves the shared generation helpers out first, so 3e can build beside it;
+  - stereo width as a share, so mono measures 0;
+  - revisions get their own seed;
+  - rules for overlapping locks, failed nudge draws and other `softTargets` keys.
+
+  Phase 3 is now 3a–3h, with records 0033–0040.
