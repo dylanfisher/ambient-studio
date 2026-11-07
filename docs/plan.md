@@ -3271,3 +3271,9 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   and Discard). Cached excerpts are MP3 at 320 kbps (7.2 MB to 1.0 MB); capture re-renders for the
   FLAC (0.8–2.3 s). 4d started beside it rather than after 4j, since it reads neither page. The
   gate passes, 1453 tests.
+- 2026-11-07: 4d merged as ae9e574 (Opus: 225k tokens, 99 calls, 17.6 min, then a fix round of
+  9.5 min; reviewer Sonnet: 66k tokens, 9 calls, 1.3 min, PASS with caveats taken: each vibe's
+  prior is fitted on the other vibes, folds keep a held-out session out of every file a fit reads,
+  constant columns and thin components carry no term, and the model code's hash is in the key).
+  `readModelCode` and `fitModels` stay unexported until 4e uses them. A model with no terms
+  predicts variance 0; 4e and 4f must say "no model yet" for it rather than rank on it.
