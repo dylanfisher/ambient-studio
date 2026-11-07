@@ -79,6 +79,8 @@ not logged.
 **Binding and no auth.** The example config binds `0.0.0.0:4180`, every interface, because the
 owner listens from two other machines on the home LAN. There is no login: the app holds no
 secrets (AGENTS.md), and anyone who can reach the port is on the owner's network.
+The studio server itself still has no auth; the one secret, the omlx key (0019), is outbound
+only and is never served or logged.
 
 **Cross-site requests and DNS rebinding.** No login means the browser itself is the risk: a page
 on another site, open in the owner's browser, can send requests to the studio's LAN address.

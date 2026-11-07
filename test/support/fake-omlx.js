@@ -29,6 +29,7 @@ import { setImmediate } from "node:timers/promises";
 /**
  * @typedef {object} Received
  * @property {Record<string, any>} body the parsed request body
+ * @property {string | undefined} authorization the request's `Authorization` header
  * @property {number} at the injected clock's time when the request arrived
  */
 
@@ -98,7 +99,7 @@ export async function fakeOmlx(clock) {
     let raw = "";
     for await (const chunk of req) raw += chunk;
     const body = JSON.parse(raw);
-    requests.push({ body, at: clock.now() });
+    requests.push({ body, authorization: req.headers.authorization, at: clock.now() });
     const answer = queue.shift();
     notify();
     if (answer === undefined) {

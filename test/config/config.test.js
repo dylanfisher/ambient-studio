@@ -1,12 +1,12 @@
 // The config loader (decision 0019): every key required, `~` expanded, and the owner's real
 // folders refused while Vitest runs.
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { loadConfig } from "../../src/config/config.js";
 import example from "../../src/config/example.json" with { type: "json" };
-import { tempRoot } from "../support/temp-root.js";
+import { TEST_OMLX_KEY, tempRoot } from "../support/temp-root.js";
 
 /** @type {(() => Promise<void>)[]} */
 const cleanups = [];
@@ -34,6 +34,16 @@ function expectRefused(load, ...parts) {
     const message = /** @type {Error} */ (error).message;
     for (const part of parts) expect(message).toContain(part);
   }
+}
+
+/** @param {() => unknown} load */
+function thrownMessage(load) {
+  try {
+    load();
+  } catch (error) {
+    return /** @type {Error} */ (error).message;
+  }
+  throw new Error("expected the config to be refused");
 }
 
 /**
@@ -89,6 +99,7 @@ describe("loadConfig", () => {
     });
     expect(loadConfig(configPath)).toEqual({
       ...example,
+      omlx: { ...example.omlx, apiKey: TEST_OMLX_KEY },
       dataRoot: root,
       fieldRecordings: join(root, "recordings"),
     });
@@ -130,6 +141,7 @@ describe("loadConfig", () => {
     omlx: "http://127.0.0.1:8000",
     "omlx.baseUrl": "127.0.0.1:8000",
     "omlx.model": "",
+    "omlx.apiKey": "",
     queue: [],
     "queue.requestTimeoutMs": "120000",
     "queue.firstTokenThresholdMs": 0,
@@ -158,6 +170,36 @@ describe("loadConfig", () => {
       expectRefused(() => loadConfig(configPath), key, configPath, "must be");
     },
   );
+
+  test.each([[""], [7], ["a\nb"]])(
+    "an omlx.apiKey of %j is refused without printing it",
+    async (value) => {
+      const { configPath } = await makeRoot((raw) => {
+        raw.omlx.apiKey = value;
+      });
+      expectRefused(() => loadConfig(configPath), "omlx.apiKey", configPath, "must be");
+      expect(thrownMessage(() => loadConfig(configPath))).not.toContain("a\nb");
+      expect(thrownMessage(() => loadConfig(configPath))).not.toContain("got 7");
+    },
+  );
+
+  test("a config file that group or others can read is refused, naming chmod 600, not the key", async () => {
+    const { configPath } = await makeRoot();
+    await chmod(configPath, 0o644);
+    expectRefused(() => loadConfig(configPath), configPath, "chmod 600");
+    expect(thrownMessage(() => loadConfig(configPath))).not.toContain(TEST_OMLX_KEY);
+    await chmod(configPath, 0o640);
+    expectRefused(() => loadConfig(configPath), "chmod 600");
+    await chmod(configPath, 0o600);
+    expect(loadConfig(configPath).omlx.apiKey).toBe(TEST_OMLX_KEY);
+  });
+
+  test("a file that doesn't parse does not quote its contents, which hold the key", async () => {
+    const { configPath } = await makeRoot();
+    await writeFile(configPath, `{ "omlx": { "apiKey": "${TEST_OMLX_KEY}" oops } }`);
+    expectRefused(() => loadConfig(configPath), configPath, "JSON");
+    expect(thrownMessage(() => loadConfig(configPath))).not.toContain(TEST_OMLX_KEY);
+  });
 
   test("a key it doesn't know throws with the key and the path", async () => {
     const { configPath } = await makeRoot((raw) => {

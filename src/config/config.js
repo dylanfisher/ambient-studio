@@ -1,12 +1,12 @@
 // The one module that reads the config file and the environment (decision 0019). Every key is
 // required and nothing has a default here: a missing value throws with its key and the file.
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { homedir, userInfo } from "node:os";
 import { isAbsolute, join, resolve, sep } from "node:path";
 
 /**
  * @typedef {object} Config
- * @property {{ baseUrl: string, model: string }} omlx
+ * @property {{ baseUrl: string, model: string, apiKey: string }} omlx
  * @property {QueueConfig} queue
  * @property {string} dataRoot absolute, `~` expanded
  * @property {string | null} fieldRecordings absolute, `~` expanded; `null` until the owner sets one
@@ -97,6 +97,18 @@ function text(value) {
 }
 
 /**
+ * A secret: a non-empty single-line string. The message never quotes the value.
+ * @param {unknown} value
+ * @returns {string}
+ */
+function secret(value) {
+  if (typeof value !== "string" || value === "" || /[\r\n]/.test(value)) {
+    throw new ConfigError("must be a non-empty one-line string");
+  }
+  return value;
+}
+
+/**
  * @param {unknown} value
  * @returns {number}
  */
@@ -160,7 +172,7 @@ const folderOrNull = (value) => (value === null ? null : folder(value));
 
 /** Every key, each required. */
 const SCHEMA = {
-  omlx: { baseUrl: httpUrl, model: text },
+  omlx: { baseUrl: httpUrl, model: text, apiKey: secret },
   queue: {
     requestTimeoutMs: positiveInteger,
     firstTokenThresholdMs: positiveInteger,
@@ -230,7 +242,8 @@ function configPath() {
 }
 
 /**
- * Reads and checks the config file. Throws, naming the key and the file, on a missing, unknown
+ * Reads and checks the config file, which holds the omlx key and so must not be readable by
+ * group or others. Throws, naming the key and the file, on a missing, unknown
  * or mistyped key; while Vitest runs, also on any path in the owner's real folders, before
  * reading anything there.
  * @param {string} [file] defaults to `$AMBIENT_STUDIO_CONFIG`, else the owner's config file
@@ -245,19 +258,28 @@ export function loadConfig(file = configPath()) {
   }
   /** @type {string} */
   let source;
+  let mode;
   try {
+    mode = statSync(file).mode;
     source = readFileSync(file, "utf8");
   } catch (error) {
     throw new Error(`${file}: can't read the config file; copy src/config/example.json there`, {
       cause: error,
     });
   }
+  if ((mode & 0o077) !== 0) {
+    throw new Error(
+      `${file}: group or others can read the config file, which holds the omlx key; ` +
+        `run chmod 600 ${file}`,
+    );
+  }
   /** @type {unknown} */
   let raw;
   try {
     raw = JSON.parse(source);
-  } catch (error) {
-    throw new Error(`${file}: not valid JSON (${/** @type {Error} */ (error).message})`);
+  } catch {
+    // The parser's message quotes the file's text, which holds the omlx key, so it is dropped.
+    throw new Error(`${file}: not valid JSON`);
   }
   return /** @type {Config} */ (/** @type {unknown} */ (check(SCHEMA, raw, file, "")));
 }

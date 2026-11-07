@@ -25,6 +25,7 @@ key fails instead of being ignored.
 |---|---|
 | `omlx.baseUrl` | an `http://` or `https://` URL |
 | `omlx.model` | non-empty string, the model id sent with each request |
+| `omlx.apiKey` | non-empty one-line string, the studio's omlx key (the one secret; file mode 600) |
 | `queue.requestTimeoutMs`, `queue.firstTokenThresholdMs`, `queue.minGapMs`, `queue.backoffBaseMs`, `queue.maxWaitMs` | whole milliseconds, at least 1 |
 | `queue.maxTokens`, `queue.contextBudgetTokens` | whole tokens, at least 1 |
 | `queue.minPrefillTokensPerSecond` | whole tokens a second, at least 1: the slowest prefill the first-token threshold and timeout allow for (0022) |
@@ -103,3 +104,9 @@ only: `scripts/` and `test/` are tools, and a test stubs variables with `vi.stub
 - 2026-11-06: the example's queue numbers, placeholders until now, are set by 0022 (step 2d).
 - 2026-11-06: added `queue.minPrefillTokensPerSecond` (step 2d), so the first-token threshold
   and the timeout grow with the prompt's length instead of calling a long prompt busy (0022).
+- 2026-11-06: added `omlx.apiKey`, a non-empty one-line string: the studio's own omlx key,
+  revocable apart from the live site's. It is the app's one secret and lives only in the owner's
+  config file, never in the repo. `loadConfig` refuses a file that group or others can read
+  (mode & 0o077), naming it and saying to run `chmod 600`. No config error quotes the key's value
+  or the file's text, so an unparseable file reports only that it isn't valid JSON. The example
+  holds a placeholder, and `temp-root.js` writes a dummy key at mode 600.

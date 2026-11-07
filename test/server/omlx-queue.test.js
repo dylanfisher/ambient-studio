@@ -9,7 +9,7 @@ import { randomGenome } from "../../src/engine/random-genome.js";
 import { createOmlxQueue, OmlxRequestError } from "../../src/server/omlx-queue.js";
 import { fakeClock } from "../support/fake-clock.js";
 import { fakeOmlx } from "../support/fake-omlx.js";
-import { tempRoot } from "../support/temp-root.js";
+import { TEST_OMLX_KEY, tempRoot } from "../support/temp-root.js";
 
 /** @import { Completion, RetryEvent } from "../../src/server/omlx-queue.js" */
 
@@ -59,7 +59,8 @@ async function setup(queueEdits = {}) {
   const omlx = await fakeOmlx(clock);
   cleanups.push(omlx.close);
   const root = await tempRoot((raw) => {
-    raw.omlx = { baseUrl: omlx.baseUrl, model: "fake-model-id" };
+    raw.omlx.baseUrl = omlx.baseUrl;
+    raw.omlx.model = "fake-model-id";
     Object.assign(raw.queue, QUEUE, queueEdits);
   });
   cleanups.push(root.remove);
@@ -426,6 +427,41 @@ describe("createOmlxQueue failures and stream parsing", () => {
     omlx.release();
     expect(await result).toMatchObject({ firstTokenMs: 1_234, latencyMs: 1_234 });
   });
+
+  test("every request carries the bearer key, and params never hold it", async () => {
+    const { omlx, queue } = await setup();
+    omlx.script({ tokens: ["a"] });
+    const completion = await queue.request(ask());
+    expect(omlx.requests[0]?.authorization).toBe(`Bearer ${TEST_OMLX_KEY}`);
+    expect(JSON.stringify(completion)).not.toContain(TEST_OMLX_KEY);
+    expect(JSON.stringify(omlx.requests[0]?.body)).not.toContain(TEST_OMLX_KEY);
+  });
+
+  test.each([401, 403])(
+    "an HTTP %i fails at once, is not retried and does not leak the key",
+    async (status) => {
+      const { omlx, queue, retries } = await setup();
+      omlx.script({ status, body: `refused ${TEST_OMLX_KEY}` });
+      const { error } = await settle(queue.request(ask()));
+      expect(error).toBeInstanceOf(OmlxRequestError);
+      const failure = /** @type {OmlxRequestError} */ (error);
+      expect(failure.message).toBe(
+        `omlx refused the studio's API key (HTTP ${status}); check omlx.apiKey in the config`,
+      );
+      expect(omlx.requests).toHaveLength(1);
+      expect(failure.attempts).toBe(1);
+      expect(retries).toEqual([]);
+      const everything = JSON.stringify([
+        failure.message,
+        failure.params,
+        failure.retries,
+        String(failure.cause),
+        failure.stack,
+      ]);
+      expect(everything).not.toContain(TEST_OMLX_KEY);
+      expect(failure.params).toEqual(sentParams(omlx.requests[0]));
+    },
+  );
 
   test("an HTTP 500 fails with its body and is not retried", async () => {
     const { omlx, queue, retries } = await setup();
