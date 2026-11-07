@@ -279,17 +279,27 @@ export function setFeedback(store, draft) {
 }
 
 /**
- * Marks the feedback row undone; one already removed, for any reason, is left as it is.
+ * Marks the feedback row undone, and with it every other live row of the same candidate, kind
+ * and macro, in one transaction: rows made before the one-state rule can hold two, and leaving
+ * one would bring an older choice back. A row already removed, for any reason, is left as it is.
  * @param {Store} store
  * @param {number} id
  * @returns {Feedback}
  */
 export function undoFeedback(store, id) {
-  const row = getFeedback(store, id);
-  if (!row) throw new Error(`there is no feedback ${id}`);
-  if (row.removedAt !== null) return row;
-  markRemoved(store, TABLE.feedback, id, REMOVAL.undone);
-  return /** @type {Feedback} */ (getFeedback(store, id));
+  return transaction(store, () => {
+    const row = getFeedback(store, id);
+    if (!row) throw new Error(`there is no feedback ${id}`);
+    if (row.removedAt !== null) return row;
+    const { sessionId, kind, genomeId, seed, macro } = row;
+    /** @type {Record<string, number | string>} */
+    const where = { sessionId, kind, genomeId, seed };
+    if (macro !== null) where.macro = macro;
+    for (const live of selectRows(store, TABLE.feedback, FEEDBACK, where)) {
+      markRemoved(store, TABLE.feedback, live.id, REMOVAL.undone);
+    }
+    return /** @type {Feedback} */ (getFeedback(store, id));
+  });
 }
 
 /**

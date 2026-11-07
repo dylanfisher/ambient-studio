@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "vitest";
 import { AB_ORDER_SEEDS, abOrder } from "../../src/domain/ab-order.js";
 import { ENGINE_VERSION } from "../../src/engine/engine-version.js";
-import { listRatedAudio, listRatedGenomes } from "../../src/server/rating-store.js";
+import { addFeedback, listRatedAudio, listRatedGenomes } from "../../src/server/rating-store.js";
 import { getRender, putRender } from "../../src/server/render-store.js";
 import { MAX_CHARS, MAX_TAGS } from "../../src/server/request-fields.js";
 import { GENOMES, removeStudio, startStudio } from "../support/studio.js";
@@ -373,6 +373,38 @@ describe("undo and replace (0031)", () => {
     // After an undo the same direction is a new row.
     const again = await poster(two).macro("more", "motion");
     expect(again.id).not.toBe(more.id);
+  });
+
+  test("remove clears every live row of the candidate's kind and macro, as pre-2m data has two", async () => {
+    const { server, ok, session, one, two } = shared;
+    // setFeedback keeps one live row, so the second is planted directly.
+    const plant = (/** @type {any} */ row, /** @type {string} */ direction) => {
+      const { id, createdAt, removedAt, removedReason, ...draft } = row;
+      return addFeedback(server.store, { ...draft, direction });
+    };
+    const more = await poster(one).macro("more", "tension");
+    const less = plant(more, "less");
+    const other = await poster(one).macro("more", "space");
+    const up = await poster(two).thumbs("up");
+    const down = plant(up, "down");
+    const live = (/** @type {number[]} */ ids) =>
+      rows(...ids)
+        .filter((r) => r.removedReason === null)
+        .map((r) => r.id);
+    expect(live([more.id, less.id])).toHaveLength(2);
+
+    await ok("POST", `/api/sessions/${session.id}/feedback/${more.id}/remove`, {});
+    expect(live([more.id, less.id])).toEqual([]);
+    expect(rows(more.id, less.id).map((r) => r.removedReason)).toEqual(["undone", "undone"]);
+    // Another macro on the same candidate stays.
+    expect(live([other.id])).toEqual([other.id]);
+    expect((await listed(one.id)).feedback.macros).not.toHaveProperty("tension");
+
+    await ok("POST", `/api/sessions/${session.id}/feedback/${down.id}/remove`, {});
+    expect(live([up.id, down.id])).toEqual([]);
+    expect((await listed(two.id)).feedback.thumbs).toBeNull();
+    // The concurrent-posts test counts live rows of "space" across the session.
+    await ok("POST", `/api/sessions/${session.id}/feedback/${other.id}/remove`, {});
   });
 
   test("an A/B rating can be removed, once", async () => {
