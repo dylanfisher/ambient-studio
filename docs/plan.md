@@ -3260,3 +3260,8 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   keep whichever passes, after 4b found `laion/larger_clap_music`'s text side collapsed (every
   text at cosine 0.999); `cma` approved for 5e; regions, directions and axes in their own table
   rather than `softTargets`. 4b reviewed (PASS, fix round asked); 4i built and in review.
+- 2026-11-07: 4b merged as 1cc2ce7 (Opus: 294k tokens, 164 calls, 37.8 min, then a fix round of
+  9.7 min and 51k tokens; reviewer Sonnet: 74k tokens, 9 calls, 1.5 min, PASS with findings taken).
+  `laion/larger_clap_music`'s text side collapsed, so 0042 keeps `laion/clap-htsat-unfused` at
+  8fa0f1c after a four-sound, four-text test; 0.17 s per 30 s excerpt warm. The embed job keeps
+  going past bad files and fails at the end naming them. The gate passes, 1392 tests.
