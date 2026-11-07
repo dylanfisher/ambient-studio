@@ -10,7 +10,14 @@ import { HttpError } from "./routing.js";
  * limit is about 1 150 tokens at the prompt's 3.5 characters a token, a seventh of the 8 192-token
  * context budget (0024); vibe notes feed the prompt too, so a note is kept shorter.
  */
-export const MAX_CHARS = Object.freeze({ name: 200, brief: 4000, note: 2000, tag: 64 });
+export const MAX_CHARS = Object.freeze({
+  name: 200,
+  brief: 4000,
+  note: 2000,
+  tag: 64,
+  // A lock path: `voices.`, a 16-character voice id and a parameter name fit with room to spare.
+  lockPath: 64,
+});
 /** The most tags one sketch may carry. */
 export const MAX_TAGS = 32;
 

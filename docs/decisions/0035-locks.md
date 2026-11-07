@@ -87,7 +87,8 @@ path and are held by `applyLocks` alone. It throws when the genome can't take th
 | `POST /api/vibes/:vibeId/locks/:lockId/remove` | `{}` | the row, marked `unlocked`; one already removed comes back as it is |
 
 A malformed body is a 400 naming the field, as 0027's routes do: an unknown field, a path that
-isn't a non-empty string, a candidate id that isn't a row id, a candidate that doesn't exist, has
+isn't a non-empty string or is longer than 64 characters (`MAX_CHARS.lockPath`, so a
+refusal never echoes a long path), a candidate id that isn't a row id, a candidate that doesn't exist, has
 no genome or belongs to another vibe, and every `validateLock` refusal. An unknown vibe, or a lock
 of another vibe, is a 404.
 

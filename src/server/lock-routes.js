@@ -5,10 +5,9 @@
 /** @import { Store } from "./store.js" */
 import { macrosMoving } from "../domain/macros-moving.js";
 import { LOCK_FIELD, lockOn } from "../domain/validate-lock.js";
-import { show } from "../engine/validation-error.js";
 import { getCandidate, getGenome } from "./generation-store.js";
 import { getLock, InsideLockedVoice, listLocks, removeLock, setLock } from "./lock-store.js";
-import { fields, idParam, rowId } from "./request-fields.js";
+import { fields, idParam, MAX_CHARS, rowId, text } from "./request-fields.js";
 import { HttpError } from "./routing.js";
 import { requireVibe } from "./vibe-routes.js";
 
@@ -57,10 +56,7 @@ export const LOCK_ROUTES = [
     handle: async ({ app, params, body }) => {
       const vibe = requireVibe(app.store, params);
       const given = fields(await body(), [CANDIDATE_ID, LOCK_FIELD.path]);
-      const { path } = given;
-      if (typeof path !== "string" || path === "") {
-        throw new HttpError(400, `path must be a non-empty string, got ${show(path)}`);
-      }
+      const path = text(given, LOCK_FIELD.path, MAX_CHARS.lockPath);
       const candidateId = rowId(given, CANDIDATE_ID);
       const genome = candidateGenome(app.store, vibe.id, candidateId);
       const taken = lockOn(genome, path);

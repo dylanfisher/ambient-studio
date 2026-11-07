@@ -1,9 +1,11 @@
 // Locking a candidate's values, listing and removing locks through the HTTP routes (decision
 // 0035), against the fake omlx: a live lock reaches the next prompt and the stored candidate,
-// a removed one doesn't, and its row stays.
+// a removed one doesn't, and its row stays. Candidates to lock from are written to the store,
+// as fillStore does, since locking needs no render; one test goes through generation.
 /** @import { Studio } from "../support/studio.js" */
 import { afterEach, expect, test } from "vitest";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
+import { addCandidate, putGenome } from "../../src/server/generation-store.js";
 import { getLock } from "../../src/server/lock-store.js";
 import { GENOMES, removeStudio, startStudio } from "../support/studio.js";
 
@@ -13,14 +15,38 @@ afterEach(async () => {
   for (const studio of studios.splice(0)) await removeStudio(studio);
 });
 
-/** A session on `VIBE` with one valid candidate made from the drone genome. */
+/**
+ * Writes a candidate of the vibe straight to the store, with no generation or render; a null
+ * genome stands for an answer that never parsed.
+ * @param {Studio} studio
+ * @param {any} vibe as the vibe route returns it
+ * @param {unknown} genome
+ */
+function seedCandidate({ server }, vibe, genome) {
+  const genomeId = genome === null ? null : putGenome(server.store, vibe.id, genome).id;
+  return addCandidate(server.store, {
+    vibeRevisionId: vibe.revision.id,
+    generationId: null,
+    genomeId,
+    seed: 7,
+    source: "llm",
+    parentIds: [],
+    locks: [],
+    operator: null,
+    operatorParams: null,
+    intent: null,
+    rejectReason: genome === null ? "noJson" : null,
+    lint: null,
+    rejectedGenome: null,
+  });
+}
+
+/** A session on `VIBE` with one valid candidate of the drone genome. */
 async function setup() {
   const studio = await startStudio();
   studios.push(studio);
-  const { ok, openSession, generate } = studio;
-  const { vibe, session } = await openSession();
-  await generate(session.id, [droneGenome]);
-  const [candidate] = (await ok("GET", `/api/sessions/${session.id}/candidates`)).candidates;
+  const { vibe, session } = await studio.openSession();
+  const candidate = seedCandidate(studio, vibe, droneGenome);
   const locks = `/api/vibes/${vibe.id}/locks`;
   return { ...studio, vibe, session, candidate, locks };
 }
@@ -48,7 +74,7 @@ test("a lock taken from a candidate reaches the next prompt and the candidate; r
   await generate(session.id, [GENOMES[1]]);
   const user = omlx.requests.at(-1)?.body.messages[1].content;
   expect(user).toContain(`${LOCKED}; keep these values exactly:\nreverbDecay = 2`);
-  const second = (await ok("GET", `/api/sessions/${session.id}/candidates`)).candidates[1];
+  const [second] = (await ok("GET", `/api/sessions/${session.id}/candidates`)).candidates;
   expect(second.genome.reverbDecay).toBe(droneGenome.reverbDecay);
   const row = server.store.db.prepare("SELECT locks, operatorParams FROM candidates WHERE id = ?");
   const stored = row.get(second.id);
@@ -107,21 +133,20 @@ test("locking a whole voice covers the locks inside it, and a path inside it is 
 });
 
 test("malformed lock requests are refused with a 400 naming the problem", async () => {
-  const { server, omlx, ok, drive, candidate, locks, openSession, generate } = await setup();
-  // Another vibe's session: its first candidate's answer never parsed, so it has no genome.
-  const other = await openSession();
-  omlx.script({ tokens: ["no genome here"] });
-  const job = await ok("POST", `/api/sessions/${other.session.id}/candidates`, { count: 1 });
-  await drive(server.jobs.settled(job.id));
-  await generate(other.session.id, [droneGenome]);
-  const [rejected, elsewhere] = (await ok("GET", `/api/sessions/${other.session.id}/candidates`))
-    .candidates;
-  expect(rejected.genomeId).toBeNull();
+  const studio = await setup();
+  const { server, ok, vibe, candidate, locks, openSession } = studio;
+  // A candidate whose answer never parsed has no genome; another vibe's has a genome of its own.
+  const rejected = seedCandidate(studio, vibe, null);
+  const elsewhere = seedCandidate(studio, (await openSession()).vibe, droneGenome);
 
   /** @type {[unknown, RegExp][]} */
   const cases = [
     [[], /the body must be a JSON object/],
     [{ candidateId: candidate.id }, /path must be a non-empty string/],
+    [
+      { candidateId: candidate.id, path: "x".repeat(100_000) },
+      /^path must be at most 64 characters, got 100000$/,
+    ],
     [{ path: "reverbDecay" }, /candidateId must be an integer/],
     [{ candidateId: candidate.id, path: "reverbDecay", value: 3 }, /unknown fields value/],
     [{ candidateId: "1", path: "reverbDecay" }, /candidateId must be an integer/],
