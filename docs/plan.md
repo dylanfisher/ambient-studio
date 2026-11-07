@@ -56,7 +56,7 @@ unneeded stays unused rather than being given to another step.
 | 0031 | Automatic excerpts, one job per action, progress steps, thinking switch, prompt notation | 2m | — |
 | 0032 | Plain-language studio pages, "brief" for vibe | 2n | — |
 | 0033 | Phase 3 features: low end, stereo width, flatness | 3a | [written](decisions/0033-low-end-width-flatness.md) |
-| 0034 | Feature ranges as soft targets, and their calibration | 3b | [written](decisions/0034-feature-ranges.md) |
+| 0034 | Feature ranges as soft targets, and their calibration | 3b | [written](decisions/0034-feature-ranges-as-soft-targets.md) |
 | 0035 | Locks: paths, storage, enforcement, locks and macros | 3c (settles 0006's open question) | [written](decisions/0035-locks.md) |
 | 0036 | The revision pass ("ears") | 3d | — |
 | 0037 | `sessionId` on candidates, nudge and branch | 3e | — |
