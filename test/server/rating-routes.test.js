@@ -9,6 +9,7 @@ import { AB_ORDER_SEEDS, abOrder } from "../../src/domain/ab-order.js";
 import { ENGINE_VERSION } from "../../src/engine/engine-version.js";
 import { listRatedAudio } from "../../src/server/rating-store.js";
 import { getRender, putRender } from "../../src/server/render-store.js";
+import { MAX_CHARS, MAX_TAGS } from "../../src/server/request-fields.js";
 import { GENOMES, removeStudio, startStudio } from "../support/studio.js";
 
 /** @type {Studio[]} */
@@ -154,8 +155,8 @@ describe("ratings", () => {
     expect(listRatedAudio(server.store)).toHaveLength(1);
   });
 
-  test("a refused rating keeps no rated audio", async () => {
-    const { server, session, one } = await setup();
+  test("a refused rating keeps no rated audio and stores no row", async () => {
+    const { server, ok, vibe, session, one, two } = await setup();
     const at = `/api/sessions/${session.id}`;
     const thumbs = { renderId: one.excerpt.renderId, direction: "up", timeTakenMs: 1000 };
     for (const playedFraction of [-0.1, 1.5, "half"]) {
@@ -172,6 +173,54 @@ describe("ratings", () => {
     });
     expect(macro.status).toBe(400);
     expect(macro.json().error).toMatch(/^macro must be one of brightness/);
+    const ab = await server.api("POST", `${at}/ab-ratings`, {
+      a: one.excerpt.renderId,
+      b: two.excerpt.renderId,
+      orderSeed: 3,
+      outcome: "draw",
+      aPlayedFraction: 1,
+      bPlayedFraction: 1,
+      timeTakenMs: 1,
+    });
+    expect(ab.status).toBe(400);
+    expect(listRatedAudio(server.store)).toEqual([]);
+    const stored = await ok("GET", `/api/vibes/${vibe.id}/ratings`);
+    expect(stored).toEqual({ ratings: [], feedback: [], sketches: [] });
+  });
+
+  test("a note, a sketch's notes or its tags past their limits are 400s naming them", async () => {
+    const { server, ok, vibe, session, one } = await setup();
+    const at = `/api/sessions/${session.id}`;
+    const renderId = one.excerpt.renderId;
+    const longNote = "x".repeat(MAX_CHARS.note + 1);
+    const thumbs = await server.api("POST", `${at}/thumbs`, {
+      renderId,
+      direction: "up",
+      note: longNote,
+      playedFraction: 1,
+      timeTakenMs: 1,
+    });
+    expect(thumbs.status).toBe(400);
+    expect(thumbs.json().error).toBe(
+      `note must be at most ${MAX_CHARS.note} characters, got ${MAX_CHARS.note + 1}`,
+    );
+    const sketch = { candidateId: one.id, renderId, notes: "", tags: ["cold"] };
+    /** @type {[Record<string, unknown>, RegExp][]} */
+    const refusals = [
+      [{ notes: longNote }, /^notes must be at most \d+ characters/],
+      [
+        { tags: Array.from({ length: MAX_TAGS + 1 }, (_, i) => `t${i}`) },
+        /^tags must hold at most/,
+      ],
+      [{ tags: ["x".repeat(MAX_CHARS.tag + 1)] }, /^tags\[0\] must be at most \d+ characters/],
+    ];
+    for (const [edit, message] of refusals) {
+      const reply = await server.api("POST", `${at}/sketches`, { ...sketch, ...edit });
+      expect(reply.status).toBe(400);
+      expect(reply.json().error).toMatch(message);
+    }
+    const stored = await ok("GET", `/api/vibes/${vibe.id}/ratings`);
+    expect(stored).toEqual({ ratings: [], feedback: [], sketches: [] });
     expect(listRatedAudio(server.store)).toEqual([]);
   });
 

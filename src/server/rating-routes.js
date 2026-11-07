@@ -24,7 +24,16 @@ import {
   THUMBS,
 } from "./rating-store.js";
 import { getRender } from "./render-store.js";
-import { fields, finite, integer, oneOf, rowId, text } from "./request-fields.js";
+import {
+  fields,
+  finite,
+  integer,
+  MAX_CHARS,
+  oneOf,
+  rowId,
+  tagList,
+  text,
+} from "./request-fields.js";
 import { HttpError } from "./routing.js";
 import { requireOpenSession } from "./session-routes.js";
 import { getVibe } from "./vibe-store.js";
@@ -144,7 +153,8 @@ export const RATING_ROUTES = [
   feedbackRoute("/api/sessions/:sessionId/thumbs", ["note"], (given) => ({
     kind: FEEDBACK_KIND.thumbs,
     direction: oneOf(given, "direction", THUMBS),
-    note: given.note === undefined || given.note === null ? null : text(given, "note"),
+    note:
+      given.note === undefined || given.note === null ? null : text(given, "note", MAX_CHARS.note),
     macro: null,
     macroValue: null,
   })),
@@ -215,20 +225,8 @@ export const RATING_ROUTES = [
       const session = requireOpenSession(app, params);
       const given = fields(await body(), [...Object.values(SKETCH_FIELD), "renderId"]);
       const candidateId = rowId(given, SKETCH_FIELD.candidateId);
-      const notes = given.notes;
-      if (typeof notes !== "string") {
-        throw new HttpError(
-          400,
-          `notes must be a string, "" for none, got ${JSON.stringify(notes)}`,
-        );
-      }
-      const tags = given.tags;
-      if (!Array.isArray(tags) || !tags.every((tag) => typeof tag === "string" && tag !== "")) {
-        throw new HttpError(
-          400,
-          `tags must be a list of non-empty strings, got ${JSON.stringify(tags)}`,
-        );
-      }
+      const notes = text(given, SKETCH_FIELD.notes, MAX_CHARS.note, { allowEmpty: true });
+      const tags = tagList(given, SKETCH_FIELD.tags);
       const candidate = getCandidate(app.store, candidateId);
       if (!candidate) throw new HttpError(400, `there is no candidate ${candidateId}`);
       const { render } = heardRender(app, session, given, "renderId");

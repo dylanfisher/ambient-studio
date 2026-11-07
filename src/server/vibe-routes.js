@@ -8,7 +8,7 @@ import { validateConstraints } from "../domain/validate-constraints.js";
 import { isObject } from "../engine/is-object.js";
 import { show } from "../engine/validation-error.js";
 import { listFeedback, listRatings, listSketches } from "./rating-store.js";
-import { fields, idParam, text } from "./request-fields.js";
+import { fields, idParam, MAX_CHARS, text } from "./request-fields.js";
 import { HttpError } from "./routing.js";
 import { getSession, listSessions, startSession } from "./session-store.js";
 import {
@@ -43,8 +43,8 @@ function readDraft(body) {
     );
   }
   return {
-    name: text(given, VIBE_DRAFT_FIELD.name),
-    brief: text(given, VIBE_DRAFT_FIELD.brief),
+    name: text(given, VIBE_DRAFT_FIELD.name, MAX_CHARS.name),
+    brief: text(given, VIBE_DRAFT_FIELD.brief, MAX_CHARS.brief),
     constraints: checked.constraints,
     softTargets,
   };
@@ -109,7 +109,7 @@ export const VIBE_ROUTES = [
     handle: async ({ app, params, body }) => {
       const vibe = requireVibe(app.store, params);
       const given = fields(await body(), ["text"]);
-      return addNote(app.store, { vibeId: vibe.id, text: text(given, "text") });
+      return addNote(app.store, { vibeId: vibe.id, text: text(given, "text", MAX_CHARS.note) });
     },
   },
   {

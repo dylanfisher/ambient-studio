@@ -1,6 +1,7 @@
 // The vibe routes (decision 0027): create, list, read, edit as a new revision, and notes.
 /** @import { TestServer } from "../support/http-client.js" */
 import { afterEach, expect, test } from "vitest";
+import { MAX_CHARS } from "../../src/server/request-fields.js";
 import { startTestServer } from "../support/http-client.js";
 import { VIBE } from "../support/studio.js";
 
@@ -69,4 +70,33 @@ test("an unknown vibe is a 404", async () => {
   expect((await server.api("GET", "/api/vibes/7")).status).toBe(404);
   expect((await server.api("GET", "/api/vibes/07")).status).toBe(404);
   expect((await server.api("POST", "/api/vibes/7/notes", { text: "x" })).status).toBe(404);
+});
+
+test("a name, a brief or a note one character over its limit is a 400 naming it", async () => {
+  const { server, ok } = await setup();
+  const over = (/** @type {number} */ limit) => "x".repeat(limit + 1);
+  const atLimit = {
+    ...VIBE,
+    name: "x".repeat(MAX_CHARS.name),
+    brief: "x".repeat(MAX_CHARS.brief),
+  };
+  const vibe = await ok("POST", "/api/vibes", atLimit);
+  for (const [field, limit] of /** @type {const} */ ([
+    ["name", MAX_CHARS.name],
+    ["brief", MAX_CHARS.brief],
+  ])) {
+    const reply = await server.api("POST", "/api/vibes", { ...VIBE, [field]: over(limit) });
+    expect(reply.status).toBe(400);
+    expect(reply.json().error).toBe(
+      `${field} must be at most ${limit} characters, got ${limit + 1}`,
+    );
+  }
+  const note = await server.api("POST", `/api/vibes/${vibe.id}/notes`, {
+    text: over(MAX_CHARS.note),
+  });
+  expect(note.status).toBe(400);
+  expect(note.json().error).toBe(
+    `text must be at most ${MAX_CHARS.note} characters, got ${MAX_CHARS.note + 1}`,
+  );
+  expect((await ok("GET", `/api/vibes/${vibe.id}`)).notes).toEqual([]);
 });

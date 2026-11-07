@@ -28,6 +28,14 @@ and no request or render holds the process open.
 it; a bad field is a 400 that names the field and what it got; an id in the path that isn't a
 row id, or names no row, is a 404; acting on a stopped session is a 409.
 
+**Length limits** (`MAX_CHARS` and `MAX_TAGS` in `src/server/request-fields.js`): a vibe's name
+200 characters, its brief 4 000, a note 2 000 (a vibe note, a thumbs note, a sketch's notes), and
+a sketch at most 32 tags of at most 64 characters each; past any of them is a 400 naming the
+field. A brief at its limit is about 1 150 tokens at 3.5 characters a token, a seventh of the
+8 192-token context budget ([0024](0024-prompt-parse-repair-generation.md)); vibe notes go into
+the prompt too, which is why a note is held under the brief. Many long notes can still pass the
+budget together, and then `buildPrompt` fails saying to shorten the brief or notes.
+
 | Method and path | Body | Reply |
 |---|---|---|
 | `GET /api/vibes` | | `{vibes}`, each with its current `revision` |
@@ -108,8 +116,10 @@ keeps what was heard all the same.
 
 **A/B order.** `POST …/ab-pairs` draws an order seed, an integer in [0, 2³²), from `random`,
 and returns `leftSide = abOrder(orderSeed)`. The page shows that side on the left and sends the
-seed back with the rating; the route computes `leftSide` again with `abOrder` and stores both, so
-the page can't store an order it didn't show and the order is reproducible from the row.
+seed back with the rating; the route computes `leftSide` again from `orderSeed` with `abOrder`
+and stores both, so a stored pair's order and seed always agree and the order is reproducible
+from the row. A client could still send a seed it chose; with a single owner on a home LAN that
+doesn't matter.
 `abOrder` (`src/domain/ab-order.js`) is one PRNG draw under the key `:ab-order`, which no voice
 id can match ([0003](0003-counter-based-prng.md)): below 0.5 is `a`. Over seeds 0–199, `a` is on
 the left 107 times (53.5%). The pair route stores nothing: a pair the owner never rates leaves no
@@ -132,8 +142,8 @@ so one number at one time would misstate what was heard.
 - **Ratings that name a candidate, the server finding its current excerpt** — rejected: after a
   restart under new code the server would capture a render the owner never heard and store it as
   heard.
-- **The page drawing the A/B order with `abOrder` itself** — rejected: the server could not tell
-  the seed was drawn rather than chosen. With the draw on the server the page only echoes it.
+- **The page drawing the A/B order with `abOrder` itself** — rejected: drawing on the server
+  keeps the seeds from one source, and the page only has to echo the seed it was given.
 - **Storing the pair when it is drawn** — rejected: a pair row would need a later update to add
   its outcome, which the append-only rule refuses, and an unrated pair says nothing.
 - **POSTs with no body** — rejected: see the JSON-body rule above.

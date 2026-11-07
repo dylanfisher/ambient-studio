@@ -5,6 +5,15 @@ import { isObject } from "../engine/is-object.js";
 import { show } from "../engine/validation-error.js";
 import { HttpError } from "./routing.js";
 
+/**
+ * The longest each kind of text field may be, in characters (decision 0027). A brief at its
+ * limit is about 1 150 tokens at the prompt's 3.5 characters a token, a seventh of the 8 192-token
+ * context budget (0024); vibe notes feed the prompt too, so a note is kept shorter.
+ */
+export const MAX_CHARS = Object.freeze({ name: 200, brief: 4000, note: 2000, tag: 64 });
+/** The most tags one sketch may carry. */
+export const MAX_TAGS = 32;
+
 /** A row id: a decimal integer without a leading zero, as `/audio/:renderId` takes one. */
 const ID = /^[1-9]\d{0,15}$/;
 
@@ -42,16 +51,49 @@ export function fields(body, known) {
 }
 
 /**
- * @param {Record<string, unknown>} body
- * @param {string} key
- * @returns {string} a string with something besides white space in it
+ * Checks one text value; `name` is how the message calls it.
+ * @param {unknown} value
+ * @param {string} name
+ * @param {number} maxChars
+ * @param {boolean} allowEmpty
+ * @returns {string}
  */
-export function text(body, key) {
-  const value = body[key];
-  if (typeof value !== "string" || value.trim() === "") {
-    bad(`${key} must be a non-empty string, got ${show(value)}`);
+function checkText(value, name, maxChars, allowEmpty) {
+  if (typeof value !== "string" || (!allowEmpty && value.trim() === "")) {
+    const what = allowEmpty ? `a string, "" for none` : "a non-empty string";
+    bad(`${name} must be ${what}, got ${show(value)}`);
+  }
+  if (value.length > maxChars) {
+    bad(`${name} must be at most ${maxChars} characters, got ${value.length}`);
   }
   return value;
+}
+
+/**
+ * @param {Record<string, unknown>} body
+ * @param {string} key
+ * @param {number} maxChars a `MAX_CHARS` value
+ * @param {{ allowEmpty?: boolean }} [options] by default the text must hold something besides
+ *   white space
+ * @returns {string}
+ */
+export function text(body, key, maxChars, { allowEmpty = false } = {}) {
+  return checkText(body[key], key, maxChars, allowEmpty);
+}
+
+/**
+ * A list of at most `MAX_TAGS` non-empty tags, each at most `MAX_CHARS.tag` long.
+ * @param {Record<string, unknown>} body
+ * @param {string} key
+ * @returns {string[]}
+ */
+export function tagList(body, key) {
+  const value = body[key];
+  if (!Array.isArray(value)) bad(`${key} must be a list of tags, got ${show(value)}`);
+  if (value.length > MAX_TAGS) {
+    bad(`${key} must hold at most ${MAX_TAGS} tags, got ${value.length}`);
+  }
+  return value.map((tag, i) => checkText(tag, `${key}[${i}]`, MAX_CHARS.tag, false));
 }
 
 /**
