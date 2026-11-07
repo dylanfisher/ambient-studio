@@ -12,7 +12,7 @@ beforeAll(async () => {
 });
 afterAll(() => server.remove());
 
-const PAGES = ["brief.html", "evaluation.html", "index.html", "session.html"];
+const PAGES = ["brief.html", "evaluation.html", "index.html", "lineage.html", "session.html"];
 
 const moduleScript = /<script\s+type="module"\s+src="([^"]+)"/g;
 const stylesheet = /<link\s+rel="stylesheet"\s+href="([^"]+)"/g;

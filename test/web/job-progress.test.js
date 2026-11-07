@@ -64,10 +64,17 @@ describe("jobProgress", () => {
   });
 
   test("never reads as the bare job line", () => {
-    for (const kind of ["candidates", "excerpts", "evaluation"]) {
+    for (const kind of ["candidates", "excerpts", "evaluation", "nudge", "explore"]) {
       const { title } = jobProgress(job({ kind }), 3_000);
       expect(title).not.toMatch(/^Job \d/);
     }
+  });
+
+  test("names a nudge and an explore, which the session and lineage pages follow", () => {
+    expect(jobProgress(job({ kind: "nudge" }), 3_000).title).toBe("Nudging a candidate");
+    expect(jobProgress(job({ kind: "explore" }), 3_000).title).toBe(
+      "The model's variations of a candidate",
+    );
   });
 
   test("a kind the page doesn't know is an error, not a blank title", () => {

@@ -6,6 +6,8 @@ const TITLE = Object.freeze({
   candidates: "New candidates for this brief",
   excerpts: "Rendering missing excerpts",
   evaluation: "Model test",
+  nudge: "Nudging a candidate",
+  explore: "The model's variations of a candidate",
 });
 
 /** A job's states, as the server's job runner names them (decision 0026). */
@@ -118,6 +120,13 @@ export function jobProgress(job, now) {
     finished: job.finishedAt !== null,
   };
 }
+
+/**
+ * The status line's sentence for a followed job that ended without finishing its work.
+ * @param {JobStatus} job failed or cancelled
+ */
+export const endedText = ({ state }) =>
+  `The job ${state === JOB_STATE.failed ? "stopped on an error; its box says why" : "was cancelled"}.`;
 
 /**
  * Why a button that starts a job is off while one runs.

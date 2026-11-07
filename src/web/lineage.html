@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lineage · Ambient Studio</title>
+    <link rel="stylesheet" href="./studio.css" />
+    <script type="module" src="./lineage.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <nav class="nav" aria-label="Pages">
+        <a class="brand" href="./" title="Opens the dashboard: how the studio works, and every brief.">Ambient Studio</a>
+        <a href="./#briefs" aria-current="page" title="Opens the list of briefs on the dashboard, where you open one or write a new one.">Briefs</a>
+        <a href="./evaluation.html" title="Opens the model test page, which checks how often the model follows your briefs. It makes no audio.">Model test</a>
+      </nav>
+    </header>
+    <main class="page">
+      <div class="page-head">
+        <p class="crumbs small muted">
+          <a href="./#briefs" title="Goes back to the list of briefs.">Briefs</a> /
+          <a id="briefLink" href="./" title="Opens this brief, to edit it, start a session or read every rating.">Brief</a> /
+        </p>
+        <h1 id="pageTitle">Lineage</h1>
+        <p class="help muted">
+          Every candidate made in this brief's sessions, each listed under the one it was made
+          from: a revision under its first try, and the variations of an explore and the
+          children of a nudge under the candidate they started from. Play any of them, and
+          explore or nudge from one to go back to an earlier branch; the new candidates go to the
+          session named below and appear here as they are ready. Rate them on the session page.
+        </p>
+        <p id="status" class="status" role="status" aria-live="polite">Loading…</p>
+      </div>
+
+      <section class="card stack" aria-labelledby="controls-heading">
+        <h2 id="controls-heading">Working from here</h2>
+        <p id="sessionLine" class="small"></p>
+        <div class="row">
+          <a id="sessionLink" class="button outline" href="./" hidden title="Opens the session that new explores and nudges go to, where you rate what they make.">Open the session</a>
+          <label class="check small"
+            ><input id="rejectedSwitch" type="checkbox" title="Shows or hides the rejected candidates: model answers that broke the format or the rules, and nudge draws that were drawn again." />
+            Show rejected candidates</label
+          >
+        </div>
+        <div id="jobBox" class="stack"></div>
+      </section>
+
+      <p id="noNodes" class="muted" hidden>No candidates yet. Start a session from the brief page and ask for candidates.</p>
+      <ul id="tree" class="lineage" aria-label="Candidates, each under the one it was made from"></ul>
+    </main>
+
+    <template id="job-progress">
+      <div class="job">
+        <div class="row">
+          <strong data-part="title">job</strong>
+          <span class="badge" data-part="state">state</span>
+          <span class="muted small" data-part="elapsed"></span>
+          <span class="spacer"></span>
+          <button class="button outline small" type="button" data-part="cancel" title="Cancels this job. Candidates and excerpts it already made are kept.">Cancel</button>
+        </div>
+        <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" data-part="bar"><div class="progress-fill" data-part="fill"></div></div>
+        <p class="small" data-part="step"></p>
+        <p class="small errors" data-part="error" hidden></p>
+      </div>
+    </template>
+
+    <template id="lineage-node">
+      <li>
+        <article class="item stack small">
+          <div class="row">
+            <strong data-part="heading">Candidate</strong>
+            <span class="badge" data-part="operator">first try</span>
+            <span class="badge" data-part="thumbs" hidden>thumbs</span>
+            <span class="badge" data-part="sketch" hidden>Kept as sketch</span>
+            <span class="badge muted" data-part="pair" hidden>pair</span>
+            <span class="spacer"></span>
+            <a class="muted" href="./" data-part="sessionLink" title="Opens the session this candidate was made in, where you rate it.">session</a>
+          </div>
+          <p data-part="intent"></p>
+          <p class="muted" data-part="origin"></p>
+          <!-- biome-ignore lint/a11y/useMediaCaption: instrumental excerpts have no speech to caption -->
+          <audio data-part="audio" controls preload="none" title="Plays this candidate's 25-second excerpt. Starting it pauses any other excerpt."></audio>
+          <p class="muted" data-part="missing" hidden></p>
+          <div data-part="steer"></div>
+        </article>
+        <ul class="lineage" data-part="children"></ul>
+      </li>
+    </template>
+
+    <template id="steer-controls">
+      <div class="stack small">
+        <div class="row">
+          <input data-part="direction" type="text" size="22" placeholder="A direction, such as slower" title="An optional one-line direction for Explore from here, such as slower or less bell. The model reads it as you wrote it." />
+          <button class="button outline small" type="button" data-part="explore" title="Asks the model for 4 variations of this candidate, following the direction if you wrote one, and renders an excerpt of each. Takes about 1–2 minutes per variation.">Explore from here</button>
+        </div>
+        <div class="row">
+          <select data-part="stepSize" title="How far Nudge from here moves this candidate's numbers: a small, medium or large step."></select>
+          <button class="button outline small" type="button" data-part="nudge" title="Makes 8 children of this candidate by moving its numbers a step, with no model request, and renders an excerpt of each. Takes a few seconds per child.">Nudge from here</button>
+        </div>
+      </div>
+    </template>
+  </body>
+</html>

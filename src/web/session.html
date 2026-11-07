@@ -27,7 +27,9 @@
           renders a 25-second excerpt of it, which appears below as soon as it is ready. Play
           each one, then rate it with the buttons on its card. Thumbs and the Less / More choices
           can be changed or cleared at any time. Keep as sketch saves a candidate you want to
-          come back to.
+          come back to. To work from a candidate you like, lock what should stay, then explore
+          (the model writes variations) or nudge (its numbers move a little) from its card. The
+          lineage page shows where every candidate came from.
         </p>
         <p id="status" class="status" role="status" aria-live="polite">Loading…</p>
       </div>
@@ -42,6 +44,7 @@
           <button id="askButton" class="button primary" type="button" title="Asks the local model for new candidates for this brief and renders a 25-second excerpt of each as it arrives. Takes about 1–2 minutes per candidate.">Ask for new candidates</button>
           <button id="excerptsButton" class="button outline" type="button" hidden title="Renders the excerpts that are missing, such as after a restart or a failed render. No model is asked; each excerpt takes a few seconds.">Render missing excerpts</button>
           <span class="spacer"></span>
+          <a id="lineageLink" class="button outline" href="./lineage.html" title="Opens the lineage page: every candidate of this brief's sessions, each under the one it was made from, to play and work from.">Lineage</a>
           <button id="stopButton" class="button destructive" type="button" title="Stops this session after you confirm: any running job is cancelled, and it takes no more candidates or ratings. Your ratings so far are kept.">Stop the session</button>
         </div>
         <div id="jobBox" class="stack"></div>
@@ -110,14 +113,20 @@
       <article class="card candidate" tabindex="-1">
         <div class="row">
           <h3 data-part="heading">Candidate</h3>
+          <span class="muted small" data-part="rowId"></span>
           <span class="badge" data-part="thumbsBadge" hidden>thumbs</span>
           <span class="badge" data-part="sketchBadge" hidden>Kept as sketch</span>
         </div>
         <p class="small" data-part="intent"></p>
+        <p class="small muted" data-part="origin"></p>
         <!-- biome-ignore lint/a11y/useMediaCaption: instrumental excerpts have no speech to caption -->
         <audio data-part="audio" controls preload="metadata" title="Plays this candidate's 25-second excerpt. Starting it pauses any other excerpt."></audio>
         <p class="small muted" data-part="missing" hidden>The excerpt is not ready yet. It is rendered right after the model answers.</p>
         <p class="small muted" data-part="played"></p>
+        <div class="small" data-part="rangesBox" hidden>
+          <p data-part="rangesLine"></p>
+          <ul class="ranges" data-part="ranges"></ul>
+        </div>
 
         <div class="row">
           <div class="segmented">
@@ -142,6 +151,29 @@
           <button class="button secondary" type="button" data-part="sketch" title="Keeps this candidate as a sketch, with the note and tags, so you can find it on the brief page later.">Keep as sketch</button>
         </div>
 
+        <div data-part="steer"></div>
+
+        <details class="small stack" data-part="lockBox">
+          <summary data-part="lockSummary" title="Shows or hides the brief's locks: values every later candidate, explore and nudge of this brief keeps as they are.">Locks</summary>
+          <p class="muted">
+            A lock keeps one value as this candidate has it in every later candidate of the
+            brief. The macros still move a locked value, so locking one offers to lock them too.
+          </p>
+          <div class="row">
+            <select data-part="lockPath" title="Chooses what to lock: a value of the whole piece, a macro, a whole voice, or one parameter of a voice."></select>
+            <button class="button outline small" type="button" data-part="lock" title="Locks the chosen value as this candidate has it. Every later candidate, explore and nudge of this brief keeps it. No model is asked.">Lock</button>
+          </div>
+          <div class="callout stack" data-part="offer" hidden>
+            <p data-part="offerText"></p>
+            <div class="row">
+              <button class="button secondary small" type="button" data-part="offerYes" title="Locks those macros too, at this candidate's values, so the locked value sounds the same in later candidates.">Lock those macros too</button>
+              <button class="button outline small" type="button" data-part="offerNo" title="Leaves those macros free. The locked value then still moves when they change.">Leave them free</button>
+            </div>
+          </div>
+          <p class="muted" data-part="locksLine"></p>
+          <ul class="list" data-part="lockList"></ul>
+        </details>
+
         <details class="small">
           <summary title="Shows or hides the measurements and rule checks of this excerpt.">Details</summary>
           <p class="muted" data-part="features"></p>
@@ -159,6 +191,25 @@
           <button type="button" data-part="more" aria-pressed="false" title="Tells the studio this candidate should have more of this.">More</button>
         </div>
       </div>
+    </template>
+    <template id="steer-controls">
+      <div class="stack small">
+        <div class="row">
+          <input data-part="direction" type="text" size="22" placeholder="A direction, such as slower" title="An optional one-line direction for Explore from here, such as slower or less bell. The model reads it as you wrote it." />
+          <button class="button outline small" type="button" data-part="explore" title="Asks the model for 4 variations of this candidate, following the direction if you wrote one, and renders an excerpt of each. Takes about 1–2 minutes per variation.">Explore from here</button>
+        </div>
+        <div class="row">
+          <select data-part="stepSize" title="How far Nudge from here moves this candidate's numbers: a small, medium or large step."></select>
+          <button class="button outline small" type="button" data-part="nudge" title="Makes 8 children of this candidate by moving its numbers a step, with no model request, and renders an excerpt of each. Takes a few seconds per child.">Nudge from here</button>
+        </div>
+      </div>
+    </template>
+    <template id="lock-item">
+      <li class="item row">
+        <span data-part="line"></span>
+        <span class="spacer"></span>
+        <button class="button outline small" type="button" data-part="unlock" title="Removes this lock, so later candidates may change the value again. Candidates already made keep it.">Unlock</button>
+      </li>
     </template>
     <template id="rejected-item">
       <li class="item small">

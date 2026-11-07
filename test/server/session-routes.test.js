@@ -323,9 +323,12 @@ test("a nudge through its route puts its children in the session's candidate lis
     rejectReason: null,
     seed: candidates[0].seed,
     operator: "nudge",
+    operatorParams: { stepSize: "small" },
+    vibeRevisionId: candidates[0].vibeRevisionId,
     parentIds: [baseId],
     pair: null,
   });
+  expect(candidates[0].vibeRevisionId).toEqual(expect.any(Number));
   expect(child.excerpt.url).toBe(`/audio/${done.result.excerpts[0].renderId}`);
   // One request made the base; the nudge sent none.
   expect(omlx.requests).toHaveLength(1);

@@ -1,14 +1,20 @@
 // The session page (decisions 0028 and 0032): the candidate grid, one card per candidate with its
 // excerpt, its rating controls and its details; the A/B view; and the session's jobs, each with
 // its progress, followed until they finish. Of a revised pair, one card shows and links the
-// other (0036). Played fraction and time taken are measured here as decision 0027 defines them.
+// other (0036). Each card also reads its features against its brief's ranges, locks its values
+// (0035), and explores or nudges from it (0039). Played fraction and time taken are measured
+// here as decision 0027 defines them.
+/** @import { FeatureRanges } from "../domain/target-schema.js" */
 /** @import { LintResult } from "../domain/lint-result.js" */
 /** @import { AbCandidate } from "./ab-view.js" */
 /** @import { CardHold } from "./card-hold.js" */
 /** @import { JobStatus } from "./job-progress.js" */
 /** @import { PlayedTracker } from "./played-tracker.js" */
+/** @import { StartJob, SteerControls } from "./steer-controls.js" */
 import { featuresText } from "../domain/features-text.js";
+import { OPERATOR } from "../domain/operator.js";
 import { MACRO_DIRECTIONS, THUMBS } from "../domain/rating-values.js";
+import { validateTargets } from "../domain/validate-targets.js";
 import { MACROS } from "../engine/genome-schema.js";
 import { abView } from "./ab-view.js";
 import { getJson, jobPath, postJson, sessionPath, startJob, VIBES_PATH } from "./api.js";
@@ -19,13 +25,18 @@ import { cloneTemplate } from "./clone-template.js";
 import { elementsById } from "./element-by-id.js";
 import { followJob } from "./follow-job.js";
 import { jobControl } from "./job-control.js";
-import { JOB_STATE } from "./job-progress.js";
+import { endedText, JOB_STATE } from "./job-progress.js";
 import { jobBox, TONE } from "./job-view.js";
+import { lockChoices } from "./lock-choices.js";
+import { macroOffer } from "./macro-offer.js";
 import { macroTitles } from "./macro-words.js";
 import { oneAtATime } from "./one-at-a-time.js";
+import { intentText, originText, rejectText } from "./origin-text.js";
 import { createPairSwap } from "./pair-swap.js";
 import { createPlayedTracker } from "./played-tracker.js";
+import { rangesReadout } from "./ranges-readout.js";
 import { statusLine } from "./status-line.js";
+import { steerControls } from "./steer-controls.js";
 
 const [UP, DOWN] = THUMBS;
 const [MORE, LESS] = MACRO_DIRECTIONS;
@@ -35,6 +46,7 @@ const status = statusLine();
 const page = elementsById({
   pageTitle: HTMLElement,
   briefLink: HTMLAnchorElement,
+  lineageLink: HTMLAnchorElement,
   countInput: HTMLInputElement,
   askButton: HTMLButtonElement,
   excerptsButton: HTMLButtonElement,
@@ -55,9 +67,14 @@ const SESSION = sessionPath(sessionId);
 /** The parts of a candidate card in session.html. */
 const CARD_PARTS = Object.freeze({
   heading: HTMLElement,
+  rowId: HTMLElement,
   thumbsBadge: HTMLElement,
   sketchBadge: HTMLElement,
   intent: HTMLElement,
+  origin: HTMLElement,
+  rangesBox: HTMLElement,
+  rangesLine: HTMLElement,
+  ranges: HTMLUListElement,
   audio: HTMLAudioElement,
   missing: HTMLElement,
   played: HTMLElement,
@@ -72,6 +89,16 @@ const CARD_PARTS = Object.freeze({
   lint: HTMLElement,
   findings: HTMLUListElement,
   pairLink: HTMLButtonElement,
+  steer: HTMLElement,
+  lockSummary: HTMLElement,
+  lockPath: HTMLSelectElement,
+  lock: HTMLButtonElement,
+  offer: HTMLElement,
+  offerText: HTMLElement,
+  offerYes: HTMLButtonElement,
+  offerNo: HTMLButtonElement,
+  locksLine: HTMLElement,
+  lockList: HTMLUListElement,
 });
 
 /** @typedef {{ less: HTMLButtonElement, clear: HTMLButtonElement, more: HTMLButtonElement }} MacroButtons */
@@ -82,7 +109,14 @@ const CARD_PARTS = Object.freeze({
  * @property {number} id
  * @property {number} genomeId
  * @property {number} seed
+ * @property {number} vibeRevisionId the brief version it was made under, whose ranges it is
+ *   read against, as the revision pass and the shown-card rule read it (decision 0036)
  * @property {string | null} intent
+ * @property {string | null} operator
+ * @property {any} operatorParams
+ * @property {number[]} parentIds
+ * @property {string | null} rejectReason
+ * @property {any} genome null for a rejected candidate
  * @property {LintResult | null} lint
  * @property {{ renderId: number, url: string, duration: number, features: any, checks: LintResult } | null} excerpt
  * @property {{ thumbs: { id: number, direction: string, note: string | null } | null, macros: Record<string, { id: number, direction: string }> }} feedback
@@ -105,6 +139,10 @@ const CARD_PARTS = Object.freeze({
  * @property {AbortController} wiring unwires the audio element from the tracker
  * @property {boolean} busy whether a rating of it is being sent
  * @property {CardHold} hold whether it is in use, which holds its pair's swap
+ * @property {SteerControls} steer its explore and nudge controls
+ * @property {string[]} offered the macro lock paths its lock control offers; none while the
+ *   offer is hidden
+ * @property {boolean} locking whether a lock change from it is being sent
  */
 
 /** @type {any} */
@@ -118,6 +156,10 @@ const pairSwap = createPairSwap();
 let marked = null;
 /** @type {{ ratings: any[], sketches: any[] }} */
 let rated = { ratings: [], sketches: [] };
+/** @type {{ id: number, path: string, candidateId: number }[]} the brief's live locks */
+let locks = [];
+/** @type {Map<number, FeatureRanges>} each brief version's ranges, by its id */
+const rangesByRevision = new Map();
 /** @type {Map<number, JobStatus>} every job followed, by id, as last read */
 const jobs = new Map();
 /** @type {Map<number, ReturnType<typeof jobBox>>} */
@@ -219,6 +261,11 @@ function showCardControls() {
           ? "Turned off while your last choice for this candidate is saved."
           : null;
     for (const button of ratingButtons(card)) offBecause(button, why);
+    card.steer.off(
+      stopped
+        ? "This session is stopped, so it takes no more jobs. Explore or nudge from the lineage page, or start a new session from the brief page."
+        : null,
+    );
   }
 }
 
@@ -233,6 +280,176 @@ function choose(card) {
   if (before === card) return;
   before?.parts.root.classList.remove("selected");
   card.parts.root.classList.add("selected");
+}
+
+/**
+ * The card's features against the ranges of the brief version it was made under, each miss
+ * marked in words as well as color.
+ * @param {Card} card
+ */
+function showRanges(card) {
+  const { parts, candidate } = card;
+  const ranges = rangesByRevision.get(candidate.vibeRevisionId);
+  if (!ranges) {
+    throw new Error(`${card.label} names brief version ${candidate.vibeRevisionId}, not loaded`);
+  }
+  parts.rangesBox.hidden = !candidate.excerpt || Object.keys(ranges).length === 0;
+  if (!candidate.excerpt) return;
+  const readout = rangesReadout(candidate.excerpt.features, ranges);
+  parts.rangesLine.textContent = readout.text;
+  parts.ranges.replaceChildren(
+    ...readout.rows.map((row) => {
+      const item = document.createElement("li");
+      item.className = row.miss ? "miss" : "inside";
+      item.textContent = `${row.miss ? "Misses" : "Inside"}: ${row.label} ${row.value}, aiming ${row.range}`;
+      return item;
+    }),
+  );
+}
+
+/** Reads the ranges of every version of the brief, for the cards made under each. */
+async function loadRanges() {
+  /** @type {{ revisions: { id: number, softTargets: unknown }[] }} */
+  const { revisions } = await getJson(`${VIBES_PATH}/${session.vibeId}/revisions`);
+  for (const revision of revisions) {
+    const checked = validateTargets(revision.softTargets);
+    if (!checked.ok) {
+      const why = checked.errors.map((error) => error.message).join("; ");
+      throw new Error(`brief version ${revision.id} has ranges the page can't read: ${why}`);
+    }
+    rangesByRevision.set(revision.id, checked.ranges);
+  }
+}
+
+/**
+ * How a card names another candidate: by its card's label in this session, or by its id.
+ * @param {number} id
+ */
+function nameOf(id) {
+  const card = cards.find((shown) => shown.candidate.id === id);
+  return card ? card.label.toLowerCase() : `candidate #${id} of another session`;
+}
+
+/** The brief's locks route. */
+const locksPath = () => `${VIBES_PATH}/${session.vibeId}/locks`;
+
+/** Reads the brief's live locks and shows them on every card. */
+async function loadLocks() {
+  ({ locks } = await getJson(locksPath()));
+  for (const card of cards) showLocks(card);
+}
+
+/**
+ * The brief's locks on the card, each with Unlock, and the card's offer to lock the macros.
+ * @param {Card} card
+ */
+function showLocks(card) {
+  const { parts } = card;
+  parts.lockSummary.textContent = locks.length === 0 ? "Locks" : `Locks (${locks.length})`;
+  parts.locksLine.textContent =
+    locks.length === 0
+      ? "The brief has no locks yet."
+      : "The brief's locks, which every later candidate keeps:";
+  parts.lockList.replaceChildren(
+    ...locks.map((lock) => {
+      const item = cloneTemplate("lock-item", { line: HTMLElement, unlock: HTMLButtonElement });
+      const from =
+        lock.candidateId === card.candidate.id ? "this candidate" : nameOf(lock.candidateId);
+      item.line.textContent = `${lock.path}, as ${from} has it`;
+      item.unlock.onclick = () => status.run(() => unlock(card, lock));
+      item.unlock.disabled = card.locking;
+      return item.root;
+    }),
+  );
+  card.offered = card.offered.filter((path) => !locks.some((lock) => lock.path === path));
+  parts.offer.hidden = card.offered.length === 0;
+  for (const button of [parts.lock, parts.offerYes, parts.offerNo]) button.disabled = card.locking;
+}
+
+/**
+ * Runs one lock change from the card with its lock controls off, then reads the locks again.
+ * @param {Card} card
+ * @param {() => Promise<unknown>} work
+ */
+async function lockWork(card, work) {
+  if (card.locking) return;
+  card.locking = true;
+  showLocks(card);
+  try {
+    await work();
+  } finally {
+    card.locking = false;
+    await loadLocks();
+  }
+}
+
+/** @param {Card} card */
+function lockChosen(card) {
+  return lockWork(card, async () => {
+    const path = card.parts.lockPath.value;
+    const answer = await postJson(locksPath(), { candidateId: card.candidate.id, path });
+    ({ locks } = await getJson(locksPath()));
+    const offer = macroOffer(answer.macros, locks);
+    card.offered = offer?.paths ?? [];
+    card.parts.offerText.textContent = offer?.text ?? "";
+    const count = answer.removed.length;
+    const replaced =
+      count === 0 ? "" : ` It replaces ${count} earlier lock${count === 1 ? "" : "s"}.`;
+    status.say(`Locked ${path} as ${card.label.toLowerCase()} has it.${replaced}`);
+  });
+}
+
+/** @param {Card} card */
+function lockOffered(card) {
+  return lockWork(card, async () => {
+    const paths = card.offered;
+    for (const path of paths) {
+      await postJson(locksPath(), { candidateId: card.candidate.id, path });
+    }
+    card.offered = [];
+    status.say(`Locked ${paths.join(", ")} too, at the values ${card.label.toLowerCase()} has.`);
+  });
+}
+
+/**
+ * @param {Card} card
+ * @param {{ id: number, path: string }} lock
+ */
+function unlock(card, lock) {
+  return lockWork(card, async () => {
+    await postJson(`${locksPath()}/${lock.id}/remove`, {});
+    status.say(`Unlocked ${lock.path}. Later candidates may change it again.`);
+  });
+}
+
+/**
+ * Sends an explore or a nudge from a card and follows its job; the card's button stays off
+ * until the job finishes. A 409 naming the same job attaches to it.
+ * @type {StartJob}
+ */
+async function startSteer(control, path, body) {
+  control.wait();
+  try {
+    const { job, refused } = await startJob(path, body);
+    control.hold(job);
+    status.say(
+      refused
+        ? `${refused} Showing that job's progress.`
+        : "Started. The new candidates appear below as they are ready.",
+    );
+    status.run(async () => {
+      try {
+        await follow(job);
+      } finally {
+        control.release();
+        showControls();
+      }
+    });
+  } catch (error) {
+    control.release();
+    showControls();
+    throw error;
+  }
 }
 
 /**
@@ -255,6 +472,7 @@ function showExcerpt(card) {
   parts.missing.hidden = Boolean(excerpt);
   parts.played.textContent = "";
   parts.features.textContent = excerpt ? featuresText(excerpt.features) : "";
+  showRanges(card);
   if (excerpt && card.tracker) {
     parts.audio.src = excerpt.url;
     trackAudio(
@@ -480,7 +698,9 @@ function showPairs() {
       const card = byId.get(id);
       if (!card) return false;
       const { note, tags } = card.parts;
-      return card.hold.held(note.value.trim() !== "" || tags.value.trim() !== "");
+      return card.hold.held(
+        note.value.trim() !== "" || tags.value.trim() !== "" || card.steer.unsent(),
+      );
     },
   };
   for (const card of cards) {
@@ -532,9 +752,42 @@ function makeCard(candidate, number, revised) {
     wiring: new AbortController(),
     hold: createCardHold(),
     busy: false,
+    steer: steerControls({
+      candidateId: candidate.id,
+      sessionId: () => sessionId,
+      start: startSteer,
+      run: status.run,
+    }),
+    offered: [],
+    locking: false,
   };
   parts.heading.textContent = card.label;
-  parts.intent.textContent = candidate.intent ?? "The model gave no intent.";
+  parts.rowId.textContent = `#${candidate.id}`;
+  parts.intent.textContent = intentText(candidate);
+  parts.steer.append(card.steer.root);
+  parts.lockPath.replaceChildren(
+    ...lockChoices(candidate.genome).map(({ label, choices }) => {
+      const group = document.createElement("optgroup");
+      group.label = label;
+      group.append(
+        ...choices.map(({ path, label: words }) => {
+          const option = document.createElement("option");
+          option.value = path;
+          option.textContent = words;
+          return option;
+        }),
+      );
+      return group;
+    }),
+  );
+  parts.lock.onclick = () => status.run(() => lockChosen(card));
+  parts.offerYes.onclick = () => status.run(() => lockOffered(card));
+  parts.offerNo.onclick = () => {
+    card.offered = [];
+    showLocks(card);
+    status.say("The macros stay free, so the locked value still moves when they change.");
+  };
+  showLocks(card);
   for (const macro of MACRO_NAMES) {
     const choice = cloneTemplate("macro-choice", {
       name: HTMLElement,
@@ -629,7 +882,7 @@ async function follow(job) {
     status.say(
       finished.state === JOB_STATE.done
         ? "The job is done. Play the candidates and rate them."
-        : `The job ${finished.state === JOB_STATE.failed ? "stopped on an error; its box says why" : "was cancelled"}.`,
+        : endedText(finished),
     );
   } finally {
     // A failed poll leaves the job unfinished in `jobs`, which would keep the buttons off until
@@ -697,6 +950,10 @@ async function loadRatings() {
 async function loadCandidates() {
   /** @type {{ candidates: Candidate[] }} */
   const { candidates } = await getJson(`${SESSION}/candidates`);
+  // A brief saved while the session runs makes a version the page hasn't read yet.
+  if (candidates.some((candidate) => !rangesByRevision.has(candidate.vibeRevisionId))) {
+    await loadRanges();
+  }
   const withGenome = candidates.filter(
     (candidate) => /** @type {any} */ (candidate).genome !== null,
   );
@@ -719,14 +976,26 @@ async function loadCandidates() {
   });
   for (const card of cards) {
     if (!card.parts.root.isConnected) page.candidateGrid.append(card.parts.root);
+    // Every card is made before any is named, so a parent made in this load has its label.
+    card.parts.origin.textContent = originText(card.candidate, nameOf);
     showRated(card);
+    showLocks(card);
   }
   showPairs();
   page.noCandidates.hidden = cards.length > 0;
   showControls();
 
   page.rejectedBox.hidden = rejected.length === 0;
-  page.rejectedSummary.textContent = `${rejected.length} rejected candidate${rejected.length === 1 ? "" : "s"}: the answer broke the format or the brief's rules even after one fix`;
+  const draws = rejected.filter((candidate) => candidate.operator === OPERATOR.nudge).length;
+  const answers = rejected.length - draws;
+  page.rejectedSummary.textContent = `${rejected.length} rejected candidate${rejected.length === 1 ? "" : "s"}: ${[
+    answers > 0 &&
+      `${answers} model answer${answers === 1 ? "" : "s"} that broke the format or the brief's rules even after one fix`,
+    draws > 0 &&
+      `${draws} nudge draw${draws === 1 ? "" : "s"} that broke the rules or repeated a genome, each drawn again`,
+  ]
+    .filter(Boolean)
+    .join(", and ")}`;
   page.rejectedList.replaceChildren(
     ...rejected.map((candidate) => {
       const item = cloneTemplate("rejected-item", {
@@ -734,7 +1003,11 @@ async function loadCandidates() {
         findings: HTMLUListElement,
       });
       const meant = candidate.intent ? `, meant as “${candidate.intent}”` : "";
-      item.line.textContent = `Candidate ${candidate.id}: ${/** @type {any} */ (candidate).rejectReason}${meant}`;
+      const from =
+        candidate.parentIds.length > 0
+          ? ` from ${nameOf(/** @type {number} */ (candidate.parentIds[0]))}`
+          : "";
+      item.line.textContent = `Candidate #${candidate.id}: ${rejectText(candidate)}${from}${meant}`;
       showFindings(item.findings, candidate.lint?.findings ?? []);
       return item.root;
     }),
@@ -759,9 +1032,12 @@ status.run(async () => {
   const vibe = await getJson(`${VIBES_PATH}/${session.vibeId}`);
   page.briefLink.href = `./brief.html?id=${session.vibeId}`;
   page.briefLink.textContent = vibe.revision.name;
+  page.lineageLink.href = `./lineage.html?id=${session.vibeId}&session=${sessionId}`;
   document.title = `Session ${sessionId}, ${vibe.revision.name} · Ambient Studio`;
+  await loadRanges();
   await loadRatings();
   await loadCandidates();
+  await loadLocks();
   const unfinished = session.jobs.filter((/** @type {any} */ job) => job.finishedAt === null);
   status.say(
     unfinished.length > 0

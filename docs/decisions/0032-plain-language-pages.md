@@ -1,7 +1,9 @@
 # 0032. Plain-language studio pages: buttons instead of keys, "brief" for vibe, progress and one job per action
 
 - **Date:** 2026-11-06
-- **Status:** accepted; provisional: owner to confirm
+- **Status:** accepted; provisional: owner to confirm. Amended by
+  [0039](0039-lineage-and-steering-controls.md) (the lineage page, and each session card's
+  ranges, locks, explore and nudge)
 
 ## Context
 
@@ -129,3 +131,15 @@ structure follows shadcn/ui; no code is taken from it. Still no nesting, `:has()
 - The pages read job progress through `jobProgress` only, so a new job kind needs a title there.
 - A job button is turned back on when following its job fails (a poll that throws), and the
   status line shows the error; a reload follows the job again if it still runs.
+
+## Amendments
+
+- 2026-11-07 (step 3g, [0039](0039-lineage-and-steering-controls.md)): a fifth page,
+  `lineage.html`, draws a brief's candidates as nested lists with a player and explore and nudge
+  controls on each, opened from the brief page's Sessions card and beside Stop the session. Each
+  session card adds its row id and how it was made, its features against its brief version's
+  ranges with each miss marked in words, a Locks disclosure with the brief's locks, Unlock, a
+  lock select and the offer to lock the macros that move a value, and Explore from here (with a
+  one-line direction) and Nudge from here (with a step size). Those buttons follow 0032's one
+  job per action. A nudge child says it has no intent of its own, and rejected nudge draws are
+  counted apart from model answers. `jobProgress` knows the nudge and explore kinds.

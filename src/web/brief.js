@@ -59,6 +59,7 @@ const page = elementsById({
   startButton: HTMLButtonElement,
   noteButton: HTMLButtonElement,
   sessionList: HTMLUListElement,
+  lineageLink: HTMLAnchorElement,
   noteList: HTMLUListElement,
   noteForm: HTMLFormElement,
   noteText: HTMLTextAreaElement,
@@ -291,6 +292,7 @@ async function load(id) {
     getJson(`${VIBES_PATH}/${id}/ratings`),
   ]);
   const { revision } = vibe;
+  page.lineageLink.href = `./lineage.html?id=${id}`;
   document.title = `${revision.name} · Ambient Studio`;
   page.pageTitle.textContent = revision.name;
   page.briefName.value = revision.name;
