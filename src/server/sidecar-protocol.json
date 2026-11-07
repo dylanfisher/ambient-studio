@@ -19,6 +19,20 @@
     "embed_text": {
       "params": { "checkpointCache": "path", "text": "string", "out": "path" },
       "result": {}
+    },
+    "fit": {
+      "params": { "set": "path", "out": "path" },
+      "result": {
+        "pairs": "number",
+        "thumbs": "number",
+        "items": "number",
+        "clapDimension": "number",
+        "iterations": "number"
+      }
+    },
+    "predict": {
+      "params": { "model": "path", "items": "path", "out": "path" },
+      "result": { "count": "number" }
     }
   }
 }
