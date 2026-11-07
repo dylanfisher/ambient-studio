@@ -62,6 +62,22 @@ const SYSTEM = [
 const section = (heading, lines) => (lines.length === 0 ? [] : [[heading, ...lines].join("\n")]);
 
 /**
+ * The locks as one paragraph, one `path = value` line each, or nothing when there are none. The
+ * revision's ask restates them in the same words.
+ * @param {readonly Lock[]} locks
+ * @returns {string[]}
+ */
+export const locksText = (locks) =>
+  section(
+    "Locked by the owner; keep these values exactly:",
+    // A voice's parameter names the type too: the lock holds only while the voice keeps it.
+    locks.map(
+      ({ path, value, voiceType }) =>
+        `${path} = ${JSON.stringify(value)}${voiceType === undefined ? "" : ` (a ${voiceType} voice)`}`,
+    ),
+  );
+
+/**
  * @param {PromptRevision} revision
  * @param {Omit<PromptParts, "budgetTokens">} parts
  * @returns {ChatMessage[]}
@@ -73,14 +89,7 @@ function messages(revision, { notes, locks, examples, recordings }) {
     `Vibe: ${revision.name}\n${revision.brief}`,
     constraintsText(revision.constraints),
     ...(targets === "" ? [] : [targets]),
-    ...section(
-      "Locked by the owner; keep these values exactly:",
-      // A voice's parameter names the type too: the lock holds only while the voice keeps it.
-      locks.map(
-        ({ path, value, voiceType }) =>
-          `${path} = ${JSON.stringify(value)}${voiceType === undefined ? "" : ` (a ${voiceType} voice)`}`,
-      ),
-    ),
+    ...locksText(locks),
     ...section(
       "The owner's notes, oldest first:",
       notes.map((note) => `- ${note}`),
