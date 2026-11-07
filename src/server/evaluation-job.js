@@ -2,7 +2,7 @@
 // generation, with one stream seed for every vibe, and stores the report in `evaluations`. It
 // runs only when the owner's request adds it to the job runner, which runs one job at a time, so
 // it shares the one omlx queue with nothing else.
-/** @import { Outcome, ResponseFormatResult, VibeRun } from "../domain/evaluation-report.js" */
+/** @import { ResponseFormatResult, VibeRun } from "../domain/evaluation-report.js" */
 /** @import { RejectReason } from "../domain/reject-reason.js" */
 /** @import { Generation } from "./generation-store.js" */
 /** @import { JobContext } from "./job-runner.js" */
@@ -70,23 +70,25 @@ export function evaluationJob(app, { vibeIds, count }) {
     const total = vibeIds.length * count;
     let done = 0;
     job.progress(done, total);
+    // Every vibe has a run from the start, so a run that stops early still reports the vibes it
+    // never reached, with nothing made.
+    for (const vibeId of vibeIds) {
+      const vibe = getVibe(store, vibeId);
+      if (!vibe) throw new Error(`there is no vibe ${vibeId}`);
+      runs.push({
+        vibeId,
+        revisionId: vibe.revision.id,
+        name: vibe.revision.name,
+        requestGroup: requestGroupName(vibeId, params.seed),
+        requested: count,
+        outcomes: [],
+        timings: [],
+      });
+    }
     const cancelRequests = () => app.queue.cancel();
     job.signal.addEventListener("abort", cancelRequests);
     try {
-      for (const vibeId of vibeIds) {
-        const vibe = getVibe(store, vibeId);
-        if (!vibe) throw new Error(`there is no vibe ${vibeId}`);
-        /** @type {Outcome[]} */
-        const outcomes = [];
-        runs.push({
-          vibeId,
-          revisionId: vibe.revision.id,
-          name: vibe.revision.name,
-          requestGroup: requestGroupName(vibeId, params.seed),
-          requested: count,
-          outcomes,
-          timings: [],
-        });
+      for (const { vibeId, outcomes } of runs) {
         try {
           await generateCandidates(vibeId, count, store, app.queue, {
             config,

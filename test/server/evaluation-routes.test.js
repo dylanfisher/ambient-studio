@@ -219,8 +219,15 @@ describe("the evaluation job", () => {
     expect((await ok("GET", `/api/jobs/${job.id}`)).state).toBe("cancelled");
     const [evaluation] = (await ok("GET", "/api/evaluations")).evaluations;
     expect(evaluation.report.stopped).toMatch(/cancelled/);
-    expect(evaluation.report.overall).toMatchObject({ made: 2, answered: 1, requestFailed: 1 });
+    expect(evaluation.report.overall).toMatchObject({
+      requested: 6,
+      made: 2,
+      answered: 1,
+      requestFailed: 1,
+    });
     expect(counted(evaluation.report.overall.valid.beforeRepair)).toEqual({ count: 1, of: 1 });
+    // The vibes the run never reached are listed with nothing made.
+    expect(evaluation.report.vibes.map((/** @type {any} */ v) => v.made)).toEqual([2, 0, 0]);
   });
 
   test("bad bodies are refused before anything runs", async () => {
