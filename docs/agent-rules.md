@@ -54,6 +54,10 @@ and write down why when a rule comes from something that went wrong.
 10. Never shape data or code to get past a checker. When `dupes.js` flags the same text with two
     meanings, add an entry to `scripts/dupes-allow.txt`; when it flags one fact written twice,
     import it from one place.
+11. Render an excerpt in a test only when the render is what the test checks. To give a test a
+    candidate row, seed it in the store, and let a model answer with no genome when its child
+    isn't checked. An excerpt costs 4–10 s under `--low`, and in phase 3 server tests that
+    rendered only to make rows passed the 30 s timeout three times.
 
 ## Reviewers
 

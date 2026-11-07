@@ -60,7 +60,7 @@ unneeded stays unused rather than being given to another step.
 | 0035 | Locks: paths, storage, enforcement, locks and macros | 3c (settles 0006's open question) | [written](decisions/0035-locks.md) |
 | 0036 | The revision pass ("ears") | 3d | [written](decisions/0036-revision-pass.md) |
 | 0037 | `sessionId` on candidates, nudge and branch | 3e | [written](decisions/0037-nudge-and-branch.md) |
-| 0038 | Explore | 3f | — |
+| 0038 | Explore | 3f | [written](decisions/0038-explore.md) |
 | 0039 | Lineage tree and the steering controls | 3g | — |
 | 0040 | Revision evaluation against a control | 3h | — |
 
@@ -2107,3 +2107,35 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   passes. 1245 tests. Pending owner checks: small, medium and large against their names; whether
   60 failed children in 2,664 at large is acceptable (0037 records clipping into ranges as the
   alternative).
+- 2026-11-07: 3f merged as 6bc05aa (Opus: 195k tokens, 73 calls, 20.5 min, then a fix round of
+  8.3 min; reviewer Sonnet: 69k tokens, 17 calls, 9.0 min, FAIL; second reviewer Sonnet: 46k
+  tokens, 8 calls, 4.1 min, PASS). Explore: N children (default 4) of a base, each a fresh first
+  prompt with a base section holding the base's genome with the live locks applied and the
+  owner's direction quoted as a JSON string, then the revision pass like any first try. A base
+  that can't take the locks is a 409, as for nudge. Trimming drops examples, then the base; a
+  child whose base was dropped is a plain first try marked `baseTrimmed`. `POST
+  /api/sessions/:id/explores` reuses the candidates job; an identical explore queued or running
+  is a 409. A direction is at most 200 characters with no control characters. A seed-sized
+  prompt with a base is about 4,309 of 8,192 tokens, its revision follow-up about 5,132. The
+  review failed the step on a test that rendered three excerpts it didn't check, about 40 s
+  against the 30 s timeout under load; seeded rows took it to 9.7 s and three others from 12–18 s
+  to 0.1 s. 1258 tests. Pending owner checks: the base section and variation ask in a stored
+  prompt; whether children copy the base too closely or move too far, with and without a
+  direction; the 200-character cap.
+- 2026-11-07: retrospective after 3d, 3e, 3f (orchestrator rule 11).
+
+  | Step | Build | Fix rounds | Review |
+  |---|---|---|---|
+  | 3d | 84k + 245k, 130 calls, 38.6 min | 4.4 + 1.5 min | 120k FAIL, then 50k PASS |
+  | 3e | 254k, 101 calls, 38.2 min | 9.1 min, with a rebase | 93k, 7.7 min, PASS |
+  | 3f | 195k, 73 calls, 20.5 min | 8.3 min | 69k FAIL, then 46k PASS |
+
+  Where it went: splitting 3d at its helper move let 3e build beside it at the cost of one
+  extra report, and the reviewer's dry-run merge named every conflict before the rebase, so the
+  rebase was routine. Two reviews failed: 3d's on a card that hid under a typed note and then
+  under a click in Safari, which needed the owner's browser named in the second review, and
+  3f's on a test that timed out. Server tests that render excerpts only to make a row showed up
+  in 3c, 3d and 3f, each costing a timeout and a fix round. Change: Builders 11, below: render
+  in a test only when the render is what it checks. The checkers' configuration hasn't changed
+  this phase (only `scripts/dupes-allow.txt`), so they still skip `tmp/`,
+  `.claude/worktrees/`, `node_modules/` and `.venv/`.
