@@ -107,7 +107,11 @@ describe("render", () => {
 
   test("retries when the library refuses a suspend after rendering started", async () => {
     const expected = await renderOffline(golden, { seed: 1, duration: 3 });
-    let failures = 2;
+    const scriptedFailures = 2;
+    // One entry per attempt: "scripted" is a failure this test throws, "library" is a real
+    // suspend race from the library's own startRendering(), "ok" is the attempt that rendered.
+    /** @type {string[]} */
+    const outcomes = [];
     /** @type {number[]} */
     const waits = [];
     const wait = async (/** @type {number} */ ms) => {
@@ -121,18 +125,35 @@ describe("render", () => {
         (ctx) => {
           const start = ctx.startRendering.bind(ctx);
           ctx.startRendering = async () => {
-            if (failures-- > 0)
+            if (outcomes.length < scriptedFailures) {
+              outcomes.push("scripted");
               throw new DOMException("Error in async function", "InvalidStateError");
-            return start();
+            }
+            try {
+              const buffer = await start();
+              outcomes.push("ok");
+              return buffer;
+            } catch (error) {
+              outcomes.push("library");
+              throw error;
+            }
           };
         },
         wait,
       );
       expect(retried.channels).toEqual(expected.channels);
-      expect(warn).toHaveBeenCalledTimes(2);
-      expect(waits).toHaveLength(3);
+      // The injected wait is a no-op, so the first attempts after the script get no settle time
+      // and under load the library can hit its own suspend race, which adds retries. Those are
+      // allowed; anything else between the scripted failures and the final render is not.
+      const attempts = outcomes.length;
+      expect(outcomes.slice(0, scriptedFailures)).toEqual(["scripted", "scripted"]);
+      expect(outcomes.at(-1)).toBe("ok");
+      expect(outcomes.slice(scriptedFailures, -1).every((o) => o === "library")).toBe(true);
+      expect(attempts).toBeGreaterThanOrEqual(scriptedFailures + 1);
+      expect(warn).toHaveBeenCalledTimes(attempts - 1);
+      expect(waits).toHaveLength(attempts);
       expect(waits).toEqual([...waits].sort((a, b) => a - b));
-      expect(new Set(waits).size).toBe(3);
+      expect(new Set(waits).size).toBe(attempts);
     } finally {
       warn.mockRestore();
     }
