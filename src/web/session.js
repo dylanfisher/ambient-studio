@@ -9,11 +9,13 @@ import { featuresText } from "../domain/features-text.js";
 import { MACRO_DIRECTIONS, THUMBS } from "../domain/rating-values.js";
 import { MACROS } from "../engine/genome-schema.js";
 import { abView } from "./ab-view.js";
-import { getJson, postJson, VIBES_PATH } from "./api.js";
+import { getJson, jobPath, postJson, sessionPath, VIBES_PATH } from "./api.js";
 import { seekBy, togglePlay, trackAudio } from "./audio-player.js";
-import { bindKeys } from "./bind-keys.js";
+import { bindKeys, isFormControl } from "./bind-keys.js";
+import { createSelection } from "./candidate-selection.js";
 import { cloneTemplate } from "./clone-template.js";
 import { elementsById } from "./element-by-id.js";
+import { oneAtATime } from "./one-at-a-time.js";
 import { createPlayedTracker } from "./played-tracker.js";
 import { statusLine } from "./status-line.js";
 
@@ -45,7 +47,7 @@ const page = elementsById({
 const idText = new URLSearchParams(location.search).get("id");
 if (idText === null) throw new Error("session.html needs ?id=<session id>");
 const sessionId = Number(idText);
-const sessionPath = `/api/sessions/${sessionId}`;
+const SESSION = sessionPath(sessionId);
 
 /** The parts of a candidate card in session.html. */
 const CARD_PARTS = Object.freeze({
@@ -84,10 +86,8 @@ const CARD_PARTS = Object.freeze({
 let session;
 /** @type {Card[]} in the order the session made them */
 let cards = [];
-/** @type {Card | null} */
-let selected = null;
-/** When the selected candidate was put in front of the owner, on the page's monotonic clock. */
-let selectedAt = 0;
+/** @type {import("./candidate-selection.js").Selection<Card>} */
+const selection = createSelection(() => performance.now());
 /** @type {Card | null} the first of an A/B pair, once marked */
 let marked = null;
 /** @type {{ ratings: any[], feedback: any[], sketches: any[] }} */
@@ -113,6 +113,7 @@ function showFindings(list, findings) {
 }
 
 function showSelected() {
+  const selected = selection.current();
   if (!selected) {
     page.ratingHeading.textContent = "No candidate selected";
     page.selectedReadout.textContent = "Press j to select one.";
@@ -120,15 +121,15 @@ function showSelected() {
   }
   page.ratingHeading.textContent = `Rating candidate ${selected.number}`;
   const played = selected.tracker ? `played ${percent(selected.tracker.fraction())}` : "no excerpt";
-  const seconds = ((performance.now() - selectedAt) / 1000).toFixed(0);
-  page.selectedReadout.textContent = `${played}, ${seconds} s since you selected it.`;
+  const seconds = (selection.elapsedMs() / 1000).toFixed(0);
+  page.selectedReadout.textContent = `${played}, ${seconds} s since you selected or last rated it.`;
 }
 
 /** @param {Card} card */
 function showPlayed(card) {
   if (!card.tracker) return;
   card.parts.played.textContent = `Played ${percent(card.tracker.fraction())}.`;
-  if (card === selected) showSelected();
+  if (card === selection.current()) showSelected();
 }
 
 /** @param {Card} card */
@@ -150,15 +151,22 @@ function showRated(card) {
   card.parts.rated.textContent = lines.length === 0 ? "" : `Rated: ${lines.join("; ")}.`;
 }
 
-/** @param {Card} card */
-function select(card) {
-  if (selected && selected !== card) selected.parts.audio.pause();
-  selected?.parts.root.classList.remove("selected");
-  selected = card;
-  selectedAt = performance.now();
+/**
+ * The owner chose the card: by key, by click, or by starting its audio. Focus moves to it only
+ * when nothing is being typed (candidate-selection.js).
+ * @param {Card} card
+ */
+function choose(card) {
+  const before = selection.current();
+  const { focus } = selection.choose(card, { inField: isFormControl(document.activeElement) });
+  if (before === card) return;
+  before?.parts.audio.pause();
+  before?.parts.root.classList.remove("selected");
   card.parts.root.classList.add("selected");
-  card.parts.root.focus({ preventScroll: true });
-  card.parts.root.scrollIntoView({ block: "nearest" });
+  if (focus) {
+    card.parts.root.focus({ preventScroll: true });
+    card.parts.root.scrollIntoView({ block: "nearest" });
+  }
   showSelected();
 }
 
@@ -187,37 +195,42 @@ function makeCard(candidate, number) {
   if (excerpt && card.tracker) {
     parts.audio.src = excerpt.url;
     parts.features.textContent = featuresText(excerpt.features);
-    trackAudio(parts.audio, card.tracker, {
-      onPlay: () => {
-        for (const other of cards) if (other !== card) other.parts.audio.pause();
-        if (selected !== card) select(card);
+    trackAudio(
+      parts.audio,
+      card.tracker,
+      {
+        onPlay: () => {
+          for (const other of cards) if (other !== card) other.parts.audio.pause();
+          choose(card);
+        },
+        onChange: () => showPlayed(card),
+        onError: status.fail,
       },
-      onChange: () => showPlayed(card),
-      onError: status.fail,
-    });
+      new AbortController().signal,
+    );
     showPlayed(card);
   } else {
     parts.audio.hidden = true;
     parts.missing.hidden = false;
   }
-  parts.root.onclick = () => {
-    if (selected !== card) select(card);
-  };
+  parts.root.onclick = () => choose(card);
   return card;
 }
 
 /** @param {1 | -1} step */
 function move(step) {
   if (cards.length === 0) throw new Error("No candidates yet; press g to ask for some.");
+  const selected = selection.current();
   const at = selected ? cards.indexOf(selected) : -1;
   const next =
     at === -1 ? (step > 0 ? 0 : cards.length - 1) : (at + step + cards.length) % cards.length;
   const card = cards[next];
-  if (card) select(card);
+  if (card) choose(card);
 }
 
 /** The selected card with its excerpt, or an error saying what's missing. */
 function heard() {
+  const selected = selection.current();
   if (!selected) throw new Error("Select a candidate first, with j or k.");
   const { excerpt } = selected.candidate;
   if (!excerpt || !selected.tracker) {
@@ -233,7 +246,7 @@ function measured() {
     card,
     renderId: excerpt.renderId,
     playedFraction: tracker.fraction(),
-    timeTakenMs: performance.now() - selectedAt,
+    timeTakenMs: selection.elapsedMs(),
   };
 }
 
@@ -242,17 +255,20 @@ function measured() {
  * @param {string} what
  * @param {{ playedFraction: number, timeTakenMs: number }} how
  */
-const stored = (number, what, { playedFraction, timeTakenMs }) =>
+function stored(number, what, { playedFraction, timeTakenMs }) {
+  // The next rating of this card measures from this one (decision 0028).
+  selection.restart();
   status.say(
     `${what} stored for candidate ${number}: played ${percent(playedFraction)}, ` +
       `${(timeTakenMs / 1000).toFixed(1)} s.`,
   );
+}
 
 /** @param {string} direction one of THUMBS */
 async function thumbs(direction) {
   const { card, ...how } = measured();
   const note = page.noteText.value.trim() === "" ? undefined : page.noteText.value;
-  await postJson(`${sessionPath}/thumbs`, { ...how, direction, note });
+  await postJson(`${SESSION}/thumbs`, { ...how, direction, note });
   page.noteText.value = "";
   await loadRatings();
   stored(card.number, `Thumbs ${direction}${note ? " with the note" : ""}`, how);
@@ -262,7 +278,7 @@ async function thumbs(direction) {
 async function macroFeedback(direction) {
   const { card, ...how } = measured();
   const macro = page.macroSelect.value;
-  await postJson(`${sessionPath}/macro-feedback`, { ...how, macro, direction });
+  await postJson(`${SESSION}/macro-feedback`, { ...how, macro, direction });
   await loadRatings();
   stored(card.number, `${direction} ${macro}`, how);
 }
@@ -273,7 +289,7 @@ async function keepSketch() {
     .split(",")
     .map((tag) => tag.trim())
     .filter((tag) => tag !== "");
-  await postJson(`${sessionPath}/sketches`, {
+  await postJson(`${SESSION}/sketches`, {
     candidateId: card.candidate.id,
     renderId: excerpt.renderId,
     notes: page.noteText.value,
@@ -282,6 +298,7 @@ async function keepSketch() {
   page.noteText.value = "";
   page.tagsInput.value = "";
   await loadRatings();
+  selection.restart();
   status.say(`Candidate ${card.number} kept as a sketch.`);
 }
 
@@ -297,7 +314,9 @@ const ab = abView({
     showView("session");
     page.gridView.hidden = false;
     unmark();
-    selected?.parts.root.focus();
+    // A pair's listening isn't time spent on the selected card.
+    selection.restart();
+    selection.current()?.parts.root.focus();
   },
   onRated: () => loadRatings(),
 });
@@ -325,7 +344,7 @@ async function markAb() {
   const first = marked;
   const firstExcerpt = first.candidate.excerpt;
   if (!firstExcerpt) throw new Error(`Candidate ${first.number} has lost its excerpt; mark again.`);
-  const pair = await postJson(`${sessionPath}/ab-pairs`, {
+  const pair = await postJson(`${SESSION}/ab-pairs`, {
     a: excerpt.renderId,
     b: firstExcerpt.renderId,
   });
@@ -357,7 +376,7 @@ async function poll(job) {
     showJob(current);
     while (current.finishedAt === null) {
       await new Promise((resolve) => setTimeout(resolve, POLL_MS));
-      current = await getJson(`/api/jobs/${current.id}`);
+      current = await getJson(jobPath(current.id));
       showJob(current);
       if ((current.progress?.done ?? 0) !== done) {
         done = current.progress?.done ?? 0;
@@ -371,27 +390,25 @@ async function poll(job) {
   status.say(`Job ${current.id} ${current.state}.`);
 }
 
-async function askCandidates() {
+// Only the POST is guarded, so a second press can't add a second job; polling runs on its own.
+const askCandidates = oneAtATime(async () => {
   const text = page.countInput.value.trim();
-  const job = await postJson(
-    `${sessionPath}/candidates`,
-    text === "" ? {} : { count: Number(text) },
-  );
+  const job = await postJson(`${SESSION}/candidates`, text === "" ? {} : { count: Number(text) });
   status.say(`Asked for candidates: job ${job.id}.`);
-  await poll(job);
-}
+  status.run(() => poll(job));
+});
 
-async function renderExcerpts() {
-  const job = await postJson(`${sessionPath}/excerpts`, {});
+const renderExcerpts = oneAtATime(async () => {
+  const job = await postJson(`${SESSION}/excerpts`, {});
   status.say(`Rendering excerpts: job ${job.id}.`);
-  await poll(job);
-}
+  status.run(() => poll(job));
+});
 
 async function cancelJob() {
-  session = await getJson(sessionPath);
+  session = await getJson(SESSION);
   const job = session.jobs.filter((/** @type {any} */ row) => row.finishedAt === null).at(-1);
   if (!job) throw new Error("No job of this session is running.");
-  showJob(await postJson(`/api/jobs/${job.id}/cancel`, {}));
+  showJob(await postJson(`${jobPath(job.id)}/cancel`, {}));
 }
 
 function showSession() {
@@ -403,7 +420,7 @@ async function stopSession() {
   if (!confirm(`Stop session ${sessionId}? Its jobs are cancelled and it takes no more ratings.`)) {
     return;
   }
-  session = await postJson(`${sessionPath}/stop`, {});
+  session = await postJson(`${SESSION}/stop`, {});
   showSession();
   status.say(`Session ${sessionId} stopped. Start a new one from the vibe page.`);
 }
@@ -416,7 +433,7 @@ async function loadRatings() {
 /** Loads the candidates, keeping each card whose excerpt hasn't changed. */
 async function loadCandidates() {
   /** @type {{ candidates: any[] }} */
-  const { candidates } = await getJson(`${sessionPath}/candidates`);
+  const { candidates } = await getJson(`${SESSION}/candidates`);
   const withGenome = candidates.filter((candidate) => candidate.genome !== null);
   const rejected = candidates.filter((candidate) => candidate.genome === null);
   const before = new Map(cards.map((card) => [card.candidate.id, card]));
@@ -427,8 +444,15 @@ async function loadCandidates() {
     if (kept) {
       kept.parts.audio.pause();
       kept.parts.root.replaceWith(card.parts.root);
-      if (selected === kept) select(card);
-      if (marked === kept) unmark();
+      // Carried over without touching the focus, which may be in the note (decision 0028).
+      if (selection.current() === kept) {
+        selection.carry(kept, card);
+        card.parts.root.classList.add("selected");
+      }
+      if (marked === kept) {
+        marked = card;
+        card.parts.root.classList.add("marked");
+      }
     }
     return card;
   });
@@ -471,16 +495,16 @@ const showView = bindKeys(
       playPause: () => togglePlay(heard().card.parts.audio),
       back: () => seekBy(heard().card.parts.audio, -1),
       forward: () => seekBy(heard().card.parts.audio, 1),
-      thumbsUp: () => thumbs(UP),
-      thumbsDown: () => thumbs(DOWN),
+      thumbsUp: oneAtATime(() => thumbs(UP)),
+      thumbsDown: oneAtATime(() => thumbs(DOWN)),
       writeNote: () => page.noteText.focus(),
       writeTags: () => page.tagsInput.focus(),
       previousMacro: () => cycleMacro(-1),
       nextMacro: () => cycleMacro(1),
-      moreLikeThis: () => macroFeedback(MORE),
-      lessLikeThis: () => macroFeedback(LESS),
-      keepSketch,
-      markAb,
+      moreLikeThis: oneAtATime(() => macroFeedback(MORE)),
+      lessLikeThis: oneAtATime(() => macroFeedback(LESS)),
+      keepSketch: oneAtATime(keepSketch),
+      markAb: oneAtATime(markAb),
       askCandidates,
       renderExcerpts,
       cancelJob,
@@ -494,7 +518,7 @@ const showView = bindKeys(
 );
 
 status.run(async () => {
-  session = await getJson(sessionPath);
+  session = await getJson(SESSION);
   showSession();
   const vibe = await getJson(`${VIBES_PATH}/${session.vibeId}`);
   page.vibeLink.href = `./vibe.html?id=${session.vibeId}`;

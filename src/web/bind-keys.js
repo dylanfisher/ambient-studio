@@ -4,12 +4,15 @@
 /** @import { Binding, View } from "./key-map.js" */
 /** @import { StatusLine } from "./status-line.js" */
 import { elementById } from "./element-by-id.js";
-import { actionFor, KEY_MAP, keyName, LEAVE_FIELD } from "./key-map.js";
+import { actionFor, KEY_MAP, keyName, LEAVE_FIELD, swallowsHeld } from "./key-map.js";
 
 /** @typedef {Record<string, () => unknown>} Handlers by action; `LEAVE_FIELD` is built in */
 
-/** @param {EventTarget | null} target */
-const isField = (target) =>
+/**
+ * Whether the focus is in a form control, where typing goes to the control.
+ * @param {EventTarget | null} target
+ */
+export const isFormControl = (target) =>
   target instanceof HTMLInputElement ||
   target instanceof HTMLTextAreaElement ||
   target instanceof HTMLSelectElement ||
@@ -83,14 +86,21 @@ export function bindKeys(views, first, run) {
   window.addEventListener(
     "keydown",
     (event) => {
-      if (event.repeat || event.isComposing) return;
-      const action = actionFor(current, {
+      if (event.isComposing) return;
+      const press = {
         key: event.key,
         ctrlKey: event.ctrlKey,
         metaKey: event.metaKey,
         altKey: event.altKey,
-        inField: isField(event.target),
-      });
+        inField: isFormControl(event.target),
+        multiline: event.target instanceof HTMLTextAreaElement,
+        repeat: event.repeat,
+      };
+      if (swallowsHeld(press)) {
+        event.preventDefault();
+        return;
+      }
+      const action = actionFor(current, press);
       if (action === undefined) return;
       event.preventDefault();
       event.stopPropagation();

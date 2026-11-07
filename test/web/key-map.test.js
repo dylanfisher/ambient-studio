@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { actionFor, KEY_MAP, keyName } from "../../src/web/key-map.js";
+import { actionFor, KEY_MAP, keyName, swallowsHeld } from "../../src/web/key-map.js";
 
 /** @typedef {import("../../src/web/key-map.js").KeyPress} KeyPress */
 
@@ -14,6 +14,7 @@ const press = (key, rest = {}) => ({
   metaKey: false,
   altKey: false,
   inField: false,
+  repeat: false,
   ...rest,
 });
 
@@ -111,4 +112,25 @@ test("keyName spells out the keys a page lists", () => {
   expect(keyName("Mod+Enter")).toBe("Cmd/Ctrl+Enter");
   expect(keyName("Escape")).toBe("Esc");
   expect(keyName("u")).toBe("u");
+});
+
+describe("held keys", () => {
+  test("a repeated key press fires no action", () => {
+    expect(actionFor("session", press("u", { repeat: true }))).toBeUndefined();
+    expect(actionFor("ab", press("f", { repeat: true }))).toBeUndefined();
+  });
+
+  test("a held Enter or Space is swallowed, so it can't repeat a button's click or a submit", () => {
+    expect(swallowsHeld(press("Enter", { repeat: true }))).toBe(true);
+    expect(swallowsHeld(press(" ", { repeat: true }))).toBe(true);
+    expect(swallowsHeld(press("Enter"))).toBe(false);
+    expect(swallowsHeld(press("j", { repeat: true }))).toBe(false);
+  });
+
+  test("a held Enter in a one-line field is swallowed; typing keeps its repeats", () => {
+    expect(swallowsHeld(press("Enter", { repeat: true, inField: true }))).toBe(true);
+    const inTextarea = { repeat: true, inField: true, multiline: true };
+    expect(swallowsHeld(press("Enter", inTextarea))).toBe(false);
+    expect(swallowsHeld(press(" ", { repeat: true, inField: true }))).toBe(false);
+  });
 });

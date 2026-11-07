@@ -4,9 +4,10 @@
 /** @import { PlayedTracker } from "./played-tracker.js" */
 /** @import { StatusLine } from "./status-line.js" */
 import { OUTCOMES } from "../domain/rating-values.js";
-import { postJson } from "./api.js";
+import { postJson, sessionPath } from "./api.js";
 import { seekBy, trackAudio } from "./audio-player.js";
 import { elementsById } from "./element-by-id.js";
+import { oneAtATime } from "./one-at-a-time.js";
 import { createPlayedTracker } from "./played-tracker.js";
 
 const [, , TIE, SKIP] = OUTCOMES;
@@ -65,6 +66,8 @@ export function abView({ sessionId, status, onClose, onRated }) {
   };
   /** @type {{ pair: AbPair, left: Side, right: Side, active: Side, shownAt: number } | null} */
   let shown = null;
+  /** Unwires the sides' audio elements, which every pair reuses. */
+  let wiring = new AbortController();
 
   const current = () => {
     if (!shown) throw new Error("No A/B pair is open.");
@@ -78,8 +81,8 @@ export function abView({ sessionId, status, onClose, onRated }) {
   function activate(next) {
     const { left, right } = current();
     current().active = next;
-    left.box.classList.toggle("playing", next === left);
-    right.box.classList.toggle("playing", next === right);
+    left.box.classList.toggle("active-side", next === left);
+    right.box.classList.toggle("active-side", next === right);
   }
 
   /**
@@ -98,14 +101,19 @@ export function abView({ sessionId, status, onClose, onRated }) {
       readout.textContent = `Played ${Math.round(tracker.fraction() * 100)}%.`;
     };
     // The handlers run only on playback, after `open` has set `shown`.
-    trackAudio(audio, tracker, {
-      onPlay: () => {
-        otherOf(made).audio.pause();
-        activate(made);
+    trackAudio(
+      audio,
+      tracker,
+      {
+        onPlay: () => {
+          otherOf(made).audio.pause();
+          activate(made);
+        },
+        onChange: showPlayed,
+        onError: status.fail,
       },
-      onChange: showPlayed,
-      onError: status.fail,
-    });
+      wiring.signal,
+    );
     showPlayed();
     return made;
   }
@@ -121,17 +129,28 @@ export function abView({ sessionId, status, onClose, onRated }) {
     if (!shown) return;
     shown.left.audio.pause();
     shown.right.audio.pause();
+    wiring.abort();
     shown = null;
     page.abView.hidden = true;
     onClose();
   }
 
+  /** @type {(typeof OUTCOMES)[number] | null} the outcome the guarded `rating` sends */
+  let chosen = null;
+  // One rating per pair: a second press while the first is posting does nothing.
+  const rating = oneAtATime(() => send(/** @type {(typeof OUTCOMES)[number]} */ (chosen)));
   /** @param {(typeof OUTCOMES)[number]} outcome */
-  async function rate(outcome) {
+  const rate = (outcome) => {
+    chosen = outcome;
+    return rating();
+  };
+
+  /** @param {(typeof OUTCOMES)[number]} outcome */
+  async function send(outcome) {
     const { pair, left, right, shownAt } = current();
     const [aSide, bSide] = pair.leftSide === "a" ? [left, right] : [right, left];
     const timeTakenMs = performance.now() - shownAt;
-    await postJson(`/api/sessions/${sessionId}/ab-ratings`, {
+    await postJson(`${sessionPath(sessionId)}/ab-ratings`, {
       a: pair.a,
       b: pair.b,
       orderSeed: pair.orderSeed,
@@ -180,6 +199,8 @@ export function abView({ sessionId, status, onClose, onRated }) {
     open(pair, candidates) {
       const [onLeft, onRight] =
         pair.leftSide === "a" ? [candidates.a, candidates.b] : [candidates.b, candidates.a];
+      wiring.abort();
+      wiring = new AbortController();
       const left = side("left", onLeft);
       const right = side("right", onRight);
       shown = { pair, left, right, active: left, shownAt: performance.now() };

@@ -39,9 +39,23 @@ valid set with `constraintsText`, and won't post an invalid one; the server chec
 its content. `bind-keys.js` refuses a page whose handlers and table disagree, and wires each
 `data-action` button to the same handler as its key. A key with Cmd, Ctrl or Alt goes to the
 browser, except Cmd/Ctrl+Enter. While a text field, select or checkbox has focus, only Esc
-(leave the field) and Cmd/Ctrl+Enter fire. Held keys don't repeat an action. The listener runs
-in the capture phase, so Space on a focused button or audio element plays or pauses the
-selected excerpt instead.
+(leave the field) and Cmd/Ctrl+Enter fire. Held keys don't repeat an action, and a held Enter
+or Space outside typing is dropped with its default action, so it can't click a focused button
+again and again or submit the vibe form once per repeat; Space in a text field and Enter in a
+textarea keep their repeats. The listener runs in the capture phase, so Space on a focused
+button or audio element plays or pauses the selected excerpt instead.
+
+**One at a time.** Every rating action (thumbs, more or less, sketch), opening an A/B pair,
+rating it, asking for candidates, rendering excerpts, starting a session and saving either
+vibe form does nothing while its own last run is still posting (`one-at-a-time.js`). A quick
+`u u`, `f f` or `x x` posts once. An action that navigates to a new page stays held until the
+page is replaced.
+
+**Selection and focus.** `candidate-selection.js` holds the selected candidate and its clock.
+The owner chooses a candidate with `j` / `k`, a click, or by starting its audio; the focus moves
+to the card only when it is a new choice and no form control has the focus. When a reload
+replaces the selected card (its excerpt landed), the selection and its clock carry over and the
+focus stays where it was, so a note being typed never turns into rating keys.
 
 | Page | Keys |
 |---|---|
@@ -60,12 +74,16 @@ excerpt's duration from the API, as 0027 defines it. The audio element's events 
 it at `currentTime`, and `seeking` closes it where playback last was, since `currentTime` is
 already the new position when `seeking` fires. A jump backwards with no seek event starts a new
 interval rather than spanning the gap. A candidate keeps one tracker for its render while the
-page is open; an A/B pair gets fresh ones per side.
+page is open; an A/B pair gets fresh ones per side. The listeners are added with an
+`AbortSignal`, which the A/B view aborts before it reuses its two audio elements for the next
+pair.
 
-**Time taken** is `performance.now()` at the rating minus `performance.now()` when the item was
-put in front of the owner: the candidate selected (by key, click, or starting its audio), or the
-pair shown. The page doesn't cap it: a rating more than a day after the selection is refused by
-the server's range check with its message, and selecting the candidate again restarts the clock.
+**Time taken** runs on `performance.now()`. For a candidate it is from when the candidate was
+chosen, or from the owner's last rating of it, to this rating: each thumbs, more or less, and
+sketch restarts the clock, and so does the A/B view closing, so listening to a pair doesn't count
+toward the next rating of the selected card. For an A/B pair it is from when the pair was shown.
+The page doesn't cap it: a rating more than a day later is refused by the server's range check
+with its message, and choosing the candidate again restarts the clock.
 
 **Job status** is polled with `GET /api/jobs/:jobId` every **1 000 ms** while the job hasn't
 finished (`finishedAt` is null), each read waiting for the last. The page reloads the candidates
@@ -116,3 +134,10 @@ and time taken. Safari itself is the owner's check on mbp2015.
   can't serve fails a test instead of a browser.
 - The played fraction counts only what the page saw: plays in another tab or browser are
   separate, and reloading the page starts a candidate's tracker at 0.
+
+## Amendments
+
+- 2026-11-06: from the step's review, before merge. A grid reload no longer moves the focus,
+  and no choice takes it from a form control; rating actions, pair opens and form saves run one
+  at a time; held Enter and Space are dropped; time taken restarts after each rating of a card
+  and when the A/B view closes.

@@ -3,7 +3,7 @@
 // them back with `readConstraints` for `validateConstraints` to check.
 /** @import { Descriptor } from "../engine/descriptor.js" */
 import { CONSTRAINT_KINDS, FORM } from "../domain/constraint-schema.js";
-import { choices, isNumeric } from "../engine/descriptor.js";
+import { choices, isNumeric, isRecording } from "../engine/descriptor.js";
 import { voiceTypeIds } from "../engine/voice-registry.js";
 
 /**
@@ -41,7 +41,11 @@ function field(name, form, value) {
     form,
     description: value?.description ?? "voice types",
     options:
-      form === FORM.voices ? voiceTypeIds() : value && !numeric ? choices(value).map(String) : null,
+      form === FORM.voices
+        ? voiceTypeIds()
+        : value && !numeric && !isRecording(value)
+          ? choices(value).map(String)
+          : null,
     min: numeric ? value.min : null,
     max: numeric ? value.max : null,
     unit: numeric ? value.unit : "",

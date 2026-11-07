@@ -12,32 +12,40 @@ const SEEK_SECONDS = 5;
  * @param {PlayedTracker} tracker
  * @param {{ onPlay: () => void, onChange: () => void, onError: (error: Error) => void }} on
  *   `onPlay` when playback is asked for, `onChange` when the played share may have changed
+ * @param {AbortSignal} signal aborting it unwires the element, as when the A/B view reuses it
  */
-export function trackAudio(audio, tracker, { onPlay, onChange, onError }) {
-  audio.onplay = onPlay;
-  audio.onplaying = () => {
-    tracker.start(audio.currentTime);
-    onChange();
-  };
-  audio.ontimeupdate = () => {
-    if (!audio.paused && !audio.seeking) tracker.reach(audio.currentTime);
-    onChange();
-  };
-  audio.onseeking = () => tracker.stop();
-  audio.onseeked = () => {
-    if (!audio.paused) tracker.start(audio.currentTime);
-  };
-  audio.onpause = () => {
+export function trackAudio(audio, tracker, { onPlay, onChange, onError }, signal) {
+  /**
+   * @param {string} type
+   * @param {() => void} listener
+   */
+  const on = (type, listener) => audio.addEventListener(type, listener, { signal });
+  const stopHere = () => {
     tracker.stop(audio.currentTime);
     onChange();
   };
-  audio.onended = audio.onpause;
-  audio.onerror = () =>
+  on("play", onPlay);
+  on("playing", () => {
+    tracker.start(audio.currentTime);
+    onChange();
+  });
+  on("timeupdate", () => {
+    if (!audio.paused && !audio.seeking) tracker.reach(audio.currentTime);
+    onChange();
+  });
+  on("seeking", () => tracker.stop());
+  on("seeked", () => {
+    if (!audio.paused) tracker.start(audio.currentTime);
+  });
+  on("pause", stopHere);
+  on("ended", stopHere);
+  on("error", () =>
     onError(
       new Error(
         `The excerpt at ${audio.src} didn't play: media error ${audio.error?.code} ${audio.error?.message}`,
       ),
-    );
+    ),
+  );
 }
 
 /** @param {HTMLAudioElement} audio */

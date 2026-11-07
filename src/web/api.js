@@ -28,6 +28,18 @@ async function send(method, path, init) {
 export const VIBES_PATH = "/api/vibes";
 
 /**
+ * A session's route; its candidates, jobs and ratings are under it.
+ * @param {number} sessionId
+ */
+export const sessionPath = (sessionId) => `/api/sessions/${sessionId}`;
+
+/**
+ * A job's status route; `/cancel` under it cancels the job.
+ * @param {number} jobId
+ */
+export const jobPath = (jobId) => `/api/jobs/${jobId}`;
+
+/**
  * @param {string} path
  * @returns {Promise<any>}
  */

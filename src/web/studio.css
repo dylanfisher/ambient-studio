@@ -240,7 +240,7 @@ kbd {
   gap: 1rem;
 }
 
-.ab .playing {
+.ab .active-side {
   border-color: var(--accent);
   border-width: 2px;
 }

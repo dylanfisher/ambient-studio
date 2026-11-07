@@ -21,7 +21,22 @@
  * @property {boolean} metaKey
  * @property {boolean} altKey
  * @property {boolean} inField
+ * @property {boolean} [multiline] whether the focus is in a textarea
+ * @property {boolean} repeat whether the key is held down and auto-repeating
  */
+
+const ENTER = "Enter";
+const SPACE = " ";
+
+/**
+ * Whether the page drops a held key's repeats entirely, default action included: a held Enter
+ * or Space would click a focused button again and again, and a held Enter in a text field
+ * would submit its form again and again. Typing keeps its repeats: Space in any text field,
+ * Enter in a textarea, where it starts a new line.
+ * @param {KeyPress} press
+ */
+export const swallowsHeld = ({ key, repeat, inField, multiline = false }) =>
+  repeat && ((key === ENTER && !multiline) || (key === SPACE && !inField));
 
 /** The action that leaves a form control; the binder runs it itself. */
 export const LEAVE_FIELD = "leaveField";
@@ -43,7 +58,7 @@ export const KEY_MAP = Object.freeze(
     list: [
       { action: "nextVibe", keys: ["j"], label: "next vibe" },
       { action: "previousVibe", keys: ["k"], label: "previous vibe" },
-      { action: "openVibe", keys: ["Enter"], label: "open the vibe" },
+      { action: "openVibe", keys: [ENTER], label: "open the vibe" },
       { action: "newVibe", keys: ["n"], label: "new vibe" },
     ],
     vibe: [
@@ -64,7 +79,7 @@ export const KEY_MAP = Object.freeze(
     session: [
       { action: "nextCandidate", keys: ["j"], label: "next candidate" },
       { action: "previousCandidate", keys: ["k"], label: "previous candidate" },
-      { action: "playPause", keys: [" "], label: "play or pause" },
+      { action: "playPause", keys: [SPACE], label: "play or pause" },
       { action: "back", keys: [","], label: "back 5 s" },
       { action: "forward", keys: ["."], label: "forward 5 s" },
       { action: "thumbsUp", keys: ["u"], label: "thumbs up, with the note" },
@@ -87,7 +102,7 @@ export const KEY_MAP = Object.freeze(
     ab: [
       { action: "playLeft", keys: ["1"], label: "play the left side" },
       { action: "playRight", keys: ["2"], label: "play the right side" },
-      { action: "playPause", keys: [" "], label: "play or pause" },
+      { action: "playPause", keys: [SPACE], label: "play or pause" },
       { action: "back", keys: [","], label: "back 5 s" },
       { action: "forward", keys: ["."], label: "forward 5 s" },
       { action: "leftWins", keys: ["f"], label: "left is better" },
@@ -105,12 +120,13 @@ export const KEY_MAP = Object.freeze(
  * @param {KeyPress} press
  * @returns {string | undefined}
  */
-export function actionFor(view, { key, ctrlKey, metaKey, altKey, inField }) {
+export function actionFor(view, { key, ctrlKey, metaKey, altKey, inField, repeat }) {
+  if (repeat) return undefined;
   /** @type {readonly Binding[]} */
   const bindings = KEY_MAP[view];
   const mod = ctrlKey || metaKey;
   let name = key;
-  if (key === "Enter" && mod && !altKey) name = MOD_ENTER;
+  if (key === ENTER && mod && !altKey) name = MOD_ENTER;
   else if (mod || altKey) return undefined;
   return bindings.find((binding) => binding.keys.includes(name) && (!inField || binding.inField))
     ?.action;

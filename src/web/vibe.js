@@ -12,6 +12,7 @@ import { cloneTemplate } from "./clone-template.js";
 import { constraintFields, fieldValues, rangeInput, readConstraints } from "./constraint-fields.js";
 import { elementsById } from "./element-by-id.js";
 import { formatTime } from "./format-time.js";
+import { oneAtATime } from "./one-at-a-time.js";
 import { statusLine } from "./status-line.js";
 
 const [MORE] = MACRO_DIRECTIONS;
@@ -263,30 +264,35 @@ function savedId() {
   return vibeId;
 }
 
-async function save() {
+/** Holds a guarded action until the page it navigated to replaces this one. */
+const leaving = () => new Promise(() => {});
+
+// Each is one at a time, so a double press or a held Enter saves once (decision 0028).
+const save = oneAtATime(async () => {
   const body = readDraft();
   if (vibeId === null) {
     const vibe = await postJson(VIBES_PATH, body);
     location.assign(`./vibe.html?id=${vibe.id}`);
-    return;
+    return leaving();
   }
   await postJson(`${VIBES_PATH}/${vibeId}/revisions`, body);
   await load(vibeId);
   status.say("Saved as a new revision.");
-}
+});
 
-async function addNote() {
+const addNote = oneAtATime(async () => {
   const id = savedId();
   await postJson(`${VIBES_PATH}/${id}/notes`, { text: page.noteText.value });
   page.noteText.value = "";
   await load(id);
   status.say("Note added.");
-}
+});
 
-async function startSession() {
+const startSession = oneAtATime(async () => {
   const session = await postJson(`${VIBES_PATH}/${savedId()}/sessions`, {});
   location.assign(`./session.html?id=${session.id}`);
-}
+  return leaving();
+});
 
 page.constraintBox.replaceChildren(...constraintFields().map(fieldElement));
 page.draft.oninput = () => checkedConstraints();
