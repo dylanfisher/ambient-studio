@@ -1,7 +1,8 @@
 // The model test page (decisions 0030, 0032 and 0040): start a test over the ticked briefs, with
 // or without the revision test, follow its job, and read the stored results in plain words. The briefs added from starting points start
 // ticked. A test holds the shared model for a long while, so starting one asks to confirm, and
-// its button stays off until the test finishes. A model test is an evaluation in the API.
+// its button stays off until the test finishes. A model test is an evaluation in the API. The
+// taste model test (0045) has its own section, from taste-test-view.js.
 /** @import { JobStatus } from "./job-progress.js" */
 import { EVALUATION_COUNT } from "../domain/evaluation-size.js";
 import {
@@ -15,6 +16,7 @@ import {
 } from "./api.js";
 import { cloneTemplate } from "./clone-template.js";
 import { elementsById } from "./element-by-id.js";
+import { factRows } from "./fact-rows.js";
 import { followJob } from "./follow-job.js";
 import { formatTime } from "./format-time.js";
 import { jobControl } from "./job-control.js";
@@ -32,6 +34,7 @@ import {
   timeText,
 } from "./report-text.js";
 import { statusLine } from "./status-line.js";
+import { tasteTestView } from "./taste-test-view.js";
 import { costText } from "./test-cost.js";
 
 const status = statusLine();
@@ -119,15 +122,7 @@ function tallyCard(title, tally, maxTokens, withMeaning) {
   card.rejectsAfter.textContent = rejectsText(tally.rejects.afterRepair);
   const facts = revisionFacts(tally);
   card.revision.hidden = facts === null;
-  card.revisionFacts.replaceChildren(
-    ...(facts ?? []).flatMap(([term, value]) => {
-      const dt = document.createElement("dt");
-      dt.textContent = term;
-      const dd = document.createElement("dd");
-      dd.textContent = value;
-      return [dt, dd];
-    }),
-  );
+  card.revisionFacts.replaceChildren(...factRows(facts ?? []));
   return card.root;
 }
 
@@ -296,6 +291,7 @@ status.run(async () => {
     }),
   );
   await loadReports();
+  await tasteTestView(status);
   if (following === null) {
     status.say(
       vibes.length === 0

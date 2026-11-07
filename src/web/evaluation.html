@@ -28,7 +28,8 @@
           instead. With the revision test ticked it also renders each answer's excerpt, and
           sends every one that misses one of the brief's feature ranges back to the model twice:
           once with its measurements and once without, to find out whether hearing the
-          measurements helps.
+          measurements helps. The taste model test, further down, checks something else: how
+          well the studio has learned your own A/B choices.
         </p>
         <p id="status" class="status" role="status" aria-live="polite">Loading…</p>
       </div>
@@ -56,6 +57,25 @@
           <button id="startButton" class="button primary" type="button" title="Asks you to confirm, then starts the test: the model is asked for this many candidates for each ticked brief. It first says how many requests that is and about how long it takes.">Start the model test</button>
         </div>
         <div id="jobBox" class="stack"></div>
+      </section>
+
+      <section class="card stack" aria-labelledby="taste-heading">
+        <h2 id="taste-heading">Test your taste model</h2>
+        <p class="small muted">
+          For each brief, this learns your taste from every session but one, then checks how
+          often it picks the side you chose in the session it left out, one session at a time.
+          It compares that with three simple guesses: always the left side, always the louder
+          side, and the same model without the sound analysis. About-the-same choices aren't
+          counted. It needs 40 A/B choices over at least 3 sessions per brief, and it runs on
+          this computer's processor, so it never holds the model the website shares.
+        </p>
+        <div class="row">
+          <button id="tasteButton" class="button primary" type="button" title="Starts the taste model test over every brief. It takes seconds to a few minutes and doesn't use the shared model.">Start the taste model test</button>
+          <span id="tasteWhen" class="small muted"></span>
+        </div>
+        <div id="tasteJobBox" class="stack"></div>
+        <p id="tasteNone" class="muted small">No taste model test has finished yet.</p>
+        <div id="tasteResults" class="grid"></div>
       </section>
 
       <div class="columns">
@@ -126,6 +146,13 @@
         <p class="small" data-part="step"></p>
         <p class="small muted" data-part="notEmbedded" hidden></p>
         <p class="small errors" data-part="error" hidden></p>
+      </div>
+    </template>
+    <template id="taste-card">
+      <div class="card stack">
+        <h3 data-part="title">brief</h3>
+        <p class="small" data-part="summary"></p>
+        <dl class="facts small" data-part="facts"></dl>
       </div>
     </template>
     <template id="tally">

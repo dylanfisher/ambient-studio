@@ -54,6 +54,9 @@ export const SEED_VIBES_PATH = "/api/seed-vibes";
 /** The evaluations route: a POST starts one, a GET lists the reports and the running job. */
 export const EVALUATIONS_PATH = "/api/evaluations";
 
+/** The taste model test's route: a POST starts one, a GET reads the last report and the job. */
+export const PREFERENCE_TESTS_PATH = "/api/preference-tests";
+
 /**
  * A session's route; its candidates, jobs and ratings are under it.
  * @param {number} sessionId

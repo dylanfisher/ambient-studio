@@ -1,9 +1,9 @@
-// The fit job's route (decision 0044) through the HTTP server. The test config names no
-// checkpoint folder, so the job fails at once, saying so, and nothing starts the sidecar.
+// The preference routes (decisions 0044 and 0045) through the HTTP server. The test config names
+// no checkpoint folder, so the fit job fails at once, saying so, and nothing starts the sidecar.
 /** @import { Studio } from "../support/studio.js" */
 import { afterEach, expect, test } from "vitest";
 import { NO_CHECKPOINT_CACHE } from "../../src/server/embed-audio.js";
-import { removeStudio, startStudio } from "../support/studio.js";
+import { removeStudio, startStudio, VIBE } from "../support/studio.js";
 
 /** @type {Studio[]} */
 const studios = [];
@@ -45,4 +45,36 @@ test("GET /api/vibes/:vibeId/preference says there is no taste model yet", async
   expect(summary.text).toMatch(/^No taste model yet\. /);
   const missing = await studio.server.api("GET", `/api/vibes/${vibe.id + 1}/preference`);
   expect(missing.status).toBe(404);
+});
+
+test("POST /api/preference-tests runs the test, and GET reads its report", async () => {
+  const studio = await startStudio();
+  studios.push(studio);
+  expect(await studio.ok("GET", "/api/preference-tests")).toEqual({ report: null, job: null });
+  await studio.ok("POST", "/api/vibes", VIBE);
+  const job = await studio.ok("POST", "/api/preference-tests", {});
+  expect(job).toMatchObject({ kind: "agreement" });
+  await studio.server.jobs.settled(job.id);
+  expect((await studio.ok("GET", `/api/jobs/${job.id}`)).state).toBe("done");
+  // With no A/B ratings, every brief reads not enough data and the sidecar isn't started.
+  const { report } = await studio.ok("GET", "/api/preference-tests");
+  expect(report.vibes).toHaveLength(1);
+  for (const vibe of report.vibes) {
+    expect(vibe).toMatchObject({ shortfall: { pairs: 40, sessions: 3 }, test: null });
+  }
+});
+
+test("a second POST while a taste model test is unfinished is refused with its id", async () => {
+  const studio = await startStudio();
+  studios.push(studio);
+  const running = studio.server.jobs.add(
+    "agreement",
+    ({ signal }) =>
+      new Promise((_, reject) => signal.addEventListener("abort", () => reject(signal.reason))),
+  );
+  const reply = await studio.server.api("POST", "/api/preference-tests", {});
+  expect(reply.status).toBe(409);
+  expect(reply.json()).toMatchObject({ jobId: running.id });
+  const { job } = await studio.ok("GET", "/api/preference-tests");
+  expect(job).toMatchObject({ id: running.id });
 });

@@ -3,7 +3,8 @@
 - **Date:** 2026-11-07
 - **Status:** accepted; provisional: owner to confirm the prior strengths once 4e can measure
   them. Amends [0019](0019-config-file-and-paths.md) (the `models` folder) and
-  [0041](0041-sidecar-process.md) (the `fit` and `predict` methods).
+  [0041](0041-sidecar-process.md) (the `fit` and `predict` methods). Amended by
+  [0045](0045-held-out-agreement.md) (`modelPlan`'s hyperparameters, the features-only fit).
 
 ## Context
 
@@ -185,3 +186,11 @@ pairs, mbp2021 under another builder's load): 40 pairs 0.008 s, 200 pairs 0.03 s
   the file be absent. 4f and 5d call `predict`; no Node wrapper exists yet.
 - The scales are guesses. 4e's held-out agreement is the first measure of them; changing one
   changes every key, so every model is refitted.
+
+## Amendments
+
+- 2026-11-07 (4e, [0045](0045-held-out-agreement.md)): `modelPlan` takes `hyperparameters`,
+  which replace `HYPERPARAMETERS` in every key it makes. 4e's features-only baseline passes
+  `pcaDimension: 0`. Its fit still reads an embeddings file: it trains on the same embedded set
+  as the full model, so both are compared on the same pairs. `fitModels` and `readModelCode` are
+  exported for 4e.

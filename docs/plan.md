@@ -67,7 +67,7 @@ unneeded stays unused rather than being given to another step.
 | 0042 | CLAP packages, checkpoint and embeddings | 4b | [written](decisions/0042-clap-embeddings.md) |
 | 0043 | Training sets, ties, folds and the model key | 4c | — |
 | 0044 | Bayesian Bradley–Terry with a global prior | 4d | [written](decisions/0044-bayesian-bradley-terry.md), provisional |
-| 0045 | Held-out agreement, the minimum and the baselines | 4e | — |
+| 0045 | Held-out agreement, the minimum and the baselines | 4e | [written](decisions/0045-held-out-agreement.md), provisional |
 | 0046 | Ranking, wildcards and the pair picker | 4f | — |
 | 0047 | The "what you like" summary | 4g | [written](decisions/0047-what-you-like.md) |
 | 0048 | Quick A/B, the excerpt player and MP3 playback audio | 4i | [written](decisions/0048-quick-ab-player-mp3.md) |
