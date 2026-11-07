@@ -5,6 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import example from "../../src/config/example.json" with { type: "json" };
 
+/** The dummy omlx key every test config carries; no real key is ever used in a test. */
+export const TEST_OMLX_KEY = "test-omlx-key-0123456789";
+
 /**
  * @typedef {object} TempRoot
  * @property {string} root the temp folder, which is also the config's `dataRoot`
@@ -14,7 +17,7 @@ import example from "../../src/config/example.json" with { type: "json" };
 
 /**
  * Makes a temp folder and writes a config into it whose `dataRoot` is that folder and whose
- * `fieldRecordings` is `null`. `edit` changes the parsed JSON before it is written, so a test can
+ * `fieldRecordings` is `null`, written with mode 600 and the dummy `TEST_OMLX_KEY`. `edit` changes the parsed JSON before it is written, so a test can
  * point `omlx.baseUrl` at a fake or write a broken file. Load it with `loadConfig(configPath)`.
  * @param {(raw: Record<string, any>) => void} [edit]
  * @returns {Promise<TempRoot>}
@@ -23,8 +26,10 @@ export async function tempRoot(edit) {
   const root = await mkdtemp(join(tmpdir(), "ambient-studio-"));
   /** @type {Record<string, any>} */
   const raw = { ...structuredClone(example), dataRoot: root, fieldRecordings: null };
+  raw.omlx.apiKey = TEST_OMLX_KEY;
   edit?.(raw);
   const configPath = join(root, "config.json");
-  await writeFile(configPath, `${JSON.stringify(raw, null, 2)}\n`);
+  // Mode 600, as loadConfig requires: the file holds the omlx key.
+  await writeFile(configPath, `${JSON.stringify(raw, null, 2)}\n`, { mode: 0o600 });
   return { root, configPath, remove: () => rm(root, { recursive: true }) };
 }

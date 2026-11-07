@@ -167,3 +167,8 @@ offset; the 4 096 of headroom also absorbs the error. The test checks that examp
   and a request that was queued and failed rejects with `OmlxRequestError`, carrying the same
   message plus `attempts` sent, `latencyMs` from the last one sent (null when none was), `params`
   and `retries`, so 2f stores a failed request as it went out (step 2f's review).
+- 2026-11-06: every request carries `Authorization: Bearer <omlx.apiKey>`, set in the headers
+  only. The key is never in `params`, in an `OmlxRequestError`'s message or details, in an
+  `onRetry` event or in a log. An HTTP 401 or 403 is not busy and is not retried: it fails at
+  once with "omlx refused the studio's API key (HTTP <status>); check omlx.apiKey in the config",
+  and the response body is not read or quoted ([0019](0019-config-file-and-paths.md)).

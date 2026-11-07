@@ -160,6 +160,7 @@ export function createOmlxQueue({ omlx, queue, clock, jitter, onRetry }) {
         "content-type": "application/json",
         "content-length": Buffer.byteLength(payload),
         accept: "text/event-stream",
+        authorization: `Bearer ${omlx.apiKey}`,
       },
     });
     let socketOpen = false;
@@ -209,6 +210,12 @@ export function createOmlxQueue({ omlx, queue, clock, jitter, onRetry }) {
       if (status !== 200) stopFirstTokenTimer();
       if (status === 429 || status === 503)
         return { busy: `HTTP ${status}`, slowFirstToken: false };
+      if (status === 401 || status === 403) {
+        // The body is not read or quoted: nothing from a refused request goes in an error.
+        throw new Error(
+          `omlx refused the studio's API key (HTTP ${status}); check omlx.apiKey in the config`,
+        );
+      }
       if (status < 200 || status > 299) {
         const text = await readText(response);
         if (status === 400 && /response_format|json_schema/.test(text)) {

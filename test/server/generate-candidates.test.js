@@ -55,7 +55,8 @@ async function setup(queueEdits = {}) {
   const omlx = await fakeOmlx(clock);
   cleanups.push(omlx.close);
   const root = await tempRoot((raw) => {
-    raw.omlx = { baseUrl: omlx.baseUrl, model: MODEL };
+    raw.omlx.baseUrl = omlx.baseUrl;
+    raw.omlx.model = MODEL;
     Object.assign(raw.queue, queueEdits);
   });
   cleanups.push(root.remove);
