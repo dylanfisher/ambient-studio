@@ -55,9 +55,9 @@ unneeded stays unused rather than being given to another step.
 | 0030 | Seed vibes and the evaluation report | 2l | — |
 | 0031 | Automatic excerpts, one job per action, progress steps, thinking switch, prompt notation | 2m | — |
 | 0032 | Plain-language studio pages, "brief" for vibe | 2n | — |
-| 0033 | Phase 3 features: low end, stereo width, tonality | 3a | — |
+| 0033 | Phase 3 features: low end, stereo width, flatness | 3a | [written](decisions/0033-low-end-width-flatness.md) |
 | 0034 | Feature ranges as soft targets, and their calibration | 3b | — |
-| 0035 | Locks: paths, storage, enforcement, locks and macros | 3c (settles 0006's open question) | — |
+| 0035 | Locks: paths, storage, enforcement, locks and macros | 3c (settles 0006's open question) | [written](decisions/0035-locks.md) |
 | 0036 | The revision pass ("ears") | 3d | — |
 | 0037 | `sessionId` on candidates, nudge and branch | 3e | — |
 | 0038 | Explore | 3f | — |
@@ -2019,3 +2019,28 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   - rules for overlapping locks, failed nudge draws and other `softTargets` keys.
 
   Phase 3 is now 3a–3h, with records 0033–0040.
+- 2026-11-07: phase 3 run started; 3a and 3c built in parallel from ee240c6.
+- 2026-11-07: 3a merged as d3f185c (Opus: 126k tokens, 56 tool calls, 17.5 min, then a fix round
+  of 39 s; reviewer Sonnet: 62k tokens, 20 tool calls, 12.6 min, PASS). Low-end share (power under
+  150 Hz), stereo width (side over mid plus side, mono a measured 0) and spectral flatness on
+  magnitudes from 20 Hz to 16 kHz, each 0 to 1 or null; `FEATURE_NAMES` lists the nine features a
+  range may name, without integrated loudness or `gainDb`, and `featuresText` reads it.
+  "Tonality" became `flatness`, since the value rises with noise. The fix round made flatness
+  throw below a 32 kHz sample rate rather than store NaN. On the goldens: drone 0.82 low end,
+  noise bed 0.92 low end and 0.61 flatness, widths 0.07–0.36. Pending owner checks: the noise bed
+  reading that bass-heavy; most goldens sitting near the centre.
+- 2026-11-07: 3c merged as 38aafb2 (Opus: 277k tokens, 100 tool calls, 29.5 min, then a rebase
+  and fix round of 1.3 min; reviewer Sonnet: 82k tokens, 17 tool calls, 10.5 min, PASS with a
+  security pass). Locks on globals, macros, voice parameters and whole voices, with a
+  `voiceType` so a retyped voice is caught; `applyLocks` restores changed values, fills omitted
+  ones, puts back a dropped voice and is all-or-nothing; migration 0004 adds `locks`, one live
+  lock per path, removed as `unlocked`, `replaced` or `covered`; a path inside a voice locked
+  whole is a 409. The fix round seeded the lock-route tests' candidates instead of rendering
+  them (4–8 s a test to 0.1 s) and capped a lock path at 64 characters. Pending owner checks:
+  the prompt's `(a pad voice)` lock lines, the word "unlocked", and the 409 over replacing the
+  voice lock.
+- 2026-11-07: the merge gate failed one test: the suspend-retry test injected a no-op settle
+  wait, so under full parallelism the library's real race added a retry after the two scripted
+  ones. Fixed in 3dde5a8 (Sonnet: 42k tokens, 9 tool calls, 3.0 min): the test counts its scripted
+  failures exactly and allows real races after them. Three fresh full runs passed, and the gate
+  after.
