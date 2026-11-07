@@ -1,7 +1,8 @@
 # 0005. The genome schema is one descriptor table, validated by code written here
 
 - **Date:** 2026-11-05
-- **Status:** accepted; amended by [0029](0029-sample-layer.md) (a `recording` kind)
+- **Status:** accepted; amended by [0029](0029-sample-layer.md) (a `recording` kind) and
+  [0035](0035-locks.md) (lock paths beyond the vector view)
 
 ## Context
 
@@ -182,3 +183,8 @@ If `tsc` can't express that, the builder of step 1c records what it did instead.
   `name~` notation described under "Schema text" above. The name is written plainly and `(T)`
   follows the default when the parameter may be a trajectory: `cutoff 100..2000 Hz =600 (T)
   low-pass`. The text is 2,982 characters, under the 3,000 this record's test holds.
+- 2026-11-07: from step 3c ([0035](0035-locks.md)), provisional: owner to confirm. Locks name
+  values by their own paths, which go beyond the vector view: a global, a macro or a voice's
+  parameter of any kind, a whole trajectory, or a whole voice by id (`voices.pad`). No lock path
+  ends in `.start` or `.end`. `lockedPaths` maps locks back to the vector paths they cover, for
+  nudges and optimizers.

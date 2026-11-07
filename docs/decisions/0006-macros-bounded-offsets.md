@@ -1,7 +1,8 @@
 # 0006. Macros are bounded offsets on top of raw parameters
 
 - **Date:** 2026-11-05
-- **Status:** accepted
+- **Status:** accepted; amended by [0035](0035-locks.md) (a locked raw value still follows the
+  macros)
 
 ## Context
 
@@ -29,8 +30,9 @@ parameter's range. At 0.5 for every macro, effective values equal raw values exa
 
 - Optimizers search six numbers plus the raw parameters a step selects, with bounds taken from the
   schema table ([0005](0005-genome-schema-table.md)).
-- Whether a locked raw parameter still follows the macros is decided in phase 3. Raw and macro
-  values are stored apart, so either answer works without a migration.
+- A locked raw parameter still follows the macros, as the owner settled in phase 3
+  ([0035](0035-locks.md)). Raw and macro values are stored apart, so the other answer would also
+  have worked without a migration.
 - A change to the mapping table changes renders, so it bumps the engine version
   ([0009](0009-engine-version-golden-hashes.md)).
 
@@ -57,3 +59,9 @@ parameter's range. At 0.5 for every macro, effective values equal raw values exa
 - 2026-11-06: from step 1j, provisional: owner to confirm. `MACRO` in `macro-table.js` maps each
   macro's name to itself, derived from `MACROS`, and voice types name a row's macro through it
   (`MACRO.brightness`), so the name is written once.
+- 2026-11-07: from step 3c ([0035](0035-locks.md)). The owner settled on 2026-11-06 that a
+  locked raw value still follows the macros: a lock fixes the raw value and the macros still
+  offset it. A lock that pinned the effective value would need a genome field the engine reads,
+  changing `genomeHash` and the schema text. `macrosMoving(path, genome)` in `src/domain` reads
+  this record's rows to list the macros that move a locked value, so the lock control can offer
+  to lock them too.

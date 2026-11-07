@@ -1,7 +1,8 @@
 # 0024. The generation prompt, the {intent, genome} answer, one repair round, typed rejects
 
 - **Date:** 2026-11-06
-- **Status:** accepted; provisional: owner to confirm
+- **Status:** accepted; provisional: owner to confirm; amended by [0035](0035-locks.md) (the
+  lock shape and its line, locks applied to each answer)
 
 ## Context
 
@@ -159,3 +160,11 @@ which 2l settles.
   name into its keys. `generateCandidates` awaits `onCandidate` before its next request, and
   takes `onStep({index, kind})`, called as each first request or repair is queued and as omlx
   answers one busy.
+- 2026-11-07: from step 3c ([0035](0035-locks.md)). The lock is widened to `{path, value,
+  voiceType?}`: a path may name a choice, a whole trajectory or a whole voice, and a voice's
+  parameter carries the voice's type, which its prompt line adds (`voices.pad.hold = 30 (a pad
+  voice)`). The `Lock` type moved to `validate-lock.js`. Every valid answer gets the locks
+  written in by `applyLocks` before the recording check and the linter; a lock the answer can't
+  take is a `lock` finding and goes to the repair round. A candidate made with locks stores the
+  paths changed and filled in `operatorParams`. The session's candidates job passes the vibe's
+  live locks; the evaluation still passes none.

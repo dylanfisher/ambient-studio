@@ -1,7 +1,8 @@
 # 0021. The SQLite store: SQL migrations, append-only triggers, and the backup
 
 - **Date:** 2026-11-06
-- **Status:** accepted; provisional: owner to confirm
+- **Status:** accepted; provisional: owner to confirm; amended by [0035](0035-locks.md) (the
+  `locks` table)
 
 ## Context
 
@@ -147,3 +148,11 @@ refused. The read-only connection neither migrates the source nor waits on its w
   stay in the render cache with no row, once. A test in `render-store.test.js` runs it over a
   database built with 0001 and 0002. `findRatedAudio(store, heard)` finds the rated-audio row for
   a heard identity and target.
+- 2026-11-07: from step 3c ([0035](0035-locks.md)). `0004-locks.sql` adds `locks`, an
+  irreplaceable table of a vibe's locks: the vibe, the candidate the value came from, the path,
+  the value as JSON, and the voice's type exactly when the path is a voice's parameter (a CHECK).
+  A partial unique index on `(vibeId, path) WHERE removedAt IS NULL` keeps one live lock per
+  path. `lock-store.js` holds its functions. A lock is removed as `unlocked`, `replaced` by a new
+  lock on its path, or `covered` by a lock on its whole voice, the way 0031 marks feedback
+  `replaced` and `undone`. A test in `lock-store.test.js` runs 0004 over a database built with
+  0001 to 0003.
