@@ -50,3 +50,16 @@ export function drone(seconds) {
     return (0.2 * swell * tone) / 3;
   });
 }
+
+/**
+ * A sine at half full scale.
+ * @param {number} seconds
+ * @param {number} hz
+ * @returns {Float32Array}
+ */
+export function sine(seconds, hz) {
+  return Float32Array.from(
+    { length: Math.round(seconds * SAMPLE_RATE) },
+    (_, n) => 0.5 * Math.sin((2 * Math.PI * hz * n) / SAMPLE_RATE),
+  );
+}

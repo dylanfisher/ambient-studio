@@ -1,7 +1,8 @@
 # 0023. Features are measured raw and heard, and render checks run on the raw render
 
 - **Date:** 2026-11-06
-- **Status:** accepted; provisional: owner to confirm
+- **Status:** accepted; provisional: owner to confirm; amended by
+  [0033](0033-low-end-width-flatness.md) (three heard features, `FEATURE_NAMES`)
 
 ## Context
 
@@ -101,3 +102,10 @@ took it from 0.95 s, with every golden summary unchanged.
   vibe that wants busy grains can't range over onset rate for that.
 - The onset parameters were tuned on synthetic signals and the eight golden genomes; phase 3's
   evaluation may move them, and a change rebuilds cached rows through `producer`.
+
+## Amendments
+
+- 2026-11-07: the heard set also holds `lowEndShare`, `stereoWidth` and `flatness`, and
+  `featuresText` writes every feature but integrated loudness and gain from `FEATURE_NAMES`,
+  as "label: value unit", after the loudness and the gain. Both are in
+  [0033](0033-low-end-width-flatness.md).

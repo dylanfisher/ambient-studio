@@ -38,6 +38,17 @@ describe("extractFeatures", () => {
     expect(features.raw.loudnessRange).toBeGreaterThanOrEqual(0);
   });
 
+  test("measures low end, width and flatness on the heard excerpt", () => {
+    const raw = result(excerpt());
+    const heard = normalize(raw.channels, SAMPLE_RATE, { target: -16 });
+    const features = extractFeatures(raw, heard);
+    // The drone sits at 110 and 165 Hz, the clicks are broadband, and both channels are one.
+    expect(features.heard?.lowEndShare).toBeGreaterThan(0.5);
+    expect(features.heard?.stereoWidth).toBe(0);
+    expect(features.heard?.flatness).toBeGreaterThan(0);
+    expect(features.heard?.flatness).toBeLessThan(0.5);
+  });
+
   test("without a heard excerpt, gives the raw features and null for the heard ones", () => {
     const features = extractFeatures(result(excerpt()), null);
     expect(features.heard).toBeNull();

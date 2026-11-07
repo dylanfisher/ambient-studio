@@ -1,13 +1,17 @@
-// An excerpt's measured features (decision 0023). Loudness and peaks are read on the raw render,
-// where they say how the genome itself plays; the spectrum and onsets on the normalized audio
-// the owner hears. Every value is a finite number or null, so the object stores as JSON as is.
+// An excerpt's measured features (decisions 0023 and 0033). Loudness and peaks are read on the
+// raw render, where they say how the genome itself plays; the spectrum, onsets and width on the
+// normalized audio the owner hears. Every value is a finite number or null, so the object
+// stores as JSON as is.
 /** @import { RenderResult } from "../engine/render-plan.js" */
 /** @import { Normalized } from "./normalize.js" */
 import { integratedLoudness } from "./integrated-loudness.js";
 import { loudnessRange } from "./loudness-range.js";
+import { lowEndShare } from "./low-end-share.js";
 import { onsetRate } from "./onset-rate.js";
 import { shortTermLoudness } from "./short-term-loudness.js";
 import { spectralCentroid } from "./spectral-centroid.js";
+import { spectralFlatness } from "./spectral-flatness.js";
+import { stereoWidth } from "./stereo-width.js";
 import { truePeak } from "./true-peak.js";
 
 /**
@@ -26,6 +30,10 @@ import { truePeak } from "./true-peak.js";
  * @property {number | null} centroidMean Hz
  * @property {number | null} centroidSpread Hz, the standard deviation over frames
  * @property {number} onsetRate onsets a second
+ * @property {number | null} lowEndShare the share of spectral power under 150 Hz
+ * @property {number | null} stereoWidth side power over mid plus side power, 0 for mono
+ * @property {number | null} flatness mean spectral flatness, 0 for a pure tone, about 0.85 for
+ *   white noise
  */
 
 /**
@@ -68,5 +76,8 @@ function heardFeatures({ channels, gainDb }, sampleRate) {
     centroidMean: centroid.mean,
     centroidSpread: centroid.spread,
     onsetRate: onsetRate(channels, sampleRate),
+    lowEndShare: lowEndShare(channels, sampleRate),
+    stereoWidth: stereoWidth(channels),
+    flatness: spectralFlatness(channels, sampleRate),
   };
 }
