@@ -3265,3 +3265,9 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   `laion/larger_clap_music`'s text side collapsed, so 0042 keeps `laion/clap-htsat-unfused` at
   8fa0f1c after a four-sound, four-text test; 0.17 s per 30 s excerpt warm. The embed job keeps
   going past bad files and fails at the end naming them. The gate passes, 1392 tests.
+- 2026-11-07: 4i merged as 1e074f6 (Opus: 328k tokens, 188 calls, 42.0 min, then fix rounds of
+  10.6 and 3.8 min; reviewer Sonnet: 70k tokens, 9 calls, 2.2 min, FAIL; second reviewer Sonnet:
+  49k tokens, 4 calls, 0.9 min, FAIL on a failed save redrawn and double-posted, fixed with a hold
+  and Discard). Cached excerpts are MP3 at 320 kbps (7.2 MB to 1.0 MB); capture re-renders for the
+  FLAC (0.8–2.3 s). 4d started beside it rather than after 4j, since it reads neither page. The
+  gate passes, 1453 tests.
