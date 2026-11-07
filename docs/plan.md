@@ -2451,3 +2451,9 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   half a win each way, live thumbs are pointwise items, macro feedback stays out, a fold's
   candidate is a genome, and the key hashes ids and producers. With today's data the set holds
   8 thumbs and no folds. 0043 is provisional on calls 3 and 4 until the owner confirms them.
+- 2026-11-07: 4a merged as 55bca77 (Opus: 218k tokens, 119 calls, 41.5 min, then a fix round of
+  7.5 min; reviewer Sonnet: 60k tokens, 5 calls, 0.8 min, PASS with findings taken before
+  merge: requests refused after stop, a failing server stop still ends the sidecar, a failed kill
+  still fails what is in flight, and the Python loop answers bad UTF-8 and unencodable results).
+  The gate passes, 1371 tests and 22 in the sidecar. The owner's config needs
+  `"sidecar": { "requestTimeoutMs": 120000 }` before the server loads.
