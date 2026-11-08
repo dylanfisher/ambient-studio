@@ -3418,3 +3418,10 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   900 s, a 1,200 s track. Review passed; fixes added the embed skip, a 409 test, a window check and
   trigger checks after migrating. Under `--low` "reuses a cached excerpt" timed out twice; it
   passes at normal priority. 1,954 tests.
+- 2026-11-07 — 6a merged (02ccb68): `createLoudnessMeter`, `createTruePeakMeter`, `createLimiter`
+  and `normalizeStream` take chunks of any length; the whole-array functions are one-chunk calls of
+  them. The reviewer compared them with main's old code over many lengths and chunk sizes, 0
+  differences, and `test/fixtures/whole-array/outputs.json` holds the old code's outputs so drift
+  fails a test. A header-first WAV writer (PCM24 and float32) closes and removes its file on any
+  failure. The producer key moved, so cached excerpts re-render once and regions are analyzed again
+  before attaching; no audio changes. 2,082 tests.
