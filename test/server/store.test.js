@@ -69,7 +69,7 @@ function causeOf(fn) {
 }
 
 /** Tables that aren't irreplaceable: the migration log and the derived tables. */
-const NOT_IRREPLACEABLE = ["migrations", "renders", "embeddings"];
+const NOT_IRREPLACEABLE = ["migrations", "renders", "embeddings", "region_analyses"];
 
 describe("migrations", () => {
   test("build an empty database, and a second open applies nothing", async () => {

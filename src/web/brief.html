@@ -52,6 +52,19 @@
             <div id="targetBox" class="constraints"></div>
           </fieldset>
           <p class="small muted" id="targetsText"></p>
+          <div id="regionBox" class="stack" hidden>
+            <div class="row">
+              <label class="field"
+                >Set ranges from a region
+                <select id="regionSelect" title="Chooses a region you marked on the References page. Its measurements fill the ranges above."></select>
+              </label>
+              <button id="regionRangesButton" class="button outline" type="button" title="Measures the chosen region at this brief's saved loudness, if it hasn't been measured yet, and fills the ranges above from it. Nothing is saved until you press Save.">Set ranges from this region</button>
+            </div>
+            <p class="small muted">
+              Each range runs from the region's 10th to its 90th percentile, at least a set width.
+              The fields show what is saved now beside them. Nothing is saved until you press Save.
+            </p>
+          </div>
           <div id="keptBox" class="stack" hidden>
             <p class="small muted">Other saved targets, kept as they are when you save:</p>
             <pre id="keptTargets" class="small"></pre>

@@ -11,6 +11,7 @@ const TITLE = Object.freeze({
   agreement: "Taste model test",
   nudge: "Nudging a candidate",
   explore: "The model's variations of a candidate",
+  [JOB_KIND.analyze]: "Analyzing a region",
   [JOB_KIND.embed]: "Analyzing the sound",
   [JOB_KIND.fit]: "Fitting the taste model",
 });

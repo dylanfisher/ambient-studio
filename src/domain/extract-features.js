@@ -46,7 +46,8 @@ import { truePeak } from "./true-peak.js";
 const measured = (value) => (Number.isFinite(value) ? value : null);
 
 /**
- * @param {RenderResult} raw the render before normalize
+ * @param {Pick<RenderResult, "channels" | "sampleRate">} raw the render before normalize, or a
+ *   reference window as decoded
  * @param {Normalized | null} heard what `normalize` returned for it, or null when it threw
  * @returns {Features}
  */

@@ -106,7 +106,7 @@ function regionFields(body, reference) {
  * @param {Store} store
  * @param {Record<string, string>} params
  */
-function requireRegion(store, params) {
+export function requireRegion(store, params) {
   const id = idParam(params, "regionId");
   const region = getRegion(store, id);
   if (!region) throw new HttpError(404, `there is no region ${id}`);
