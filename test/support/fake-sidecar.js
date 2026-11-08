@@ -28,7 +28,7 @@ import { drawer } from "../../src/engine/prng.js";
  * for each, or the `covariance` given and its diagonal. `points` answers an `optimizer_ask`: it
  * writes `{points}` to `out`, either the points given or, for `{seed, spread}`, the request's
  * `count` points drawn near the run's `spec.json` start by a normal step of that spread, clipped
- * to [0, 1].
+ * to [0, 1]. An answered `optimizer_start` writes an empty `state.json` beside the spec.
  * @typedef {object} Step
  * @property {"answer" | "error" | "hold" | "hang" | "crash" | "garbage"} do
  * @property {unknown} [result]
@@ -216,6 +216,9 @@ function serve(dir) {
       writeFileSync(request.params.out, JSON.stringify(scores(request, step.scores)));
     if (step.points)
       writeFileSync(request.params.out, JSON.stringify({ points: points(request, step.points) }));
+    // A run has a state file once started, as the real sidecar writes; a fork of it copies it.
+    if (request.method === "optimizer_start" && step.do === "answer")
+      writeFileSync(join(request.params.spec, "..", "state.json"), "{}");
     const own = step.do === "answer" ? { id, result: step.result } : undefined;
     if (own && !(step.release && step.together)) void write(own, step.split);
     else if (step.do === "error") void write({ id, error: step.error });

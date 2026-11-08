@@ -9,7 +9,7 @@
 /** @import { CandidateOrigin } from "./generate-candidates.js" */
 /** @import { Candidate } from "./generation-store.js" */
 /** @import { App } from "./routing.js" */
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { penalizedScores } from "../domain/penalized-scores.js";
 import { proposeGenome } from "../domain/propose-genome.js";
@@ -18,6 +18,8 @@ import { keep } from "./generate-candidates.js";
 import { verdictOf } from "./nudge-job.js";
 
 const SPEC = "spec.json";
+// The sidecar's state (0053), which a fork copies whole and never reads.
+const STATE = "state.json";
 // A run's name is a folder name; letters, digits and dashes keep it inside the search folder.
 const RUN_NAME = /^[a-z0-9][a-z0-9-]*$/;
 
@@ -146,6 +148,61 @@ function checkedPoints(points, count, dimension) {
   return /** @type {number[][]} */ (points);
 }
 
+/** @param {string} folder @param {number} generation */
+const askFile = (folder, generation) => join(folder, `ask-${generation}.json`);
+
+/**
+ * Asks the run for one generation's points and reads them back, checked to be `count` points in
+ * [0, 1]^dimension.
+ * @param {App} app
+ * @param {string} folder the run's
+ * @param {{ generation: number, count: number, dimension: number, signal: AbortSignal }} ask
+ * @returns {Promise<number[][]>}
+ */
+export async function askPoints(app, folder, { generation, count, dimension, signal }) {
+  const asked = askFile(folder, generation);
+  await app.sidecar.request("optimizer_ask", { run: folder, count, out: asked }, { signal });
+  return checkedPoints(JSON.parse(await readFile(asked, "utf8")).points, count, dimension);
+}
+
+/**
+ * Tells the run a score for each point its last ask gave. A null, which only preferential BO
+ * takes (decision 0055), tells nothing of its point.
+ * @param {App} app
+ * @param {string} folder the run's
+ * @param {number} generation the last ask's
+ * @param {readonly (number | null)[]} scores
+ * @param {AbortSignal} signal
+ */
+export async function tellScores(app, folder, generation, scores, signal) {
+  const scoresPath = join(folder, `tell-${generation}.json`);
+  await writeFile(scoresPath, JSON.stringify({ scores }), { flag: "wx" });
+  await app.sidecar.request(
+    "optimizer_tell",
+    { run: folder, points: askFile(folder, generation), scores: scoresPath },
+    { signal },
+  );
+}
+
+/**
+ * A copy of the run as a run of its own inside the run's folder: its spec, its state and its
+ * last ask's points, so the copy can be told another answer than the run will be (decision
+ * 0055). The sidecar reads a run only from its files, so the copy goes on from the same place,
+ * and the run itself is left as it was.
+ * @param {string} folder the run's
+ * @param {string} name the copy's folder name, written as a run's name is
+ * @param {number} generation the last ask's
+ * @returns {Promise<string>} the copy's folder
+ */
+export async function forkSearch(folder, name, generation) {
+  const fork = searchRunFolder(folder, name);
+  await mkdir(fork);
+  for (const file of [SPEC, STATE, `ask-${generation}.json`]) {
+    await copyFile(join(folder, file), join(fork, file));
+  }
+  return fork;
+}
+
 /**
  * Asks for one generation's points, stores each as a candidate, scores those that passed, and
  * tells the optimizer every score, each rejected point's penalty included.
@@ -156,13 +213,8 @@ function checkedPoints(points, count, dimension) {
  */
 export async function searchGeneration(app, folder, request) {
   const { generation, count, start, paths, context, batch, origin, evaluate, signal } = request;
-  const asked = join(folder, `ask-${generation}.json`);
-  await app.sidecar.request("optimizer_ask", { run: folder, count, out: asked }, { signal });
-  const points = checkedPoints(
-    JSON.parse(await readFile(asked, "utf8")).points,
-    count,
-    paths.length,
-  );
+  const dimension = paths.length;
+  const points = await askPoints(app, folder, { generation, count, dimension, signal });
   const candidates = points.map((point, index) => {
     const proposal = proposeGenome(start, paths, point, context);
     if (proposal.genome) {
@@ -186,12 +238,6 @@ export async function searchGeneration(app, folder, request) {
   );
   const told = penalizedScores(scores);
   signal.throwIfAborted();
-  const scoresPath = join(folder, `tell-${generation}.json`);
-  await writeFile(scoresPath, JSON.stringify({ scores: told }), { flag: "wx" });
-  await app.sidecar.request(
-    "optimizer_tell",
-    { run: folder, points: asked, scores: scoresPath },
-    { signal },
-  );
+  await tellScores(app, folder, generation, told, signal);
   return { points, candidates, scores, told };
 }
