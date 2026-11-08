@@ -131,3 +131,13 @@ export function vibeExcerptEmbeddings(
     vector: vectorFloats(/** @type {Uint8Array} */ (row.vector)),
   }));
 }
+
+/**
+ * When the newest embedding was made, under any producer, or null when there is none.
+ * @param {Store} store
+ * @returns {number | null}
+ */
+export function lastEmbeddedAt(store) {
+  const row = store.db.prepare(`SELECT MAX(createdAt) AS at FROM ${TABLE.embeddings}`).get();
+  return /** @type {number | null} */ (row?.at ?? null);
+}

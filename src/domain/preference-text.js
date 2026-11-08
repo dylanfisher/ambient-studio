@@ -50,7 +50,7 @@ const counted = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
  * "a", "a and b", "a, b, and c".
  * @param {string[]} parts
  */
-function listed(parts) {
+export function listed(parts) {
   if (parts.length <= 2) return parts.join(" and ");
   return `${parts.slice(0, -1).join(", ")}, and ${parts.at(-1)}`;
 }

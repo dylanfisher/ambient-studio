@@ -23,6 +23,41 @@ import { listRenders } from "./render-store.js";
  */
 
 /**
+ * Every live rated audio and excerpt render with no embedding under `producer`, and each rated
+ * audio whose file is missing. `producer` is null when no embedding exists yet, so the sidecar
+ * isn't asked for one: then every excerpt is wanted. The job and the Model test page's status
+ * both count from here.
+ * @param {App} app
+ * @param {string | null} producer
+ */
+export function excerptsToEmbed(app, producer) {
+  /** @param {EmbeddingSource} source */
+  const embedded = (source) =>
+    producer !== null && findEmbedding(app.store, source, producer) !== undefined;
+  /** @type {{ source: EmbeddingSource, file: string }[]} */
+  const wanted = [];
+  /** @type {string[]} */
+  const failed = [];
+  for (const row of listRatedAudio(app.store)) {
+    if (row.removedAt !== null) continue;
+    const file = join(app.paths.ratedAudio, row.file);
+    const source = { ratedAudioId: row.id, renderId: null };
+    if (embedded(source)) continue;
+    // Rated audio is irreplaceable, so a missing file is a failure, not a skip.
+    if (existsSync(file)) wanted.push({ source, file });
+    else failed.push(`${file} is missing`);
+  }
+  for (const row of listRenders(app.store, PRODUCER)) {
+    if (!isExcerptWindow(app.store, row)) continue;
+    const file = join(app.paths.renderCache, row.file);
+    const source = { ratedAudioId: null, renderId: row.id };
+    // A render whose file is gone is rendered again on its next request, under a new id.
+    if (existsSync(file) && !embedded(source)) wanted.push({ source, file });
+  }
+  return { wanted, failed };
+}
+
+/**
  * The job. A rated-audio file that is missing, or a file the sidecar fails on, doesn't stop
  * the rest: the job embeds every other file, then fails naming each file that failed, so the
  * owner sees every one and the rows written stay. A cancel stops it at once.
@@ -37,28 +72,7 @@ export function embedJob(app) {
     const { producer } = embedder;
     const dropped = dropOtherEmbeddings(app.store, producer);
 
-    /** @type {{ source: EmbeddingSource, file: string }[]} */
-    const wanted = [];
-    /** @type {string[]} */
-    const failed = [];
-    for (const row of listRatedAudio(app.store)) {
-      if (row.removedAt !== null) continue;
-      const file = join(app.paths.ratedAudio, row.file);
-      const source = { ratedAudioId: row.id, renderId: null };
-      if (findEmbedding(app.store, source, producer)) continue;
-      // Rated audio is irreplaceable, so a missing file is a failure, not a skip.
-      if (existsSync(file)) wanted.push({ source, file });
-      else failed.push(`${file} is missing`);
-    }
-    for (const row of listRenders(app.store, PRODUCER)) {
-      if (!isExcerptWindow(app.store, row)) continue;
-      const file = join(app.paths.renderCache, row.file);
-      const source = { ratedAudioId: null, renderId: row.id };
-      // A render whose file is gone is rendered again on its next request, under a new id.
-      if (existsSync(file) && !findEmbedding(app.store, source, producer)) {
-        wanted.push({ source, file });
-      }
-    }
+    const { wanted, failed } = excerptsToEmbed(app, producer);
 
     let embedded = 0;
     for (const [index, { source, file }] of wanted.entries()) {

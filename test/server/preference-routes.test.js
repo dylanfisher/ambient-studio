@@ -11,6 +11,21 @@ afterEach(async () => {
   for (const studio of studios.splice(0)) await removeStudio(studio);
 });
 
+test("GET /api/preference-models says what waits, without starting the sidecar", async () => {
+  const studio = await startStudio();
+  studios.push(studio);
+  expect(await studio.ok("GET", "/api/preference-models")).toEqual({
+    analysis: { waiting: 0, reason: null, lastAt: null },
+    fit: { lastAt: null, briefs: [] },
+  });
+  const { vibe } = await studio.openSession();
+  const { fit } = await studio.ok("GET", "/api/preference-models");
+  expect(fit).toEqual({
+    lastAt: null,
+    briefs: [{ vibeId: vibe.id, name: vibe.revision.name, state: "none" }],
+  });
+});
+
 test("POST /api/preference-models starts the fit job, which needs embeddings", async () => {
   const studio = await startStudio();
   studios.push(studio);

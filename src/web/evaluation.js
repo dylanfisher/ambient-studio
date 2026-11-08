@@ -31,6 +31,7 @@ import { jobBox } from "./job-view.js";
 import { oneAtATime } from "./one-at-a-time.js";
 import { optimizerTestView } from "./optimizer-test-view.js";
 import { NOT_STARTED, ownerJob } from "./owner-job.js";
+import { analysisText, fitText } from "./preference-status-text.js";
 import {
   meaningText,
   rangeText,
@@ -74,6 +75,8 @@ const page = elementsById({
   embedButton: HTMLButtonElement,
   fitButton: HTMLButtonElement,
   fitJobBox: HTMLElement,
+  analysisState: HTMLElement,
+  fitState: HTMLElement,
 });
 page.countInput.value = String(EVALUATION_COUNT.default);
 page.countInput.max = String(EVALUATION_COUNT.max);
@@ -288,6 +291,13 @@ const startTest = oneAtATime(async () => {
 
 page.startButton.onclick = () => status.run(startTest);
 
+/** Says where the taste model stands, from the store rather than the jobs (decision 0068). */
+async function showPreferenceStatus() {
+  const { analysis, fit } = await getJson(PREFERENCE_MODELS_PATH);
+  page.analysisState.textContent = analysisText(analysis);
+  page.fitState.textContent = fitText(fit);
+}
+
 /** The embed and fit jobs' buttons, by the kind of job each starts (decisions 0042, 0044). */
 const ownerJobs = new Map([
   [
@@ -298,6 +308,7 @@ const ownerJobs = new Map([
       path: EMBEDDINGS_PATH,
       started: "The sound analysis started.",
       done: "The sound analysis is done. Fit the taste model next.",
+      onEnd: showPreferenceStatus,
     }),
   ],
   [
@@ -308,6 +319,7 @@ const ownerJobs = new Map([
       path: PREFERENCE_MODELS_PATH,
       started: "Fitting the taste model started.",
       done: "The taste model is fitted. Each brief's page says what it learned, and its next candidates are ranked by it.",
+      onEnd: showPreferenceStatus,
     }),
   ],
 ]);
@@ -337,6 +349,7 @@ status.run(async () => {
   await loadReports();
   await tasteTestView(status);
   await optimizerTestView(status, vibes);
+  await showPreferenceStatus();
   await followOwnerJobs();
   if (following === null) {
     status.say(
