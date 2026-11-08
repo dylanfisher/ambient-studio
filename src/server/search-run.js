@@ -9,7 +9,7 @@
 /** @import { CandidateOrigin } from "./generate-candidates.js" */
 /** @import { Candidate } from "./generation-store.js" */
 /** @import { App } from "./routing.js" */
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { penalizedScores } from "../domain/penalized-scores.js";
 import { proposeGenome } from "../domain/propose-genome.js";
@@ -64,6 +64,39 @@ const RUN_NAME = /^[a-z0-9][a-z0-9-]*$/;
 export function searchRunFolder(dataRoot, run) {
   if (!RUN_NAME.test(run)) throw new Error(`a search run's name must match ${RUN_NAME}: ${run}`);
   return join(dataRoot, SEARCH_FOLDER, run);
+}
+
+/** A numbered run's name; the search job numbers its runs from 1 (decision 0054). */
+const NUMBERED = /^run-([1-9]\d*)$/;
+
+/**
+ * The numbered runs under the data root, oldest first.
+ * @param {string} dataRoot
+ * @returns {Promise<string[]>}
+ */
+export async function numberedRuns(dataRoot) {
+  /** @type {string[]} */
+  let names;
+  try {
+    names = await readdir(join(dataRoot, SEARCH_FOLDER));
+  } catch (error) {
+    if (/** @type {NodeJS.ErrnoException} */ (error).code === "ENOENT") return [];
+    throw error;
+  }
+  const numbered = names.flatMap((name) => {
+    const match = NUMBERED.exec(name);
+    return match ? [{ name, n: Number(match[1]) }] : [];
+  });
+  return numbered.sort((a, b) => a.n - b.n).map(({ name }) => name);
+}
+
+/**
+ * The name the next numbered run takes. One job runs at a time, so two never take one name.
+ * @param {string} dataRoot
+ */
+export async function nextRun(dataRoot) {
+  const last = (await numberedRuns(dataRoot)).at(-1);
+  return `run-${last === undefined ? 1 : Number(NUMBERED.exec(last)?.[1]) + 1}`;
 }
 
 /**
