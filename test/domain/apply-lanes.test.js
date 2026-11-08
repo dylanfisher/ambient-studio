@@ -12,7 +12,7 @@ import { applyLanes } from "../../src/domain/apply-lanes.js";
 import { sectionStarts } from "../../src/domain/arrangement-length.js";
 import { emptyArrangement } from "../../src/domain/arrangement-schema.js";
 import { LANE_MOST_POINTS } from "../../src/domain/lane-schema.js";
-import { sectionGenome, sectionMorph } from "../../src/domain/section-genome.js";
+import { sectionGenome, sectionMorph, sectionThinning } from "../../src/domain/section-genome.js";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
 import { isObject } from "../../src/engine/is-object.js";
 import { LANE_POINTS, LANE_SAMPLE_SECONDS } from "../../src/engine/macro-lane.js";
@@ -209,6 +209,34 @@ describe("applyLanes through sectionGenome", () => {
     expect(brightness.points[0]?.[0]).toBe(0);
     expect(brightness.points.at(-1)?.[0]).toBe(80);
   });
+});
+
+test("a lane with more than 62 − n breakpoints inside a section thins the section's own n", () => {
+  // Sketch 1's brightness has its own breakpoints at 20 and 50 s; the lane's fall between
+  // whole seconds, so none of them is one of its own.
+  const one = { ...emptyArrangement(), sections: [{ sketchId: 1, offset: 0, seconds: 80 }] };
+  /** @param {number} count */
+  const lane = (count) =>
+    /** @type {Lane} */ ({
+      macro: "brightness",
+      points: Array.from({ length: count }, (_, i) =>
+        i === 0 ? [0.5, 0.1] : [0.5 + i, 0.1, "linear"],
+      ),
+    });
+  /** @param {Arrangement} arrangement */
+  const times = (arrangement) =>
+    /** @type {Trajectory} */ (sectionGenome(arrangement, 0, GENOMES).macros.brightness).points.map(
+      ([time]) => time,
+    );
+  // 61 lane points and 2 ends leave room for one of the two.
+  const crowded = withLanes(one, [lane(61)]);
+  expect(times(crowded).filter((time) => time === 20 || time === 50)).toHaveLength(1);
+  expect(sectionThinning(crowded, 0, GENOMES)).toEqual(["brightness"]);
+  // 60 leave room for both, and nothing is thinned.
+  const room = withLanes(one, [lane(60)]);
+  expect(times(room)).toEqual(expect.arrayContaining([20, 50]));
+  expect(sectionThinning(room, 0, GENOMES)).toEqual([]);
+  expect(sectionThinning(TWO, 0, GENOMES)).toEqual([]);
 });
 
 describe("lanes and a morph", () => {

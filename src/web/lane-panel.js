@@ -24,7 +24,14 @@ import {
   setPoint,
 } from "./lane-edits.js";
 import { bindLaneKeys, LANE_KEYS } from "./lane-keys.js";
-import { dragOffset, laneLayout, laneText, offsetTop, pointText } from "./lane-layout.js";
+import {
+  dragOffset,
+  laneLayout,
+  laneText,
+  offsetTop,
+  pointText,
+  thinningText,
+} from "./lane-layout.js";
 import { dragSeconds } from "./timeline-layout.js";
 
 const SVG = "http://www.w3.org/2000/svg";
@@ -36,12 +43,15 @@ const MACRO_NAMES = /** @type {MacroName[]} */ (Object.keys(MACROS));
  * @param {() => Arrangement | null} page.draft the timeline as the owner has it now
  * @param {(next: Arrangement) => void} page.edit puts a new arrangement on the timeline and draws
  * @param {StatusLine} page.status
+ * @param {() => string[][]} page.thinned each section's macros whose own breakpoints the lanes
+ *   thin (`sectionThinning`); none while the timeline has errors
  * @returns {{ draw: () => void }}
  */
-export function lanePanel({ draft, edit, status }) {
+export function lanePanel({ draft, edit, status, thinned }) {
   const parts = elementsById({
     lanes: HTMLElement,
     pointLine: HTMLElement,
+    laneThinning: HTMLElement,
     pointTimeInput: HTMLInputElement,
     pointOffsetInput: HTMLInputElement,
   });
@@ -179,6 +189,9 @@ export function lanePanel({ draft, edit, status }) {
     if (chosen !== null && chosen >= points.length) chosen = points.length - 1;
     if (chosen === null && points.length > 0) chosen = 0;
     if (points.length === 0) chosen = null;
+    const thinning = thinningText(thinned());
+    parts.laneThinning.hidden = thinning === null;
+    parts.laneThinning.textContent = thinning ?? "";
     const hadFocus = parts.lanes.contains(document.activeElement);
     const rows = MACRO_NAMES.map((name) => laneRow(name, lanePoints(arrangement, name), length));
     parts.lanes.replaceChildren(...rows.map(({ row }) => row));

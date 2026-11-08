@@ -1,10 +1,14 @@
 // A window rendered in chunks (decision 0062) matches one render of the same window within
 // 0007's excerpt tolerance, at every seam (acceptance 2). Short chunks stand in for 120 s ones,
 // so the test renders seconds.
+/** @import { Arrangement } from "../../src/domain/arrangement-schema.js" */
 /** @import { Genome } from "../../src/engine/genome-schema.js" */
 import { expect, test } from "vitest";
+import { emptyArrangement } from "../../src/domain/arrangement-schema.js";
+import { sectionGenome } from "../../src/domain/section-genome.js";
 import bellGenome from "../../src/engine/genomes/bell.json" with { type: "json" };
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
+import { isObject } from "../../src/engine/is-object.js";
 import { SAMPLE_RATE } from "../../src/engine/render-plan.js";
 import { requireGenome } from "../../src/engine/validate-genome.js";
 import { renderChunks } from "../../src/server/render-chunks.js";
@@ -89,4 +93,26 @@ test("an aborted signal stops before the next chunk", async () => {
   };
   await expect(run()).rejects.toThrow("stop");
   expect(frames).toEqual([0]);
+});
+
+test("a laned section's chunks join to one render, with the lane crossing each chunk edge (0065)", async () => {
+  // One section of the drone from 7.5 s; the lane moves brightness across the edges at 2, 4
+  // and 6 s of the window, which are the same seconds of the track.
+  const arrangement = /** @type {Arrangement} */ ({
+    ...emptyArrangement(),
+    sections: [{ sketchId: 1, offset: window.offset, seconds: 10 }],
+    lanes: [
+      {
+        macro: "brightness",
+        points: [
+          [0, -0.3],
+          [3, 0.4, "linear"],
+          [6, -0.2, "smooth"],
+        ],
+      },
+    ],
+  });
+  const laned = sectionGenome(arrangement, 0, new Map([[1, droneGenome]]));
+  expect(isObject(laned.macros.brightness)).toBe(true);
+  expect(await expectSeamsMatch(laned, window, CHUNK)).toEqual([0, 2, 4, 6]);
 });

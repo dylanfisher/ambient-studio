@@ -46,8 +46,11 @@ the first value holds, so a pre-roll (0007) hears the section's start value, not
 own motion before it.
 
 **The cap.** A laned macro holds at most `LANE_POINTS`, 64. Groups are kept in the order above;
-when one doesn't fit, its points are spread evenly over what room is left, so a dense lane drops
-the grid and then the sketch's own breakpoints, never its own.
+when one doesn't fit, its points are spread evenly over what room is left. A dense lane drops the
+grid first, and then the sketch's own breakpoints: every lane breakpoint is kept, as acceptance 7
+needs, so a lane with more than 62 − n breakpoints inside a section thins that section's own n
+breakpoints of the macro, and its own motion there is coarser. `sectionThinning` names the
+macros it thins, and the page says so under the lanes (`thinningText`), with the sections.
 
 **With morphs.** `sectionGenome` calls `applyLanes` last, on the fitted genome or on a morph's
 (0064). The morph's genome is the outgoing section's timeline across its span and the
@@ -96,13 +99,17 @@ schema's order of macros. Lanes save with the rest of the arrangement.
 
 ## Consequences
 
-- Between points a laned macro is a line, so a sketch's `smooth` swell under a lane is exact at
-  its breakpoints and every 10 s, and straight between them.
+- Between points a laned macro is a line. Adding a lane to a sketch whose macro moves along a
+  `smooth`, `early` or `late` curve turns that motion into straight lines between the
+  breakpoints and the 10 s grid: exact at those points, and slightly different from the
+  unlaned sketch between them, even where the lane's offset is 0.
 - A section's pre-roll holds its laned macros at their start values.
 - A lane changes the genome hashes of the sections it touches, so a revision that adds one
   renders again; one whose lanes hold no points shares the cached render.
 - Measured by test: `test/domain/apply-lanes.test.js` (acceptance 7 at every breakpoint with a
-  clamp, the seam, no points, a 62-point lane at the cap, a morph), and
+  clamp, the seam, no points, a 62-point lane at the cap, the thinning of a sketch's own
+  breakpoints, a morph), `test/server/render-chunks.test.js` (a laned section's chunks match one
+  render within 0007's tolerance, with the lane crossing each chunk edge), and
   `test/server/track-render-routes.test.js` (a laned track renders, names its rule, and
   re-renders from its manifest to the same hash; a lane with no points keeps the cache key).
 - `./scripts/bench --track` with acceptance 4's two lanes (brightness and space, each across

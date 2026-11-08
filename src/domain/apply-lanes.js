@@ -46,11 +46,13 @@ function spread(samples, room) {
 /**
  * The times one laned macro is sampled at: the section's ends and the lane's breakpoints inside
  * it first, then the section's own breakpoints, then the track's grid, each group spread over
- * what room the cap leaves.
+ * what room the cap leaves. A lane with more than `LANE_POINTS` − 2 − n breakpoints inside the
+ * section thins the section's own n.
  * @param {Lane} lane
  * @param {number | Trajectory} own
  * @param {LaneSpan} span
- * @returns {Sample[]} in time order
+ * @returns {{ samples: Sample[], thinned: boolean }} the samples in time order, and whether some
+ *   of the section's own breakpoints didn't fit
  */
 function samplesOf(lane, own, { at, from, to }) {
   const end = at + to - from;
@@ -71,13 +73,16 @@ function samplesOf(lane, own, { at, from, to }) {
   }
   /** @type {Sample[]} */
   const kept = [];
+  let thinned = false;
   for (const group of [[...ends, ...breakpoints], owns, grid.filter(inside)]) {
     const fresh = group.filter(
       ({ time }) => !kept.some((sample) => Math.abs(sample.time - time) < SAME_TIME),
     );
-    kept.push(...spread(fresh, LANE_POINTS - kept.length));
+    const room = LANE_POINTS - kept.length;
+    if (group === owns && fresh.length > room) thinned = true;
+    kept.push(...spread(fresh, room));
   }
-  return kept.sort((a, b) => a.time - b.time);
+  return { samples: kept.sort((a, b) => a.time - b.time), thinned };
 }
 
 /**
@@ -91,7 +96,7 @@ function samplesOf(lane, own, { at, from, to }) {
 function laned(lane, own, span) {
   const { min, max, scale } = MACROS[lane.macro];
   /** @type {[number, number, Curve][]} */
-  const values = samplesOf(lane, own, span).map(({ time, track }) => {
+  const values = samplesOf(lane, own, span).samples.map(({ time, track }) => {
     const base = isObject(own) ? valueAt(own, time, scale) : own;
     const value = Math.min(max, Math.max(min, base + laneOffsetAt(lane.points, track)));
     return [time, value, LANE_CURVE];
@@ -119,3 +124,17 @@ export function applyLanes(genome, lanes, span) {
   }
   return requireGenome({ ...genome, macros }, "the laned section's genome");
 }
+
+/**
+ * The macros whose own breakpoints inside the section a lane's breakpoints leave no room for,
+ * so `applyLanes` thins them and the section's own motion there is coarser.
+ * @param {Genome} genome a section's, fitted or a morph's, before lanes
+ * @param {readonly Lane[]} lanes the arrangement's, valid
+ * @param {LaneSpan} span
+ * @returns {string[]}
+ */
+export const thinnedMacros = (genome, lanes, span) =>
+  lanes
+    .filter(({ points }) => points.length > 0)
+    .filter((lane) => samplesOf(lane, genome.macros[lane.macro], span).thinned)
+    .map(({ macro }) => macro);

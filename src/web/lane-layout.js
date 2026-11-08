@@ -5,6 +5,7 @@
 /** @import { Curve } from "../engine/trajectory.js" */
 import { LANE_OFFSET, laneOffsetAt } from "../domain/lane-schema.js";
 import { macroWords } from "../domain/macro-words.js";
+import { LANE_POINTS } from "../engine/macro-lane.js";
 import { clockTime } from "./excerpt-player.js";
 import { curveWords } from "./transition-text.js";
 
@@ -93,4 +94,17 @@ export function pointText(macro, points, index) {
   const way = offset > 0 ? words.more : offset < 0 ? words.less : "no change";
   const into = curve === undefined ? "" : ` Into it: ${curveWords(/** @type {Curve} */ (curve))}.`;
   return `Point ${index + 1} of ${points.length}, at ${clockTime(time)} of the track: ${signed(offset)}, ${way}.${into}`;
+}
+
+/**
+ * What the page says when lanes thin a section's own macro motion, or null when none do.
+ * @param {readonly string[][]} sections each section's thinned macros, in order
+ * @returns {string | null}
+ */
+export function thinningText(sections) {
+  const lines = sections.flatMap((macros, i) =>
+    macros.length === 0 ? [] : [`section ${i + 1}'s own ${macros.join(" and ")}`],
+  );
+  if (lines.length === 0) return null;
+  return `The lanes hold so many points that they thin ${lines.join(", ")}: its own breakpoints there are spread over the room a trajectory's ${LANE_POINTS} points leave. Fewer lane points inside the section keep them all.`;
 }

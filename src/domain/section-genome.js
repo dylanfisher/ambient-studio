@@ -7,7 +7,7 @@
 /** @import { Curve } from "../engine/trajectory.js" */
 import { MORPH_HANDOVER } from "../engine/morph.js";
 import { requireGenome } from "../engine/validate-genome.js";
-import { applyLanes } from "./apply-lanes.js";
+import { applyLanes, thinnedMacros } from "./apply-lanes.js";
 import { sectionStarts } from "./arrangement-length.js";
 import { TRANSITION_KIND } from "./arrangement-schema.js";
 import { morphGenome } from "./morph-genome.js";
@@ -89,13 +89,37 @@ export function sectionMorph(arrangement, index, genomes) {
  * @returns {Genome}
  */
 export function sectionGenome(arrangement, index, genomes) {
+  const { genome, span } = unlaned(arrangement, index, genomes);
+  return applyLanes(genome, arrangement.lanes, span);
+}
+
+/**
+ * A section's genome before lanes, and where it plays on the track.
+ * @param {Arrangement} arrangement a valid one
+ * @param {number} index the section's
+ * @param {ReadonlyMap<number, unknown>} genomes
+ */
+function unlaned(arrangement, index, genomes) {
   const morph = sectionMorph(arrangement, index, genomes);
   const genome = morph?.ok ? morph.genome : fittedGenome(arrangement, index, genomes);
   const { offset, seconds } = /** @type {import("./arrangement-schema.js").Section} */ (
     arrangement.sections[index]
   );
   const at = /** @type {number} */ (sectionStarts(arrangement)[index]);
-  return applyLanes(genome, arrangement.lanes, { at, from: offset, to: offset + seconds });
+  return { genome, span: { at, from: offset, to: offset + seconds } };
+}
+
+/**
+ * The macros whose own breakpoints the lanes thin in section `index` (`thinnedMacros`), so the
+ * page can say the sketch's own motion there is coarser.
+ * @param {Arrangement} arrangement a valid one
+ * @param {number} index the section's
+ * @param {ReadonlyMap<number, unknown>} genomes
+ * @returns {string[]}
+ */
+export function sectionThinning(arrangement, index, genomes) {
+  const { genome, span } = unlaned(arrangement, index, genomes);
+  return thinnedMacros(genome, arrangement.lanes, span);
 }
 
 /**

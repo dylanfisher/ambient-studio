@@ -19,7 +19,13 @@ import {
   setPoint,
 } from "../../src/web/lane-edits.js";
 import { LANE_KEYS } from "../../src/web/lane-keys.js";
-import { dragOffset, laneLayout, laneText, pointText } from "../../src/web/lane-layout.js";
+import {
+  dragOffset,
+  laneLayout,
+  laneText,
+  pointText,
+  thinningText,
+} from "../../src/web/lane-layout.js";
 import { keyLabel } from "../../src/web/quick-ab-keys.js";
 
 const LENGTH = 120;
@@ -137,6 +143,13 @@ describe("lane layout", () => {
     expect(dragOffset(30, 60)).toBe(-0.5);
     expect(dragOffset(-6, 60)).toBe(0.1);
     expect(dragOffset(5, 0)).toBe(0);
+  });
+
+  test("the page says which sections' own motion the lanes thin", () => {
+    expect(thinningText([[], []])).toBeNull();
+    expect(thinningText([[], ["brightness"]])).toMatch(
+      /^The lanes .* section 2's own brightness: /,
+    );
   });
 
   test("a lane and a point say what they do in words", () => {
