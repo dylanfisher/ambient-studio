@@ -9,6 +9,8 @@ import { join } from "node:path";
  * @property {string} backups
  * @property {string} models preference models, derived, each named by its model key
  * @property {string} rankings each session's ranking under its taste model, derived, by session id
+ * @property {string} textEmbeddings CLAP embeddings of vibe briefs, derived, each named by the
+ *   hash of its producer and text
  */
 
 /**
@@ -23,5 +25,6 @@ export function paths(dataRoot) {
     backups: join(dataRoot, "backups"),
     models: join(dataRoot, "models"),
     rankings: join(dataRoot, "rankings"),
+    textEmbeddings: join(dataRoot, "text-embeddings"),
   };
 }

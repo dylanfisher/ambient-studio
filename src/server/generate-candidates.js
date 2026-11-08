@@ -15,6 +15,7 @@
 /** @import { Genome } from "../engine/genome-schema.js" */
 /** @import { Candidate, Generation } from "./generation-store.js" */
 /** @import { Completion, OmlxQueue } from "./omlx-queue.js" */
+/** @import { TextEmbedder } from "./retrieve-examples.js" */
 /** @import { Store } from "./store.js" */
 /** @import { VibeRevision } from "./vibe-store.js" */
 import { applyLocks } from "../domain/apply-locks.js";
@@ -172,6 +173,10 @@ export const playableHashes = (recordings) =>
  *   config sets no folder: the prompt lists them, and a genome naming another is repaired
  * @property {ExploreFrom | undefined} [explore] makes the candidates explore children of its
  *   base: the prompt holds the base, and each child stores it as its parent
+ * @property {TextEmbedder | null} [textEmbedder] orders the examples by similarity to the brief
+ *   when their rated audio has embeddings under its producer; omitted or null, by recency
+ *   (decision 0024). The session's job passes one when the sidecar has a checkpoint, the
+ *   evaluation none
  * @property {CandidateHook} [onCandidate]
  * @property {StepHook} [onStep]
  */
@@ -587,20 +592,20 @@ export async function requestCandidate(batch, index, prompt, sampling, origin) {
  * and stores every LLM call and every candidate. When a request fails in the queue (a cancel, a
  * busy omlx past its wait, a timeout, an error status) the batch stops and rethrows it, after
  * storing the failed request as a generation, if it was sent, and the candidate it was for, so
- * every generation has a candidate.
+ * every generation has a candidate. A failure embedding the brief stops it before any request.
  * @param {number} vibeId
  * @param {number} n
  * @param {Store} store
  * @param {OmlxQueue} queue
  * @param {GenerateOptions} options
- * @returns {Promise<{ requestGroup: string, candidates: Candidate[] }>}
+ * @returns {Promise<{ requestGroup: string, retrievalMethod: string, candidates: Candidate[] }>}
  */
 export async function generateCandidates(
   vibeId,
   n,
   store,
   queue,
-  { config, seed, sessionId, locks, recordings, explore, onCandidate, onStep },
+  { config, seed, sessionId, locks, recordings, explore, textEmbedder, onCandidate, onStep },
 ) {
   if (!Number.isInteger(n) || n < 1) throw new Error(`n must be a positive integer, got ${n}`);
   const { revision, constraints, ranges } = currentRevision(store, vibeId);
@@ -609,7 +614,12 @@ export async function generateCandidates(
   if (listRequestGroup(store, requestGroup).length > 0) {
     throw new Error(`request group ${requestGroup} already exists; draw a new stream seed`);
   }
-  const { method, examples } = retrieveExamples(store, vibeId);
+  const { method, examples } = await retrieveExamples(
+    store,
+    vibeId,
+    revision.brief,
+    textEmbedder ?? null,
+  );
   const { messages, exampleIds, baseTrimmed } = buildPrompt(
     { ...revision, constraints, ranges },
     {
@@ -650,5 +660,5 @@ export async function generateCandidates(
     };
     candidates.push(await requestCandidate(batch, index, messages, sampling, origin));
   }
-  return { requestGroup, candidates };
+  return { requestGroup, retrievalMethod: method, candidates };
 }

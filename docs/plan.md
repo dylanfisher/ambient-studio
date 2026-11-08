@@ -3291,3 +3291,9 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   render.test.js while 4e's builder loaded the machine; it passed alone, on six concurrent runs
   and on the next two gates. That is its second load-only failure, so it is now hunted, not
   watched: next time, keep the failing test's name and message. The gate passes, 1533 tests.
+- 2026-11-07: 4h merged as 802ca5e (Opus: 171k tokens, 76 calls, 16.8 min; reviewer Sonnet: 60k
+  tokens, 17 calls, 5.8 min, PASS with two low findings: a cancel during a cached brief embedding
+  could let the first omlx request out, fixed in b5bd293; the job asks the sidecar for its embedder
+  before generating, kept, since the job starts it anyway). Examples are ordered by the cosine
+  between the brief's text embedding and each genome's mean rated-audio embedding; unembedded
+  genomes follow by recency, and the evaluation job stays on recency. The gate passes, 1539 tests.

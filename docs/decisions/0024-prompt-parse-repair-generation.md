@@ -5,7 +5,8 @@
   lock shape and its line, locks applied to each answer) and
   [0034](0034-feature-ranges-as-soft-targets.md) (the vibe's feature ranges in the user turn)
   and [0036](0036-revision-pass.md) (the request helpers, `followUp`, and revision candidates)
-  and [0038](0038-explore.md) (the base section, its trimming, and explore children)
+  and [0038](0038-explore.md) (the base section, its trimming, and explore children);
+  amended by step 4h (examples by CLAP similarity, below)
 
 ## Context
 
@@ -59,12 +60,13 @@ follow it. A list in prose holding no object is ignored.
 A parsed answer whose shape is wrong (no one-line `intent`, no `genome`, another key) comes back
 with errors, which count as schema errors and get the repair round.
 
-**Example retrieval** before CLAP: `rating-recency`, logged as `retrievalMethod`.
-`listRatedGenomes` scores each of the vibe's genomes +1 per thumbs up or A/B win and −1 per thumbs
-down or loss (ties, skips, macro feedback and removed rows count for nothing) and orders them by
-their newest counted vote. `retrieveExamples` takes the newest three liked (score above 0) and
-three disliked (below 0), alternating liked first, so trimming from the end drops the oldest of
-both sides. The genome row ids go in `exampleIds`.
+**Example retrieval**, logged as `retrievalMethod` (`RETRIEVAL_METHOD`). `listRatedGenomes`
+scores each of the vibe's genomes +1 per thumbs up or A/B win and −1 per thumbs down or loss
+(ties, skips, macro feedback and removed rows count for nothing) and orders them by their newest
+counted vote. Liked is a score above 0, disliked below 0. `retrieveExamples` takes three of each,
+alternating liked first, so trimming from the end drops the last of both sides. With no CLAP
+embeddings, the three are the newest: `rating-recency`. With them, `clap-similarity` (step 4h,
+amendment below) puts the ones nearest the brief first. The genome row ids go in `exampleIds`.
 
 **Sampling per candidate.** The caller passes a stream seed, an integer in [0, 2³²). Candidate
 i's draws are `draw(seed, ":generation", i, slot)` from the engine PRNG
@@ -198,3 +200,34 @@ which 2l settles.
   its candidates store the base in `parentIds`, operator `explore` and `{direction,
   baseTrimmed}`, in the request group `vibe-<vibeId>-explore-<seed>`, which
   `requestGroupName(vibeId, seed, operator)` names.
+- 2026-11-07: from step 4h. **Examples by CLAP similarity.** `generateCandidates` takes an
+  optional `textEmbedder` (`{producer, embedText}`) and returns the `retrievalMethod` it used;
+  the session's candidates job passes one when `readEmbedder` finds the checkpoint (it asks once,
+  before the first request, without fetching, as 0042 requires) and adds `retrievalMethod` to its
+  result and to the server log. The evaluation passes none, so its runs stay comparable with the
+  ones before 4h. Which genomes count as liked and disliked doesn't change; only their order does.
+  - *A genome's audio embedding* is the mean of the embeddings, under the embedder's producer,
+    of every live rated audio of that genome (an excerpt the owner rated), compared with the
+    brief's text embedding by cosine (`meanSimilarity`). Renders' embeddings don't count: the
+    rated audio is what the owner heard. The mean, not the nearest excerpt, so one lucky excerpt
+    of a genome heard several times doesn't outrank a genome that is near on every hearing.
+  - *The order on each side* is the genomes with an embedding first, nearest first (ties keep
+    recency order), then the rest newest first. A genome rated before the embed job ran still
+    shows when too few embedded ones fill the side.
+  - *The method* is `clap-similarity` when the embedder is there and at least one liked or
+    disliked genome has an embedding; the brief is then embedded. Otherwise it is
+    `rating-recency` and the brief isn't embedded, so a vibe with nothing embedded never starts
+    an `embed_text`. A mixed side still logs `clap-similarity`: the fallback for the unembedded
+    is part of that method.
+  - *The brief's embedding* is the sidecar's `embed_text` of `revision.brief` alone, not the
+    name or notes. It is cached as derived data in `paths.textEmbeddings`, one file of
+    little-endian float32s named by the SHA-256 of `<producer>\n<text>`, so a changed brief or
+    producer misses the cache and a stale file is never read. A file of the wrong size is
+    embedded again. The embed job's `dropOtherEmbeddings` doesn't clear these files; they are
+    2 KB each and never read under another producer. A file, not an `embeddings` row: that
+    table's CHECK holds exactly one of a rated audio and a render, so a text's row would need a
+    migration.
+  - *A sidecar failure* while embedding the brief fails the generation before any request, with
+    "embedding the vibe's brief failed: …". It never falls back to recency.
+  - *The budget* is unchanged: the prompt still holds at most three of each, trimmed from the
+    end, so the seed-sized budget tests hold as they are.
