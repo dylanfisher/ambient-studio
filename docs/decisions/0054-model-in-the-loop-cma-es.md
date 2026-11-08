@@ -71,8 +71,8 @@ fixes it, and a space with no dimension; a raw path `searchSpace` refuses is a 4
 search (same base, budget, paths and control) queued or running is a 409 naming it. The job
 checks the model again when it starts and fails with the same reason if it went meanwhile.
 
-**Runs and their summary.** Runs are numbered, `run-1`, `run-2`, …, in the search folder (5d's
-`<dataRoot>/search/`, still joined in `search-run.js` until it moves into `paths()` after 5a).
+**Runs and their summary.** Runs are numbered, `run-1`, `run-2`, …, in the search folder,
+`paths().search`.
 After each generation the job writes `results.json` through a temp file: the space's paths, the
 base, each scored point's candidate and score, the shown points, what each other point folds
 under, the least distance the shown points were kept apart by, each evaluation's timings and the control's scores. It is derived

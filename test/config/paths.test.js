@@ -28,5 +28,6 @@ test("names the folders the store and job runner use", () => {
     textEmbeddings: join(root, "text-embeddings"),
     references: join(root, "references"),
     referenceCache: join(root, "reference-cache"),
+    search: join(root, "search"),
   });
 });

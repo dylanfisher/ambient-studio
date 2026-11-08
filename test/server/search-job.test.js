@@ -108,7 +108,7 @@ const paramsOf = (candidate) => candidate.operatorParams;
  * @param {string} run
  */
 async function resultsOf(app, run) {
-  const saved = await readSearchResults(app.config.dataRoot, run);
+  const saved = await readSearchResults(app.paths.search, run);
   if (!saved) throw new Error(`run ${run} has no summary`);
   return /** @type {any} */ (saved);
 }
@@ -354,7 +354,7 @@ test("a cancel during a generation keeps every row stored so far", async () => {
 test("the estimate is the formula on the last search's median timings, or the bench before any", async () => {
   const made = await searchApp();
   const { app, sidecar } = made;
-  expect(await searchEstimate(app.config.dataRoot)).toEqual({
+  expect(await searchEstimate(app.paths.search)).toEqual({
     seconds: BENCH_SECONDS,
     measured: false,
   });
@@ -362,7 +362,7 @@ test("the estimate is the formula on the last search's median timings, or the be
   const { scorer } = scripted(app, { seconds: { render: 2.5, embed: 0.5 } });
   const done = await run(app, searchJob(app, request(made, { budget: 5 }), { makeScorer: scorer }));
   expect(done.error).toBeNull();
-  expect(await searchEstimate(app.config.dataRoot)).toEqual({
+  expect(await searchEstimate(app.paths.search)).toEqual({
     seconds: { render: 2.5, embed: 0.5 },
     measured: true,
   });

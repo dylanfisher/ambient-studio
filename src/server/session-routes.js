@@ -196,7 +196,7 @@ async function searchPlaces(app, candidates) {
   for (const candidate of candidates) {
     if (candidate.operator !== SEARCH) continue;
     const run = String(/** @type {{ run?: unknown }} */ (candidate.operatorParams)?.run);
-    if (!runs.has(run)) runs.set(run, await readSearchResults(app.config.dataRoot, run));
+    if (!runs.has(run)) runs.set(run, await readSearchResults(app.paths.search, run));
     const results = runs.get(run) ?? null;
     const shown = results?.shown.includes(candidate.id) ?? false;
     const score =
@@ -437,7 +437,7 @@ export const SESSION_ROUTES = [
   {
     method: "GET",
     path: "/api/search-estimate",
-    handle: ({ app }) => searchEstimate(app.config.dataRoot),
+    handle: ({ app }) => searchEstimate(app.paths.search),
   },
   {
     method: "POST",

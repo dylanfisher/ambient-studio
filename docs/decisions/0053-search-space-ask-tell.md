@@ -91,9 +91,8 @@ the model has evidence rather than where it is unsure. 5g adds terms.
 wish about one macro. It is too sparse to steer a search over up to 24 dimensions, and the
 preference model already learns from thumbs and pairs, which cover the whole excerpt.
 
-**The search folder** is joined from the data root in `search-run.js`. `paths()`
-([0019](0019-config-file-and-paths.md)) is being changed by 5a at the same time; the folder
-moves there when the two steps have merged. Run folders are derived data: no version field, and
+**The search folder** is `paths().search` ([0019](0019-config-file-and-paths.md)),
+`<dataRoot>/search/`. Run folders are derived data: no version field, and
 nothing reads one after its job ends.
 
 ## Alternatives considered
@@ -134,3 +133,8 @@ nothing reads one after its job ends.
   candidates are all that matter.
 - Acceptance 3's 1,000 asks (8 points each, three locks, the free macros plus `duration` and
   `voices.drone.level`) run in about 5 s against the fake sidecar.
+
+## Amendments
+
+- 2026-11-07: from step 5e, once 5a had merged. The search folder moved from a join in
+  `search-run.js` into `paths()` as `search`, and the run helpers take that folder.

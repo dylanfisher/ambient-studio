@@ -194,13 +194,13 @@ async function writeResults(folder, results) {
 
 /**
  * A run's summary, or null when the run has none yet.
- * @param {string} dataRoot
+ * @param {string} searchFolder `paths().search`
  * @param {string} run
  * @returns {Promise<SearchResults | null>}
  */
-export async function readSearchResults(dataRoot, run) {
+export async function readSearchResults(searchFolder, run) {
   try {
-    return JSON.parse(await readFile(join(searchRunFolder(dataRoot, run), RESULTS), "utf8"));
+    return JSON.parse(await readFile(join(searchRunFolder(searchFolder, run), RESULTS), "utf8"));
   } catch (error) {
     if (/** @type {NodeJS.ErrnoException} */ (error).code === "ENOENT") return null;
     throw error;
@@ -210,12 +210,12 @@ export async function readSearchResults(dataRoot, run) {
 /**
  * What the confirm's estimate reads: the medians of the newest run that scored a point, or the
  * bench before any.
- * @param {string} dataRoot
+ * @param {string} searchFolder `paths().search`
  * @returns {Promise<{ seconds: StepSeconds, measured: boolean }>}
  */
-export async function searchEstimate(dataRoot) {
-  for (const run of (await numberedRuns(dataRoot)).reverse()) {
-    const timings = (await readSearchResults(dataRoot, run))?.timings ?? [];
+export async function searchEstimate(searchFolder) {
+  for (const run of (await numberedRuns(searchFolder)).reverse()) {
+    const timings = (await readSearchResults(searchFolder, run))?.timings ?? [];
     if (timings.length > 0) return { seconds: medianTimings(timings), measured: true };
   }
   return { seconds: BENCH_SECONDS, measured: false };
@@ -258,7 +258,7 @@ export function searchJob(app, request, { makeScorer = modelScorer } = {}) {
     const score = await makeScorer(app, { vibeId, recordings, signal: job.signal });
     const seed = Math.floor(app.random() * STREAM_SEEDS);
     const population = searchPopulation(paths.length);
-    const run = await nextRun(app.config.dataRoot);
+    const run = await nextRun(app.paths.search);
     const spec = {
       optimizer: SEARCH_OPTIMIZER,
       start: toVector(start, paths),
