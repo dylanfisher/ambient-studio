@@ -169,6 +169,22 @@
             <p id="breedHelp" class="small muted"></p>
           </section>
 
+          <section class="card stack" aria-labelledby="tracks-heading">
+            <h2 id="tracks-heading">Tracks</h2>
+            <p class="small muted">
+              A track plays sketches you kept, one after another, each for a part of its own
+              timeline, with a crossfade between them. Make one here, then open it to arrange it.
+            </p>
+            <ul id="trackList" class="list"></ul>
+            <form id="trackForm" class="row">
+              <label class="field"
+                >Name
+                <input id="trackName" type="text" size="24" title="The new track's name, shown on this page and on the track's own page." />
+              </label>
+              <button id="trackButton" class="button outline" type="submit" title="Makes an empty track of this brief and opens it, to add sketches to its timeline. Nothing is rendered.">Make a track</button>
+            </form>
+          </section>
+
           <section class="card stack" aria-labelledby="axes-heading">
             <h2 id="axes-heading">Axes for the map</h2>
             <p class="small muted">

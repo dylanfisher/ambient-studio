@@ -4,8 +4,9 @@
 - **Status:** accepted; provisional: owner to confirm. Amended by
   [0039](0039-lineage-and-steering-controls.md) (the lineage page, and each session card's
   ranges, locks, explore and nudge), [0048](0048-quick-ab-player-mp3.md) (keys on the Quick
-  A/B page, and the excerpt player) and [0057](0057-map-elites-archive-and-map.md) (the map
-  page and its arrow keys)
+  A/B page, and the excerpt player), [0057](0057-map-elites-archive-and-map.md) (the map
+  page and its arrow keys) and [0061](0061-tracks-and-the-timeline.md) (the timeline page and
+  its keys)
 
 ## Context
 
@@ -160,3 +161,10 @@ structure follows shadcn/ui; no code is taken from it. Still no nesting, `:has()
   open a cell, which plays its best candidate through the excerpt player. Every cell button's
   title says what it holds and what a click does (`cellText`). The page follows 0032's one job
   per action for Fill the map and the open cell's controls.
+- 2026-11-07 (step 6b, [0061](0061-tracks-and-the-timeline.md)): another page, `track.html`,
+  opened from the brief page's new Tracks card, where a track is made by name, shows one
+  track's sections as blocks on a timeline. It has keys, because the plan asks for every action
+  on the timeline to have a key and a button, so nothing needs a drag: each button shows its
+  key, bound as Quick A/B's are (`bindKeyTable`), and no key fires while a field you type in has
+  the focus. Its section player renders a section's window with an owner-started job and plays
+  it through the excerpt player, and its Play button follows 0032's one job per action.

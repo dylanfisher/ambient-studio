@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Track · Ambient Studio</title>
+    <link rel="stylesheet" href="./studio.css" />
+    <script type="module" src="./track.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <nav class="nav" aria-label="Pages">
+        <a class="brand" href="./" title="Opens the dashboard: how the studio works, and every brief.">Ambient Studio</a>
+        <a href="./#briefs" aria-current="page" title="Opens the list of briefs on the dashboard, where you open one or write a new one.">Briefs</a>
+        <a href="./references.html" title="Opens the references page, where you upload recordings to aim at and mark the parts you mean.">References</a>
+        <a href="./evaluation.html" title="Opens the model test page, which checks how often the model follows your briefs. It makes no audio.">Model test</a>
+      </nav>
+    </header>
+    <main class="page">
+      <div class="page-head">
+        <p class="crumbs small muted">
+          <a href="./#briefs" title="Goes back to the list of briefs.">Briefs</a> /
+          <a id="briefLink" href="./" title="Opens this track's brief, where its sketches are kept and its other tracks are listed.">Brief</a> /
+        </p>
+        <h1 id="pageTitle">Track</h1>
+        <p class="help muted">
+          A track plays sketches of one brief one after another, each for a part of its own
+          timeline, with a crossfade from one to the next. Add sketches, then choose a section to
+          move it, set where it starts in its sketch and how long it plays, and set its
+          crossfade. Drag a block's edges, use the fields, or use the keys shown on each button.
+          Play a section to hear its part of the sketch. Save keeps a new version and leaves the
+          earlier ones as they were. Rendering the whole track comes later.
+        </p>
+        <p id="status" class="status" role="status" aria-live="polite">Loading…</p>
+      </div>
+
+      <section class="card stack" aria-labelledby="timeline-heading">
+        <h2 id="timeline-heading">Timeline</h2>
+        <p id="trackLine" class="small"></p>
+        <div id="timeline" class="timeline"></div>
+        <p id="noSections" class="muted small" hidden>No sections yet. Choose a sketch below and add it.</p>
+        <ul id="arrangementErrors" class="errors small" hidden></ul>
+        <div class="row">
+          <button id="selectPrevious" class="button outline small" type="button" title="Selects the section before the chosen one, which the other buttons and keys act on.">Previous</button>
+          <button id="selectNext" class="button outline small" type="button" title="Selects the section after the chosen one, which the other buttons and keys act on.">Next</button>
+          <span class="spacer"></span>
+          <label class="field small"
+            >Note for this version
+            <input id="noteInput" type="text" size="28" title="An optional note saved with the new version, such as what you changed. It is shown in the list of earlier versions." />
+          </label>
+          <button id="save" class="button primary" type="button" title="Saves the timeline as a new version of this track. Earlier versions stay as they were. Nothing is rendered.">Save as a new version</button>
+        </div>
+      </section>
+
+      <section id="sectionBox" class="card stack" aria-labelledby="section-heading" hidden>
+        <h2 id="section-heading">The chosen section</h2>
+        <p id="sectionName"></p>
+        <p id="sectionTimes" class="small muted"></p>
+        <div class="row">
+          <label class="field small"
+            >Starts at, in seconds of its sketch
+            <input id="offsetInput" type="number" step="1" min="0" size="6" title="Where the section starts on its sketch's own timeline, in seconds. It must be before the sketch ends." />
+          </label>
+          <label class="field small"
+            >Plays for, in seconds
+            <input id="secondsInput" type="number" step="1" size="6" title="How long the section plays, in seconds. Past the sketch's end the sketch is extended, up to the longest timeline a sketch may have." />
+          </label>
+          <label id="fadeField" class="field small"
+            >Crossfade, in seconds
+            <input id="fadeInput" type="number" step="1" size="5" title="How long this section and its neighbor overlap as one fades out and the other in, in seconds: at most half the shorter of the two." />
+          </label>
+        </div>
+        <p id="fadeLine" class="small muted"></p>
+        <div class="row">
+          <button id="moveLeft" class="button outline small" type="button" title="Moves the chosen section one place earlier in the track. The crossfades stay where they are.">Move earlier</button>
+          <button id="moveRight" class="button outline small" type="button" title="Moves the chosen section one place later in the track. The crossfades stay where they are.">Move later</button>
+          <button id="shorter" class="button outline small" type="button" title="Makes the chosen section play one step less, the seconds on the button, down to its shortest.">Shorter</button>
+          <button id="longer" class="button outline small" type="button" title="Makes the chosen section play one step more, the seconds on the button; past its sketch's end the sketch is extended.">Longer</button>
+          <button id="startEarlier" class="button outline small" type="button" title="Starts the chosen section one step earlier in its sketch, the seconds on the button, down to the sketch's start.">Start earlier</button>
+          <button id="startLater" class="button outline small" type="button" title="Starts the chosen section one step later in its sketch, the seconds on the button.">Start later</button>
+          <button id="fadeShorter" class="button outline small" type="button" title="Makes the chosen section's crossfade one step shorter, the seconds on the button, down to its shortest.">Shorter crossfade</button>
+          <button id="fadeLonger" class="button outline small" type="button" title="Makes the chosen section's crossfade one step longer, the seconds on the button, up to half the shorter of its two sections.">Longer crossfade</button>
+          <button id="remove" class="button outline small" type="button" title="Takes the chosen section out of the timeline, with its crossfade. Save to keep the change; earlier versions still have it.">Remove</button>
+        </div>
+        <div class="row">
+          <button id="play" class="button secondary small" type="button" title="Renders the chosen section's part of its sketch, once, and plays it; a part past the sketch's end isn't played yet. Takes about a tenth of the section's length.">Play this section</button>
+        </div>
+        <!-- biome-ignore lint/a11y/useMediaCaption: instrumental sections have no speech to caption -->
+        <audio id="sectionAudio" preload="none" title="Plays the chosen section's part of its sketch, rendered as it will sound in the track."></audio>
+        <div id="jobBox" class="stack"></div>
+      </section>
+
+      <section class="card stack" aria-labelledby="add-heading">
+        <h2 id="add-heading">Add a sketch</h2>
+        <p id="addHelp" class="small muted">The sketches you kept for this brief.</p>
+        <div class="row">
+          <select id="sketchSelect" title="Chooses which of this brief's sketches to add as a section."></select>
+          <button id="add" class="button outline" type="button" title="Adds the chosen sketch as a new section after the chosen one, with a crossfade between them.">Add after the chosen section</button>
+        </div>
+        <p id="noSketches" class="muted small" hidden>This brief has no sketches yet. Keep some from a session's candidates with Keep as sketch.</p>
+      </section>
+
+      <section class="card stack" aria-labelledby="revisions-heading">
+        <h2 id="revisions-heading">Versions, newest first</h2>
+        <p class="small muted">Open one to put it on the timeline; saving it then makes it the newest version.</p>
+        <ul id="revisionList" class="list"></ul>
+      </section>
+    </main>
+
+    <template id="revision-item">
+      <li class="item">
+        <div class="row">
+          <span data-part="summary"></span>
+          <span class="spacer"></span>
+          <button class="button outline small" type="button" data-part="open" title="Puts this version on the timeline in place of what is there. Save to make it the newest version.">Open</button>
+        </div>
+        <p class="small muted" data-part="note"></p>
+      </li>
+    </template>
+
+    <template id="job-progress">
+      <div class="job">
+        <div class="row">
+          <strong data-part="title">job</strong>
+          <span class="badge" data-part="state">state</span>
+          <span class="muted small" data-part="elapsed"></span>
+          <span class="spacer"></span>
+          <button class="button outline small" type="button" data-part="cancel" title="Cancels this job. Audio it already made is kept.">Cancel</button>
+        </div>
+        <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" data-part="bar"><div class="progress-fill" data-part="fill"></div></div>
+        <p class="small" data-part="step"></p>
+        <p class="small muted" data-part="notEmbedded" hidden></p>
+        <p class="small muted" data-part="notRanked" hidden></p>
+        <p class="small errors" data-part="error" hidden></p>
+      </div>
+    </template>
+  </body>
+</html>

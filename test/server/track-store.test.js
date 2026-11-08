@@ -1,0 +1,141 @@
+// Tracks, their revisions and their exports (decision 0061): append-only, a removed track keeps
+// its rows, and migration 0011 over 0010's shape.
+/** @import { Store } from "../../src/server/store.js" */
+import { afterEach, expect, test } from "vitest";
+import { emptyArrangement } from "../../src/domain/arrangement-schema.js";
+import { openStore, readMigrations } from "../../src/server/store.js";
+import {
+  addTrackExport,
+  createTrack,
+  getTrack,
+  listTrackExports,
+  listTrackRevisions,
+  listTracks,
+  removeTrack,
+  reviseTrack,
+  TRACK_REMOVED,
+} from "../../src/server/track-store.js";
+import { createVibe } from "../../src/server/vibe-store.js";
+import { tempStore } from "../support/temp-store.js";
+
+/** @type {(() => Promise<void>)[]} */
+const cleanups = [];
+afterEach(async () => {
+  for (const cleanup of cleanups.splice(0)) await cleanup();
+});
+
+/** @param {Store} store */
+const vibeOf = (store) =>
+  createVibe(store, { name: "dawn", brief: "a low hum", constraints: {}, softTargets: {} });
+
+const ONE = {
+  ...emptyArrangement(),
+  sections: [{ sketchId: 1, offset: 0, seconds: 60 }],
+};
+
+test("saving twice keeps both revisions, the newest last", async () => {
+  const made = await tempStore();
+  cleanups.push(made.remove);
+  const { store } = made;
+  const vibe = vibeOf(store);
+  const { track, revision: first } = createTrack(store, {
+    vibeId: vibe.id,
+    name: "first light",
+    arrangement: emptyArrangement(),
+  });
+  expect(track).toMatchObject({ vibeId: vibe.id, name: "first light", removedAt: null });
+  expect(first).toMatchObject({ trackId: track.id, arrangement: emptyArrangement(), note: "" });
+  const second = reviseTrack(store, track.id, { arrangement: ONE, note: "one section" });
+  const third = reviseTrack(store, track.id, { arrangement: ONE, note: "" });
+  expect(listTrackRevisions(store, track.id).map((row) => row.id)).toEqual([
+    first.id,
+    second.id,
+    third.id,
+  ]);
+  expect(listTrackRevisions(store, track.id)[1]).toEqual(second);
+  expect(listTracks(store, vibe.id)).toEqual([{ ...track, revision: third }]);
+  expect(() => store.db.prepare("DELETE FROM track_revisions").run()).toThrow(/append-only/);
+  expect(() =>
+    store.db.prepare("UPDATE track_revisions SET note = 'x' WHERE id = ?").run(first.id),
+  ).toThrow(/append-only/);
+});
+
+test("a removed track keeps its rows and leaves the list", async () => {
+  const made = await tempStore();
+  cleanups.push(made.remove);
+  const { store } = made;
+  const vibe = vibeOf(store);
+  const { track, revision } = createTrack(store, {
+    vibeId: vibe.id,
+    name: "gone",
+    arrangement: ONE,
+  });
+  const exported = addTrackExport(store, {
+    trackRevisionId: revision.id,
+    kind: "mix",
+    folder: "gone-1",
+    manifestSha256: "a".repeat(64),
+  });
+  removeTrack(store, track.id);
+  expect(getTrack(store, track.id)).toMatchObject({ removedReason: TRACK_REMOVED });
+  expect(listTracks(store, vibe.id)).toEqual([]);
+  expect(listTrackRevisions(store, track.id)).toEqual([revision]);
+  expect(listTrackExports(store, revision.id)).toEqual([exported]);
+  expect(() => removeTrack(store, track.id)).toThrow(/append-only/);
+});
+
+test("an export's kind and manifest hash are checked", async () => {
+  const made = await tempStore();
+  cleanups.push(made.remove);
+  const { store } = made;
+  const { revision } = createTrack(store, {
+    vibeId: vibeOf(store).id,
+    name: "t",
+    arrangement: ONE,
+  });
+  /** @type {any} */
+  const draft = { trackRevisionId: revision.id, kind: "mix", folder: "t-1", manifestSha256: "a" };
+  expect(() => addTrackExport(store, draft)).toThrow(/CHECK constraint/);
+  expect(() =>
+    addTrackExport(store, { ...draft, kind: "mp3", manifestSha256: "a".repeat(64) }),
+  ).toThrow(/CHECK constraint/);
+  expect(() =>
+    addTrackExport(store, { ...draft, trackRevisionId: 999, manifestSha256: "a".repeat(64) }),
+  ).toThrow(/FOREIGN KEY/);
+});
+
+test("migration 0011 over a database built with 0001 to 0010 keeps its rows and adds tracks", async () => {
+  const made = await tempStore();
+  cleanups.push(made.remove);
+  const { paths, store: current } = made;
+  current.close();
+  const file = `${paths.database}-0010`;
+  const migrations = readMigrations();
+  expect(migrations[10]?.name).toBe("0011-tracks");
+  const now = () => 0;
+  const old = openStore(file, { now, migrations: migrations.slice(0, 10) });
+  const vibe = vibeOf(old);
+  expect(() => old.db.prepare("SELECT * FROM tracks").all()).toThrow(/no such table/);
+  old.close();
+
+  const store = openStore(file, { now, migrations });
+  cleanups.push(async () => store.close());
+  expect(store.db.prepare("SELECT name FROM vibe_revisions").all()).toEqual([{ name: "dawn" }]);
+  const { track, revision } = createTrack(store, {
+    vibeId: vibe.id,
+    name: "after",
+    arrangement: ONE,
+  });
+  expect(getTrack(store, track.id)?.vibeId).toBe(vibe.id);
+  expect(listTrackRevisions(store, track.id)).toEqual([revision]);
+  expect(() =>
+    store.db.prepare("INSERT INTO tracks (vibeId, name, createdAt) VALUES (999, 'x', 0)").run(),
+  ).toThrow(/FOREIGN KEY/);
+  expect(() =>
+    store.db
+      .prepare(
+        "INSERT INTO track_revisions (trackId, arrangement, note, createdAt) VALUES (?, 'not json', '', 0)",
+      )
+      .run(track.id),
+  ).toThrow(/CHECK constraint/);
+});

@@ -21,6 +21,7 @@ const PAGES = [
   "quick-ab.html",
   "references.html",
   "session.html",
+  "track.html",
 ];
 
 const moduleScript = /<script\s+type="module"\s+src="([^"]+)"/g;

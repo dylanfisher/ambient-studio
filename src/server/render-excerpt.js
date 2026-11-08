@@ -59,13 +59,13 @@ export function vibeLoudness(constraints) {
 }
 
 /**
- * The cached file's name. Each part of the key that can differ for one window is in it, so a
- * render under a new target or producer never overwrites a file a row still names.
- * @param {ExcerptRequest & { duration: number }} request
+ * The cached file's name. Each part of the key that can differ is in it, so a render of another
+ * window, or under a new target or producer, never overwrites a file a row still names.
+ * @param {ExcerptRequest & { offset: number, duration: number }} request
  */
-function cacheFile({ genomeId, seed, target, duration }) {
+function cacheFile({ genomeId, seed, target, offset, duration }) {
   const producer = sha256Hex(PRODUCER).slice(0, PRODUCER_NAME_CHARS);
-  return `${genomeId}-seed${seed}-${duration}s-${target}LUFS-${producer}${MP3_EXTENSION}`;
+  return `${genomeId}-seed${seed}-at${offset}s-${duration}s-${target}LUFS-${producer}${MP3_EXTENSION}`;
 }
 
 /**
@@ -142,27 +142,30 @@ async function writeCached(folder, file, channels, sampleRate) {
  * The excerpt of `genomeId` at `seed`, `EXCERPT_SECONDS` long, from the cache when a row for it
  * was made under this target and producer and its file is there, else rendered and cached. A
  * render normalize throws on is cached as rendered, with no gain, and a failed check says why;
- * the call itself throws only on a fault outside normalize.
+ * the call itself throws only on a fault outside normalize. With `window`, it is that window
+ * instead, as a track section's player plays it (decision 0061).
  * @param {Store} store
  * @param {string} folder the render-cache folder
  * @param {ExcerptRequest} request
  * @param {readonly RecordingEntry[]} [recordings] the recordings folder's index, which a genome
  *   that plays a field recording needs; its files are decoded only when the excerpt isn't cached
+ * @param {{ offset: number, duration: number }} [window] seconds on the genome's timeline, inside
+ *   its duration; the excerpt's window when omitted
  * @returns {Promise<Excerpt>}
  */
-export async function renderExcerpt(store, folder, { genomeId, seed, target }, recordings) {
+export async function renderExcerpt(store, folder, { genomeId, seed, target }, recordings, window) {
   const row = getGenome(store, genomeId);
   if (!row) throw new Error(`there is no genome ${genomeId} to render`);
   const genome = requireGenome(row.genome, `genome ${genomeId}`);
-  const duration = EXCERPT_SECONDS;
-  const offset = excerptOffset(genome, seed, duration);
+  const duration = window?.duration ?? EXCERPT_SECONDS;
+  const offset = window?.offset ?? excerptOffset(genome, seed, duration);
   const key = { genomeId, seed, offset, duration, target, producer: PRODUCER };
   const found = findRender(store, key);
   if (found && cachedFile(folder, found)) return { render: found, cached: true };
 
   const { raw, heard, checks } = await renderHeard(genome, key, recordings);
   const features = extractFeatures(raw, heard);
-  const file = cacheFile({ genomeId, seed, target, duration });
+  const file = cacheFile({ genomeId, seed, target, offset, duration });
   await writeCached(folder, file, (heard ?? raw).channels, raw.sampleRate);
   const { render, replaced } = putRender(store, { ...key, file, features, checks });
   // force: a replaced row's file may already be gone, which is the state this asks for.

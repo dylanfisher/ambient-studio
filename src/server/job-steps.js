@@ -37,6 +37,8 @@ export const JOB_STEP = Object.freeze({
   /** @param {number} n @param {number} of */
   embeddingExcerpt: (n, of) => `Analyzing the sound of excerpt ${n} of ${of}`,
   decodingRegion: "Reading the region from the recording",
+  /** @param {number} seconds */
+  renderingSection: (seconds) => `Rendering the section's ${seconds} s to play`,
   /** @param {number} n @param {number} of */
   measuringWindow: (n, of) => `Measuring window ${n} of ${of} of the region`,
   /** @param {number} n @param {number} of */

@@ -19,6 +19,7 @@ const TITLE = Object.freeze({
   [JOB_KIND.analyze]: "Analyzing a region",
   [JOB_KIND.embed]: "Analyzing the sound",
   [JOB_KIND.fit]: "Fitting the taste model",
+  [JOB_KIND.sectionAudio]: "Rendering a section to play",
 });
 
 /** A job's states, as the server's job runner names them (decision 0026). */
