@@ -4,7 +4,8 @@
 - **Status:** accepted; amends [0019](0019-config-file-and-paths.md) (adds
   `sidecar.requestTimeoutMs`); amended by [0042](0042-clap-embeddings.md) (the `path` type,
   numpy at start-up), [0044](0044-bayesian-bradley-terry.md) (`fit` and `predict`) and
-  [0047](0047-what-you-like.md) (a route asks `embedder` and `preference_code`)
+  [0047](0047-what-you-like.md) (a route asks `embedder` and `preference_code`) and
+  [0053](0053-search-space-ask-tell.md) (the optimizer methods and their run folders)
 
 ## Context
 
@@ -143,3 +144,8 @@ subprocess for the stdout redirect.
 - 2026-11-07: from step 4d ([0044](0044-bayesian-bradley-terry.md)). `fit` and `predict` pass
   the training set, the items and the model as JSON files and the embeddings as float32 files,
   all by path; the loop imports `preference.py`, which needs numpy alone.
+- 2026-11-07: from step 5d ([0053](0053-search-space-ask-tell.md)). `optimizer_start`,
+  `optimizer_ask` and `optimizer_tell` keep a search's state in a run folder under the data
+  root, `<dataRoot>/search/<run>/`, named by its path in each request. The sidecar holds no run
+  in memory between requests, so a restart between two of them loses nothing; the one-request
+  failure rule is unchanged.
