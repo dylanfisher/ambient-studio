@@ -35,6 +35,7 @@ export const NO_UNDO =
  * @property {Playable | null} best
  * @property {Playable | null} challenger
  * @property {boolean} stopped
+ * @property {boolean} idle whether it stopped because a pair waited too long for a choice
  * @property {string | null} error
  */
 
@@ -255,6 +256,19 @@ export function createEarSession({ sessionId, now, pause, onChange }) {
 
     /** The order is the search's; the switch is hidden in this mode. */
     setMode: async () => {},
+
+    /**
+     * Stops a search still running as the page closes, so it doesn't hold the job runner
+     * until its idle timeout: `beacon` is `navigator.sendBeacon`, which still sends while the
+     * page goes, and takes the body as a string.
+     * @param {(url: string, body: string) => boolean} beacon
+     */
+    leave(beacon) {
+      if (ear === null || ear.phase === EAR_PHASE.finished || ear.stopped) return;
+      if (!beacon(`${EAR}/stop`, "{}")) {
+        throw new Error("The browser wouldn't send the stop as the page closed.");
+      }
+    },
 
     /** Ends the search; its best so far stays as the run's best in the session. */
     stop: () =>

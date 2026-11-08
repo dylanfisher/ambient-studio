@@ -9,7 +9,7 @@
 /** @import { EarState } from "./quick-ab-ear.js" */
 /** @import { QuickAbAction } from "./quick-ab-keys.js" */
 /** @import { Playable } from "./quick-ab-session.js" */
-import { EAR_PHASE } from "../domain/ear-settings.js";
+import { EAR_IDLE_MS, EAR_PHASE } from "../domain/ear-settings.js";
 import { OUTCOMES } from "../domain/rating-values.js";
 import { chosenOutcome, SCREEN_SIDES } from "./ab-rating.js";
 import { ACTIVE_SIDE } from "./ab-view.js";
@@ -271,14 +271,18 @@ function render() {
  * What the done line says of a search by ear that ended.
  * @param {EarState} ear
  */
-function earDoneText({ answered, best, stopped, error }) {
+function earDoneText({ answered, best, stopped, idle, error }) {
   const choices = `${answered} choice${answered === 1 ? "" : "s"}`;
   const kept =
     best === null
       ? ""
       : ` Its best is ${nameOf(best.id)}, shown first in its fold on the session page.`;
   if (error !== null) return `The search by ear stopped after ${choices}: ${error}${kept}`;
-  const how = stopped ? "You stopped the search by ear" : "The search by ear asked every pair";
+  const how = idle
+    ? `The search by ear stopped itself when a pair waited ${EAR_IDLE_MS / 60_000} minutes for a choice,`
+    : stopped
+      ? "You stopped the search by ear"
+      : "The search by ear asked every pair";
   return `${how} after ${choices}.${kept}`;
 }
 
@@ -335,6 +339,10 @@ for (const [input, mode] of modeInputs) {
   };
 }
 window.addEventListener("beforeunload", unloadGuard(session));
+// pagehide, not unload: Safari fires it on closing a tab and on leaving for another page.
+window.addEventListener("pagehide", () => {
+  earSession?.leave((url, body) => navigator.sendBeacon(url, body));
+});
 
 status.run(async () => {
   const { vibeId } = await session.load();

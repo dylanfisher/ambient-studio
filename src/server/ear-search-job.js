@@ -12,12 +12,14 @@
 /** @import { RecordingEntry } from "./recording-index.js" */
 /** @import { ExcerptRequest } from "./render-excerpt.js" */
 /** @import { Render } from "./render-store.js" */
+/** @import { Clock } from "./omlx-queue.js" */
 /** @import { App } from "./routing.js" */
 /** @import { SearchResults } from "./search-job.js" */
 import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
   EAR_DRAWS,
+  EAR_IDLE_MS,
   EAR_OPTIMIZER,
   EAR_PHASE,
   EAR_REJECTS,
@@ -37,6 +39,7 @@ import { putGenome } from "./generation-store.js";
 import { JOB_STEP } from "./job-steps.js";
 import { verdictOf } from "./nudge-job.js";
 import { renderExcerpt } from "./render-excerpt.js";
+import { HttpError } from "./routing.js";
 import { SEARCH_SOURCE, writeResults } from "./search-job.js";
 import {
   askPoints,
@@ -86,7 +89,8 @@ const STOP = Symbol("the owner pressed Stop");
  * @property {Playable | null} best the run's best: the base until a new point wins
  * @property {Playable | null} challenger the new point, while asking
  * @property {number} ready how many of the four next points are rendered, while asking
- * @property {boolean} stopped whether the owner pressed Stop
+ * @property {boolean} stopped whether the owner pressed Stop, or a pair waited `EAR_IDLE_MS`
+ * @property {boolean} idle whether it stopped because a pair waited `EAR_IDLE_MS` for a choice
  * @property {string | null} error why the job ended without finishing, once it has
  */
 
@@ -97,9 +101,10 @@ const STOP = Symbol("the owner pressed Stop");
  * @property {() => EarView} view
  * @property {(patch: Partial<EarView>) => void} publish
  * @property {(query: number, signal: AbortSignal) => Promise<number | null | typeof STOP>} wait
- *   resolves with the score of the owner's answer to `query`, or `STOP`
- * @property {(query: number, score: number | null) => void} answer throws unless the job waits
- *   for `query`
+ *   resolves with the score of the owner's answer to `query`, or `STOP` after a Stop or
+ *   `EAR_IDLE_MS` with no answer
+ * @property {(query: number, score: number | null) => void} answer throws a 409 unless the job
+ *   waits for `query`
  * @property {(query: number) => Promise<EarView>} after resolves with the view once the job
  *   asks a later query than `query`, or ends, so an answer's reply carries the next pair
  * @property {() => void} stop
@@ -107,9 +112,10 @@ const STOP = Symbol("the owner pressed Stop");
 
 /**
  * @param {number} budget
+ * @param {Clock} clock times a pair's wait for a choice
  * @returns {EarChannel}
  */
-export function createEarChannel(budget) {
+export function createEarChannel(budget, clock) {
   /** @type {EarView} */
   let view = {
     jobId: null,
@@ -121,6 +127,7 @@ export function createEarChannel(budget) {
     challenger: null,
     ready: 0,
     stopped: false,
+    idle: false,
     error: null,
   };
   /** @type {{ query: number, resolve: (value: number | null | typeof STOP) => void } | null} */
@@ -130,14 +137,16 @@ export function createEarChannel(budget) {
   /** @param {number} query */
   const past = (query) =>
     view.phase === EAR_PHASE.finished || (view.phase === EAR_PHASE.listening && view.query > query);
+  /** @param {Partial<EarView>} patch */
+  const publish = (patch) => {
+    view = { ...view, ...patch };
+    const due = watchers.filter(({ query }) => past(query));
+    watchers = watchers.filter(({ query }) => !past(query));
+    for (const { resolve } of due) resolve(view);
+  };
   return {
     view: () => view,
-    publish(patch) {
-      view = { ...view, ...patch };
-      const due = watchers.filter(({ query }) => past(query));
-      watchers = watchers.filter(({ query }) => !past(query));
-      for (const { resolve } of due) resolve(view);
-    },
+    publish,
     after: (query) =>
       past(query)
         ? Promise.resolve(view)
@@ -150,7 +159,12 @@ export function createEarChannel(budget) {
           resolve(STOP);
           return;
         }
+        const timer = clock.setTimeout(() => {
+          publish({ stopped: true, idle: true });
+          waiting?.resolve(STOP);
+        }, EAR_IDLE_MS);
         const abort = () => {
+          clock.clearTimeout(timer);
           waiting = null;
           reject(signal.reason);
         };
@@ -162,6 +176,7 @@ export function createEarChannel(budget) {
         waiting = {
           query,
           resolve: (value) => {
+            clock.clearTimeout(timer);
             signal.removeEventListener("abort", abort);
             waiting = null;
             resolve(value);
@@ -170,16 +185,19 @@ export function createEarChannel(budget) {
       }),
     answer(query, score) {
       if (waiting?.query !== query) {
-        throw new Error(
+        throw new HttpError(
+          409,
           view.phase === EAR_PHASE.finished
-            ? "This search by ear has ended, so it takes no more answers."
-            : `The search by ear is not waiting for an answer to pair ${query + 1}.`,
+            ? "This search by ear has ended, so it takes no more choices."
+            : `The search by ear is not waiting for a choice on pair ${query + 1}; it may have taken this one already.`,
         );
       }
       waiting.resolve(score);
+      // A second answer sent before the job moves on finds the pair no longer asked.
+      publish({ phase: EAR_PHASE.drawing, challenger: null, ready: 0 });
     },
     stop() {
-      view = { ...view, stopped: true };
+      publish({ stopped: true });
       waiting?.resolve(STOP);
     },
   };
@@ -344,40 +362,50 @@ async function searchByEar(app, request, channel, prepare, job) {
   /**
    * Renders the point each answer to the query would bring next, in `BRANCHES` order, until
    * `halt` aborts. It stops only between steps, so a sidecar request is never cut off, which
-   * would restart the sidecar.
+   * would restart the sidecar. It never throws: it only renders ahead, and on a failure it stops
+   * and logs why, and the run draws and renders the point itself once the answer comes.
    * @param {number} generation the query's ask
    * @param {AbortSignal} halt
    */
   async function speculate(generation, halt) {
     let ready = 0;
-    for (const [name, score] of BRANCHES) {
-      if (halt.aborted) return;
-      const fork = await forkSearch(folder, `branch-${generation}-${name}`, generation);
-      await tellScores(app, fork, generation, [score], signal);
-      if (halt.aborted) return;
-      /** @type {Awaited<ReturnType<typeof draw>>} */
-      let next;
-      try {
-        next = await draw(fork, generation + 1, new Map(seen), null);
-      } catch (error) {
-        // The run itself draws the same points if this answer comes, and fails there.
-        if (signal.aborted) throw error;
-        continue;
+    try {
+      for (const [name, score] of BRANCHES) {
+        if (halt.aborted) return;
+        const fork = await forkSearch(folder, `branch-${generation}-${name}`, generation);
+        await tellScores(app, fork, generation, [score], signal);
+        if (halt.aborted) return;
+        const next = await draw(fork, generation + 1, new Map(seen), null);
+        if (halt.aborted) return;
+        const { id } = putGenome(app.store, vibeId, next.genome);
+        await prepare(app, { genomeId: id, seed: base.seed, target }, recordings);
+        if (halt.aborted) return;
+        ready++;
+        channel.publish({ ready });
       }
-      if (halt.aborted) return;
-      const { id } = putGenome(app.store, vibeId, next.genome);
-      await prepare(app, { genomeId: id, seed: base.seed, target }, recordings);
-      ready++;
-      channel.publish({ ready });
+    } catch (error) {
+      if (signal.aborted) return;
+      const message = error instanceof Error ? error.message : String(error);
+      app.log(`search by ear ${run}: stopped rendering ahead of pair ${generation}: ${message}`);
     }
   }
 
-  /** Removes the run's copies, which nothing reads once the answer is told. */
-  async function removeForks() {
+  /**
+   * Removes the copies made for one query's answers, which nothing reads once it is answered.
+   * @param {number} generation the query's ask
+   */
+  async function removeForks(generation) {
     for (const name of await readdir(folder)) {
-      if (name.startsWith("branch-")) await rm(join(folder, name), { recursive: true });
+      if (name.startsWith(`branch-${generation}-`)) {
+        await rm(join(folder, name), { recursive: true });
+      }
     }
   }
+
+  /** @type {Promise<void>[]} each answered query's cleanup, which runs after its copies stop */
+  const cleanups = [];
+  /** @type {unknown[]} */
+  const cleanupErrors = [];
 
   let best = { candidate: base, render: await prepare(app, baseRequest, recordings) };
   /** @type {number[]} */
@@ -406,48 +434,60 @@ async function searchByEar(app, request, channel, prepare, job) {
   channel.publish({ best: playable(best.candidate, best.render) });
   let generation = 0;
   let answered = 0;
-  for (let query = 0; query < budget && !channel.view().stopped; query++) {
-    job.progress(answered, budget, JOB_STEP.earDrawing(query + 1, budget));
-    channel.publish({ phase: EAR_PHASE.drawing, query, challenger: null, ready: 0 });
-    const drawn = await draw(folder, generation, seen, query);
-    generation = drawn.generation;
-    const challenger = /** @type {Candidate} */ (drawn.stored.at(-1));
-    candidateIds.push(...drawn.stored.map(({ id }) => id));
-    points.push(challenger.id);
-    seen.set(canonicalGenome(drawn.genome), `query ${query + 1}`);
-    const request = /** @type {ExcerptRequest} */ (excerptRequest(app.store, challenger));
-    const render = await prepare(app, request, recordings);
-    await summarize();
-    signal.throwIfAborted();
-    channel.publish({
-      phase: EAR_PHASE.listening,
-      challenger: playable(challenger, render),
-      ready: 0,
-    });
-    job.progress(answered, budget, JOB_STEP.earListening(query + 1, budget));
-    const halt = new AbortController();
-    const ahead = query + 1 < budget ? speculate(generation, halt.signal) : Promise.resolve();
-    // A rejected speculation is read after the answer, so it never goes unhandled meanwhile.
-    ahead.catch(() => undefined);
-    /** @type {number | null | typeof STOP} */
-    let answer;
-    try {
-      answer = await channel.wait(query, signal);
-    } finally {
+  try {
+    for (let query = 0; query < budget && !channel.view().stopped; query++) {
+      job.progress(answered, budget, JOB_STEP.earDrawing(query + 1, budget));
+      channel.publish({ phase: EAR_PHASE.drawing, query, challenger: null, ready: 0 });
+      const drawn = await draw(folder, generation, seen, query);
+      generation = drawn.generation;
+      const challenger = /** @type {Candidate} */ (drawn.stored.at(-1));
+      candidateIds.push(...drawn.stored.map(({ id }) => id));
+      points.push(challenger.id);
+      seen.set(canonicalGenome(drawn.genome), `query ${query + 1}`);
+      const request = /** @type {ExcerptRequest} */ (excerptRequest(app.store, challenger));
+      const render = await prepare(app, request, recordings);
+      await summarize();
+      signal.throwIfAborted();
+      channel.publish({
+        phase: EAR_PHASE.listening,
+        challenger: playable(challenger, render),
+        ready: 0,
+      });
+      job.progress(answered, budget, JOB_STEP.earListening(query + 1, budget));
+      const halt = new AbortController();
+      const ahead = query + 1 < budget ? speculate(generation, halt.signal) : Promise.resolve();
+      /** @type {number | null | typeof STOP} */
+      let answer;
+      try {
+        answer = await channel.wait(query, signal);
+      } catch (error) {
+        // A cancel: the copies stop at their next step, and go before the job ends.
+        halt.abort();
+        await ahead;
+        await removeForks(generation);
+        throw error;
+      }
       halt.abort();
+      // The tell below needs nothing from the copies, so it doesn't wait for them; each is
+      // removed once its last step ends, and the job ends only after that.
+      const told = generation;
+      cleanups.push(
+        ahead.then(() => removeForks(told)).catch((error) => void cleanupErrors.push(error)),
+      );
+      if (answer === STOP) break;
+      channel.publish({ phase: EAR_PHASE.drawing, challenger: null, ready: 0 });
+      await tellScores(app, folder, generation, [answer], signal);
+      generation++;
+      answered++;
+      channel.publish({ answered });
+      if (answer === EAR_SCORE.win) best = { candidate: challenger, render };
+      channel.publish({ best: playable(best.candidate, best.render) });
+      await summarize();
     }
-    await ahead;
-    await removeForks();
-    if (answer === STOP) break;
-    channel.publish({ phase: EAR_PHASE.drawing, challenger: null, ready: 0 });
-    await tellScores(app, folder, generation, [answer], signal);
-    generation++;
-    answered++;
-    channel.publish({ answered });
-    if (answer === EAR_SCORE.win) best = { candidate: challenger, render };
-    channel.publish({ best: playable(best.candidate, best.render) });
-    await summarize();
+  } finally {
+    await Promise.all(cleanups);
   }
+  if (cleanupErrors.length > 0) throw cleanupErrors[0];
   job.progress(answered, budget, null);
   return {
     run,

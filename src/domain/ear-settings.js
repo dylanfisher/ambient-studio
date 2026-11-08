@@ -15,6 +15,13 @@ export const DEFAULT_EAR_QUERIES = 20;
 /** At a minute or so a query, 60 is an hour of listening. */
 export const MAX_EAR_QUERIES = 60;
 
+/**
+ * How long a pair waits for a choice before the search stops as Stop does: well past the 50 s
+ * two excerpts take to hear twice over, and short enough that a closed tab or a walk away
+ * frees the one job runner within minutes.
+ */
+export const EAR_IDLE_MS = 10 * 60 * 1000;
+
 /** The most dimensions a search by ear takes: a GP fitted to tens of choices learns no more. */
 export const MAX_EAR_DIMENSIONS = 12;
 

@@ -4,11 +4,17 @@
 // the page, Stop shows the best in the session, and the locks hold.
 /** @import { EarView } from "../../src/server/ear-search-job.js" */
 /** @import { TestApp } from "../support/test-app.js" */
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { setImmediate as tick } from "node:timers/promises";
 import { afterEach, expect, test } from "vitest";
 import { applyLocks } from "../../src/domain/apply-locks.js";
-import { EAR_OPTIMIZER, EAR_PHASE, MAX_EAR_DIMENSIONS } from "../../src/domain/ear-settings.js";
+import {
+  EAR_IDLE_MS,
+  EAR_OPTIMIZER,
+  EAR_PHASE,
+  MAX_EAR_DIMENSIONS,
+} from "../../src/domain/ear-settings.js";
 import { parseLockPath, readLockTarget } from "../../src/domain/lock-path.js";
 import { OPERATOR } from "../../src/domain/operator.js";
 import { REJECT_REASON } from "../../src/domain/reject-reason.js";
@@ -96,15 +102,34 @@ async function earApp(locked = []) {
   /** @type {{ genomeId: number, at: number }[]} each excerpt the job asked for, in order */
   const prepared = [];
   let clock = 0;
+  /** Which call to `prepare`, counted from 0, throws as a failed render would; none by default. */
+  const faults = { at: -1 };
+  let calls = 0;
   /** @type {import("../../src/server/ear-search-job.js").Prepare} */
   const prepare = async (app, { genomeId, seed, target }) => {
+    if (calls++ === faults.at) throw new Error("the scripted render failed");
     prepared.push({ genomeId, at: clock++ });
     const window = { genomeId, seed, offset: 0, duration: 25, target, producer: PRODUCER };
     return putRender(app.store, { ...window, file: `${genomeId}.mp3`, features: {}, checks: {} })
       .render;
   };
   const tickClock = () => clock++;
-  return { ...made, vibe, session, candidate, start, paths, prepared, prepare, tickClock };
+  /** @type {string[]} */
+  const logged = [];
+  made.app.log = (line) => logged.push(line);
+  return {
+    ...made,
+    vibe,
+    session,
+    candidate,
+    start,
+    paths,
+    prepared,
+    prepare,
+    tickClock,
+    faults,
+    logged,
+  };
 }
 
 /** @typedef {Awaited<ReturnType<typeof earApp>>} EarApp */
@@ -141,7 +166,7 @@ const scriptTell = (/** @type {TestApp["sidecar"]} */ sidecar) =>
  * @param {number} budget
  */
 function startJob(made, budget) {
-  const channel = createEarChannel(budget);
+  const channel = createEarChannel(budget, made.clock);
   const request = {
     vibeId: made.vibe.id,
     sessionId: made.session.id,
@@ -214,14 +239,18 @@ function rate(made, view, outcome, side = "a") {
   });
 }
 
+/** A request with a JSON body, as the pages send. */
+const JSON_REQUEST = { headers: { "content-type": "application/json" }, resume() {} };
+
 /**
  * Calls a session route's handler as the server would.
  * @param {EarApp} made
  * @param {"GET" | "POST"} method
  * @param {string} path
  * @param {Record<string, unknown>} [body]
+ * @param {{ headers: Record<string, string>, resume: () => void }} [request]
  */
-async function call(made, method, path, body = {}) {
+async function call(made, method, path, body = {}, request = JSON_REQUEST) {
   const route = SESSION_ROUTES.find((r) => r.method === method && r.path === path);
   if (!route) throw new Error(`no route ${method} ${path}`);
   return /** @type {any} */ (
@@ -230,6 +259,7 @@ async function call(made, method, path, body = {}) {
         app: made.app,
         params: { sessionId: String(made.session.id) },
         query: new URLSearchParams(),
+        request,
         body: async () => body,
       }),
     )
@@ -237,6 +267,7 @@ async function call(made, method, path, body = {}) {
 }
 
 const ANSWERS = "/api/sessions/:sessionId/ear-search/answers";
+const STOP = "/api/sessions/:sessionId/ear-search/stop";
 
 /**
  * The scores each `optimizer_tell` of the real run was given, in order.
@@ -385,7 +416,7 @@ test("an answer must be a live rating of the pair asked, while it is asked", asy
   await expect(call(made, "POST", ANSWERS, { query: 0, ratingId: 999 })).rejects.toThrow(
     "no live A/B rating 999",
   );
-  await call(made, "POST", "/api/sessions/:sessionId/ear-search/stop");
+  await call(made, "POST", STOP);
   await waitFor(channel, (v) => v.stopped);
 });
 
@@ -413,7 +444,7 @@ test("Stop ends the run with its best shown in the session and every other point
   const first = await waitFor(channel, (v) => v.phase === EAR_PHASE.listening && v.ready === 4);
   await call(made, "POST", ANSWERS, { query: 0, ratingId: rate(made, first, "a").id });
   await waitFor(channel, (v) => v.query === 1 && v.ready === 4);
-  const stopped = await call(made, "POST", "/api/sessions/:sessionId/ear-search/stop");
+  const stopped = await call(made, "POST", STOP);
   expect(stopped.stopped).toBe(true);
   await app.jobs.settled(status.id);
   const done = app.jobs.get(status.id);
@@ -496,4 +527,122 @@ test("the route refuses a space over 12 dimensions and a second search by ear in
   );
   made.app.jobs.cancel(first.id);
   await made.app.jobs.settled(first.id);
+});
+
+/** Waits until `holds` is true, a turn of the event loop at a time. */
+async function until(/** @type {() => boolean} */ holds) {
+  while (!holds()) await tick();
+}
+
+/** The copies of the answers still in the run's folder. */
+const forksLeft = (/** @type {EarApp} */ made) =>
+  readdirSync(join(made.app.paths.search, "run-1")).filter((name) => name.startsWith("branch-"));
+
+/** Scripts a run that asks one pair, with its four copies, and starts it. */
+function oneAsked(/** @type {EarApp} */ made, /** @type {number} */ budget) {
+  const from = toVector(made.start, made.paths);
+  made.sidecar.script({ do: "answer", result: { dimension: made.paths.length } });
+  const ahead = {
+    loss: near(from, 2),
+    win: near(from, 3),
+    tie: near(from, 4),
+    skip: near(from, 5),
+  };
+  scriptQuery(made.sidecar, [near(from, 1)], budget > 1 ? ahead : undefined);
+  return startJob(made, budget);
+}
+
+test("a pair left with no choice for the idle time stops the search as Stop does, its best kept", async () => {
+  const made = await earApp();
+  const { channel, status } = oneAsked(made, 3);
+  await waitFor(channel, (v) => v.phase === EAR_PHASE.listening && v.ready === 4);
+  await made.clock.waitForTimer(EAR_IDLE_MS);
+  made.clock.advance(EAR_IDLE_MS);
+  await made.app.jobs.settled(status.id);
+  const done = made.app.jobs.get(status.id);
+  expect(done.state).toBe("done");
+  expect(done.result).toMatchObject({ answered: 0, stopped: true, best: made.candidate.id });
+  expect(channel.view()).toMatchObject({ phase: EAR_PHASE.finished, stopped: true, idle: true });
+  expect(forksLeft(made)).toEqual([]);
+});
+
+test("a cancel while the owner listens removes the run's copies before the job ends", async () => {
+  const made = await earApp();
+  const { channel, status } = oneAsked(made, 3);
+  await waitFor(channel, (v) => v.phase === EAR_PHASE.listening && v.ready === 4);
+  expect(forksLeft(made)).toHaveLength(4);
+  made.app.jobs.cancel(status.id);
+  await made.app.jobs.settled(status.id);
+  expect(made.app.jobs.get(status.id).state).toBe("cancelled");
+  expect(channel.view()).toMatchObject({
+    phase: EAR_PHASE.finished,
+    error: "The search was cancelled.",
+  });
+  expect(forksLeft(made)).toEqual([]);
+});
+
+test("a render ahead that fails is logged and dropped, and the run draws the next pair itself", async () => {
+  const made = await earApp();
+  const { app, sidecar, start, paths } = made;
+  const from = toVector(start, paths);
+  // The base, the first pair's new point, then the first copy's point, which fails.
+  made.faults.at = 2;
+  sidecar.script({ do: "answer", result: { dimension: paths.length } });
+  scriptQuery(sidecar, [near(from, 1)]);
+  sidecar.script(
+    { do: "answer", result: { generations: 1 } },
+    { do: "answer", result: { count: 1 }, points: [near(from, 2)] },
+  );
+  scriptTell(sidecar);
+  scriptQuery(sidecar, [near(from, 2)]);
+  scriptTell(sidecar);
+  const { channel, status } = startJob(made, 2);
+  const first = await waitFor(channel, (v) => v.phase === EAR_PHASE.listening);
+  await until(() => made.logged.length === 1);
+  expect(made.logged[0]).toMatch(/stopped rendering ahead of pair 0: the scripted render failed/);
+  expect(channel.view().ready).toBe(0);
+  // The challenger is on side a, and b, the best, won.
+  const second = await call(made, "POST", ANSWERS, {
+    query: 0,
+    ratingId: rate(made, first, "b").id,
+  });
+  expect(second).toMatchObject({ phase: EAR_PHASE.listening, query: 1 });
+  await call(made, "POST", ANSWERS, { query: 1, ratingId: rate(made, second, "tie").id });
+  await app.jobs.settled(status.id);
+  const done = app.jobs.get(status.id);
+  expect(done.error).toBeNull();
+  expect(await toldScores(sidecar, /** @type {any} */ (done.result).run)).toEqual([[0], [0.5]]);
+});
+
+test("a second post of one choice, racing the first, is a 409", async () => {
+  const made = await earApp();
+  const { channel, status } = oneAsked(made, 1);
+  scriptTell(made.sidecar);
+  const view = await waitFor(channel, (v) => v.phase === EAR_PHASE.listening);
+  const ratingId = rate(made, view, "a").id;
+  const first = call(made, "POST", ANSWERS, { query: 0, ratingId });
+  const second = call(made, "POST", ANSWERS, { query: 0, ratingId });
+  await expect(second).rejects.toMatchObject({ status: 409 });
+  await first;
+  await made.app.jobs.settled(status.id);
+  expect(made.app.jobs.get(status.id).result).toMatchObject({ answered: 1 });
+});
+
+test("the page's closing beacon stops the search, and a text body from another site is a 403", async () => {
+  const made = await earApp();
+  const { channel, status } = oneAsked(made, 1);
+  await waitFor(channel, (v) => v.phase === EAR_PHASE.listening);
+  /** @param {string} origin */
+  const beacon = (origin) => ({
+    headers: { "content-type": "text/plain;charset=UTF-8", origin, host: "127.0.0.1:4180" },
+    resume() {},
+  });
+  await expect(
+    call(made, "POST", STOP, {}, beacon("http://elsewhere.example")),
+  ).rejects.toMatchObject({ status: 403 });
+  expect(channel.view().stopped).toBe(false);
+  const stopped = await call(made, "POST", STOP, {}, beacon("http://127.0.0.1:4180"));
+  expect(stopped.stopped).toBe(true);
+  await made.app.jobs.settled(status.id);
+  expect(made.app.jobs.get(status.id).result).toMatchObject({ answered: 0, stopped: true });
 });

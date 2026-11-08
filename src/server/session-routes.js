@@ -5,6 +5,7 @@
 // status and cancel. Stopping a session cancels its jobs, and with them their omlx requests.
 /** @import { Candidate } from "./generation-store.js" */
 /** @import { JobStatus } from "./job-runner.js" */
+/** @import { IncomingMessage } from "node:http" */
 /** @import { Playable } from "./ear-search-job.js" */
 /** @import { Feedback, Rating } from "./rating-store.js" */
 /** @import { App, Route } from "./routing.js" */
@@ -35,7 +36,7 @@ import { NUDGE_OPERATOR, nudgeJob } from "./nudge-job.js";
 import { currentModel } from "./preference-summary.js";
 import { FEEDBACK_KIND, getRating, listSessionFeedback } from "./rating-store.js";
 import { fields, idParam, integer, MAX_CHARS, oneOf, rowId, text } from "./request-fields.js";
-import { duplicateJob, HttpError } from "./routing.js";
+import { duplicateJob, HttpError, wrongType } from "./routing.js";
 import { readSearchResults, searchEstimate, searchJob, searchRefusal } from "./search-job.js";
 import { readRanking } from "./session-ranking.js";
 import { getSession, stopSession } from "./session-store.js";
@@ -124,6 +125,8 @@ const EXPLORE = EXPLORE_OPERATOR;
 const SEARCH = OPERATOR.optimize;
 /** A search by ear is named for the operator its points store. */
 const EAR = OPERATOR.optimizeEar;
+/** The type a browser labels a beacon's string body with. */
+const BEACON_TYPE = "text/plain";
 const STEP_SIZES = /** @type {(keyof typeof STEP_SIZE)[]} */ (Object.keys(STEP_SIZE));
 /** The most candidates one hide names; the page sends one, or the two of a revised pair. */
 const MAX_HIDES = 64;
@@ -188,6 +191,32 @@ function requireEarChannel(app, session) {
     );
   }
   return channel;
+}
+
+/**
+ * Whether the request is the Quick A/B page's `navigator.sendBeacon` as it closes (decision
+ * 0055): a string body, which the browser labels `text/plain`; some browsers' `sendBeacon`
+ * refuses a Blob labeled JSON. Every other route takes only JSON, which a page on another site
+ * can't send here without a preflight (0025); a text body can be sent from anywhere, so a
+ * beacon must also carry an `Origin` naming this server's own host, which the browser sets and
+ * a page can't change.
+ * Throws a 403 for a text body from anywhere else.
+ * @param {IncomingMessage} request
+ */
+function isBeacon(request) {
+  if (wrongType(request, BEACON_TYPE)) return false;
+  const { origin, host } = request.headers;
+  /** @type {string | null} */
+  let from = null;
+  try {
+    from = origin === undefined ? null : new URL(origin).host;
+  } catch {
+    // An Origin that isn't a URL names no host, and is refused below.
+  }
+  if (from === null || from !== host) {
+    throw new HttpError(403, "a text body is taken only from this studio's own pages");
+  }
+  return true;
 }
 
 /**
@@ -521,7 +550,7 @@ export const SESSION_ROUTES = [
           `A search by ear takes at most ${MAX_EAR_DIMENSIONS} dimensions, and these paths make ${space.length}.`,
         );
       }
-      const channel = createEarChannel(budget);
+      const channel = createEarChannel(budget, app.clock);
       const run = earSearchJob(
         app,
         {
@@ -577,6 +606,7 @@ export const SESSION_ROUTES = [
           `A/B rating ${ratingId} is not of pair ${query + 1}'s two excerpts`,
         );
       }
+      // A second post of one choice, racing the first, is refused here with a 409.
       channel.answer(query, earScore(rating.outcome, side));
       // The next pair is rendered ahead, so the reply waits only for the tell and its ask.
       return channel.after(query);
@@ -585,10 +615,11 @@ export const SESSION_ROUTES = [
   {
     method: "POST",
     path: "/api/sessions/:sessionId/ear-search/stop",
-    handle: async ({ app, params, body }) => {
+    handle: async ({ app, params, request, body }) => {
       // Stopping is not a rating, so a stopped session takes it too.
       const session = requireSession(app, params);
-      fields(await body(), []);
+      if (isBeacon(request)) request.resume();
+      else fields(await body(), []);
       const channel = requireEarChannel(app, session);
       channel.stop();
       return channel.view();

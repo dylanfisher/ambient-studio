@@ -1,5 +1,6 @@
 import json
 import math
+import shutil
 import subprocess
 import sys
 from collections.abc import Callable
@@ -402,3 +403,23 @@ def test_preferential_bo_draws_within_a_medium_nudge_s_distance_of_the_best(
         tell(run, query, [outcome])
         if outcome == 1.0:
             best = point
+
+
+@pytest.mark.parametrize("outcome", [1.0, 0.5, 0.0, None])
+def test_a_copy_of_a_preferential_bo_run_told_the_same_answer_asks_the_same_point(
+    tmp_path: Path, outcome: float | None
+) -> None:
+    """The server renders a copy's next point while the owner listens (decision 0055); it is
+    in the cache only if the run, told that answer, asks the same point."""
+    run = bo_run(tmp_path, "run-1", 8, BO_START)
+    for query, told in enumerate([0.0, 1.0]):
+        ask(run, query, 1)
+        tell(run, query, [told])
+    ask(run, 2, 1)
+    fork = run / "branch-2"
+    fork.mkdir()
+    for name in ("spec.json", STATE, "ask-2.json"):
+        shutil.copyfile(run / name, fork / name)
+    tell(fork, 2, [outcome])  # pyright: ignore[reportArgumentType]
+    tell(run, 2, [outcome])  # pyright: ignore[reportArgumentType]
+    assert ask(fork, 3, 1) == ask(run, 3, 1)

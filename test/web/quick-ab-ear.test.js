@@ -166,3 +166,24 @@ test("Stop ends the search, and the page shows it done", async () => {
   await session.stop();
   expect(session.view()).toMatchObject({ phase: "done", shown: null, remaining: 0 });
 });
+
+test("closing the page sends a beacon that stops a running search, and none once it ended", async () => {
+  server({ first: [asking(0, 1, 2)] });
+  const session = await started();
+  /** @type {[string, string][]} */
+  const sent = [];
+  session.leave((url, body) => sent.push([url, body]) > 0);
+  expect(sent).toEqual([[`${EAR}/stop`, "{}"]]);
+  await session.stop();
+  session.leave((url, body) => sent.push([url, body]) > 0);
+  expect(sent).toHaveLength(1);
+  expect(() => {
+    const again = createEarSession({
+      sessionId: 5,
+      now: () => 0,
+      pause: async () => {},
+      onChange: () => {},
+    });
+    again.leave(() => false);
+  }).not.toThrow();
+});
