@@ -12,6 +12,9 @@ export const JOB_STEP = Object.freeze({
   /** @param {number} n */
   repairing: (n) => `Asking the model to fix candidate ${n}`,
   busy: "Waiting for the model: it is busy with another request",
+  readingMaterial: "Reading the brief's sketches and map for the proposal",
+  proposing: "Asking the model to propose the track",
+  repairingProposal: "Asking the model to fix its proposal",
   /** @param {number} n @param {number} of */
   renderingCandidate: (n, of) => `Rendering the excerpt for candidate ${n} of ${of}`,
   /** @param {number} n @param {number} of */

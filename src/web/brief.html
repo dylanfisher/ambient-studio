@@ -183,6 +183,28 @@
               </label>
               <button id="trackButton" class="button outline" type="submit" title="Makes an empty track of this brief and opens it, to add sketches to its timeline. Nothing is rendered.">Make a track</button>
             </form>
+            <p class="small muted">
+              Or have the model propose one: give the length and the arc in words, such as
+              emerge, plateau, dissolve. Its proposal opens on the timeline as the track's first
+              version, to reorder, resize and retime before you render it.
+            </p>
+            <div class="row">
+              <label class="field"
+                >Minutes
+                <input id="proposeMinutes" type="number" min="3" max="20" step="1" value="10" title="How long the proposed track plays, from 3 to 20 minutes. The model's proposal must land within 5% of it." />
+              </label>
+              <label class="field"
+                >Arc
+                <input id="proposeArc" type="text" size="32" maxlength="200" title="How the track moves over its length, in your words, such as emerge, plateau, dissolve. One line." />
+              </label>
+              <label class="field"
+                >Region to follow
+                <select id="proposeRegion" title="Chooses an attached region whose measurements, stretched over the track, the model aims the sections at. None leaves the arc to your words."></select>
+              </label>
+              <button id="proposeButton" class="button outline" type="button" title="Asks the model to propose the track named above, after a confirm that says how long the request takes, then opens it on its timeline. Nothing is rendered.">Propose</button>
+            </div>
+            <p id="proposeShare" class="small muted"></p>
+            <div id="proposeBoxes"></div>
           </section>
 
           <section class="card stack" aria-labelledby="axes-heading">

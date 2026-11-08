@@ -1,0 +1,314 @@
+// Proposing a track through the real server against the fake omlx (decision 0067): one request
+// holding the brief, the arc and every sketch; a valid answer stored as the track's first
+// revision with its generation; one repair quoting the errors, the length finding among them;
+// an elite the model names kept as a sketch; nothing rendered; edits saved as new revisions; and
+// the share of valid proposals. Sketches and map candidates are written to the store, as
+// track-routes.test.js writes them.
+/** @import { Studio } from "../support/studio.js" */
+import { afterEach, expect, test } from "vitest";
+import { ROLE } from "../../src/domain/prompt-tokens.js";
+import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
+import {
+  addCandidate,
+  getGeneration,
+  listRequestGroup,
+  putGenome,
+} from "../../src/server/generation-store.js";
+import { addSketch, getSketch } from "../../src/server/rating-store.js";
+import { TABLE } from "../../src/server/store.js";
+import { listTrackRevisions } from "../../src/server/track-store.js";
+import { getVibe } from "../../src/server/vibe-store.js";
+import { mapGenome, seedMapCandidate } from "../support/map-fixtures.js";
+import { removeStudio, startStudio, VIBE } from "../support/studio.js";
+
+/** @type {Studio[]} */
+const studios = [];
+afterEach(async () => {
+  for (const studio of studios.splice(0)) await removeStudio(studio);
+});
+
+const ARC = "emerge, plateau, dissolve";
+
+/**
+ * A kept sketch of the drone genome, written straight to the store.
+ * @param {Studio} studio
+ * @param {any} vibe as the vibe route returns it
+ * @param {string} intent
+ */
+function seedSketch({ server }, vibe, intent) {
+  const candidate = addCandidate(server.store, {
+    vibeRevisionId: vibe.revision.id,
+    generationId: null,
+    sessionId: null,
+    genomeId: putGenome(server.store, vibe.id, droneGenome).id,
+    seed: 7,
+    source: "llm",
+    parentIds: [],
+    locks: [],
+    operator: null,
+    operatorParams: null,
+    intent,
+    rejectReason: null,
+    lint: null,
+    rejectedGenome: null,
+  });
+  return addSketch(server.store, {
+    candidateId: candidate.id,
+    notes: `notes of ${intent}`,
+    tags: ["cold"],
+  });
+}
+
+async function setup() {
+  const studio = await startStudio();
+  studios.push(studio);
+  const vibe = await studio.ok("POST", "/api/vibes", VIBE);
+  const sketches = [
+    seedSketch(studio, vibe, "a cold drone"),
+    seedSketch(studio, vibe, "a thin drone"),
+  ];
+  const ids = /** @type {[number, number]} */ (sketches.map(({ id }) => id));
+  return { ...studio, vibe, sketches, ids };
+}
+
+/**
+ * Two sections, the first `first` s and the second 300 s, with an 8 s crossfade.
+ * @param {number} a the first section's sketch
+ * @param {number} b the second's
+ * @param {number} first
+ * @param {string} [key] how the second section names its material
+ */
+const answer = (a, b, first, key = "sketchId") => ({
+  sections: [
+    { sketchId: a, offset: 0, seconds: first },
+    { [key]: b, offset: 0, seconds: 300 },
+  ],
+  transitions: [{ kind: "crossfade", seconds: 8 }],
+  lanes: [
+    {
+      macro: "brightness",
+      points: [
+        [0, 0],
+        [600, -0.2, "smooth"],
+      ],
+    },
+  ],
+});
+
+/** @param {unknown} value */
+const tokens = (value) => ({ tokens: [JSON.stringify(value)] });
+
+/**
+ * Proposes a 600 s track with the fake omlx answering `answers` in turn, and returns the finished
+ * job.
+ * @param {Awaited<ReturnType<typeof setup>>} studio
+ * @param {unknown[]} answers
+ */
+async function propose({ ok, omlx, drive, server, vibe }, answers) {
+  omlx.script(...answers.map(tokens));
+  const job = await ok("POST", `/api/vibes/${vibe.id}/proposals`, {
+    name: "first light",
+    length: 600,
+    arc: ARC,
+  });
+  await drive(server.jobs.settled(job.id));
+  return ok("GET", `/api/jobs/${job.id}`);
+}
+
+/**
+ * The messages of the fake omlx's request `i`, from 0.
+ * @param {Studio} studio
+ * @param {number} i
+ * @returns {any[]}
+ */
+function sent({ omlx }, i) {
+  const request = omlx.requests[i];
+  if (!request) throw new Error(`the fake omlx got no request ${i}`);
+  return request.body.messages;
+}
+
+/** @param {Studio} studio */
+const renderCount = ({ server }) =>
+  Number(server.store.db.prepare(`SELECT COUNT(*) AS n FROM ${TABLE.renders}`).get()?.n);
+
+test("one request holds the brief, the arc and every sketch, and a valid answer becomes the first revision", async () => {
+  const studio = await setup();
+  const [a, b] = studio.ids;
+  const finished = await propose(studio, [answer(a, b, 308)]);
+  expect(finished.state).toBe("done");
+  expect(studio.omlx.requests).toHaveLength(1);
+  const [system, user] = sent(studio, 0);
+  expect(system.role).toBe(ROLE.system);
+  expect(user.content).toContain(`Brief: ${VIBE.name}\n${VIBE.brief}`);
+  expect(user.content).toContain(JSON.stringify(ARC));
+  for (const sketch of studio.sketches) {
+    expect(user.content).toMatch(new RegExp(`^sketch ${sketch.id}: 60 s; intent "`, "m"));
+    expect(user.content).toContain(`notes "${sketch.notes}"`);
+  }
+
+  const { trackId, revisionId, generationId, repaired } = finished.result;
+  expect(repaired).toBe(false);
+  const generation = getGeneration(studio.server.store, generationId);
+  expect(generation?.requestGroup).toMatch(new RegExp(`^vibe-${studio.vibe.id}-arrange-\\d+$`));
+  expect(generation?.repairRound).toBe(0);
+  const revisions = listTrackRevisions(studio.server.store, trackId);
+  expect(revisions.map(({ id }) => id)).toEqual([revisionId]);
+  expect(revisions[0]?.arrangement).toEqual({
+    ...answer(a, b, 308),
+    length: 600,
+    arc: ARC,
+    proposal: generationId,
+  });
+  expect(revisions[0]?.note).toBe("Proposed by the model");
+  // Proposing renders nothing and starts no other job.
+  expect(renderCount(studio)).toBe(0);
+  expect(studio.server.jobs.list().map(({ kind }) => kind)).toEqual(["propose"]);
+
+  const opened = await studio.ok("GET", `/api/tracks/${trackId}`);
+  expect(opened.revisions[0]).toMatchObject({
+    length: 600,
+    arrangement: { proposal: generationId },
+  });
+});
+
+test("an invalid answer gets one repair quoting its errors, the length among them", async () => {
+  const studio = await setup();
+  const [a, b] = studio.ids;
+  const wrong = {
+    ...answer(a, b, 200),
+    transitions: [{ kind: "morph", seconds: 3, curve: "smooth" }],
+  };
+  const finished = await propose(studio, [wrong, answer(a, b, 300)]);
+  expect(finished.state).toBe("done");
+  expect(studio.omlx.requests).toHaveLength(2);
+  const repair = sent(studio, 1);
+  expect(repair.slice(0, 2)).toEqual(sent(studio, 0));
+  expect(repair[2]).toEqual({ role: ROLE.assistant, content: JSON.stringify(wrong) });
+  expect(repair[3].content).toContain(
+    "- $.transitions[0].seconds (arrangement): a morph must be at least 8 s",
+  );
+
+  // A valid shape off the length is named too.
+  const short = await propose(studio, [answer(a, b, 200), answer(a, b, 200)]);
+  expect(short.state).toBe("failed");
+  const lengthRepair = sent(studio, 3);
+  expect(lengthRepair[3].content).toContain(
+    "- $.sections (length): the track plays 492 s (every section's seconds less every transition's); the owner asked for 600 s, so it must play from 570 to 630 s",
+  );
+  expect(short.error).toMatch(/still invalid after one repair/);
+  expect(short.error).toContain("(length)");
+
+  const { generationId } = finished.result;
+  const kept = getGeneration(studio.server.store, generationId);
+  expect(kept).toMatchObject({ repairRound: 1 });
+  const group = listRequestGroup(studio.server.store, String(kept?.requestGroup));
+  expect(group.map(({ repairsId }) => repairsId)).toEqual([null, group[0]?.id]);
+  expect(listTrackRevisions(studio.server.store, finished.result.trackId)[0]?.note).toBe(
+    "Proposed by the model, after one repair",
+  );
+  // The failed proposal made no track.
+  const { tracks } = await studio.ok("GET", `/api/vibes/${studio.vibe.id}/tracks`);
+  expect(tracks.map((/** @type {any} */ track) => track.id)).toEqual([finished.result.trackId]);
+
+  const share = await studio.ok("GET", "/api/proposals");
+  expect(share).toEqual({ asked: 2, valid: 1, firstTry: 0, invalid: 1, failed: 0 });
+});
+
+test("an answer with nothing to repair gets no repair, and the share counts it invalid", async () => {
+  const studio = await setup();
+  studio.omlx.script({ tokens: ["I would start with the cold drone."] });
+  const job = await studio.ok("POST", `/api/vibes/${studio.vibe.id}/proposals`, {
+    name: "t",
+    length: 600,
+    arc: ARC,
+  });
+  await studio.drive(studio.server.jobs.settled(job.id));
+  const finished = await studio.ok("GET", `/api/jobs/${job.id}`);
+  expect(finished.state).toBe("failed");
+  expect(finished.error).toMatch(/invalid, with nothing to repair/);
+  expect(studio.omlx.requests).toHaveLength(1);
+  expect(await studio.ok("GET", "/api/proposals")).toMatchObject({ asked: 1, invalid: 1 });
+});
+
+test("an elite the model names is kept as a sketch, and the section names it", async () => {
+  const studio = await setup();
+  const { server, vibe } = studio;
+  const session = await studio.ok("POST", `/api/vibes/${vibe.id}/sessions`, {});
+  const elite = await seedMapCandidate(server.store, server.paths, {
+    vibeId: vibe.id,
+    vibeRevisionId: vibe.revision.id,
+    sessionId: session.id,
+    target: VIBE.constraints.loudness,
+    genome: mapGenome(0.4),
+    heard: { centroidMean: 600 },
+    intent: "a moving drone",
+  });
+  await studio.ok("POST", `/api/vibes/${vibe.id}/axes`, {
+    axes: [
+      { source: "feature", name: "centroidMean", low: 200, high: 1000 },
+      { source: "macro", name: "motion", low: 0, high: 1 },
+    ],
+  });
+  const before = renderCount(studio);
+  const [a] = studio.ids;
+  const finished = await propose(studio, [answer(a, elite.id, 308, "eliteId")]);
+  expect(finished.state).toBe("done");
+  const user = sent(studio, 0)[1].content;
+  expect(user).toMatch(
+    new RegExp(`^elite ${elite.id}: 60 s; intent "a moving drone"; measured `, "m"),
+  );
+  expect(finished.result.keptElites).toEqual([elite.id]);
+  const [revision] = listTrackRevisions(server.store, finished.result.trackId);
+  const sketchId = revision?.arrangement.sections[1]?.sketchId;
+  expect(getSketch(server.store, /** @type {number} */ (sketchId))).toMatchObject({
+    candidateId: elite.id,
+    notes: "",
+    tags: [],
+  });
+  expect(renderCount(studio)).toBe(before);
+  expect(getVibe(server.store, vibe.id)).toBeDefined();
+});
+
+test("editing a proposal saves new revisions and leaves the proposal's as it was", async () => {
+  const studio = await setup();
+  const [a, b] = studio.ids;
+  const finished = await propose(studio, [answer(a, b, 308)]);
+  const path = `/api/tracks/${finished.result.trackId}`;
+  const [proposed] = (await studio.ok("GET", path)).revisions;
+  const reordered = {
+    ...proposed.arrangement,
+    sections: [...proposed.arrangement.sections].reverse(),
+  };
+  await studio.ok("POST", `${path}/revisions`, { arrangement: reordered, note: "reordered" });
+  const resized = {
+    ...reordered,
+    sections: reordered.sections.map((/** @type {any} */ s, /** @type {number} */ i) =>
+      i === 0 ? { ...s, seconds: 280, offset: 10 } : s,
+    ),
+  };
+  await studio.ok("POST", `${path}/revisions`, { arrangement: resized, note: "resized" });
+  const { revisions } = await studio.ok("GET", path);
+  expect(revisions.map((/** @type {any} */ r) => r.note)).toEqual([
+    "Proposed by the model",
+    "reordered",
+    "resized",
+  ]);
+  expect(revisions[0]).toEqual(proposed);
+  expect(renderCount(studio)).toBe(0);
+});
+
+test("a proposal's ask is checked before anything is sent", async () => {
+  const studio = await setup();
+  const path = `/api/vibes/${studio.vibe.id}/proposals`;
+  for (const [body, message] of /** @type {[unknown, RegExp][]} */ ([
+    [{ name: "t", length: 60, arc: ARC }, /\$\.length: must be ≥ 180|\$\.length/],
+    [{ name: "t", length: 600, arc: "two\nlines" }, /\$\.arc: must be one line/],
+    [{ name: "t", length: 600 }, /needs a length in seconds and an arc/],
+    [{ name: "t", length: 600, arc: ARC, regionId: 9 }, /region 9 isn't attached/],
+  ])) {
+    const reply = await studio.server.api("POST", path, body);
+    expect(reply.status, JSON.stringify(body)).toBeGreaterThanOrEqual(400);
+    expect(reply.json().error).toMatch(message);
+  }
+  expect(studio.omlx.requests).toHaveLength(0);
+});

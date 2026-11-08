@@ -111,8 +111,14 @@ export const JOBS_PATH = "/api/jobs";
 /** What a search's confirm reads its cost from (decision 0054). */
 export const SEARCH_ESTIMATE_PATH = "/api/search-estimate";
 
-/** What a breed's confirm reads the model's recent request time from (decision 0058). */
+/**
+ * What a breed's confirm reads the model's recent request time from (decision 0058); a
+ * proposal's confirm reads it too (0067).
+ */
 export const BREED_ESTIMATE_PATH = "/api/breed-estimate";
+
+/** How the proposals asked for so far came out (decision 0067). */
+export const PROPOSALS_PATH = "/api/proposals";
 
 /**
  * A session's route; its candidates, jobs and ratings are under it.

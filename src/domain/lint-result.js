@@ -13,6 +13,9 @@
 /** The rule of a finding for a genome validator error (decision 0005). */
 export const SCHEMA_RULE = "schema";
 
+/** The rule of a finding for the shape of a model's answer around what it holds (0024, 0067). */
+export const ANSWER_RULE = "answer";
+
 /**
  * @param {Finding[]} findings
  * @returns {LintResult}

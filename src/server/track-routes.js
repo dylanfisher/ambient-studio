@@ -47,7 +47,7 @@ const SECTION_AUDIO_JOB = JOB_KIND.sectionAudio;
  * @param {number} vibeId
  * @returns {ArrangementContext}
  */
-function arrangementContext(store, vibeId) {
+export function arrangementContext(store, vibeId) {
   return {
     vibeId,
     sketch: (id) => {

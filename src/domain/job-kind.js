@@ -1,5 +1,5 @@
 // The kinds of the jobs only the owner starts from the Model test page (decisions 0042, 0044,
-// 0046), the References and brief pages (0051) and the timeline (0061). The server adds each
+// 0046), the References and brief pages (0051, 0067) and the timeline (0061). The server adds each
 // job under its kind and the page finds a running one by it.
 export const JOB_KIND = Object.freeze({
   /** The Analyze job: one reference region's features and embedding (0051). */
@@ -18,4 +18,6 @@ export const JOB_KIND = Object.freeze({
   seamPreview: "seam-preview",
   /** A rendered track's WAV, FLAC and manifest, written to a new folder (0062). */
   trackExport: "track-export",
+  /** The model's proposed arrangement for a new track, stored as its first revision (0067). */
+  propose: "propose",
 });

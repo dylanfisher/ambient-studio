@@ -9,7 +9,8 @@
   amended by step 4h (examples by CLAP similarity, below); amended by
   [0052](0052-references-in-the-prompt.md) (the references section, its trimming, and
   `attachmentIds`); amended by [0058](0058-breeding.md) (the parents sections and their
-  trimming)
+  trimming); amended by [0067](0067-proposed-track.md) (`sendRequest` and `extractObject`
+  shared with the proposal, `ANSWER_RULE` in the domain, `RETRIEVAL_METHOD.none`)
 
 ## Context
 
@@ -255,3 +256,13 @@ which 2l settles.
   sketchIds, parentsTrimmed}`, in the request group `vibe-<vibeId>-breed-<seed>`.
   `mutationSeed` draws slot 5 of the stream, and `verdictOf`, a proposal as the verdict `keep`
   stores, moved here from the nudge job.
+- 2026-11-08: from step 6h ([0067](0067-proposed-track.md)). `ask` is split: `sendRequest`
+  sends one request and stores its generation, and `ask` adds the genome verdict. An operator
+  that makes no candidate, as the track proposal, calls `sendRequest` with its own response
+  format over a `RequestBatch` (a `Batch` without the vibe id, constraints, playable
+  recordings, locks and `onCandidate`). `extractObject` is `extractGenome`'s JSON scan alone,
+  so an arrangement answer is found by the same rules. `ANSWER_RULE` moved to `lint-result.js`
+  beside `SCHEMA_RULE`, as the proposal's shape findings take it too. `samplingStream` is
+  exported. `RETRIEVAL_METHOD` gains `none`, logged by a prompt with no rated examples. The
+  proposal's request group, `vibe-<vibeId>-arrange-<seed>`, names operator `arrange` in place
+  of `stream`.

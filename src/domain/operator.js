@@ -1,6 +1,6 @@
 // The operators a candidate stores, naming how it was made (decisions 0036–0038, 0054–0056,
 // 0058); a first try from a plain request stores null. The server writes them and the pages
-// read them.
+// read them. `arrange` (0067) names a request group instead, as it makes no candidate.
 export const OPERATOR = Object.freeze({
   /** The model's one revision of a first try whose excerpt missed (0036). */
   revise: "revise",
@@ -24,4 +24,7 @@ export const OPERATOR = Object.freeze({
   elite: "elite",
   /** The fill's control: as many medium nudges from the same starts, never shown (0057). */
   eliteControl: "elite-control",
+  /** A track's arrangement proposed by the model (0067); its generations name it in their
+   * request group, since they make a track revision, not a candidate. */
+  arrange: "arrange",
 });

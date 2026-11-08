@@ -26,7 +26,7 @@ import { buildPrompt } from "../domain/build-prompt.js";
 import { buildRepairPrompt } from "../domain/build-repair-prompt.js";
 import { ANSWER_KEY, extractGenome } from "../domain/extract-genome.js";
 import { lintGenome } from "../domain/lint-genome.js";
-import { lintResult, SCHEMA_RULE } from "../domain/lint-result.js";
+import { ANSWER_RULE, lintResult, SCHEMA_RULE } from "../domain/lint-result.js";
 import { lockRefusal } from "../domain/nudge.js";
 import { OPERATOR } from "../domain/operator.js";
 import { estimateTokens, promptText } from "../domain/prompt-tokens.js";
@@ -69,8 +69,6 @@ export const EXPLORE_OPERATOR = OPERATOR.explore;
 /** The operator and source of a breed's crossover children and their mutations (0058). */
 export const BREED_OPERATOR = OPERATOR.breed;
 export const BREED_SOURCE = "breeding";
-/** The rule a finding takes for an answer-shape error. */
-const ANSWER_RULE = "answer";
 const REPAIR_OVER_BUDGET_RULE = "repairOverBudget";
 const REPAIR_NOT_SENT_RULE = "repairNotSent";
 const UNLISTED_RECORDING = "no recording in the folder has this sha256; use one from the list";
@@ -442,8 +440,7 @@ export function currentRevision(store, vibeId) {
 /**
  * What a request sends and stores beside its prompt: the batch's fields every generation row
  * names. An operator that writes no candidate, as 6h's arrangement (0067), passes these alone.
- * @typedef {Pick<Batch, "store" | "queue" | "config" | "vibeRevisionId" | "sessionId"
- *   | "requestGroup" | "exampleIds" | "attachmentIds" | "retrievalMethod" | "onStep">} RequestBatch
+ * @typedef {Omit<Batch, "vibeId" | "constraints" | "playable" | "locks" | "onCandidate">} RequestBatch
  */
 
 /**
