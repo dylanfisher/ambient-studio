@@ -86,7 +86,9 @@ than the bed, 46, 66 and 98 node-seconds at 1.24e-4 s each, fitting 0.11 ms a pa
 **Measured render speed,** same conditions: a default chant alone renders 120 s at 24.9x (a
 default drone 28.4x, a noise bed 27.4x), at 33 Hz 22.7x, at 135 Hz 26.7x. A 600 s chant with
 its vowel and bend as trajectories renders at 25.3x (535 MiB resident), and a 10 s excerpt at
-590 s takes 1.0 s, its phase sum over the 5,900 grid samples before it included.
+590 s takes 1.0 s, its phase sum over the 5,900 grid samples before it included. These speeds
+depend on the machine's load: a review run measured the default 120 s chant at 49.8x, also under
+load, so compare speeds only within one run.
 
 ## Alternatives considered
 
@@ -111,8 +113,11 @@ its vowel and bend as trajectories renders at 25.3x (535 MiB resident), and a 10
 
 ## Consequences
 
-- The schema text grows by about 345 characters to 3,341, over the 3,000 its test holds; CV.4
-  owns that budget.
+- Registering the voice leaves exactly two known test failures, both handed to CV.4, which owns
+  the prompt's budget: the schema text grows by about 345 characters to 3,341, over the 3,000
+  `schema-text.test.js` holds; and `build-prompt.test.js`'s seed-sized vibe with every voice
+  locked whole reaches 4,190 tokens, over its 4,096. `buildPrompt` trims the prompt to its budget
+  or throws, so omlx never receives an over-long prompt.
 - The default chant with the longest (20 s) reverb costs 583, over the budget; it fits with a
   19 s reverb, and the 33 Hz chant with 17.9 s. `randomGenome` redraws over-budget genomes.
 - Twelve singers at 45 partials, priced as one singer twelve times, would cost about 770; CV.2

@@ -29,6 +29,7 @@ export const FEATURE_EXTRACTOR = Object.freeze([
   "src/domain/window-powers.js",
   "src/engine/bell-notes.js",
   "src/engine/bell.js",
+  "src/engine/chant.js",
   "src/engine/colored-noise.js",
   "src/engine/control-grid.js",
   "src/engine/cost-unit.js",
