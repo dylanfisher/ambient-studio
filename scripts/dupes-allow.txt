@@ -118,3 +118,4 @@ literal "spec.json" | files sidecar/src/ambient_sidecar/optimizer.py src/server/
 literal "points" | files sidecar/src/ambient_sidecar/optimizer.py src/engine/trajectory.js | a trajectory's key in trajectory.js; in optimizer.py, a key of the ask file it writes and the scripted optimizer's settings (0053)
 literal "generations" | files sidecar/src/ambient_sidecar/optimizer.py src/server/store.js | the generations table's name in store.js; in optimizer.py, a state key and optimizer_tell's result field (0053)
 literal "dimension" | files sidecar/src/ambient_sidecar/clap.py sidecar/src/ambient_sidecar/optimizer.py | a result field sidecar-protocol.json defines: embedder's in clap.py, optimizer_start's in optimizer.py
+literal "best" | files sidecar/src/ambient_sidecar/optimizer.py src/web/quick-ab-order.js | quick A/B's best-question order mode; in optimizer.py, a state key for the best point told so far
