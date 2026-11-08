@@ -92,6 +92,27 @@ describe("createLimiter", () => {
     for (const channels of await goldenExcerpts(name)) expectSameBits(channels);
   });
 
+  test("one-frame chunks match with bursts in the first and last 5 ms of a short signal", () => {
+    // The first window starts the gain reduced, and the last frames get their look-ahead
+    // only from finish; both paths run here.
+    for (const length of [100, 400, 2000]) {
+      const tone = new Float32Array(length);
+      for (let n = 0; n < length; n++) tone[n] = 0.05 * Math.sin((2 * Math.PI * 440 * n) / 48000);
+      for (let k = 0; k < 24; k++) {
+        const burst = Math.sin((2 * Math.PI * 3000 * k) / 48000);
+        tone[k] = burst;
+        tone[length - 24 + k] = (tone[length - 24 + k] ?? 0) + burst;
+      }
+      const channels = [tone, tone.map((x) => -0.5 * x)];
+      const expected = whole(channels, 1);
+      const actual = streamed(inChunks(channels, 1), 2, 1);
+      actual.forEach((channel, c) => {
+        expect(firstDifference(channel, expected[c] ?? new Float32Array())).toBe(-1);
+      });
+      expect(truePeak(actual, SAMPLE_RATE)).toBeLessThanOrEqual(-1.4 + 1e-6);
+    }
+  });
+
   test("a peak just after a chunk edge is reduced from before the edge", () => {
     const tone = new Float32Array(SAMPLE_RATE / 2);
     for (let n = 0; n < tone.length; n++) tone[n] = 0.1 * Math.sin((2 * Math.PI * 220 * n) / 48000);

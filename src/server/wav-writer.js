@@ -69,21 +69,34 @@ export async function createWavWriter(path, { channelCount, sampleRate, frames, 
   let written = 0;
   let isOpen = true;
 
+  async function remove() {
+    if (!isOpen) return;
+    isOpen = false;
+    await file.close();
+    await rm(path, { force: true });
+  }
+
   /** @param {Error} error */
   async function fail(error) {
-    if (isOpen) {
-      isOpen = false;
-      await file.close();
-      await rm(path, { force: true });
-    }
+    await remove();
     throw error;
   }
 
-  try {
-    await file.write(header, 0, header.length, 0);
-  } catch (error) {
-    await fail(/** @type {Error} */ (error));
+  /**
+   * A positioned write, so frames land in order even if appends overlap. A failed write, such
+   * as on a full disk, removes the file like any other refusal.
+   * @param {Uint8Array} bytes
+   * @param {number} at
+   */
+  async function writeAt(bytes, at) {
+    try {
+      await file.write(bytes, 0, bytes.length, at);
+    } catch (error) {
+      await fail(/** @type {Error} */ (error));
+    }
   }
+
+  await writeAt(header, 0);
 
   return {
     async append(bytes) {
@@ -101,10 +114,9 @@ export async function createWavWriter(path, { channelCount, sampleRate, frames, 
           ),
         );
       }
-      // Positioned writes, so the frames land in order even if appends overlap.
       const at = header.length + written;
       written = after;
-      await file.write(bytes, 0, bytes.length, at);
+      await writeAt(bytes, at);
     },
     async close() {
       if (!isOpen) throw new Error(`${path} is already closed`);
@@ -115,16 +127,11 @@ export async function createWavWriter(path, { channelCount, sampleRate, frames, 
           ),
         );
       }
-      if (pad) await file.write(new Uint8Array(1), 0, 1, header.length + dataBytes);
+      if (pad) await writeAt(new Uint8Array(1), header.length + dataBytes);
       isOpen = false;
       await file.close();
     },
-    async abort() {
-      if (!isOpen) return;
-      isOpen = false;
-      await file.close();
-      await rm(path, { force: true });
-    },
+    abort: remove,
   };
 }
 

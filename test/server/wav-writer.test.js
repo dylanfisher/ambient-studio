@@ -2,12 +2,33 @@ import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { encodeFloat32 } from "../../src/server/encode-float32.js";
 import { encodePcm24 } from "../../src/server/encode-pcm24.js";
 import { createWavWriter, FLOAT32, PCM24 } from "../../src/server/wav-writer.js";
 import { writeWav } from "../../src/server/write-wav.js";
 import { firstDifference, inChunks } from "../support/streaming-inputs.js";
+
+/** Set by a test to make a file handle's writes fail, as a full disk does. */
+const disk = vi.hoisted(() => ({ full: false }));
+vi.mock("node:fs/promises", async (original) => {
+  const real = /** @type {typeof import("node:fs/promises")} */ (await original());
+  return {
+    ...real,
+    /** @type {typeof real.open} */
+    open: async (path, flags, mode) => {
+      const handle = await real.open(path, flags, mode);
+      const write = handle.write.bind(handle);
+      // @ts-expect-error the stand-in takes the overload the writer calls
+      handle.write = (...args) => {
+        if (disk.full) return Promise.reject(new Error("ENOSPC: no space left on device"));
+        // @ts-expect-error passed through as given
+        return write(...args);
+      };
+      return handle;
+    },
+  };
+});
 
 /** @type {string} */
 let dir;
@@ -96,6 +117,39 @@ describe("createWavWriter", () => {
       sampleFormat: PCM24,
     });
     await expect(writer.append(new Uint8Array(4))).rejects.toThrow(/frames/);
+  });
+
+  test("a failed write closes and removes the file, and later appends throw", async () => {
+    const path = join(dir, "full.wav");
+    const writer = await createWavWriter(path, {
+      channelCount: 2,
+      sampleRate: 48000,
+      frames: 100,
+      sampleFormat: PCM24,
+    });
+    disk.full = true;
+    try {
+      await expect(writer.append(encodePcm24(noise(50)))).rejects.toThrow(/ENOSPC/);
+    } finally {
+      disk.full = false;
+    }
+    expect(existsSync(path)).toBe(false);
+    await expect(writer.append(encodePcm24(noise(50)))).rejects.toThrow(/already closed/);
+  });
+
+  test("abort closes and removes the file, and later appends throw", async () => {
+    const path = join(dir, "aborted.wav");
+    const writer = await createWavWriter(path, {
+      channelCount: 2,
+      sampleRate: 48000,
+      frames: 100,
+      sampleFormat: PCM24,
+    });
+    await writer.append(encodePcm24(noise(50)));
+    await writer.abort();
+    expect(existsSync(path)).toBe(false);
+    await expect(writer.append(encodePcm24(noise(50)))).rejects.toThrow(/already closed/);
+    await expect(writer.close()).rejects.toThrow(/already closed/);
   });
 
   test("refuses to overwrite an existing file", async () => {

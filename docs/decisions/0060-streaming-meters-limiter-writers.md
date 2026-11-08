@@ -47,8 +47,9 @@ streaming one, so there is one copy of each piece of DSP. The engine version doe
 - **WAV** (`src/server`). `createWavWriter(path, {channelCount, sampleRate, frames,
   sampleFormat})` opens the file exclusively, writes a header for `frames`, and takes interleaved
   bytes in chunks with `append`. A chunk past the stated total, or a short total at `close`,
-  closes and removes the file and throws, so no file's header disagrees with its data; `abort`
-  does the same for a caller's own failure. `writeWav` is one `append`, with the same bytes as
+  closes and removes the file and throws, so no file's header disagrees with its data. A failed
+  write, such as on a full disk, does the same, and `abort` does it for a caller's own failure;
+  after any of these, `append` and `close` throw. `writeWav` is one `append`, with the same bytes as
   before. `sampleFormat` is `PCM24` (0012's 44-byte header) or `FLOAT32`: format tag 3, an
   18-byte fmt chunk and a fact chunk with the frame count, as the WAV format asks of a non-PCM
   tag, 58 bytes of header. `encodeFloat32` interleaves little-endian floats as they are, past
@@ -84,4 +85,15 @@ streaming one, so there is one copy of each piece of DSP. The engine version doe
 - `loudness-meter.js` and `true-peak-meter.js` join `FEATURE_EXTRACTOR`, and the meter files
   changed, so the `producer` key (0023) changes: cached excerpts render again the first time
   they're needed, with the same features, and one cached before the change renders again before
-  it can be rated. Rated audio already captured is unaffected.
+  it can be rated. A reference region analyzed under the old producer must be analyzed again
+  before it can be attached to a brief, since the attach route looks up the analysis by the
+  current producer. Rated audio already captured is unaffected.
+- **A fixture of the old bits.** Since the whole-array functions now call the streaming ones,
+  comparing the two can't catch a change to both, so `test/fixtures/whole-array/outputs.json`
+  holds what the code before this step gave: integrated loudness and true peak exactly, the
+  limiter's output hash, and normalize's loudness, true peak, gain and output hash, on every
+  Tech 3341 signal the tests build and on each golden genome's raw windows.
+  `test/support/whole-array-outputs.js` computes them. To make the fixture, `git archive
+  91c3683 src/domain` (main before 6a) was extracted outside the repo, and a one-off test ran that
+  helper with those old modules and renders from the golden harness. The golden windows were
+  recorded on mbp2021 and are checked only on its CPU, as the golden hashes are.
