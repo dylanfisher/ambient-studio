@@ -76,6 +76,10 @@ describe("jobProgress", () => {
     expect(jobProgress(job({ kind: "optimize-ear" }), 3_000).title).toBe("Searching by ear");
   });
 
+  test("names a steer, which the session page follows", () => {
+    expect(jobProgress(job({ kind: "steer" }), 3_000).title).toBe("Steering by the sliders");
+  });
+
   test("names a search, which the session page follows", () => {
     expect(jobProgress(job({ kind: "optimize" }), 3_000).title).toBe(
       "Searching by your taste model",

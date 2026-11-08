@@ -1,7 +1,8 @@
 # 0052. References in the prompt: the attachment table, the section, the vocabulary, trimming
 
 - **Date:** 2026-11-07
-- **Status:** accepted; provisional: owner to confirm. Amends
+- **Status:** accepted; provisional: owner to confirm. Amended by
+  [0056](0056-directions-sliders-reference-target.md) (the `direction` kind). Amends
   [0024](0024-prompt-parse-repair-generation.md) (a section after the ranges, its place in the
   trimming order, `attachmentIds` on each generation) and
   [0034](0034-feature-ranges-as-soft-targets.md) (what goes beside the ranges lives outside
@@ -139,3 +140,16 @@ needs it. The texts are `src/web/attached-regions.js`, with no DOM.
   sooner.
 - The words reflect CLAP's text-to-audio space, not a listener's; whether they read right is an
   owner check.
+
+## Amendments
+
+- 2026-11-07: from step 5g ([0056](0056-directions-sliders-reference-target.md)).
+  `ATTACHMENT_KIND` gains `direction`. A direction names no region, and its `details` are
+  `{near, far}`: each end one line of text of at most 100 characters, the near end null for the
+  brief's own description as text, the two ends different. `addAttachment`'s per-kind check takes
+  the region too, and refuses any other shape. A brief holds at most 4 (`MAX_DIRECTIONS`).
+  `POST /api/vibes/:id/attachments` takes `{kind: "direction", near?, far}`, and
+  `GET /api/vibes/:id/attachments` lists `directions` beside `references`; the detach route
+  removes either. The prompt doesn't read directions, so `generations.attachmentIds` still lists
+  only references; each steer point records the directions and regions it read in
+  `operatorParams.steer`.

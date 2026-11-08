@@ -4,7 +4,8 @@
 // under the one it was made from, carries its A/B marks, and can be hidden into the hidden
 // panel, and the page keeps its scroll across a trip to Quick A/B or the A/B view (0049). Of a
 // revised pair, one row shows and links the other (0036). Each row also reads its features
-// against its brief's ranges, locks its values (0035), and explores or nudges from it (0039).
+// against its brief's ranges, locks its values (0035), explores or nudges from it (0039), and
+// shows where it sits on the brief's directions, with sliders to steer from it (0056).
 // In a session ranked by the brief's taste model, the rows follow the ranking with each score,
 // and Best question opens the pair the model is least sure of (0046).
 // Played fraction and time taken are measured here as decision 0027 defines them. A "card" in
@@ -16,6 +17,7 @@
 /** @import { JobStatus } from "./job-progress.js" */
 /** @import { PlayedTracker } from "./played-tracker.js" */
 /** @import { StartJob, SteerControls } from "./steer-controls.js" */
+/** @import { SteeringView, SteerSliders } from "./steer-sliders.js" */
 import { featuresText } from "../domain/features-text.js";
 import { macroTitles } from "../domain/macro-words.js";
 import { OPERATOR } from "../domain/operator.js";
@@ -31,6 +33,7 @@ import { candidateRows, foldedOut, rowPlacement } from "./candidate-rows.js";
 import { createSelection } from "./candidate-selection.js";
 import { createCardHold } from "./card-hold.js";
 import { cloneTemplate } from "./clone-template.js";
+import { positionsLine } from "./direction-text.js";
 import { elementsById } from "./element-by-id.js";
 import { mountPlayer } from "./excerpt-player.js";
 import { followJob } from "./follow-job.js";
@@ -49,6 +52,7 @@ import { rankText } from "./rank-text.js";
 import { keepOnClick, scrollMemory } from "./scroll-memory.js";
 import { statusLine } from "./status-line.js";
 import { steerControls } from "./steer-controls.js";
+import { steerSliders } from "./steer-sliders.js";
 
 const [UP, DOWN] = THUMBS;
 const [MORE, LESS] = MACRO_DIRECTIONS;
@@ -96,6 +100,7 @@ const CARD_PARTS = Object.freeze({
   wildcardBadge: HTMLElement,
   intent: HTMLElement,
   origin: HTMLElement,
+  positions: HTMLElement,
   rangesBox: HTMLElement,
   rangesLine: HTMLElement,
   ranges: HTMLUListElement,
@@ -176,6 +181,7 @@ const CARD_PARTS = Object.freeze({
  * @property {boolean} busy whether a rating of it is being sent
  * @property {CardHold} hold whether it is in use, which holds its pair's swap
  * @property {SteerControls} steer its explore and nudge controls
+ * @property {SteerSliders} sliders its sliders and Steer from here (decision 0056)
  * @property {string[]} offered the macro lock paths its lock control offers; none while the
  *   offer is hidden
  * @property {boolean} locking whether a lock change from it is being sent
@@ -208,6 +214,8 @@ const excerpts = jobControl(page.excerptsButton);
 let posting = false;
 /** The shown search points whose folds the owner opened, by candidate id (decision 0054). */
 const openFolds = new Set();
+/** @type {SteeringView} the brief's directions and regions, as last read (decision 0056) */
+let steering = { reason: null, directions: [], regions: [] };
 
 /** @param {number} fraction */
 const percent = (fraction) => `${Math.round(fraction * 100)}%`;
@@ -369,6 +377,11 @@ function showCardControls() {
     card.steer.off(
       stopped
         ? "This session is stopped, so it takes no more jobs. Explore or nudge from the lineage page, or start a new session from the brief page."
+        : null,
+    );
+    card.sliders.off(
+      stopped
+        ? "This session is stopped, so it takes no more jobs. Start a new session from the brief page."
         : null,
     );
   }
@@ -960,13 +973,19 @@ function makeCard(candidate, number, revised) {
       start: startSteer,
       run: status.run,
     }),
+    sliders: steerSliders({
+      candidateId: candidate.id,
+      sessionId: () => sessionId,
+      start: startSteer,
+      run: status.run,
+    }),
     offered: [],
     locking: false,
   };
   parts.heading.textContent = card.label;
   parts.rowId.textContent = `#${candidate.id}`;
   parts.intent.textContent = intentText(candidate);
-  parts.steer.append(card.steer.root);
+  parts.steer.append(card.steer.root, card.sliders.root);
   parts.lockPath.replaceChildren(
     ...lockChoices(candidate.genome).map(({ label, choices }) => {
       const group = document.createElement("optgroup");
@@ -1106,6 +1125,7 @@ async function follow(job) {
         ? "The job is done. Play the candidates and rate them."
         : endedText(finished),
     );
+    await loadSteering();
   } finally {
     // A failed poll leaves the job unfinished in `jobs`, which would keep the buttons off until
     // a reload. The caller shows the error; a reload follows the job again if it still runs.
@@ -1174,7 +1194,11 @@ const isPlaying = (card) => !card.parts.audio.paused;
 function isEditing(card) {
   const { note, tags } = card.parts;
   return card.hold.held({
-    unsentText: note.value.trim() !== "" || tags.value.trim() !== "" || card.steer.unsent(),
+    unsentText:
+      note.value.trim() !== "" ||
+      tags.value.trim() !== "" ||
+      card.steer.unsent() ||
+      card.sliders.unsent(),
     pending: card.busy || card.locking || card.offered.length > 0,
   });
 }
@@ -1278,6 +1302,27 @@ function layoutRows() {
   page.hiddenSummary.textContent = `Hidden candidates (${places})`;
 }
 
+/**
+ * The card's positions on the brief's directions and its sliders, from the steering last read.
+ * @param {Card} card
+ */
+function showSteering(card) {
+  const renderId = card.candidate.excerpt?.renderId ?? null;
+  const line = positionsLine(steering.directions, renderId);
+  card.parts.positions.textContent = line;
+  card.parts.positions.hidden = line === "";
+  card.sliders.show(steering, renderId);
+}
+
+/**
+ * Reads where each excerpt sits on the brief's directions and regions. It can start the sound
+ * analysis, so the page reads it on load and when a job finishes, not on every poll.
+ */
+async function loadSteering() {
+  steering = await getJson(`${VIBES_PATH}/${session.vibeId}/steering`);
+  for (const card of cards) showSteering(card);
+}
+
 async function loadRatings() {
   rated = await getJson(`${VIBES_PATH}/${session.vibeId}/ratings`);
   for (const card of cards) showRated(card);
@@ -1319,13 +1364,17 @@ async function loadCandidates() {
     card.parts.origin.textContent = originText(card.candidate, nameOf);
     showRated(card);
     showLocks(card);
+    showSteering(card);
   }
   showPairs();
   showControls();
 
   page.rejectedBox.hidden = rejected.length === 0;
   const draws = rejected.filter((candidate) => candidate.operator === OPERATOR.nudge).length;
-  const points = rejected.filter((candidate) => candidate.operator === OPERATOR.optimize).length;
+  const points = rejected.filter(
+    (candidate) =>
+      candidate.operator === OPERATOR.optimize || candidate.operator === OPERATOR.steer,
+  ).length;
   const heard = rejected.filter((candidate) => candidate.operator === OPERATOR.optimizeEar).length;
   const answers = rejected.length - draws - points - heard;
   page.rejectedSummary.textContent = `${rejected.length} rejected candidate${rejected.length === 1 ? "" : "s"}: ${[
@@ -1403,4 +1452,6 @@ status.run(async () => {
   );
   for (const job of unfinished) status.run(() => follow(job));
   showControls();
+  // Last, since it may start the sound analysis: a failure there leaves the rest of the page.
+  await loadSteering();
 });

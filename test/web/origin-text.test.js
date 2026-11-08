@@ -63,6 +63,24 @@ describe("originText", () => {
     );
   });
 
+  test("a steer point names its base, generation and point, and is a search point otherwise", () => {
+    const point = candidate({
+      operator: "steer",
+      parentIds: [3],
+      operatorParams: { generation: 0, point: 1 },
+    });
+    expect(originText({ ...point, search: { shown: true, score: -1.5 } }, nameOf)).toBe(
+      "Point 2 of generation 1 of a steer from candidate 3, scored by where it sits on the sliders and regions chosen, with no model request. Shown as one of the steer's best: steer score -1.50.",
+    );
+    expect(operatorLabel("steer")).toBe("steered");
+    expect(intentText(candidate({ operator: "steer" }))).toBe(
+      "A search point has no intent of its own: it is its base with some numbers moved.",
+    );
+    expect(rejectText(candidate({ operator: "steer", rejectReason: REJECT_REASON.repeated }))).toBe(
+      "a search point that landed on a genome already made, so it was told a low score",
+    );
+  });
+
   test("a search-by-ear point names its pair and base, and says when it is the best", () => {
     const point = candidate({
       operator: "optimize-ear",

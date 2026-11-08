@@ -1,5 +1,6 @@
-// Attaching regions to a brief and detaching them through the HTTP server (decision 0052). The
-// regions and their analyses are seeded in the store, so no test decodes audio.
+// Attaching regions (decision 0052) and directions (0056) to a brief and detaching them through
+// the HTTP server. The regions and their analyses are seeded in the store, so no test decodes
+// audio, and the config names no CLAP checkpoint, so no route reaches the sidecar.
 /** @import { Studio } from "../support/studio.js" */
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { PRODUCER } from "../../src/server/producer.js";
@@ -74,7 +75,7 @@ test("an unknown, removed or unanalyzed region is a 400 naming it", async () => 
       { kind: "reference", regionId: ids.unanalyzed },
       `region ${ids.unanalyzed} ("rain") isn't analyzed at this brief's loudness, -14 LUFS; analyze it first`,
     ],
-    [{ kind: "direction", regionId: ids.regions[0] }, /^kind must be one of reference/],
+    [{ kind: "axis", regionId: ids.regions[0] }, /^kind must be one of reference, direction/],
     [{ kind: "reference" }, /^regionId must be an integer/],
   ];
   for (const [body, error] of cases) {
@@ -145,4 +146,78 @@ test("attaching up to two regions, listing them, and detaching one make no new r
   expect((await studio.server.api("POST", "/api/vibe-attachments/999/detach", {})).status).toBe(
     404,
   );
+});
+
+test("directions are attached with their two ends, listed, refused when wrong, and make no revision", async () => {
+  const vibe = await studio.ok("POST", "/api/vibes", { ...VIBE, name: "directions" });
+  const path = `/api/vibes/${vibe.id}/attachments`;
+  const typed = await studio.ok("POST", path, {
+    kind: "direction",
+    near: "dry",
+    far: "underwater",
+  });
+  expect(typed.attachment).toMatchObject({
+    vibeId: vibe.id,
+    kind: "direction",
+    regionId: null,
+    details: { near: "dry", far: "underwater" },
+  });
+  const fromExcerpts = await studio.ok("POST", path, { kind: "direction", far: "hissing" });
+  expect(fromExcerpts.attachment.details).toEqual({ near: null, far: "hissing" });
+
+  /** @type {[unknown, string | RegExp][]} */
+  const cases = [
+    [{ kind: "direction", near: "dry" }, "its far end must be text"],
+    [{ kind: "direction", far: "   " }, "its far end must hold some text"],
+    [{ kind: "direction", far: "x".repeat(101) }, "its far end must be at most 100 characters"],
+    [{ kind: "direction", far: "dry", near: "dry" }, "its two ends are the same text"],
+    [
+      { kind: "direction", far: "a\nb" },
+      "its far end must be one line, with no control characters",
+    ],
+    [{ kind: "direction", far: "x", regionId: ids.regions[0] }, "a direction names no region"],
+    [
+      { kind: "reference", regionId: ids.regions[0], far: "x" },
+      "a reference takes no near or far end",
+    ],
+  ];
+  for (const [body, error] of cases) {
+    const reply = await studio.server.api("POST", path, body);
+    expect(reply.status, JSON.stringify(body)).toBe(400);
+    expect(reply.json().error).toMatch(error);
+  }
+  await studio.ok("POST", path, { kind: "direction", far: "bright" });
+  await studio.ok("POST", path, { kind: "direction", far: "slow" });
+  const fifth = await studio.server.api("POST", path, { kind: "direction", far: "loud" });
+  expect(fifth.status).toBe(400);
+  expect(fifth.json().error).toBe(
+    "this brief holds 4 directions already, the most it takes; remove one first",
+  );
+
+  await studio.ok("POST", `/api/vibe-attachments/${typed.attachment.id}/detach`, {});
+  const listed = await studio.ok("GET", path);
+  expect(listed.directions.map((/** @type {any} */ d) => [d.near, d.far])).toEqual([
+    [null, "hissing"],
+    [null, "bright"],
+    [null, "slow"],
+  ]);
+  expect(listed.references).toEqual([]);
+  const { revisions } = await studio.ok("GET", `/api/vibes/${vibe.id}/revisions`);
+  expect(revisions).toHaveLength(1);
+});
+
+test("the steering route says why there are no positions, and asks the sidecar nothing without directions or regions", async () => {
+  const bare = await studio.ok("POST", "/api/vibes", { ...VIBE, name: "bare" });
+  expect(await studio.ok("GET", `/api/vibes/${bare.id}/steering`)).toEqual({
+    reason: null,
+    excerpts: 0,
+    directions: [],
+    regions: [],
+  });
+  await studio.ok("POST", `/api/vibes/${bare.id}/attachments`, { kind: "direction", far: "dry" });
+  const off = await studio.ok("GET", `/api/vibes/${bare.id}/steering`);
+  expect(off.reason).toMatch(/^the config's sidecar.checkpointCache is null/);
+  expect(off.directions).toEqual([
+    expect.objectContaining({ near: null, far: "dry", positions: {} }),
+  ]);
 });

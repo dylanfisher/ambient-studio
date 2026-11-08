@@ -6,8 +6,11 @@
 // runs only when the owner's request adds it to the job runner.
 /** @import { Constraints } from "../domain/constraint-schema.js" */
 /** @import { StepSeconds } from "../domain/search-cost.js" */
+/** @import { ScoreTerm } from "../domain/search-score.js" */
 /** @import { Lock } from "../domain/validate-lock.js" */
 /** @import { Genome } from "../engine/genome-schema.js" */
+/** @import { Embedder } from "./embed-audio.js" */
+/** @import { SourcedItem } from "./fit-job.js" */
 /** @import { Candidate } from "./generation-store.js" */
 /** @import { JobContext } from "./job-runner.js" */
 /** @import { CurrentModel } from "./preference-summary.js" */
@@ -129,6 +132,78 @@ export function searchRefusal(found) {
 }
 
 /**
+ * One excerpt rendered and embedded, with what the taste model reads of it.
+ * @typedef {object} EmbeddedExcerpt
+ * @property {Float32Array} embedding
+ * @property {StepSeconds} seconds what its render and embed took
+ * @property {SourcedItem} item the excerpt as `predict` reads it
+ */
+
+/**
+ * Renders each candidate's excerpt and embeds it unless it has a row under the embedder, in
+ * order. A search and a steer (decision 0056) both score what this returns.
+ * @param {App} app
+ * @param {Embedder} embedder
+ * @param {readonly RecordingEntry[]} recordings
+ * @returns {(candidates: Candidate[], signal: AbortSignal) => Promise<EmbeddedExcerpt[]>}
+ */
+export const renderAndEmbed = (app, embedder, recordings) => async (candidates, signal) => {
+  /** @type {EmbeddedExcerpt[]} */
+  const made = [];
+  for (const candidate of candidates) {
+    signal.throwIfAborted();
+    // A candidate that passed has a genome row, so it has an excerpt to render.
+    const request = /** @type {ExcerptRequest} */ (excerptRequest(app.store, candidate));
+    const started = performance.now();
+    const { render } = await renderExcerpt(app.store, app.paths.renderCache, request, recordings);
+    const rendered = performance.now();
+    signal.throwIfAborted();
+    const source = { ratedAudioId: null, renderId: render.id };
+    const row =
+      findEmbedding(app.store, source, embedder.producer) ??
+      (await embedAudio(app, embedder, source, join(app.paths.renderCache, render.file), signal));
+    const embedded = performance.now();
+    const genome = requireGenome(
+      getGenome(app.store, request.genomeId)?.genome,
+      `genome ${request.genomeId} is invalid`,
+    );
+    // Features are stored as extractFeatures returned them (decision 0023).
+    const measured = /** @type {any} */ (render.features);
+    made.push({
+      embedding: new Float32Array(row.vector.slice().buffer),
+      seconds: { render: (rendered - started) / 1000, embed: (embedded - rendered) / 1000 },
+      item: { source, ...excerptTerms(genome, measured, render.offset, render.duration) },
+    });
+  }
+  return made;
+};
+
+/**
+ * Scores each embedded excerpt under the model, plus its terms.
+ * @param {App} app
+ * @param {{ file: string, embedder: Embedder }} model the brief's current one
+ * @param {readonly EmbeddedExcerpt[]} made
+ * @param {readonly (readonly ScoreTerm[])[]} terms one list per excerpt; none for a search
+ * @param {AbortSignal} signal
+ * @returns {Promise<number[]>}
+ */
+export async function modelScores(app, model, made, terms, signal) {
+  const { mean, variance } = await predictScores(
+    app,
+    model.file,
+    made.map(({ item }) => item),
+    { embeddingProducer: model.embedder.producer, dimension: model.embedder.dimension, signal },
+  );
+  return made.map((_, i) =>
+    searchScore(
+      /** @type {number} */ (mean[i]),
+      /** @type {number} */ (variance[i]),
+      terms[i] ?? [],
+    ),
+  );
+}
+
+/**
  * The scorer of every real search: render the excerpt, embed it unless it has a row under the
  * current embedder, then one `predict` for the batch under the brief's current model.
  * @type {ScorerFactory}
@@ -137,44 +212,14 @@ async function modelScorer(app, { vibeId, recordings, signal }) {
   const found = await currentModel(app, vibeId, signal);
   const refused = searchRefusal(found);
   if (refused !== null || found.state !== PREFERENCE_STATE.fitted) throw new Error(refused ?? "");
-  const { embedder, file: model } = found;
+  const embed = renderAndEmbed(app, found.embedder, recordings);
   return async (candidates, signal) => {
-    /** @type {{ embedding: Float32Array, seconds: StepSeconds }[]} */
-    const made = [];
-    const items = [];
-    for (const candidate of candidates) {
-      signal.throwIfAborted();
-      // A candidate that passed has a genome row, so it has an excerpt to render.
-      const request = /** @type {ExcerptRequest} */ (excerptRequest(app.store, candidate));
-      const started = performance.now();
-      const { render } = await renderExcerpt(app.store, app.paths.renderCache, request, recordings);
-      const rendered = performance.now();
-      signal.throwIfAborted();
-      const source = { ratedAudioId: null, renderId: render.id };
-      const row =
-        findEmbedding(app.store, source, embedder.producer) ??
-        (await embedAudio(app, embedder, source, join(app.paths.renderCache, render.file), signal));
-      const embedded = performance.now();
-      const genome = requireGenome(
-        getGenome(app.store, request.genomeId)?.genome,
-        `genome ${request.genomeId} is invalid`,
-      );
-      // Features are stored as extractFeatures returned them (decision 0023).
-      const measured = /** @type {any} */ (render.features);
-      items.push({ source, ...excerptTerms(genome, measured, render.offset, render.duration) });
-      made.push({
-        embedding: new Float32Array(row.vector.slice().buffer),
-        seconds: { render: (rendered - started) / 1000, embed: (embedded - rendered) / 1000 },
-      });
-    }
-    const { mean, variance } = await predictScores(app, model, items, {
-      embeddingProducer: embedder.producer,
-      dimension: embedder.dimension,
-      signal,
-    });
-    return made.map((each, i) => ({
-      ...each,
-      score: searchScore(/** @type {number} */ (mean[i]), /** @type {number} */ (variance[i])),
+    const made = await embed(candidates, signal);
+    const scores = await modelScores(app, found, made, [], signal);
+    return made.map(({ embedding, seconds }, i) => ({
+      embedding,
+      seconds,
+      score: /** @type {number} */ (scores[i]),
     }));
   };
 }
@@ -234,11 +279,24 @@ const bestOf = (scored) =>
  * last generation scored.
  * @param {App} app
  * @param {SearchRequest} request
- * @param {{ makeScorer?: ScorerFactory }} [options] the model's scorer when omitted; tests
- *   script one
+ * @param {object} [options]
+ * @param {ScorerFactory} [options.makeScorer] the model's scorer when omitted; a steer passes
+ *   its own, and tests script one
+ * @param {string} [options.operator] what each point stores, `optimize` when omitted
+ * @param {Record<string, unknown>} [options.params] added to each point's `operatorParams`
+ * @param {(n: number, of: number) => string} [options.step] the progress step per generation
  * @returns {(job: JobContext) => Promise<unknown>}
  */
-export function searchJob(app, request, { makeScorer = modelScorer } = {}) {
+export function searchJob(
+  app,
+  request,
+  {
+    makeScorer = modelScorer,
+    operator = OPERATOR.optimize,
+    params = {},
+    step = JOB_STEP.searching,
+  } = {},
+) {
   const { vibeId, sessionId, base, genome, budget, raw, control } = request;
   return async (job) => {
     const recordings = await jobRecordings(app);
@@ -266,8 +324,8 @@ export function searchJob(app, request, { makeScorer = modelScorer } = {}) {
       seed: base.seed,
       source: SEARCH_SOURCE,
       parentIds: [base.id],
-      operator: OPERATOR.optimize,
-      operatorParams: { run, seed, budget, population, paths },
+      operator,
+      operatorParams: { run, seed, budget, population, paths, ...params },
     };
     const context = {
       locks,
@@ -294,7 +352,7 @@ export function searchJob(app, request, { makeScorer = modelScorer } = {}) {
     let asked = 0;
     for (let generation = 0; asked < budget; generation++) {
       const count = Math.min(population, budget - asked);
-      job.progress(asked, total, JOB_STEP.searching(generation + 1, generations));
+      job.progress(asked, total, step(generation + 1, generations));
       /** @type {Evaluation[]} */
       let evaluations = [];
       const { candidates, scores } = await searchGeneration(app, folder, {

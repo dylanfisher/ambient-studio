@@ -102,3 +102,32 @@ export function ratedAudioEmbeddings(store, genomeId, producer) {
     .all(genomeId, producer);
   return rows.map((row) => vectorFloats(/** @type {Uint8Array} */ (row.vector)));
 }
+
+/**
+ * The embeddings under `producer` of the vibe's excerpts: every render of one of its genomes as
+ * an excerpt, at `target` under `renderProducer`, in render id order. A direction's scale and its
+ * default near end are read over these (decision 0056).
+ * @param {Store} store
+ * @param {{ vibeId: number, target: number, duration: number, renderProducer: string,
+ *   producer: string }} key
+ * @returns {{ renderId: number, vector: Float32Array }[]}
+ */
+export function vibeExcerptEmbeddings(
+  store,
+  { vibeId, target, duration, renderProducer, producer },
+) {
+  const rows = store.db
+    .prepare(
+      `SELECT r.id AS renderId, e.vector FROM ${TABLE.renders} r
+        JOIN ${TABLE.genomes} g ON g.id = r.genomeId
+        JOIN ${TABLE.embeddings} e ON e.renderId = r.id
+        WHERE g.vibeId = ? AND r.target = ? AND r.duration = ? AND r.producer = ?
+          AND e.producer = ?
+        ORDER BY r.id`,
+    )
+    .all(vibeId, target, duration, renderProducer, producer);
+  return rows.map((row) => ({
+    renderId: Number(row.renderId),
+    vector: vectorFloats(/** @type {Uint8Array} */ (row.vector)),
+  }));
+}

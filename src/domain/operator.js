@@ -1,4 +1,4 @@
-// The operators a candidate stores, naming how it was made (decisions 0036–0038, 0054); a first
+// The operators a candidate stores, naming how it was made (decisions 0036–0038, 0054–0056); a first
 // try from a plain request stores null. The server writes them and the pages read them.
 export const OPERATOR = Object.freeze({
   /** The model's one revision of a first try whose excerpt missed (0036). */
@@ -15,4 +15,6 @@ export const OPERATOR = Object.freeze({
   optimizeControl: "optimize-control",
   /** A point of a search by ear, compared by the owner with the run's best (0055). */
   optimizeEar: "optimize-ear",
+  /** A point of a steer along a brief's directions or toward its regions (0056). */
+  steer: "steer",
 });

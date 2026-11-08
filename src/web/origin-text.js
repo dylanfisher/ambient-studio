@@ -1,5 +1,6 @@
 // How a candidate was made, in words, for its card and its lineage node (decision 0039): its
-// operator and parent, an explore's direction, a search point's place in its run (0054), and why
+// operator and parent, an explore's direction, a search or steer point's place in its run (0054,
+// 0056), and why
 // a rejected one was rejected. A nudge child or search point has no intent, and its rejected
 // draws are no model answer, so neither reads as one. No DOM: the page sets these with
 // `textContent`, so a direction is never read as HTML.
@@ -60,6 +61,14 @@ export function originText({ operator, operatorParams, parentIds, search }, name
         : "";
     return `Point ${point + 1} of generation ${generation + 1} of a search from ${parent}, scored by your taste model with no model request.${shown}`;
   }
+  if (operator === OPERATOR.steer) {
+    const { generation, point } = operatorParams;
+    const shown =
+      search?.shown && search.score !== null
+        ? ` Shown as one of the steer's best: steer score ${search.score.toFixed(2)}.`
+        : "";
+    return `Point ${point + 1} of generation ${generation + 1} of a steer from ${parent}, scored by where it sits on the sliders and regions chosen, with no model request.${shown}`;
+  }
   if (operator === OPERATOR.optimizeEar) {
     const best = search?.shown ? " Shown as the search's best: the one you chose last." : "";
     return `Pair ${operatorParams.query + 1} of a search by ear from ${parent}: you compared it with the best so far.${best}`;
@@ -74,6 +83,7 @@ const OPERATOR_WORDS = Object.freeze({
   [OPERATOR.explore]: "variation",
   [OPERATOR.optimize]: "searched",
   [OPERATOR.optimizeEar]: "searched by ear",
+  [OPERATOR.steer]: "steered",
 });
 
 /**
@@ -97,7 +107,11 @@ export function intentText({ intent, operator }) {
   if (operator === OPERATOR.nudge) {
     return "A nudge has no intent of its own: it is its base with some numbers moved.";
   }
-  if (operator === OPERATOR.optimize || operator === OPERATOR.optimizeEar) {
+  if (
+    operator === OPERATOR.optimize ||
+    operator === OPERATOR.optimizeEar ||
+    operator === OPERATOR.steer
+  ) {
     return "A search point has no intent of its own: it is its base with some numbers moved.";
   }
   return "The model gave no intent.";
@@ -112,7 +126,9 @@ export function rejectText({ operator, rejectReason }) {
   const why = REJECTED[/** @type {keyof typeof REJECTED} */ (rejectReason)];
   if (why === undefined) throw new Error(`the page doesn't know the reject reason ${rejectReason}`);
   if (operator === OPERATOR.nudge) return `a nudge draw ${why}, so it was drawn again`;
-  if (operator === OPERATOR.optimize) return `a search point ${why}, so it was told a low score`;
+  if (operator === OPERATOR.optimize || operator === OPERATOR.steer) {
+    return `a search point ${why}, so it was told a low score`;
+  }
   if (operator === OPERATOR.optimizeEar) {
     return `a search-by-ear point ${why}, so it was told as a loss and never played`;
   }

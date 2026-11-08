@@ -2,7 +2,7 @@
 // region, and migration 0010 over 0009's shape.
 /** @import { Store } from "../../src/server/store.js" */
 import { afterEach, expect, test } from "vitest";
-import { ATTACHMENT_KIND } from "../../src/domain/attachment-kind.js";
+import { ATTACHMENT_KIND, DIRECTION_END_CHARS } from "../../src/domain/attachment-kind.js";
 import {
   addAttachment,
   DETACHED,
@@ -29,6 +29,7 @@ afterEach(async () => {
 });
 
 const REFERENCE = ATTACHMENT_KIND.reference;
+const DIRECTION = ATTACHMENT_KIND.direction;
 
 /**
  * A vibe and a file with two regions.
@@ -201,7 +202,45 @@ test("each kind's details are checked: a reference takes none, and an unknown ki
     addAttachment(store, { vibeId: vibe.id, kind: REFERENCE, regionId, details: { weight: 1 } }),
   ).toThrow("the reference attachment's details are wrong: a reference takes no details, {}");
   expect(() =>
-    addAttachment(store, { vibeId: vibe.id, kind: "direction", regionId: null, details: {} }),
-  ).toThrow('there is no attachment kind "direction"');
+    addAttachment(store, { vibeId: vibe.id, kind: "axis", regionId: null, details: {} }),
+  ).toThrow('there is no attachment kind "axis"');
   expect(listAttachments(store, vibe.id, REFERENCE)).toEqual([]);
+});
+
+test("a direction holds its two ends, the near one null for the vibe's excerpts, and no region", async () => {
+  const made = await tempStore();
+  cleanups.push(made.remove);
+  const { store } = made;
+  const { vibe, regions } = seeded(store);
+  const revisions = store.db.prepare("SELECT COUNT(*) AS n FROM vibe_revisions").get();
+  /** @param {Record<string, unknown>} details @param {number | null} [regionId] */
+  const add = (details, regionId = null) =>
+    addAttachment(store, { vibeId: vibe.id, kind: DIRECTION, regionId, details });
+  const typed = add({ near: "dry", far: "underwater" });
+  const fromExcerpts = add({ near: null, far: "hissing" });
+  expect(listAttachments(store, vibe.id, DIRECTION).map(({ details }) => details)).toEqual([
+    { near: "dry", far: "underwater" },
+    { near: null, far: "hissing" },
+  ]);
+  expect(getAttachment(store, typed.id)?.regionId).toBeNull();
+  expect(fromExcerpts.kind).toBe("direction");
+  expect(store.db.prepare("SELECT COUNT(*) AS n FROM vibe_revisions").get()).toEqual(revisions);
+
+  /** @type {[Record<string, unknown>, string | RegExp][]} */
+  const wrong = [
+    [{ far: "underwater" }, "a direction's details are {near, far}"],
+    [{ near: null, far: "x", weight: 1 }, "a direction's details are {near, far}"],
+    [{ near: null, far: "  " }, "its far end must hold some text"],
+    [{ near: 3, far: "x" }, "its near end must be text or null"],
+    [{ near: "dry", far: "a\nb" }, "its far end must be one line"],
+    [{ near: "dry", far: "x".repeat(DIRECTION_END_CHARS + 1) }, `at most ${DIRECTION_END_CHARS}`],
+    [{ near: "dry", far: "dry" }, "its two ends are the same text"],
+  ];
+  for (const [details, message] of wrong) {
+    expect(() => add(details)).toThrow(message);
+  }
+  expect(() => add({ near: null, far: "x" }, regions[0]?.id ?? 0)).toThrow(
+    "a direction names no region",
+  );
+  expect(listAttachments(store, vibe.id, DIRECTION)).toHaveLength(2);
 });

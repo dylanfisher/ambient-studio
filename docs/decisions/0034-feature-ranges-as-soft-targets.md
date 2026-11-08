@@ -7,7 +7,8 @@
   [0030](0030-seed-vibes-and-evaluation.md) (the seed vibes have ranges). Amended by
   [0051](0051-region-analysis-and-ranges.md) (a reference region can fill the ranges form) and
   [0052](0052-references-in-the-prompt.md) (attached regions, directions and axes live outside
-  `softTargets`).
+  `softTargets`) and [0056](0056-directions-sliders-reference-target.md) (CLAP directions are
+  attachments).
 
 ## Context
 
@@ -182,3 +183,8 @@ may still edit a vibe's ranges on the brief page; 3h's report names the ranges e
   writes a new key there. Attached regions are written in the first prompt right after the
   ranges, with their medians in the range table's features, and say they were measured the same
   way.
+- 2026-11-07: from step 5g ([0056](0056-directions-sliders-reference-target.md)). Phase 5's CLAP
+  directions, which this record expected beside the ranges in `softTargets`, are
+  `vibe_attachments` rows of kind `direction` instead, as the owner settled for 5c. No direction
+  is ever written to `softTargets`, and adding or removing one makes no revision. The ranges stay
+  the only key the studio writes there.
