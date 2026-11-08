@@ -244,8 +244,12 @@ export function candidateJob(app, { vibeId, sessionId, count, explore }) {
           ? null
           : {
               producer: ready.producer,
-              embedText: (/** @type {string} */ text) =>
-                embedText(app, ready, text, "the vibe's brief", job.signal),
+              // A cache hit sends no sidecar request, so check the cancel here before omlx.
+              embedText: async (/** @type {string} */ text) => {
+                const vector = await embedText(app, ready, text, "the vibe's brief", job.signal);
+                job.signal.throwIfAborted();
+                return vector;
+              },
             };
       const generated = await generateCandidates(vibeId, count, app.store, app.queue, {
         config: app.config,
