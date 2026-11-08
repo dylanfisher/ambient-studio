@@ -75,6 +75,10 @@ export async function receiveUpload(request, folder, maxBytes = MAX_UPLOAD_BYTES
     // A request paused for a slow disk would otherwise never finish sending.
     request.resume();
     file.destroy();
+    // The file opens asynchronously, and a destroy before the open finishes leaves the file to
+    // be created afterward. Wait for the close so `rm` sees it. The destroy's own error, already
+    // in `error` or rethrown below, is dropped here so it can't replace the one being thrown.
+    await finished(file).catch(() => {});
     await rm(path, { force: true });
     throw error;
   }

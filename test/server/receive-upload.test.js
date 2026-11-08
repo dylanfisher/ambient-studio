@@ -5,10 +5,38 @@ import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
-import { afterAll, beforeAll, expect, test } from "vitest";
+import { afterAll, beforeAll, expect, test, vi } from "vitest";
 import { UPLOAD_TYPE } from "../../src/domain/reference-upload.js";
 import { receiveUpload } from "../../src/server/receive-upload.js";
 import { HttpError } from "../../src/server/routing.js";
+
+/** The latest `rm` call's promise, so the held open below can wait for it. @type {Promise<void> | undefined} */
+let lastRemoval;
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const real = /** @type {typeof import("node:fs/promises")} */ (await importOriginal());
+  return {
+    ...real,
+    rm: (/** @type {string} */ path, /** @type {object} */ options) =>
+      (lastRemoval = real.rm(path, options)),
+  };
+});
+// Every write stream's open is held for one event-loop turn, then until any `rm` that was
+// called by then has finished: the order that exposes a destroy racing a pending open.
+vi.mock("node:fs", async (importOriginal) => {
+  const real = /** @type {typeof import("node:fs")} */ (await importOriginal());
+  const heldOpen = (/** @type {Parameters<typeof real.open>} */ ...args) => {
+    lastRemoval = undefined;
+    setImmediate(async () => {
+      await lastRemoval?.catch(() => {});
+      real.open(...args);
+    });
+  };
+  return {
+    ...real,
+    createWriteStream: (/** @type {string} */ path, /** @type {object} */ options) =>
+      real.createWriteStream(path, { ...options, fs: { ...real, open: heldOpen } }),
+  };
+});
 
 /** @type {string} */
 let folder;
