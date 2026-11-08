@@ -80,9 +80,10 @@ export const rawStereoArgs = (rate) => [
  * @param {string} path
  * @param {number} start seconds
  * @param {number} end seconds, after `start`
+ * @param {AbortSignal} [signal] kills ffmpeg when it aborts, so a cancelled job stops at once
  * @returns {Promise<Decoded>}
  */
-export async function decodeWithFfmpeg(path, start, end) {
+export async function decodeWithFfmpeg(path, start, end, signal) {
   if (!(Number.isFinite(start) && Number.isFinite(end) && start >= 0 && end > start)) {
     throw new Error(`a region needs 0 <= start < end, got start ${start} and end ${end}`);
   }
@@ -94,6 +95,7 @@ export async function decodeWithFfmpeg(path, start, end) {
       encoding: "buffer",
       maxBuffer: Number.POSITIVE_INFINITY,
       timeout: FFMPEG_TIMEOUT_MS.region,
+      ...(signal && { signal }),
     },
   );
   const decoded = stdout.length / (F32_BYTES * CHANNELS);

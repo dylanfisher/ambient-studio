@@ -1,4 +1,5 @@
-// The References page (decision 0050): upload a recording, open one, and mark regions on it.
+// The References page (decisions 0050 and 0051): upload a recording, open one, mark regions on
+// it, and analyze a region at 0018's loudness so a brief can take ranges from it.
 // The peak strip is drawn on a canvas from the server's peaks; dragging across it fills the
 // start and end fields, which are the way to set a region with the keyboard. The one player
 // plays the times in the form or a saved region, as an MP3 the server makes from the decode.
@@ -16,6 +17,7 @@ import {
 import { cloneTemplate } from "./clone-template.js";
 import { elementsById } from "./element-by-id.js";
 import { mountPlayer, playAudio } from "./excerpt-player.js";
+import { analysisText, runAnalysis } from "./region-analysis.js";
 import {
   dragRegion,
   formatSeconds,
@@ -193,6 +195,8 @@ function showRegions() {
         play: HTMLButtonElement,
         edit: HTMLButtonElement,
         remove: HTMLButtonElement,
+        analyze: HTMLButtonElement,
+        analysis: HTMLElement,
       });
       item.label.textContent = region.label;
       item.times.textContent = timesText(region);
@@ -207,6 +211,18 @@ function showRegions() {
           if (editing?.id === region.id) startEditing(null);
           await loadRegions();
           status.say(`Removed “${region.label}”.`);
+        });
+      item.analyze.onclick = () =>
+        status.run(async () => {
+          item.analyze.disabled = true;
+          try {
+            const result = await runAnalysis(region.id, null, (step) => status.say(step));
+            item.analysis.textContent = analysisText(result);
+            item.analysis.hidden = false;
+            status.say(`Analyzed “${region.label}”.`);
+          } finally {
+            item.analyze.disabled = false;
+          }
         });
       return item.root;
     }),

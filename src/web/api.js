@@ -74,11 +74,15 @@ export const REFERENCES_PATH = "/api/references";
  */
 export const referencePath = (referenceId) => `${REFERENCES_PATH}/${referenceId}`;
 
+/** Every live region of every recording, for the brief page's chooser (decision 0051). */
+export const REGIONS_PATH = "/api/reference-regions";
+
 /**
- * A region's route; `/replace` and `/remove` under it change it.
+ * A region's route; `/replace` and `/remove` under it change it, `/analyze` measures it, and
+ * `/analysis` reads what was measured.
  * @param {number} regionId
  */
-export const regionPath = (regionId) => `/api/reference-regions/${regionId}`;
+export const regionPath = (regionId) => `${REGIONS_PATH}/${regionId}`;
 
 /** Every job since the server started, with its kind. */
 export const JOBS_PATH = "/api/jobs";

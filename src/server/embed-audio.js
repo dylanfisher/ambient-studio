@@ -116,6 +116,20 @@ export function embedAudio(app, embedder, source, file, signal) {
 }
 
 /**
+ * The audio `file`'s embedding, not stored: a region's windows are embedded one by one and
+ * stored as their mean (0051). A failure names the file.
+ * @param {App} app
+ * @param {Embedder} embedder
+ * @param {string} file absolute
+ * @param {AbortSignal} signal
+ * @returns {Promise<Float32Array>}
+ */
+export function embedAudioFile(app, embedder, file, signal) {
+  const request = { method: /** @type {const} */ ("embed_audio"), params: { audio: file } };
+  return requestVector(app, embedder, { ...request, what: file, signal }, vectorFloats);
+}
+
+/**
  * The text's embedding under the embedder's producer: from the cache in `paths.textEmbeddings`
  * when it holds it, and otherwise from the sidecar, which then fills the cache. A cached file of
  * the wrong size is embedded again, as other derived data is rebuilt. A sidecar failure names

@@ -1,20 +1,22 @@
-// The brief page (decisions 0028, 0032 and 0034): the name, the description, a rules form built
-// from 2b's table and a ranges form built from 3b's, saved as a new revision; the brief's
-// sessions, notes, ratings and revisions. With no `id` in the query it makes a new brief. A
-// brief is a vibe in the API and the store, and its description is the vibe's `brief` field.
+// The brief page (decisions 0028, 0032, 0034 and 0051): the name, the description, a rules form
+// built from 2b's table and a ranges form built from 3b's, which a reference region can fill,
+// saved as a new revision; the brief's sessions, notes, ratings and revisions. With no `id` in
+// the query it makes a new brief. A brief is a vibe in the API and the store, and its
+// description is the vibe's `brief` field.
 /** @import { Constraints } from "../domain/constraint-schema.js" */
-/** @import { SoftTargets } from "../domain/target-schema.js" */
+/** @import { FeatureRanges, SoftTargets } from "../domain/target-schema.js" */
 /** @import { ValidationError } from "../engine/validation-error.js" */
 /** @import { ConstraintField } from "./constraint-fields.js" */
 /** @import { TargetField } from "./target-fields.js" */
 import { FORM } from "../domain/constraint-schema.js";
 import { constraintsText } from "../domain/constraints-text.js";
+import { rangesFromRegion } from "../domain/ranges-from-region.js";
 import { MACRO_DIRECTIONS } from "../domain/rating-values.js";
 import { RANGE_ENDS } from "../domain/target-schema.js";
 import { targetsText } from "../domain/targets-text.js";
 import { validateConstraints } from "../domain/validate-constraints.js";
 import { validateTargets } from "../domain/validate-targets.js";
-import { getJson, postJson, VIBES_PATH } from "./api.js";
+import { getJson, postJson, REGIONS_PATH, regionPath, VIBES_PATH } from "./api.js";
 import { cloneTemplate } from "./clone-template.js";
 import {
   constraintFields,
@@ -27,6 +29,8 @@ import { elementsById } from "./element-by-id.js";
 import { formatTime } from "./format-time.js";
 import { oneAtATime } from "./one-at-a-time.js";
 import { outcomeText } from "./outcome-text.js";
+import { runAnalysis } from "./region-analysis.js";
+import { rangeFill, regionChoiceText } from "./region-ranges.js";
 import { statusLine } from "./status-line.js";
 import {
   keptTargets,
@@ -51,6 +55,9 @@ const page = elementsById({
   constraintsText: HTMLElement,
   targetBox: HTMLElement,
   targetsText: HTMLElement,
+  regionBox: HTMLElement,
+  regionSelect: HTMLSelectElement,
+  regionRangesButton: HTMLButtonElement,
   keptBox: HTMLElement,
   keptTargets: HTMLElement,
   draftErrors: HTMLUListElement,
@@ -72,6 +79,8 @@ const idText = new URLSearchParams(location.search).get("id");
 const vibeId = idText === null ? null : Number(idText);
 /** The loaded revision's soft targets, whose keys other than the ranges a save keeps. */
 let savedTargets = {};
+/** Each range field's line saying what is saved now, shown once a region fills the form. */
+const savedLines = /** @type {Map<string, HTMLElement>} */ (new Map());
 
 /**
  * The label's text for a field: its kind, what it constrains, and the range it may take.
@@ -160,6 +169,11 @@ function targetElement(field) {
     if (field.most !== null) input.max = String(field.most);
     input.step = "any";
   }
+  const saved = document.createElement("p");
+  saved.className = "small muted";
+  saved.hidden = true;
+  box.root.append(saved);
+  savedLines.set(field.name, saved);
   return box.root;
 }
 
@@ -192,6 +206,7 @@ function fillTargets(softTargets) {
   for (const input of page.targetBox.querySelectorAll("input")) {
     input.value = values[input.name] ?? "";
   }
+  for (const line of savedLines.values()) line.hidden = true;
   const kept = keptTargets(softTargets);
   page.keptBox.hidden = Object.keys(kept).length === 0;
   page.keptTargets.textContent = JSON.stringify(kept, null, 2);
@@ -359,12 +374,55 @@ async function load(id) {
       return item.root;
     }),
   );
+  await showRegions();
   // Last, so a throw over invalid saved ranges leaves the rest of the page filled.
   try {
     fillTargets(revision.softTargets);
   } finally {
     checkedForm();
   }
+}
+
+/** Lists every live region in the region chooser, or says there is none. */
+async function showRegions() {
+  const { references, regions } = await getJson(REGIONS_PATH);
+  const chosen = page.regionSelect.value;
+  const names = new Map(
+    references.map((/** @type {any} */ reference) => [reference.id, reference.fileName]),
+  );
+  page.regionSelect.replaceChildren(
+    ...regions.map(
+      (/** @type {any} */ region) =>
+        new Option(regionChoiceText(region, names.get(region.referenceFileId)), String(region.id)),
+    ),
+  );
+  if (regions.length === 0) {
+    page.regionSelect.add(new Option("No regions yet: mark one on the References page", ""));
+  }
+  if (regions.some((/** @type {any} */ region) => String(region.id) === chosen)) {
+    page.regionSelect.value = chosen;
+  }
+  page.regionSelect.disabled = regions.length === 0;
+  page.regionRangesButton.disabled = regions.length === 0;
+  page.regionBox.hidden = false;
+}
+
+/**
+ * The region's measured windows at this brief's saved loudness, measuring them first when
+ * they haven't been.
+ * @param {number} vibe
+ * @param {number} regionId
+ */
+async function regionWindows(vibe, regionId) {
+  const path = `${regionPath(regionId)}/analysis?vibeId=${vibe}`;
+  const { analysis, target } = await getJson(path);
+  if (analysis) return analysis.windows;
+  status.say(`Measuring the region at this brief's loudness, ${target} LUFS…`);
+  await runAnalysis(regionId, vibe, (step) => status.say(step));
+  const measured = await getJson(path);
+  if (!measured.analysis)
+    throw new Error("The region was measured, but no measurements were kept.");
+  return measured.analysis.windows;
 }
 
 /** The saved vibe's id, or an error saying to save it first. */
@@ -397,6 +455,33 @@ const addNote = oneAtATime(async () => {
   status.say("Note added.");
 });
 
+// Fills the ranges form only; the owner's Save is the one write.
+const setRangesFromRegion = oneAtATime(async () => {
+  const id = savedId();
+  const regionId = Number(page.regionSelect.value);
+  if (!(regionId > 0)) throw new Error("Choose a region first.");
+  const windows = await regionWindows(id, regionId);
+  const proposed = rangesFromRegion(windows.map((/** @type {any} */ w) => w.features));
+  const checked = validateTargets(savedTargets);
+  /** @type {FeatureRanges} */
+  const saved = checked.ok ? checked.ranges : {};
+  const { values, beside } = rangeFill(proposed, saved);
+  for (const input of page.targetBox.querySelectorAll("input")) {
+    const value = values[input.name];
+    if (value !== undefined) input.value = value;
+  }
+  for (const [name, line] of savedLines) {
+    const text = beside[name];
+    line.hidden = text === undefined;
+    line.textContent = text ?? "";
+  }
+  checkedForm();
+  const chosen = page.regionSelect.selectedOptions[0]?.textContent ?? "the region";
+  status.say(
+    `Filled the ranges from ${chosen}. Nothing is saved until you press Save as a new version.`,
+  );
+});
+
 const startSession = oneAtATime(async () => {
   const session = await postJson(`${VIBES_PATH}/${savedId()}/sessions`, {});
   location.assign(`./session.html?id=${session.id}`);
@@ -416,6 +501,7 @@ page.noteForm.onsubmit = (event) => {
 };
 
 page.startButton.onclick = () => status.run(startSession);
+page.regionRangesButton.onclick = () => status.run(setRangesFromRegion);
 
 if (vibeId === null) {
   page.pageTitle.textContent = "New brief";

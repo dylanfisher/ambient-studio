@@ -14,6 +14,7 @@ const TITLE = Object.freeze({
   explore: "The model's variations of a candidate",
   [OPERATOR.optimize]: "Searching by your taste model",
   [OPERATOR.optimizeEar]: "Searching by ear",
+  [JOB_KIND.analyze]: "Analyzing a region",
   [JOB_KIND.embed]: "Analyzing the sound",
   [JOB_KIND.fit]: "Fitting the taste model",
 });
