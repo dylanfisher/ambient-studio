@@ -146,7 +146,7 @@ needs it. The texts are `src/web/attached-regions.js`, with no DOM.
 - 2026-11-07: from step 5g ([0056](0056-directions-sliders-reference-target.md)).
   `ATTACHMENT_KIND` gains `direction`. A direction names no region, and its `details` are
   `{near, far}`: each end one line of text of at most 100 characters, the near end null for the
-  mean of the brief's excerpts, the two ends different. `addAttachment`'s per-kind check takes
+  brief's own description as text, the two ends different. `addAttachment`'s per-kind check takes
   the region too, and refuses any other shape. A brief holds at most 4 (`MAX_DIRECTIONS`).
   `POST /api/vibes/:id/attachments` takes `{kind: "direction", near?, far}`, and
   `GET /api/vibes/:id/attachments` lists `directions` beside `references`; the detach route

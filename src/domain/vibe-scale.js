@@ -7,6 +7,12 @@
 export const MIN_SCALE_EXCERPTS = 2;
 
 /**
+ * The least spread a scale needs between its least and most excerpt, in projection or cosine
+ * units: below it, a hundredth of a step on the slider would be noise in the embeddings.
+ */
+export const MIN_SCALE_SPAN = 0.001;
+
+/**
  * @typedef {object} Scale
  * @property {number} low the vibe's least excerpt's value
  * @property {number} high its most's, above `low`
@@ -14,7 +20,7 @@ export const MIN_SCALE_EXCERPTS = 2;
 
 /**
  * The least and most of `values`, or null with fewer than `MIN_SCALE_EXCERPTS` values or when
- * they are all equal.
+ * they span less than `MIN_SCALE_SPAN`.
  * @param {readonly number[]} values one per excerpt
  * @returns {Scale | null}
  */
@@ -23,7 +29,7 @@ export function vibeScale(values) {
   if (values.length < MIN_SCALE_EXCERPTS) return null;
   const low = Math.min(...values);
   const high = Math.max(...values);
-  return high > low ? { low, high } : null;
+  return high - low >= MIN_SCALE_SPAN ? { low, high } : null;
 }
 
 /**

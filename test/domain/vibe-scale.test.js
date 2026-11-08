@@ -2,7 +2,12 @@
 // (decision 0056).
 import { expect, test } from "vitest";
 import { directionVector, projection } from "../../src/domain/direction-vector.js";
-import { MIN_SCALE_EXCERPTS, scaledPosition, vibeScale } from "../../src/domain/vibe-scale.js";
+import {
+  MIN_SCALE_EXCERPTS,
+  MIN_SCALE_SPAN,
+  scaledPosition,
+  vibeScale,
+} from "../../src/domain/vibe-scale.js";
 
 test("projections order cards: 0 is the vibe's least excerpt, 1 its most, the rest between in order", () => {
   const direction = directionVector(new Float32Array([1, 0]), new Float32Array([0, 1]));
@@ -33,5 +38,8 @@ test("fewer than two excerpts, or excerpts that all project alike, have no scale
   expect(vibeScale([0.3])).toBeNull();
   expect(vibeScale([0.3, 0.3])).toBeNull();
   expect(vibeScale([0.3, 0.1])).toEqual({ low: 0.1, high: 0.3 });
+  // A spread under the least span is noise in the embeddings, not a scale.
+  expect(vibeScale([0.3, 0.3 + MIN_SCALE_SPAN / 2])).toBeNull();
+  expect(vibeScale([0.3, 0.3 + MIN_SCALE_SPAN])).not.toBeNull();
   expect(() => vibeScale([0.1, Number.NaN])).toThrow(/finite/);
 });

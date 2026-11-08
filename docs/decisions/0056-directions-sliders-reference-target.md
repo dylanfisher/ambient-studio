@@ -33,18 +33,27 @@ detach route.
 **Its vector** (`directionVector`, `src/domain/direction-vector.js`) is the unit difference of
 the far end's embedding less the near end's. Each typed end is embedded with `embed_text`
 through `embedText`'s cache, so the sidecar embeds a text once per checkpoint. **The default near
-end** is the unit mean of the vibe's excerpt embeddings: the direction then points from what the
-brief already sounds like toward the text. The vibe's excerpts (`vibeExcerptEmbeddings`) are
+end** is the brief's own description as text, the embedding 4h already caches for retrieval, or
+`NEUTRAL_NEAR_TEXT` ("ambient music") when the description is empty (`nearTextOf`). The plan said
+the mean of the vibe's excerpt embeddings; that was changed on review because CLAP's text and
+audio embeddings sit apart in its space, so text less audio points mostly along that offset and
+every sound reads about the same on it. With both ends text, the offset cancels, and the brief's
+text still stands for what the brief is meant to sound like. The vibe's excerpts
+(`vibeExcerptEmbeddings`) are
 every render of one of its genomes as an excerpt (25 s) at the current revision's loudness under
 this server's `PRODUCER`, with an embedding under the embedder's producer.
 
 **A position** is the excerpt's dot product with the direction (`projection`), read on the
 vibe's scale (`vibeScale`, `scaledPosition`, `src/domain/vibe-scale.js`): 0 at the vibe's least
 excerpt and 1 at its most, and past either end for a sound beyond them. With fewer than 2
-excerpts (`MIN_SCALE_EXCERPTS`), or excerpts that all project alike, a direction has no scale: the
+excerpts (`MIN_SCALE_EXCERPTS`), or excerpts spread less than 0.001 apart (`MIN_SCALE_SPAN`),
+where a step of the slider would be noise in the embeddings, a direction has no scale: the
 card says it "can't be placed yet" and why, its slider is off, and a steer naming it is a 409.
-With no excerpt at all, a direction with no near end has no vector either. A region's nearness
-is its cosine similarity to the excerpt, read on the same kind of scale.
+A region's nearness is its cosine similarity to the excerpt, read on the same kind of scale.
+
+**The scale holds for a run.** A steer reads its directions, regions and scales once, when it
+starts, and scores every point on them. Its own points become excerpts of the vibe as they are
+rendered and embedded, so a scale read again mid-run would move the target the slider set.
 
 **The card.** `GET /api/vibes/:id/steering` gives each direction and each attached region its
 reason, if any, and each excerpt's position by render id (`steeringView`). It asks the sidecar
@@ -63,8 +72,9 @@ so the next read's scale widens and the slider can go further.
 **The objective.** `searchScore(mean, variance, terms)` is 0053's lower bound plus the weighted
 terms; with no terms it is the bound exactly, so a plain search scores as before. A steer's
 terms (`steerTerms`, `src/domain/steer-terms.js`): for each direction, −|position − setting| at
-weight 10 (`DIRECTION_WEIGHT`); for each region, its scaled nearness at weight 10
-(`REGION_WEIGHT`). The model's score has weight 1, so a sound a tenth of the vibe's spread from
+weight 10 (`DIRECTION_WEIGHT`); for each region, its scaled nearness held in 0 to 1, at weight
+10 (`REGION_WEIGHT`). Held, because unbounded nearness past the vibe's nearest excerpt could
+outbid a direction sitting exactly at its setting, whose term is then 0. The model's score has weight 1, so a sound a tenth of the vibe's spread from
 the setting costs as much as one unit of the taste model. With a current fitted model the score
 is `searchScore(mean, variance, terms)`; without one (none, out of date, or unreadable) it is the
 terms alone (`termsScore`), and the job's result says `model: false`.
@@ -77,7 +87,8 @@ session shows its best 4 apart in sound, the rest folded under them, as a search
 (`searchPlaces` reads its run). Its confirm (`steerCostText`) gives 5e's estimate and says
 nothing goes to the language model. `POST /api/sessions/:id/steers` takes `{candidateId, budget?,
 directions?: [{id, setting}], regions?: [id]}`; each id must be a live attachment of the brief of
-its kind (a 400), named once. It refuses with a 409, before adding a job, a brief with no
+its kind (a 400), named once. The choices are sorted by id, so the same choices in another order
+are the same steer to the duplicate check. It refuses with a 409, before adding a job, a brief with no
 checkpoint and a chosen direction or region with no vector or scale, saying why; it doesn't ask
 for a taste model, which is the one place 5e's no-model refusal is relaxed. The job reads the
 steering again when it starts and fails with the same reason if it changed.
@@ -108,17 +119,21 @@ automation lane's target, and `regionSimilarity` for nearness to a region.
   hundredths, so its term would vanish beside a direction's; on the vibe's scale both run 0 to 1.
 - **A separate optimizer for steering** — rejected: 5e's job already has the budget, progress,
   cancel and shown points; only the scorer differs.
+- **The mean of the vibe's excerpt embeddings as the default near end**, as the plan first said
+  — rejected on review: text less audio is dominated by CLAP's offset between the two, so the
+  direction would barely tell sounds apart.
+- **Reading the scale again each generation** — rejected: the steer's own points would move the
+  target under the slider's setting.
 - **Embedding a direction's ends when it is added** — rejected: the route would need the
   sidecar, and the cache makes the first read embed them once anyway.
 
 ## Consequences
 
-- A direction with no near end moves as the brief's excerpts change, and every scale moves with
-  them; a steer reads both when it starts and keeps them for its run. The positions on a card
-  can change after any job, which the page shows when it reads them again.
-- CLAP's text and audio embeddings sit apart in its space (the modality gap), so a direction from
-  the excerpts' mean to a text points partly along that gap; whether it reads as "more
-  underwater" is an owner check. Two typed ends cancel most of the gap.
+- Every scale moves as the brief's excerpts change; a steer keeps the one it read for its run.
+  The positions on a card can change after any job, which the page shows when it reads them
+  again.
+- A direction with no near end changes when the brief's description is saved again. Whether a
+  text-to-text direction reads as "more underwater" on audio is an owner check.
 - With no checkpoint set, nothing can be placed or steered; the session page says why.
 - Steer runs share the search folder, its run numbers and its estimate.
 - The weights are guesses until the owner has steered: if a model score that disagrees with the

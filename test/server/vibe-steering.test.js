@@ -2,8 +2,9 @@
 // with a scripted text embedder and seeded excerpt embeddings, so no test reaches the sidecar.
 /** @import { Store } from "../../src/server/store.js" */
 import { afterEach, expect, test } from "vitest";
-import { ATTACHMENT_KIND } from "../../src/domain/attachment-kind.js";
+import { ATTACHMENT_KIND, NEUTRAL_NEAR_TEXT } from "../../src/domain/attachment-kind.js";
 import { EXCERPT_SECONDS } from "../../src/domain/excerpt-seconds.js";
+import { MIN_SCALE_SPAN } from "../../src/domain/vibe-scale.js";
 import { addAttachment } from "../../src/server/attachment-store.js";
 import { putEmbedding } from "../../src/server/embedding-store.js";
 import { putGenome } from "../../src/server/generation-store.js";
@@ -11,7 +12,12 @@ import { PRODUCER } from "../../src/server/producer.js";
 import { addReferenceFile, addRegion } from "../../src/server/reference-store.js";
 import { putRegionEmbedding, putRegionFeatures } from "../../src/server/region-analysis-store.js";
 import { putRender } from "../../src/server/render-store.js";
-import { chosenSteering, readSteering, steeringView } from "../../src/server/vibe-steering.js";
+import {
+  chosenSteering,
+  nearTextOf,
+  readSteering,
+  steeringView,
+} from "../../src/server/vibe-steering.js";
 import { createVibe } from "../../src/server/vibe-store.js";
 import { SEED_GENOMES } from "../support/seed-genomes.js";
 import { tempStore } from "../support/temp-store.js";
@@ -25,7 +31,12 @@ afterEach(async () => {
 const CLAP = "clap-test";
 const TARGET = -16;
 /** Each text's scripted embedding. */
-const TEXTS = /** @type {Record<string, number[]>} */ ({ dry: [1, 0], underwater: [0, 1] });
+const TEXTS = /** @type {Record<string, number[]>} */ ({
+  dry: [1, 0],
+  underwater: [0, 1],
+  "a drone": [0.8, 0.6],
+  [NEUTRAL_NEAR_TEXT]: [0.6, 0.8],
+});
 const embedder = {
   producer: CLAP,
   embedText: async (/** @type {string} */ text) => {
@@ -102,19 +113,47 @@ test("each excerpt's position orders it along the direction, 0 at the least and 
   expect(middle).toBeLessThan(1);
 });
 
-test("with no near end, the direction runs from the mean of the vibe's excerpts", async () => {
+test("with no near end, the direction runs from the brief's text embedding, or a neutral phrase for an empty brief", async () => {
   const made = await tempStore();
   cleanups.push(made.remove);
   const { vibe } = vibeWith(made.store, [
     [1, 0],
-    [0.8, 0.6],
+    [0, 1],
   ]);
   direction(made.store, vibe.id, null, "underwater");
   const read = await readSteering(made.store, vibe.id, embedder);
-  const vector = /** @type {Float32Array} */ (read.directions[0]?.vector);
-  // The mean of [1, 0] and [0.8, 0.6] is [0.9, 0.3], unit [0.949, 0.316]; toward [0, 1] the
-  // difference is [-0.949, 0.684], unit [-0.811, 0.585].
-  expect(Array.from(vector, (v) => Number(v.toFixed(3)))).toEqual([-0.811, 0.585]);
+  /** @param {Float32Array | null | undefined} vector */
+  const rounded = (vector) => Array.from(vector ?? [], (v) => Number(v.toFixed(3)));
+  // "a drone" embeds as [0.8, 0.6]; toward [0, 1] the difference is [-0.8, 0.4], unit
+  // [-0.894, 0.447]. The excerpts' mean would give [-0.383, 0.924] instead.
+  expect(rounded(read.directions[0]?.vector)).toEqual([-0.894, 0.447]);
+
+  expect(nearTextOf("  ")).toBe(NEUTRAL_NEAR_TEXT);
+  const blank = createVibe(made.store, {
+    name: "blank",
+    brief: "",
+    constraints: { loudness: TARGET },
+    softTargets: {},
+  });
+  direction(made.store, blank.id, null, "underwater");
+  const neutral = await readSteering(made.store, blank.id, embedder);
+  // [0.6, 0.8] toward [0, 1]: [-0.6, 0.2], unit [-0.949, 0.316].
+  expect(rounded(neutral.directions[0]?.vector)).toEqual([-0.949, 0.316]);
+});
+
+test("excerpts closer together than the least span give no scale, with the reason", async () => {
+  const made = await tempStore();
+  cleanups.push(made.remove);
+  const { vibe } = vibeWith(made.store, [
+    [1, 0],
+    [1, 0.0004],
+  ]);
+  direction(made.store, vibe.id, "dry", "underwater");
+  const read = await readSteering(made.store, vibe.id, embedder);
+  expect(read.directions[0]).toMatchObject({
+    scale: null,
+    reason: expect.stringContaining(`at least ${MIN_SCALE_SPAN} apart`),
+  });
 });
 
 test("fewer than two excerpts give no scale, and the reason; a region not analyzed under the embedder says so", async () => {
@@ -125,7 +164,7 @@ test("fewer than two excerpts give no scale, and the reason; a region not analyz
   const typed = direction(store, vibe.id, "dry", "underwater");
   const empty = createVibe(store, {
     name: "empty",
-    brief: "nothing yet",
+    brief: "a drone",
     constraints: { loudness: TARGET },
     softTargets: {},
   });
@@ -179,9 +218,8 @@ test("fewer than two excerpts give no scale, and the reason; a region not analyz
     /^The region “hum” can't be steered toward yet/,
   );
 
+  // With no excerpt, a direction typed with no near end still has a vector, but no scale.
   const none = await readSteering(store, empty.id, embedder);
-  expect(none.directions[0]).toMatchObject({
-    vector: null,
-    reason: "it starts from this brief's excerpts, and none has its sound analyzed yet",
-  });
+  expect(none.directions[0]?.vector).not.toBeNull();
+  expect(none.directions[0]?.scale).toBeNull();
 });

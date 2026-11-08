@@ -415,7 +415,11 @@ function steerChoices(app, vibeId, given) {
   if (ids.length === 0) {
     throw new HttpError(400, "Move a slider or choose a region to steer toward first.");
   }
-  return { directions, regions };
+  // Sorted by id, so the same choices in another order are the same steer.
+  return {
+    directions: directions.sort((a, b) => a.id - b.id),
+    regions: regions.sort((a, b) => a - b),
+  };
 }
 
 /**

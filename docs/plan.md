@@ -1964,9 +1964,11 @@ moved chain) is on main before 5e starts, and 5e builds on 5d's merge.
 #### 5g — CLAP directions, sliders and the reference target (use c)
 
 - **Builds:**
-  - **Directions** typed on the brief page as two ends ("dry" to "underwater"), saved in
-    `softTargets.directions`; the far end alone runs from the mean of the vibe's excerpt
-    embeddings. A direction is the unit difference of the ends' `embed_text`.
+  - **Directions** typed on the brief page as two ends ("dry" to "underwater"), saved as
+    `vibe_attachments` rows of kind `direction` (the owner's 2026-11-07 settlement); the far end
+    alone runs from the brief's own description as text, or a neutral phrase for an empty one,
+    so both ends are text and CLAP's text-to-audio offset cancels (0056). A direction is the unit
+    difference of the ends' `embed_text`.
   - **Position**: each card shows its projection on each direction, scaled so 0 is the vibe's
     least excerpt and 1 its most.
   - **Sliders**: a card's slider from less to more, and Steer starts 5e's job at a small budget

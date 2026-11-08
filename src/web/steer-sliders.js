@@ -10,7 +10,7 @@ import { steerCostText } from "../domain/search-cost.js";
 import { DEFAULT_STEER_BUDGET, MAX_SEARCH_BUDGET } from "../domain/search-settings.js";
 import { getJson, SEARCH_ESTIMATE_PATH, sessionPath } from "./api.js";
 import { cloneTemplate } from "./clone-template.js";
-import { directionText, SLIDER_STEP, sliderStart } from "./direction-text.js";
+import { directionText, SLIDER_STEP, sliderStart, slidersUnsent } from "./direction-text.js";
 import { jobControl } from "./job-control.js";
 import { NO_SESSION } from "./steer-controls.js";
 
@@ -95,7 +95,7 @@ export function steerSliders({ candidateId, sessionId, start, run }) {
             position: HTMLElement,
           });
           slider.name.textContent = directionText(direction);
-          slider.near.textContent = direction.near ?? "this brief so far";
+          slider.near.textContent = direction.near ?? "this brief";
           slider.far.textContent = direction.far;
           slider.input.step = String(SLIDER_STEP);
           const entry = {
@@ -184,8 +184,10 @@ export function steerSliders({ candidateId, sessionId, start, run }) {
     root: parts.root,
     show,
     unsent: () =>
-      [...sliders.values()].some((entry) => entry.moved) ||
-      [...boxes.values()].some((box) => box.input.checked),
+      slidersUnsent(
+        [...sliders.values()].map(({ moved, input }) => ({ moved, disabled: input.disabled })),
+        [...boxes.values()].map(({ input }) => input),
+      ),
     off(why) {
       pageWhy = why;
       showButton();

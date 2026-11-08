@@ -42,6 +42,18 @@ test("a region term pulls the best of scripted points toward the region", () => 
   expect(REGION_WEIGHT).toBeGreaterThan(1);
 });
 
+test("a region term is held in 0 to 1, so a sound past the vibe's nearest can't outbid a direction at its setting", () => {
+  // The scale's high end is below the region itself, so the region reads past 1.
+  const region = { vector: new Float32Array([0, 0, 1]), scale: { low: 0, high: 0.5 } };
+  const [term] = steerTerms(Float32Array.from([0, 0, 1]), { directions: [], regions: [region] });
+  expect(term?.value).toBe(1);
+  const [far] = steerTerms(Float32Array.from([0, 1, 0]), {
+    directions: [],
+    regions: [{ ...region, scale: { low: 0.2, high: 0.5 } }],
+  });
+  expect(far?.value).toBe(0);
+});
+
 test("with no terms, the search score is exactly the model's lower bound", () => {
   const terms = steerTerms(Float32Array.from([1, 0, 0]), { directions: [], regions: [] });
   expect(terms).toEqual([]);

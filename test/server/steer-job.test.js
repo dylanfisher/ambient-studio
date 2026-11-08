@@ -13,10 +13,11 @@ import { ATTACHMENT_KIND } from "../../src/domain/attachment-kind.js";
 import { directionVector, projection } from "../../src/domain/direction-vector.js";
 import { EXCERPT_SECONDS } from "../../src/domain/excerpt-seconds.js";
 import { OPERATOR } from "../../src/domain/operator.js";
+import { termsScore } from "../../src/domain/search-score.js";
 import { DEFAULT_STEER_BUDGET, searchPopulation } from "../../src/domain/search-settings.js";
 import { searchSpace } from "../../src/domain/search-space.js";
 import { SEED_VIBES } from "../../src/domain/seed-vibes.js";
-import { regionSimilarity } from "../../src/domain/steer-terms.js";
+import { regionSimilarity, steerTerms } from "../../src/domain/steer-terms.js";
 import { validateConstraints } from "../../src/domain/validate-constraints.js";
 import { requireGenome } from "../../src/engine/validate-genome.js";
 import { addAttachment } from "../../src/server/attachment-store.js";
@@ -36,6 +37,7 @@ import { readSearchResults } from "../../src/server/search-job.js";
 import { SESSION_ROUTES } from "../../src/server/session-routes.js";
 import { startSession } from "../../src/server/session-store.js";
 import { steerJob } from "../../src/server/steer-job.js";
+import { chosenSteering, readSteering } from "../../src/server/vibe-steering.js";
 import { createVibe } from "../../src/server/vibe-store.js";
 import { SEED_GENOMES } from "../support/seed-genomes.js";
 import { VIBE } from "../support/studio.js";
@@ -189,8 +191,9 @@ function scriptSteer(sidecar, budget, texts) {
  * Runs a steer to its end and returns its result and the run's summary.
  * @param {Awaited<ReturnType<typeof steerApp>>} made
  * @param {{ directions: { id: number, setting: number }[], regions: number[] }} choices
+ * @param {EmbedExcerpts} [embed] the scripted embedder when omitted
  */
-async function steer(made, choices) {
+async function steer(made, choices, embed = embedExcerpts) {
   const { app } = made;
   const job = steerJob(
     app,
@@ -202,7 +205,7 @@ async function steer(made, choices) {
       budget: DEFAULT_STEER_BUDGET,
       choices,
     },
-    { embedExcerpts },
+    { embedExcerpts: embed },
   );
   const status = app.jobs.add(OPERATOR.steer, job);
   await app.jobs.settled(status.id);
@@ -267,6 +270,42 @@ test("steering toward more raises the shown points' mean projection over the bas
   }
   expect(means.more).toBeGreaterThan(baseProjection);
   expect(means.less).toBeLessThan(baseProjection);
+});
+
+test("the scale is read once when the steer starts, so excerpts made during the run don't move it", async () => {
+  const made = await steerApp();
+  const { app, vibe, direction } = made;
+  const choices = { directions: [{ id: direction.id, setting: 1 }], regions: [] };
+  /** @type {Record<string, number[]>} */
+  const texts = { dry: DRY, underwater: UNDERWATER };
+  const before = await readSteering(app.store, vibe.id, {
+    producer: CLAP,
+    embedText: async (text) => Float32Array.from(/** @type {number[]} */ (texts[text])),
+  });
+  const steering = chosenSteering(before, choices);
+  if (typeof steering === "string") throw new Error(steering);
+  let added = false;
+  /** @type {EmbedExcerpts} */
+  const widening = (embedApp, embedder, recordings) => {
+    const scripted = embedExcerpts(embedApp, embedder, recordings);
+    return async (candidates, signal) => {
+      // An excerpt far past the vibe's most joins it during the first batch, as a rendered and
+      // embedded point would.
+      if (!added) {
+        added = true;
+        seedExcerpt(app, vibe.id, { ...base, macros: { ...base.macros, space: 1, motion: 0 } });
+      }
+      return scripted(candidates, signal);
+    };
+  };
+  scriptSteer(made.sidecar, DEFAULT_STEER_BUDGET, [UNDERWATER, DRY]);
+  const { saved } = await steer(made, choices, widening);
+  expect(added).toBe(true);
+  for (const { candidateId, score } of saved.evaluated) {
+    const candidate = /** @type {Candidate} */ (getCandidate(app.store, candidateId));
+    const expected = termsScore(steerTerms(scriptedEmbedding(genomeOf(app, candidate)), steering));
+    expect(score).toBeCloseTo(expected, 9);
+  }
 });
 
 test("a region term pulls the best point toward the region", async () => {
@@ -355,11 +394,19 @@ async function post(app, path, sessionId, body) {
 
 test("a brief with no taste model can steer though it can't search, and a second identical steer is a 409", async () => {
   const made = await steerApp();
-  const { app, session, candidate, direction, sidecar } = made;
+  const { app, vibe, session, candidate, direction, sidecar } = made;
+  const louder = addAttachment(app.store, {
+    vibeId: vibe.id,
+    kind: ATTACHMENT_KIND.direction,
+    regionId: null,
+    details: { near: "dry", far: "loud" },
+  });
+  // The second direction's near end is the first's, so the cache answers it.
   sidecar.script(
     { do: "answer", result: EMBEDDER },
     { do: "answer", result: {}, floats: UNDERWATER },
     { do: "answer", result: {}, floats: DRY },
+    { do: "answer", result: {}, floats: [0, 0, 1] },
     { do: "answer", result: EMBEDDER },
   );
   const searched = await post(app, "/api/sessions/:sessionId/searches", session.id, {
@@ -375,12 +422,19 @@ test("a brief with no taste model can steer though it can't search, and a second
   );
   const body = {
     candidateId: candidate.id,
-    directions: [{ id: direction.id, setting: 0.75 }],
+    directions: [
+      { id: louder.id, setting: 0.25 },
+      { id: direction.id, setting: 0.75 },
+    ],
   };
   const steered = await post(app, "/api/sessions/:sessionId/steers", session.id, body);
   expect(steered.status).toBe(200);
   expect(steered.body.kind).toBe(OPERATOR.steer);
-  const again = await post(app, "/api/sessions/:sessionId/steers", session.id, body);
+  // The same choices in another order are the same steer.
+  const again = await post(app, "/api/sessions/:sessionId/steers", session.id, {
+    ...body,
+    directions: [...body.directions].reverse(),
+  });
   expect(again.status).toBe(409);
   expect(again.body.jobId).toBe(steered.body.id);
   for (const job of app.jobs.list()) app.jobs.cancel(job.id);

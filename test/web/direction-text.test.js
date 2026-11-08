@@ -7,12 +7,13 @@ import {
   directionText,
   positionsLine,
   sliderStart,
+  slidersUnsent,
 } from "../../src/web/direction-text.js";
 
 test("a direction reads its two ends, or the brief's excerpts for no near end", () => {
   expect(directionText({ near: "dry", far: "underwater" })).toBe("“dry” to “underwater”");
   expect(directionText({ near: null, far: "hissing" })).toBe(
-    "this brief's excerpts so far to “hissing”",
+    "this brief's description to “hissing”",
   );
 });
 
@@ -22,7 +23,7 @@ test("a card's line gives its position on each direction, or why it has none", (
     { near: null, far: "bright", reason: "a scale needs at least 2 excerpts", positions: {} },
   ];
   expect(positionsLine(directions, 5)).toBe(
-    "Where it sits, from 0 (this brief's least) to 1 (its most): “dry” to “underwater” 0.63; this brief's excerpts so far to “bright” not placed yet.",
+    "Where it sits, from 0 (this brief's least) to 1 (its most): “dry” to “underwater” 0.63; this brief's description to “bright” not placed yet.",
   );
   // An excerpt rendered since the positions were read waits for the next read.
   expect(positionsLine(directions.slice(0, 1), 9)).toBe(
@@ -37,6 +38,14 @@ test("a slider starts at the card's position, held between its ends, or in the m
   expect(sliderStart(1.4)).toBe(1);
   expect(sliderStart(-0.2)).toBe(0);
   expect(sliderStart(undefined)).toBe(0.5);
+});
+
+test("a moved slider holds the card while it is on, and a ticked region always does", () => {
+  const box = { checked: false };
+  expect(slidersUnsent([{ moved: false, disabled: false }], [box])).toBe(false);
+  expect(slidersUnsent([{ moved: true, disabled: false }], [box])).toBe(true);
+  expect(slidersUnsent([{ moved: true, disabled: true }], [box])).toBe(false);
+  expect(slidersUnsent([], [{ checked: true }])).toBe(true);
 });
 
 test("the brief page's line says how many directions it takes", () => {

@@ -45,7 +45,7 @@ export const regionSimilarity = (embedding, region) =>
 
 /**
  * One term per direction, the negated distance of the sound's position from its setting, then
- * one per region, the sound's position on the region's scale.
+ * one per region, the sound's position on the region's scale held in 0 to 1.
  * @param {ArrayLike<number>} embedding the sound's
  * @param {Steering} steering
  * @returns {ScoreTerm[]}
@@ -56,8 +56,10 @@ export function steerTerms(embedding, { directions, regions }) {
       value: -Math.abs(scaledPosition(projection(embedding, vector), scale) - setting),
       weight: DIRECTION_WEIGHT,
     })),
+    // Held in 0 to 1, so nearness past the vibe's nearest excerpt can't outbid a direction
+    // at its setting, where that term is 0.
     ...regions.map(({ vector, scale }) => ({
-      value: scaledPosition(regionSimilarity(embedding, vector), scale),
+      value: Math.min(1, Math.max(0, scaledPosition(regionSimilarity(embedding, vector), scale))),
       weight: REGION_WEIGHT,
     })),
   ];

@@ -18,5 +18,11 @@ export const MAX_DIRECTIONS = 4;
 /** A direction's two ends, its `details` keys and its route's body fields, near end first. */
 export const DIRECTION_ENDS = Object.freeze(/** @type {const} */ (["near", "far"]));
 
+/**
+ * The near end of a direction typed with none, when the brief's description is empty: a text
+ * like the brief, so the direction's two ends are both text embeddings (decision 0056).
+ */
+export const NEUTRAL_NEAR_TEXT = "ambient music";
+
 /** The most characters one end of a direction may hold, as dry or underwater. */
 export const DIRECTION_END_CHARS = 100;

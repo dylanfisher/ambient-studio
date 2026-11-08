@@ -11,7 +11,7 @@ export const SLIDER_STEP = 0.05;
  * @returns {string}
  */
 export const directionText = ({ near, far }) =>
-  `${near === null ? "this brief's excerpts so far" : `“${near}”`} to “${far}”`;
+  `${near === null ? "this brief's description" : `“${near}”`} to “${far}”`;
 
 /**
  * The card's line of positions, one per direction, or "" when the brief has no direction or the
@@ -42,6 +42,16 @@ export function sliderStart(position) {
   const held = Math.min(1, Math.max(0, position));
   return Number((Math.round(held / SLIDER_STEP) * SLIDER_STEP).toFixed(2));
 }
+
+/**
+ * Whether a card's sliders hold choices not yet sent: a slider moved while it is on, or a region
+ * ticked. A moved slider turned off since can't be sent, so it doesn't hold the card.
+ * @param {Iterable<{ moved: boolean, disabled: boolean }>} sliders
+ * @param {Iterable<{ checked: boolean }>} boxes
+ */
+export const slidersUnsent = (sliders, boxes) =>
+  [...sliders].some(({ moved, disabled }) => moved && !disabled) ||
+  [...boxes].some(({ checked }) => checked);
 
 /**
  * The line under the brief page's directions.
