@@ -3643,3 +3643,28 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   reverb, and render at about 21x. `breath` defaults to 0, so chants stored since CV.1 render as
   they did. The builder's full test run saw 18 server tests time out while two builders and
   omlx ran together; they pass alone. The merged check decides whether they need a hunt.
+- 2026-11-08: CV.3 merged as f6f792f and 4e4f016 (Opus: 257k tokens, 163 calls, 58 min; reviewer
+  Sonnet: 82k tokens, 25 calls, 7.6 min, CHANGES NEEDED on the record only, fixed by the
+  orchestrator). `cymbal` (seeded noise through inharmonic resonances, decay 1–12 s, shimmer)
+  and `drum` (a low membrane whose pitch falls to the snapped root, decay 0.1–1.5 s) are struck
+  voices on candidate grids of 2 s and 0.5 s, capped at six and three hits at once, with
+  `cymbalHits` and `drumHits` ceilings built as `bellNotes` is. The bell's hit finder, cap,
+  playback and cost moved to a shared `struck.js`; the reviewer rendered a capped, macro-offset
+  bell against main's code and got a sample difference of 0. Densest cymbal 78 and drum 37 in
+  cost; both render above 21x. After the merge `./scripts/check` and a second test run agree:
+  2,313 pass, and four prompt-budget checks fail as expected until CV.4 (schema text 3,717 of
+  3,000 characters; six examples 4,145, every voice locked 4,356 of 4,096; a base with six
+  examples 4,571 of 4,506). The builders' server timeouts didn't recur, so they came from load.
+- 2026-11-08: retrospective after CV.1–CV.3 (orchestrator rule 11).
+  - Both worktree builders found their worktree made at 20582f1, not main, and branched again
+    from the sha in the brief. Keep the base sha in every parallel brief, and check the merge
+    base before reviewing.
+  - Builders under-counted failing tests twice (the feature extractor's list in CV.1, a third
+    prompt check after CV.2 and CV.3 met). A brief should ask for the failure list from a
+    `./scripts/test --changed --low` run on the final commit, pasted rather than summarized.
+  - Two builders running full suites while omlx served made 18 server tests time out. Their
+    reports flagged it, and the merged check didn't repeat it; the orchestrator's second test
+    run caught a real race in the upload receiver instead (b878900). Keep the second run.
+  - A reviewer called the planned CV.4 hand-off a blocker and misplaced a test file. Reviewer
+    briefs should say which failures are expected and where they live.
+  - Wall time: CV.1 31 min, CV.2 49 min and CV.3 58 min in parallel, reviews 5–8 min each.
