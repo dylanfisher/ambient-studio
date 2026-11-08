@@ -3371,3 +3371,9 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   (migration 0010) with per-kind `details` checks for 5g and 5h, and generations record what the
   prompt kept in `attachmentIds`. Two regions add about 250 tokens to the seed-sized prompt, at
   most 1,500. The gate passes, 1774 tests.
+- 2026-11-07: 5g merged as 213914f (Opus: 367k tokens, 172 calls, 36 min including a fix round of
+  5.1 min; reviewer Sonnet: 77k tokens, 11 calls, 1 min, PASS with two medium findings taken: a
+  one-ended direction now starts from the brief's text, not the mean excerpt audio, so CLAP's
+  text-to-audio gap cancels; the region term is clamped to [0, 1]). Directions are
+  `vibe_attachments` rows of kind `direction`; steer is 5e's job with direction, region and
+  model terms, scales read once a run, and needs no model. The gate passes, 1804 tests.
