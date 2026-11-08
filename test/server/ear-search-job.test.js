@@ -272,9 +272,10 @@ test("an answer is a rating told to the optimizer, and the next pair was rendere
   const answeredAt = made.tickClock();
   // The challenger is on side b and won.
   const rating = rate(made, first, "b", "b");
-  await call(made, "POST", ANSWERS, { query: 0, ratingId: rating.id });
-
-  const second = await waitFor(channel, (v) => v.phase === "asking" && v.query === 1);
+  // The reply carries the next pair, so the page asks for nothing more.
+  /** @type {EarView} */
+  const second = await call(made, "POST", ANSWERS, { query: 0, ratingId: rating.id });
+  expect(second).toMatchObject({ phase: "asking", query: 1 });
   expect(second.best?.id).toBe(challenger.id);
   const nextGenome = /** @type {any} */ (second.challenger).genomeId;
   // Rendered while the owner listened to the first pair, and only fetched from the cache since.

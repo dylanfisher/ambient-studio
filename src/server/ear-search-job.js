@@ -39,13 +39,7 @@ import { JOB_STEP } from "./job-steps.js";
 import { locksInForce } from "./lock-store.js";
 import { verdictOf } from "./nudge-job.js";
 import { renderExcerpt } from "./render-excerpt.js";
-import {
-  askPoints,
-  forkSearch,
-  nextRun,
-  startSearch,
-  tellScores,
-} from "./search-run.js";
+import { askPoints, forkSearch, nextRun, startSearch, tellScores } from "./search-run.js";
 
 /** The source every point stores. */
 const SOURCE = "optimizer";
@@ -90,6 +84,7 @@ export const STOP = Symbol("stop");
  * @property {Playable | null} challenger the new point, while asking
  * @property {number} ready how many of the four next points are rendered, while asking
  * @property {boolean} stopped whether the owner pressed Stop
+ * @property {string | null} error why the job ended without finishing, once it has
  */
 
 /**
@@ -102,6 +97,8 @@ export const STOP = Symbol("stop");
  *   resolves with the score of the owner's answer to `query`, or `STOP`
  * @property {(query: number, score: number | null) => void} answer throws unless the job waits
  *   for `query`
+ * @property {(query: number) => Promise<EarView>} after resolves with the view once the job
+ *   asks a later query than `query`, or ends, so an answer's reply carries the next pair
  * @property {() => void} stop
  */
 
@@ -121,14 +118,28 @@ export function createEarChannel(budget) {
     challenger: null,
     ready: 0,
     stopped: false,
+    error: null,
   };
   /** @type {{ query: number, resolve: (value: number | null | typeof STOP) => void } | null} */
   let waiting = null;
+  /** @type {{ query: number, resolve: (view: EarView) => void }[]} */
+  let watchers = [];
+  /** @param {number} query */
+  const past = (query) => view.phase === "done" || (view.phase === "asking" && view.query > query);
   return {
     view: () => view,
     publish(patch) {
       view = { ...view, ...patch };
+      const due = watchers.filter(({ query }) => past(query));
+      watchers = watchers.filter(({ query }) => !past(query));
+      for (const { resolve } of due) resolve(view);
     },
+    after: (query) =>
+      past(query)
+        ? Promise.resolve(view)
+        : new Promise((resolve) => {
+            watchers.push({ query, resolve });
+          }),
     wait: (query, signal) =>
       new Promise((resolve, reject) => {
         if (view.stopped) {
@@ -158,7 +169,7 @@ export function createEarChannel(budget) {
         throw new Error(
           view.phase === "done"
             ? "This search by ear has ended, so it takes no more answers."
-            : `The search by ear is not waiting for an answer to query ${query + 1}.`,
+            : `The search by ear is not waiting for an answer to pair ${query + 1}.`,
         );
       }
       waiting.resolve(score);
@@ -238,10 +249,19 @@ async function writeResults(folder, results) {
  */
 export function earSearchJob(app, request, channel, { prepare = renderPrepared } = {}) {
   return async (job) => {
+    /** @type {string | null} */
+    let error = null;
     try {
       return await searchByEar(app, request, channel, prepare, job);
+    } catch (thrown) {
+      error = job.signal.aborted
+        ? "The search was cancelled."
+        : thrown instanceof Error
+          ? thrown.message
+          : String(thrown);
+      throw thrown;
     } finally {
-      channel.publish({ phase: "done", challenger: null, ready: 0 });
+      channel.publish({ phase: "done", challenger: null, ready: 0, error });
     }
   };
 }

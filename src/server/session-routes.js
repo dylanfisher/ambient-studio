@@ -183,7 +183,7 @@ function requireEarChannel(app, session) {
   if (!channel) {
     throw new HttpError(
       404,
-      `session ${session.id} has run no search by ear since the server started`,
+      `Session ${session.id} has had no search by ear since the studio started. Start one with Search by ear on a candidate on the session page.`,
     );
   }
   return channel;
@@ -572,7 +572,8 @@ export const SESSION_ROUTES = [
         );
       }
       channel.answer(query, earScore(rating.outcome, side));
-      return channel.view();
+      // The next pair is rendered ahead, so the reply waits only for the tell and its ask.
+      return channel.after(query);
     },
   },
   {
