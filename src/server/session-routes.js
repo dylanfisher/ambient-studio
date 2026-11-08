@@ -1,8 +1,9 @@
 // The session and job routes (decision 0027): a session's state and stop, asking for
-// candidates, nudging (0037) and exploring (0038) from one, re-rendering missing excerpts, the
-// candidates with their excerpts, revised pairs (0036) and places in the ranking (0046), hiding
-// and showing them again (0049), and job status and cancel. Stopping a session cancels its jobs,
-// and with them their omlx requests.
+// candidates, nudging (0037), exploring (0038) and searching (0054) from one, re-rendering
+// missing excerpts, the candidates with their excerpts, revised pairs (0036), places in the
+// ranking (0046) and a search's shown points, hiding and showing them again (0049), and job
+// status and cancel. Stopping a session cancels its jobs, and with them their omlx requests.
+/** @import { Candidate } from "./generation-store.js" */
 /** @import { JobStatus } from "./job-runner.js" */
 /** @import { Feedback } from "./rating-store.js" */
 /** @import { App, Route } from "./routing.js" */
@@ -10,18 +11,23 @@
 import { applyLocks } from "../domain/apply-locks.js";
 import { DEFAULT_EXPLORES, NOT_ONE_LINE } from "../domain/explore-direction.js";
 import { DEFAULT_NUDGES, lockRefusal, STEP_SIZE } from "../domain/nudge.js";
+import { OPERATOR } from "../domain/operator.js";
+import { DEFAULT_SEARCH_BUDGET, MAX_SEARCH_BUDGET } from "../domain/search-settings.js";
+import { MAX_SEARCH_DIMENSIONS, searchSpace } from "../domain/search-space.js";
 import { currentExcerpt } from "./candidate-excerpt.js";
 import { candidateJob, DEFAULT_CANDIDATES, excerptJob, MAX_CANDIDATES } from "./candidate-job.js";
 import { candidatePairs } from "./candidate-pair.js";
-import { EXPLORE_OPERATOR } from "./generate-candidates.js";
+import { currentRevision, EXPLORE_OPERATOR } from "./generate-candidates.js";
 import { getCandidate, getGenome, listSessionCandidates } from "./generation-store.js";
 import { HIDDEN, hiddenInSession, setHidden } from "./hide-store.js";
 import { CANDIDATE_ID, vibeCandidate } from "./lock-routes.js";
 import { locksInForce } from "./lock-store.js";
 import { NUDGE_OPERATOR, nudgeJob } from "./nudge-job.js";
+import { currentModel } from "./preference-summary.js";
 import { FEEDBACK_KIND, listSessionFeedback } from "./rating-store.js";
 import { fields, idParam, integer, MAX_CHARS, oneOf, rowId, text } from "./request-fields.js";
 import { duplicateJob, HttpError } from "./routing.js";
+import { readSearchResults, searchEstimate, searchJob, searchRefusal } from "./search-job.js";
 import { readRanking } from "./session-ranking.js";
 import { getSession, stopSession } from "./session-store.js";
 
@@ -105,6 +111,8 @@ const EXCERPTS = "excerpts";
 /** A nudge job is named for the operator its children store. */
 const NUDGE = NUDGE_OPERATOR;
 const EXPLORE = EXPLORE_OPERATOR;
+/** A search job is named for the operator its points store. */
+const SEARCH = OPERATOR.optimize;
 const STEP_SIZES = /** @type {(keyof typeof STEP_SIZE)[]} */ (Object.keys(STEP_SIZE));
 /** The most candidates one hide names; the page sends one, or the two of a revised pair. */
 const MAX_HIDES = 64;
@@ -147,7 +155,61 @@ const DUPLICATE = Object.freeze({
   /** @param {number} id */
   [EXPLORE]: (id) =>
     `This session is already making this explore (job ${id}). Wait for it to finish, or cancel it.`,
+  /** @param {number} id */
+  [SEARCH]: (id) =>
+    `This session is already running this search (job ${id}). Wait for it to finish, or cancel it.`,
 });
+
+/**
+ * A search's raw paths from the body: none when it gives none, or a list of strings.
+ * @param {Record<string, unknown>} given
+ * @returns {string[]}
+ */
+function rawPaths(given) {
+  if (given.paths === undefined) return [];
+  const list = given.paths;
+  if (
+    !Array.isArray(list) ||
+    list.length > MAX_SEARCH_DIMENSIONS ||
+    !list.every((path) => typeof path === "string")
+  ) {
+    throw new HttpError(
+      400,
+      `paths must be a list of at most ${MAX_SEARCH_DIMENSIONS} genome paths, got ${JSON.stringify(list)}`,
+    );
+  }
+  return list;
+}
+
+/**
+ * Each search point's place in the table (decision 0054), by candidate id, read from its run's
+ * summary: whether it is shown, and otherwise the shown point it folds under. A point the run
+ * hasn't scored yet folds under the run's best, or under its base before any is scored.
+ * @param {App} app
+ * @param {readonly Candidate[]} candidates
+ */
+async function searchPlaces(app, candidates) {
+  /** @type {Map<string, Awaited<ReturnType<typeof readSearchResults>>>} */
+  const runs = new Map();
+  /** @type {Map<number, { shown: boolean, foldedUnder: number | null, score: number | null }>} */
+  const places = new Map();
+  for (const candidate of candidates) {
+    if (candidate.operator !== SEARCH) continue;
+    const run = String(/** @type {{ run?: unknown }} */ (candidate.operatorParams)?.run);
+    if (!runs.has(run)) runs.set(run, await readSearchResults(app.paths.search, run));
+    const results = runs.get(run) ?? null;
+    const shown = results?.shown.includes(candidate.id) ?? false;
+    const score =
+      results?.evaluated.find(({ candidateId }) => candidateId === candidate.id)?.score ?? null;
+    const foldedUnder = shown
+      ? null
+      : (results?.foldedUnder[candidate.id] ??
+        results?.shown[0] ??
+        /** @type {number} */ (candidate.parentIds[0]));
+    places.set(candidate.id, { shown, foldedUnder, score });
+  }
+  return places;
+}
 
 /**
  * An explore's direction, or null when the body gives none or only white space (decision 0038).
@@ -327,6 +389,58 @@ export const SESSION_ROUTES = [
   },
   {
     method: "POST",
+    path: "/api/sessions/:sessionId/searches",
+    handle: async ({ app, params, body }) => {
+      const session = requireOpenSession(app, params);
+      const given = fields(await body(), [CANDIDATE_ID, "budget", "paths", "control"]);
+      const candidateId = rowId(given, CANDIDATE_ID);
+      const budget =
+        given.budget === undefined
+          ? DEFAULT_SEARCH_BUDGET
+          : integer(given, "budget", { min: 1, max: MAX_SEARCH_BUDGET });
+      const raw = rawPaths(given);
+      const control = given.control ?? false;
+      if (typeof control !== "boolean") {
+        throw new HttpError(400, `control must be true or false, got ${JSON.stringify(control)}`);
+      }
+      const { candidate, genome } = baseCandidate(app, session, candidateId);
+      const locks = locksInForce(app.store, session.vibeId);
+      const { constraints } = currentRevision(app.store, session.vibeId);
+      try {
+        if (searchSpace(applyLocks(genome, locks).genome, locks, constraints, raw).length === 0) {
+          throw new HttpError(
+            409,
+            "Every macro is locked or fixed by the brief, so there is nothing to search. Unlock a macro, or choose paths to search.",
+          );
+        }
+      } catch (error) {
+        if (error instanceof HttpError) throw error;
+        throw new HttpError(400, /** @type {Error} */ (error).message);
+      }
+      const why = searchRefusal(
+        await currentModel(app, session.vibeId, new AbortController().signal),
+      );
+      if (why !== null) throw new HttpError(409, why);
+      const run = searchJob(app, {
+        vibeId: session.vibeId,
+        sessionId: session.id,
+        base: candidate,
+        genome,
+        budget,
+        raw,
+        control,
+      });
+      const action = JSON.stringify([candidateId, budget, raw, control]);
+      return addSessionJob(app, requireOpenSession(app, params), SEARCH, run, action);
+    },
+  },
+  {
+    method: "GET",
+    path: "/api/search-estimate",
+    handle: ({ app }) => searchEstimate(app.paths.search),
+  },
+  {
+    method: "POST",
     path: "/api/sessions/:sessionId/excerpts",
     handle: async ({ app, params, body }) => {
       const session = requireOpenSession(app, params);
@@ -380,6 +494,10 @@ export const SESSION_ROUTES = [
         excerpt: currentExcerpt(app.store, app.paths.renderCache, candidate),
       }));
       const { pairs, folded } = candidatePairs(app.store, listed);
+      const searched = await searchPlaces(
+        app,
+        listed.map(({ candidate }) => candidate),
+      );
       const candidates = listed
         .filter(({ candidate }) => !folded.has(candidate.id))
         .map(({ candidate, excerpt: render }) => {
@@ -419,6 +537,8 @@ export const SESSION_ROUTES = [
             ),
             // Where the excerpt sits in the ranking (decision 0046).
             ranking: (render && places.get(render.id)) ?? null,
+            // A search point's place in the table (decision 0054).
+            search: searched.get(id) ?? null,
           };
         });
       return {

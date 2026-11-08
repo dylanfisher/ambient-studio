@@ -1931,8 +1931,9 @@ moved chain) is on main before 5e starts, and 5e builds on 5d's merge.
   - A vibe with no fitted model is refused with the reason. An identical search queued or running
     is a 409.
 - **Tiers:** server, sidecar, web.
-- **Tests first:** pytest: on a quadratic in [0, 1]^8 the best after 200 evaluations is within 0.05
-  of the optimum, and one seed gives one run. Node, scripted scorer: the job stops at budget; the
+- **Tests first:** pytest: on a quadratic in [0, 1]^8 the best score after 200 evaluations is
+  within 0.05 of the optimum's, and the best point within 0.1 of it (0054), and one seed gives
+  one run. Node, scripted scorer: the job stops at budget; the
   shown 4 follow score and distance; the control runs as many nudges; cancel keeps rows; the
   estimate is the formula on scripted timings; no model is a 409; locks hold.
 - **Records:** writes 0054: settings, budget and estimate, what is shown, the control arm, and
@@ -3331,3 +3332,11 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   Uploads stream to a hashed name under `references/`, ffmpeg and ffprobe read only whitelisted
   demuxers and the file protocol, and backups copy the folder. Migration 0008. The gate passes,
   1661 tests.
+- 2026-11-07: 5e merged as 9d1b555 (Opus: 334k tokens, 195 calls, 31.2 min including a fix round
+  of 5.4 min; reviewer Sonnet: 84k tokens, 20 calls, 9.5 min, PASS with one medium finding taken:
+  points folded under a hidden shown point nest under their base, and a fold never hides a held
+  or playing row). `cma==4.5.0` behind 5d's protocol, its strategy pickled in the run's state
+  with name and dimension checked on read. The quadratic test's bound is the score gap plus a
+  distance under 0.1 (0054): the best point is a sample at the final step size, about 0.05 from
+  the optimum at the median of 30 seeds. `paths().search` replaces search-run's own path. The
+  gate passes, 1682 tests.

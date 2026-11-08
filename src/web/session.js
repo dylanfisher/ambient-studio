@@ -27,7 +27,7 @@ import { abView } from "./ab-view.js";
 import { getJson, jobPath, postJson, sessionPath, startJob, VIBES_PATH } from "./api.js";
 import { trackAudio } from "./audio-player.js";
 import { questionOf } from "./best-question.js";
-import { candidateRows, rowPlacement } from "./candidate-rows.js";
+import { candidateRows, foldedOut, rowPlacement } from "./candidate-rows.js";
 import { createSelection } from "./candidate-selection.js";
 import { createCardHold } from "./card-hold.js";
 import { cloneTemplate } from "./clone-template.js";
@@ -119,6 +119,7 @@ const CARD_PARTS = Object.freeze({
   lint: HTMLElement,
   findings: HTMLUListElement,
   pairLink: HTMLButtonElement,
+  foldToggle: HTMLButtonElement,
   steer: HTMLElement,
   lockSummary: HTMLElement,
   lockPath: HTMLSelectElement,
@@ -156,6 +157,8 @@ const CARD_PARTS = Object.freeze({
  * @property {boolean} hidden whether the owner hid it (decision 0049)
  * @property {{ rank: number, score: number, wildcard: boolean, slot: number } | null} ranking
  *   where its excerpt sits in the ranking, null when it has none (decision 0046)
+ * @property {{ shown: boolean, foldedUnder: number | null, score: number | null } | null} search
+ *   a search point's place in the table, null for any other candidate (decision 0054)
  */
 
 /**
@@ -203,6 +206,8 @@ const ask = jobControl(page.askButton);
 const excerpts = jobControl(page.excerptsButton);
 /** Whether a job's POST is in flight, so the controls stay off until its job id is known. */
 let posting = false;
+/** The shown search points whose folds the owner opened, by candidate id (decision 0054). */
+const openFolds = new Set();
 
 /** @param {number} fraction */
 const percent = (fraction) => `${Math.round(fraction * 100)}%`;
@@ -1017,6 +1022,11 @@ function makeCard(candidate, number, revised) {
     parts.expand.textContent = open ? "Fewer controls" : "More controls";
   };
   parts.pairLink.onclick = () => showOther(card);
+  parts.foldToggle.onclick = () => {
+    const { id } = card.candidate;
+    if (!openFolds.delete(id)) openFolds.add(id);
+    showPairs();
+  };
   // A swap held by the card runs again once it is free: a turn after the focus leaves, so the
   // focus has landed, and after a press ends (below), so the click lands first.
   parts.root.addEventListener("focusin", () => card.hold.focusIn());
@@ -1170,6 +1180,15 @@ function isEditing(card) {
 }
 
 /**
+ * The rows that play or are in use, which neither a move nor a closed fold takes out of sight.
+ * @param {readonly Card[]} rows
+ */
+const heldRows = (rows) =>
+  new Set(
+    rows.filter((card) => isPlaying(card) || isEditing(card)).map((card) => card.candidate.id),
+  );
+
+/**
  * Puts the table's rows in the order given, moving only the rows out of place and never a row
  * that plays or is in use (`rowPlacement`), since Safari pauses an `<audio>` and blurs a field
  * taken out of the page. Such a row takes its place when `showPairs` runs after its release.
@@ -1182,9 +1201,7 @@ function placeRows(table, rows) {
     const card = byRoot.get(body);
     return card ? [card.candidate.id] : [];
   });
-  const held = new Set(
-    rows.filter((card) => isPlaying(card) || isEditing(card)).map((card) => card.candidate.id),
-  );
+  const held = heldRows(rows);
   const byId = new Map(rows.map((card) => [card.candidate.id, card.parts.root]));
   const { moves } = rowPlacement(
     current,
@@ -1226,6 +1243,25 @@ function layoutRows() {
     page.candidateTable,
     shown.map(({ id, depth }) => indent(id, depth)),
   );
+  // A search's other points stay out of sight under the shown point they fold under, until
+  // its fold is opened; `showPairs` shows every row again before this runs.
+  for (const id of foldedOut(shown, openFolds, heldRows(cards))) {
+    cardOf(id).parts.root.hidden = true;
+  }
+  /** @type {Map<number, number>} rows each fold holds, by its shown point */
+  const folds = new Map();
+  for (const { foldedUnder } of shown) {
+    if (foldedUnder !== null) folds.set(foldedUnder, (folds.get(foldedUnder) ?? 0) + 1);
+  }
+  for (const card of cards) {
+    const count = folds.get(card.candidate.id) ?? 0;
+    const open = openFolds.has(card.candidate.id);
+    card.parts.foldToggle.hidden = count === 0;
+    card.parts.foldToggle.setAttribute("aria-expanded", String(open));
+    card.parts.foldToggle.textContent = open
+      ? `Hide the ${count} nearby points`
+      : `Show ${count} nearby point${count === 1 ? "" : "s"}`;
+  }
   placeRows(
     page.hiddenTable,
     hidden.map((id) => indent(id, 0)),
@@ -1289,12 +1325,15 @@ async function loadCandidates() {
 
   page.rejectedBox.hidden = rejected.length === 0;
   const draws = rejected.filter((candidate) => candidate.operator === OPERATOR.nudge).length;
-  const answers = rejected.length - draws;
+  const points = rejected.filter((candidate) => candidate.operator === OPERATOR.optimize).length;
+  const answers = rejected.length - draws - points;
   page.rejectedSummary.textContent = `${rejected.length} rejected candidate${rejected.length === 1 ? "" : "s"}: ${[
     answers > 0 &&
       `${answers} model answer${answers === 1 ? "" : "s"} that broke the format or the brief's rules even after one fix`,
     draws > 0 &&
       `${draws} nudge draw${draws === 1 ? "" : "s"} that broke the rules or repeated a genome, each drawn again`,
+    points > 0 &&
+      `${points} search point${points === 1 ? "" : "s"} that broke the rules or repeated a genome, each told a low score`,
   ]
     .filter(Boolean)
     .join(", and ")}`;

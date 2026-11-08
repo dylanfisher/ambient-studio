@@ -15,6 +15,7 @@ import { join } from "node:path";
  *   named by its SHA-256
  * @property {string} referenceCache derived from references: peaks, playback MP3s, and uploads
  *   still being checked
+ * @property {string} search the optimizers' search runs, derived, one folder each (decision 0053)
  */
 
 /**
@@ -32,5 +33,6 @@ export function paths(dataRoot) {
     textEmbeddings: join(dataRoot, "text-embeddings"),
     references: join(dataRoot, "references"),
     referenceCache: join(dataRoot, "reference-cache"),
+    search: join(dataRoot, "search"),
   };
 }

@@ -1,10 +1,11 @@
 // What a model test costs, said in the confirm before it starts (decision 0040). No DOM here, so
 // the wording is tested. The figures come from the logged model tests on mbp2021: about 55 s a
 // request with thinking on, about 7 s with it off, and 1.3 to 2.5 s to render an excerpt.
+import { BENCH_SECONDS } from "../domain/search-cost.js";
 
 /** Seconds a request takes, by whether the model thinks first. */
 const REQUEST_SECONDS = Object.freeze({ thinking: 55, notThinking: 7 });
-const RENDER_SECONDS = 2;
+const RENDER_SECONDS = BENCH_SECONDS.render;
 
 /**
  * Requests and renders per candidate, low and high. A plain test sends a first try and at most

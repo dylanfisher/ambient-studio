@@ -236,7 +236,7 @@ test("a run that exists is refused before the sidecar is asked", async () => {
     startSearch(app, "run-1", spec(5), { signal: AbortSignal.timeout(20_000) }),
   ).rejects.toThrow("EEXIST");
   expect(await sidecar.received()).toHaveLength(1);
-  expect(() => searchRunFolder(app.config.dataRoot, "../elsewhere")).toThrow("name");
+  expect(() => searchRunFolder(app.paths.search, "../elsewhere")).toThrow("name");
 });
 
 test("1,000 seeded asks under three locks keep every lock and score no genome lint rejects", async () => {
