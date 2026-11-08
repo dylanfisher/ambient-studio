@@ -49,11 +49,11 @@ const SOURCE = "mutation";
  */
 
 /**
- * A draw as the verdict `keep` stores.
+ * A draw, or any proposal, as the verdict `keep` stores.
  * @param {NudgeDraw} draw
  * @returns {Verdict}
  */
-const verdictOf = ({ reason, lint, genome, written, lockChanges }) => ({
+export const verdictOf = ({ reason, lint, genome, written, lockChanges }) => ({
   reason,
   lint,
   intent: null,

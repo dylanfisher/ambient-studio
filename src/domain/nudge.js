@@ -4,20 +4,15 @@
 // kept as rejected and drawn again.
 /** @import { AppliedLocks } from "./apply-locks.js" */
 /** @import { Constraints } from "./constraint-schema.js" */
-/** @import { Finding, LintResult } from "./lint-result.js" */
-/** @import { RejectReason } from "./reject-reason.js" */
+/** @import { Proposal } from "./propose-genome.js" */
 /** @import { Lock } from "./validate-lock.js" */
 /** @import { Genome } from "../engine/genome-schema.js" */
 import { canonicalGenome } from "../engine/canonical-genome.js";
 import { drawer } from "../engine/prng.js";
-import { validateGenome } from "../engine/validate-genome.js";
-import { fromVectorUnchecked, toVector, vectorPaths } from "../engine/vector-view.js";
+import { toVector, vectorPaths } from "../engine/vector-view.js";
 import { applyLocks } from "./apply-locks.js";
-import { CONSTRAINT_KINDS, FORM } from "./constraint-schema.js";
-import { lintGenome } from "./lint-genome.js";
-import { lintResult, SCHEMA_RULE } from "./lint-result.js";
-import { lockedPaths } from "./locked-paths.js";
-import { REJECT_REASON } from "./reject-reason.js";
+import { proposeGenome } from "./propose-genome.js";
+import { searchPaths } from "./search-paths.js";
 
 /** How many children one nudge makes when the request doesn't say; the pages send it too. */
 export const DEFAULT_NUDGES = 8;
@@ -30,17 +25,7 @@ export const STEP_SIZE = Object.freeze({ small: 0.05, medium: 0.12, large: 0.25 
 /** The most draws one child gets before it is given up. */
 export const NUDGE_DRAWS = 4;
 
-/**
- * One draw for a child. A draw that passed has `reason` null and its genome; one that failed has
- * the genome as drawn in `written`, for the rejected candidate's row.
- * @typedef {object} NudgeDraw
- * @property {RejectReason | null} reason
- * @property {LintResult} lint
- * @property {Genome | null} genome the child, with the locks applied; null when rejected
- * @property {unknown} written the genome as drawn
- * @property {{ locksChanged: string[], locksFilled: string[] } | null} lockChanges as an
- *   answer's: what `applyLocks` restored, null when no lock is in force
- */
+/** @typedef {Proposal} NudgeDraw one draw for a child */
 
 /**
  * @typedef {object} NudgeRequest
@@ -54,35 +39,12 @@ export const NUDGE_DRAWS = 4;
  */
 
 /**
- * The global parameters the vibe's constraints fix to one value. A fixed kind is named for the
- * parameter it fixes (`constraint-schema.js`), and a move there could only fail the linter.
- * @param {Constraints} constraints
- */
-const fixedByVibe = (constraints) =>
-  Object.keys(constraints).filter(
-    (kind) => CONSTRAINT_KINDS[/** @type {keyof Constraints} */ (kind)].form === FORM.fixed,
-  );
-
-/**
  * A standard normal value from two uniform draws (Box–Muller). `1 - u` is in (0, 1], so the
  * log is finite.
  * @param {number} u
  * @param {number} v
  */
 const normal = (u, v) => Math.sqrt(-2 * Math.log(1 - u)) * Math.cos(2 * Math.PI * v);
-
-/**
- * @param {Partial<NudgeDraw> & Pick<NudgeDraw, "reason">} draw
- * @param {Finding[]} findings
- * @returns {NudgeDraw}
- */
-const rejected = (draw, findings) => ({
-  lint: lintResult(findings),
-  genome: null,
-  written: null,
-  lockChanges: null,
-  ...draw,
-});
 
 /**
  * Why a base can't be nudged under the locks, as a clause after its name ("can't take the
@@ -111,8 +73,7 @@ export function nudge({ base, baseId, locks, constraints, stepSize, seed, count 
   const refused = lockRefusal(applied);
   if (refused !== null) throw new Error(`the base ${refused}`);
   const start = applied.genome;
-  const held = new Set([...lockedPaths(locks, start), ...fixedByVibe(constraints)]);
-  const free = vectorPaths(start).filter((path) => !held.has(path));
+  const free = searchPaths(start, locks, constraints, vectorPaths(start));
   const origin = toVector(start, free);
   const spread = STEP_SIZE[stepSize];
   const draw = drawer(seed, `:nudge:${baseId}:${stepSize}`);
@@ -133,30 +94,7 @@ export function nudge({ base, baseId, locks, constraints, stepSize, seed, count 
       const step = spread * normal(draw(event, 2 * i), draw(event, 2 * i + 1));
       return Math.min(1, Math.max(0, u + step));
     });
-    const written = fromVectorUnchecked(start, free, vector);
-    const validated = validateGenome(written);
-    if (!validated.ok) {
-      const findings = validated.errors.map((e) => ({ ...e, rule: SCHEMA_RULE }));
-      return rejected({ reason: REJECT_REASON.schemaErrors, written }, findings);
-    }
-    const locked = applyLocks(validated.genome, locks);
-    if (locked.findings.length > 0) {
-      return rejected({ reason: REJECT_REASON.schemaErrors, written }, locked.findings);
-    }
-    const repeats = seen.get(canonicalGenome(locked.genome));
-    if (repeats !== undefined) {
-      const finding = {
-        path: "$",
-        rule: REJECT_REASON.repeated,
-        message: `the draw repeats ${repeats}`,
-      };
-      return rejected({ reason: REJECT_REASON.repeated, written }, [finding]);
-    }
-    const lint = lintGenome(locked.genome, constraints);
-    if (!lint.ok) return rejected({ reason: REJECT_REASON.lintErrors, written }, lint.findings);
-    const lockChanges =
-      locks.length === 0 ? null : { locksChanged: locked.changed, locksFilled: locked.filled };
-    return { reason: null, lint, genome: locked.genome, written, lockChanges };
+    return proposeGenome(start, free, vector, { locks, constraints, seen });
   }
 
   return Array.from({ length: count }, (_, child) => {

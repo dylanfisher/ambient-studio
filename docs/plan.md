@@ -75,7 +75,7 @@ unneeded stays unused rather than being given to another step.
 | 0050 | Reference uploads: formats, files, regions, ffmpeg decoding | 5a | [written](decisions/0050-reference-uploads.md), provisional |
 | 0051 | Region analysis and ranges from a region | 5b | — |
 | 0052 | References in the prompt | 5c | — |
-| 0053 | Search space, proposals, ask/tell and the objective | 5d | — |
+| 0053 | Search space, proposals, ask/tell and the objective | 5d | [written](decisions/0053-search-space-ask-tell.md), provisional |
 | 0054 | Model-in-the-loop CMA-ES, and which optimizer the acceptance means | 5e | — |
 | 0055 | Owner-in-the-loop preferential BO | 5f | — |
 | 0056 | CLAP directions, sliders and the reference target | 5g | — |
@@ -3317,3 +3317,10 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   `job-kind.js`). Ranking reads the current model only when a model file exists; ratings carry the
   rank shown. Phase 4 is built; its Result is written with agreement inconclusive, waiting on data.
   5d started beside 4f's fix round. The gate passes, 1580 tests.
+- 2026-11-07: 5d merged as 6092b95 (Opus: 206k tokens, 122 calls, 20.9 min; reviewer
+  Sonnet: 62k tokens, 13 calls, 8.7 min, PASS with low findings left: the sidecar trusts any
+  absolute path as 0041 does, Node confines runs to the data root; a kill between writing an
+  ask and its state fails the next ask loudly). Nudge's chain is `proposeGenome` and
+  `searchPaths`; the optimizer protocol keeps run state in `<dataRoot>/search/<run>/`, built in
+  `search-run.js` until 5a's `paths()` lands. Making preference.py's JSON helpers public changed
+  `model_code()`, so any fitted model refits; none were fitted. The gate passes, 1604 tests.

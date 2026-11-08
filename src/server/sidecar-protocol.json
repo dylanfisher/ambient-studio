@@ -37,6 +37,18 @@
     "predict": {
       "params": { "model": "path", "items": "path", "out": "path" },
       "result": { "count": "number" }
+    },
+    "optimizer_start": {
+      "params": { "spec": "path" },
+      "result": { "dimension": "number" }
+    },
+    "optimizer_ask": {
+      "params": { "run": "path", "count": "number", "out": "path" },
+      "result": { "count": "number" }
+    },
+    "optimizer_tell": {
+      "params": { "run": "path", "points": "path", "scores": "path" },
+      "result": { "generations": "number" }
     }
   }
 }

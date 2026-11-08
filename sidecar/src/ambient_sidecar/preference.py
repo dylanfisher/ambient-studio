@@ -66,7 +66,7 @@ def model_code() -> str:
     return f"preference-{hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}"
 
 
-def _read_json(path: Path) -> dict[str, Any]:
+def read_json(path: Path) -> dict[str, Any]:
     value: object = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
         raise ValueError(f"{path} doesn't hold a JSON object")
@@ -74,7 +74,7 @@ def _read_json(path: Path) -> dict[str, Any]:
     return record
 
 
-def _write_json(path: Path, value: dict[str, Any]) -> None:
+def write_json(path: Path, value: dict[str, Any]) -> None:
     """Refuses a file that exists, since the server names a fresh one per request. Floats are
     written by repr, which reads back to the same bits."""
     text = json.dumps(value, allow_nan=False, separators=(",", ":"))
@@ -329,7 +329,7 @@ def laplace(
 
 
 def fit(params: dict[str, Any]) -> dict[str, Any]:
-    record = _read_json(Path(params["set"]))
+    record = read_json(Path(params["set"]))
     feature_names = _names(record, "featureNames")
     macro_names = _names(record, "macroNames")
     hyper = _hyperparameters(record)
@@ -340,7 +340,7 @@ def fit(params: dict[str, Any]) -> dict[str, Any]:
         weight_scale = hyper["weightScale"]
         prior_mean = None
     else:
-        prior = _read_json(_absolute(prior_path, "prior"))
+        prior = read_json(_absolute(prior_path, "prior"))
         for key, names in (("featureNames", feature_names), ("macroNames", macro_names)):
             if prior[key] != names:
                 raise ValueError(f"the prior's {key} differ from the set's")
@@ -362,7 +362,7 @@ def fit(params: dict[str, Any]) -> dict[str, Any]:
     rows, labels, weights, pairs, thumbs = _rows(record, phi, hyper["thumbsWeight"])
     theta, covariance, iterations = laplace(rows, labels, weights, mean, 1 / variance)
     clap = len(basis["componentScales"])
-    _write_json(
+    write_json(
         Path(params["out"]),
         {
             "featureNames": feature_names,
@@ -389,8 +389,8 @@ def fit(params: dict[str, Any]) -> dict[str, Any]:
 def predict(params: dict[str, Any]) -> dict[str, Any]:
     """Each item's score mean and variance, and the covariance of every two, from which a
     pair's difference has variance var(a) + var(b) - 2 cov(a, b)."""
-    model = _read_json(Path(params["model"]))
-    record = _read_json(Path(params["items"]))
+    model = read_json(Path(params["model"]))
+    record = read_json(Path(params["items"]))
     for key in ("featureNames", "macroNames", "embeddingDimension"):
         if record.get(key) != model[key]:
             raise ValueError(f"the items' {key} differ from the model's")
@@ -402,7 +402,7 @@ def predict(params: dict[str, Any]) -> dict[str, Any]:
     scores = phi @ weights
     joint = phi @ covariance @ phi.T
     joint = (joint + joint.T) / 2
-    _write_json(
+    write_json(
         Path(params["out"]),
         {
             "mean": scores.tolist(),
