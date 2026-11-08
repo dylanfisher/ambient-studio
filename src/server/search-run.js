@@ -6,7 +6,7 @@
 // nothing is retried.
 /** @import { ProposalContext } from "../domain/propose-genome.js" */
 /** @import { Genome } from "../engine/genome-schema.js" */
-/** @import { Batch, CandidateOrigin } from "./generate-candidates.js" */
+/** @import { CandidateOrigin } from "./generate-candidates.js" */
 /** @import { Candidate } from "./generation-store.js" */
 /** @import { App } from "./routing.js" */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -40,7 +40,7 @@ const RUN_NAME = /^[a-z0-9][a-z0-9-]*$/;
  * @property {readonly string[]} paths the search space, from `searchSpace`
  * @property {ProposalContext & { seen: Map<string, string> }} context `seen` takes each valid
  *   point, so a later point that repeats it is rejected
- * @property {Pick<Batch, "store" | "vibeId" | "vibeRevisionId" | "sessionId" | "locks">} batch
+ * @property {Parameters<typeof keep>[0]} batch what `keep` reads of a batch
  * @property {CandidateOrigin} origin each point's candidate stores it, with `generation` and
  *   `point` added to its `operatorParams`
  * @property {(candidates: Candidate[], signal: AbortSignal) => Promise<number[]>} evaluate

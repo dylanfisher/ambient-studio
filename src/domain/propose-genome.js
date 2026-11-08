@@ -30,7 +30,7 @@ import { REJECT_REASON } from "./reject-reason.js";
  * @typedef {object} ProposalContext
  * @property {readonly Lock[]} locks the vibe's locks in force
  * @property {Constraints} constraints the vibe's, which the genome is linted against
- * @property {ReadonlyMap<string, string>} seen canonical genome → what it is ("the base"); a
+ * @property {ReadonlyMap<string, string>} seen canonical genome → what it is, as the base; a
  *   genome found here is rejected as a repeat
  */
 
