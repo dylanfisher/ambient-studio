@@ -10,13 +10,15 @@
 /** @import { Outcome } from "./ab-rating.js" */
 /** @import { Pair } from "./quick-ab-order.js" */
 /** @import { Playable, QuickAbView } from "./quick-ab-session.js" */
+import { EAR_PHASE } from "../domain/ear-settings.js";
 import { OUTCOMES } from "../domain/rating-values.js";
 import { abRatingBody } from "./ab-rating.js";
 import { getJson, postJson, sessionPath } from "./api.js";
+import { outcomeText } from "./outcome-text.js";
 import { ORDER_MODES } from "./quick-ab-order.js";
-import { nameOf, PHASE } from "./quick-ab-session.js";
+import { LOADING, nameOf, PHASE } from "./quick-ab-session.js";
 
-const [A, B, TIE] = OUTCOMES;
+const [A, B] = OUTCOMES;
 const [CHAMPION] = ORDER_MODES;
 
 /** Why Undo does nothing here. */
@@ -26,7 +28,7 @@ export const NO_UNDO =
 /**
  * The search by ear as the server reports it (`EarView` in `ear-search-job.js`).
  * @typedef {object} EarState
- * @property {"preparing" | "asking" | "done"} phase
+ * @property {(typeof EAR_PHASE)[keyof typeof EAR_PHASE]} phase
  * @property {number} query
  * @property {number} budget
  * @property {number} answered
@@ -52,7 +54,7 @@ const messageOf = (error) => (error instanceof Error ? error.message : String(er
 export function createEarSession({ sessionId, now, pause, onChange }) {
   const SESSION = sessionPath(sessionId);
   const EAR = `${SESSION}/ear-search`;
-  /** @type {QuickAbView["phase"]} */
+  /** @type {(typeof PHASE)[keyof typeof PHASE]} */
   let phase = PHASE.loading;
   /** @type {EarState | null} */
   let ear = null;
@@ -60,7 +62,7 @@ export function createEarSession({ sessionId, now, pause, onChange }) {
   let shown = null;
   /** @type {string | null} */
   let pairError = null;
-  let message = "Loading…";
+  let message = LOADING;
   let saving = 0;
   /** @type {{ query: number, ratingId: number, said: string } | null} saved, not yet told */
   let untold = null;
@@ -81,14 +83,17 @@ export function createEarSession({ sessionId, now, pause, onChange }) {
     let current = state;
     ear = current;
     // A stopped search ends at its next step; until then its pair is not to be answered.
-    while (current.phase === "preparing" || (current.stopped && current.phase !== "done")) {
+    while (
+      current.phase === EAR_PHASE.drawing ||
+      (current.stopped && current.phase !== EAR_PHASE.finished)
+    ) {
       phase = PHASE.loading;
       onChange();
       await pause();
       current = await getJson(EAR);
       ear = current;
     }
-    if (current.phase === "done") {
+    if (current.phase === EAR_PHASE.finished) {
       shown = null;
       phase = PHASE.done;
       onChange();
@@ -171,7 +176,7 @@ export function createEarSession({ sessionId, now, pause, onChange }) {
         message,
         mode: CHAMPION,
         champion: ear?.best?.id ?? null,
-        remaining: ear === null || ear.phase === "done" ? 0 : ear.budget - ear.query,
+        remaining: ear === null || ear.phase === EAR_PHASE.finished ? 0 : ear.budget - ear.query,
         poolSize: 2,
         bestAvailable: false,
         ear,
@@ -217,7 +222,7 @@ export function createEarSession({ sessionId, now, pause, onChange }) {
           saving = 0;
           onChange();
         }
-        message = `Chose ${outcomeWords(outcome, ids)} on pair ${query + 1}.`;
+        message = `Pair ${query + 1}: ${outcomeWords(outcome, ids)}.`;
         await tell({ query, ratingId: row.id, said });
       }),
 
@@ -227,7 +232,7 @@ export function createEarSession({ sessionId, now, pause, onChange }) {
         if (untold) {
           const state = await getJson(EAR);
           // The search took it after all when it has moved past that pair.
-          if (state.phase !== "asking" || state.query !== untold.query) {
+          if (state.phase !== EAR_PHASE.listening || state.query !== untold.query) {
             untold = null;
             await follow(state);
             return;
@@ -267,7 +272,8 @@ export function createEarSession({ sessionId, now, pause, onChange }) {
  * @param {Pair} ids the pair's sides a and b: the best, then the new point
  */
 function outcomeWords(outcome, [best, challenger]) {
-  if (outcome === A) return nameOf(best);
-  if (outcome === B) return nameOf(challenger);
-  return outcome === TIE ? "about the same" : "skip";
+  if (outcome === A) return `chose ${nameOf(best)}`;
+  if (outcome === B) return `chose ${nameOf(challenger)}`;
+  // Not a side, so outcomeText reads it without the order.
+  return outcomeText({ outcome, leftSide: A });
 }

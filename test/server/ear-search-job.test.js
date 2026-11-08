@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { setImmediate as tick } from "node:timers/promises";
 import { afterEach, expect, test } from "vitest";
 import { applyLocks } from "../../src/domain/apply-locks.js";
-import { EAR_OPTIMIZER, MAX_EAR_DIMENSIONS } from "../../src/domain/ear-settings.js";
+import { EAR_OPTIMIZER, EAR_PHASE, MAX_EAR_DIMENSIONS } from "../../src/domain/ear-settings.js";
 import { parseLockPath, readLockTarget } from "../../src/domain/lock-path.js";
 import { OPERATOR } from "../../src/domain/operator.js";
 import { REJECT_REASON } from "../../src/domain/reject-reason.js";
@@ -167,7 +167,8 @@ async function waitFor(channel, until) {
   for (;;) {
     const view = channel.view();
     if (until(view)) return view;
-    if (view.phase === "done") throw new Error(`the job ended first: ${JSON.stringify(view)}`);
+    if (view.phase === EAR_PHASE.finished)
+      throw new Error(`the job ended first: ${JSON.stringify(view)}`);
     await tick();
   }
 }
@@ -266,7 +267,7 @@ test("an answer is a rating told to the optimizer, and the next pair was rendere
   scriptTell(sidecar);
   const { channel, status } = startJob(made, 2);
 
-  const first = await waitFor(channel, (v) => v.phase === "asking" && v.ready === 4);
+  const first = await waitFor(channel, (v) => v.phase === EAR_PHASE.listening && v.ready === 4);
   expect(first.best?.id).toBe(made.candidate.id);
   const challenger = /** @type {any} */ (first.challenger);
   const answeredAt = made.tickClock();
@@ -275,7 +276,7 @@ test("an answer is a rating told to the optimizer, and the next pair was rendere
   // The reply carries the next pair, so the page asks for nothing more.
   /** @type {EarView} */
   const second = await call(made, "POST", ANSWERS, { query: 0, ratingId: rating.id });
-  expect(second).toMatchObject({ phase: "asking", query: 1 });
+  expect(second).toMatchObject({ phase: EAR_PHASE.listening, query: 1 });
   expect(second.best?.id).toBe(challenger.id);
   const nextGenome = /** @type {any} */ (second.challenger).genomeId;
   // Rendered while the owner listened to the first pair, and only fetched from the cache since.
@@ -319,13 +320,13 @@ test("a skip tells the optimizer nothing, and a loss keeps the best", async () =
   scriptTell(sidecar);
   const { channel, status } = startJob(made, 3);
 
-  const first = await waitFor(channel, (v) => v.phase === "asking" && v.ready === 4);
+  const first = await waitFor(channel, (v) => v.phase === EAR_PHASE.listening && v.ready === 4);
   await call(made, "POST", ANSWERS, { query: 0, ratingId: rate(made, first, "skip").id });
   const second = await waitFor(channel, (v) => v.query === 1 && v.ready === 4);
   expect(second.best?.id).toBe(made.candidate.id);
   // The challenger is on side a, and b, the best, won.
   await call(made, "POST", ANSWERS, { query: 1, ratingId: rate(made, second, "b").id });
-  const third = await waitFor(channel, (v) => v.query === 2 && v.phase === "asking");
+  const third = await waitFor(channel, (v) => v.query === 2 && v.phase === EAR_PHASE.listening);
   expect(third.best?.id).toBe(made.candidate.id);
   await call(made, "POST", ANSWERS, { query: 2, ratingId: rate(made, third, "a").id });
   await app.jobs.settled(status.id);
@@ -348,7 +349,7 @@ test("a rejected point is stored, told as a loss and never reaches the page", as
   const views = [];
   const asking = await waitFor(channel, (v) => {
     views.push(v);
-    return v.phase === "asking";
+    return v.phase === EAR_PHASE.listening;
   });
   const stored = listSessionCandidates(app.store, made.session.id).filter(
     (c) => c.operator === OPERATOR.optimizeEar,
@@ -372,7 +373,7 @@ test("an answer must be a live rating of the pair asked, while it is asked", asy
   sidecar.script({ do: "answer", result: { dimension: paths.length } });
   scriptQuery(sidecar, [near(from, 1)]);
   const { channel } = startJob(made, 1);
-  const view = await waitFor(channel, (v) => v.phase === "asking");
+  const view = await waitFor(channel, (v) => v.phase === EAR_PHASE.listening);
   const rating = rate(made, view, "a");
   await expect(call(made, "POST", ANSWERS, { query: 1, ratingId: rating.id })).rejects.toThrow(
     "query must be",
@@ -409,7 +410,7 @@ test("Stop ends the run with its best shown in the session and every other point
   };
   scriptQuery(sidecar, [ahead.win], later);
   const { channel, status } = startJob(made, 20);
-  const first = await waitFor(channel, (v) => v.phase === "asking" && v.ready === 4);
+  const first = await waitFor(channel, (v) => v.phase === EAR_PHASE.listening && v.ready === 4);
   await call(made, "POST", ANSWERS, { query: 0, ratingId: rate(made, first, "a").id });
   await waitFor(channel, (v) => v.query === 1 && v.ready === 4);
   const stopped = await call(made, "POST", "/api/sessions/:sessionId/ear-search/stop");
@@ -419,7 +420,7 @@ test("Stop ends the run with its best shown in the session and every other point
   expect(done.state).toBe("done");
   const winner = /** @type {any} */ (first.challenger).id;
   expect(done.result).toMatchObject({ answered: 1, stopped: true, best: winner });
-  expect(channel.view()).toMatchObject({ phase: "done", challenger: null });
+  expect(channel.view()).toMatchObject({ phase: EAR_PHASE.finished, challenger: null });
 
   const listed = await call(made, "GET", "/api/sessions/:sessionId/candidates");
   const points = listed.candidates.filter(
@@ -455,9 +456,9 @@ test("locks hold: a locked macro is not searched and every point keeps it", asyn
   scriptQuery(sidecar, [ahead.loss]);
   scriptTell(sidecar);
   const { channel, status } = startJob(made, 2);
-  const first = await waitFor(channel, (v) => v.phase === "asking" && v.ready === 4);
+  const first = await waitFor(channel, (v) => v.phase === EAR_PHASE.listening && v.ready === 4);
   await call(made, "POST", ANSWERS, { query: 0, ratingId: rate(made, first, "b").id });
-  const second = await waitFor(channel, (v) => v.query === 1 && v.phase === "asking");
+  const second = await waitFor(channel, (v) => v.query === 1 && v.phase === EAR_PHASE.listening);
   await call(made, "POST", ANSWERS, { query: 1, ratingId: rate(made, second, "b").id });
   await app.jobs.settled(status.id);
   expect(app.jobs.get(status.id).error).toBeNull();

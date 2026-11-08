@@ -3,6 +3,7 @@
 // saved and told the same way; a choice that failed to save is told nothing; Undo takes nothing
 // back; a search still drawing its pair is read again until it asks.
 import { afterEach, expect, test, vi } from "vitest";
+import { EAR_PHASE } from "../../src/domain/ear-settings.js";
 import { abRatingBody } from "../../src/web/ab-rating.js";
 import { createEarSession, NO_UNDO } from "../../src/web/quick-ab-ear.js";
 
@@ -25,7 +26,7 @@ const playable = (id) => ({
  * @param {Partial<{ phase: string, stopped: boolean }>} [more]
  */
 const asking = (query, best, challenger, more = {}) => ({
-  phase: "asking",
+  phase: EAR_PHASE.listening,
   query,
   budget: 20,
   answered: query,
@@ -87,7 +88,7 @@ function server({ first, next, rating = () => ok({ id: 41 }) }) {
     if (call.path === `${SESSION}/ab-ratings`) return rating(call);
     if (call.path === `${EAR}/answers`) return ok(next);
     if (call.path === `${EAR}/stop`)
-      return ok({ ...asking(0, 1, 2), phase: "done", stopped: true });
+      return ok({ ...asking(0, 1, 2), phase: EAR_PHASE.finished, stopped: true });
     return undefined;
   });
 }
@@ -149,7 +150,7 @@ test("a choice that failed to save is told nothing, and the pair stays to choose
 });
 
 test("Undo takes nothing back, and a search still drawing is read again until it asks", async () => {
-  const preparing = { ...asking(0, 1, 2), phase: "preparing", challenger: null };
+  const preparing = { ...asking(0, 1, 2), phase: EAR_PHASE.drawing, challenger: null };
   const calls = server({ first: [preparing, preparing, asking(0, 1, 2)] });
   const session = await started();
   expect(calls.filter((c) => c.path === EAR)).toHaveLength(3);

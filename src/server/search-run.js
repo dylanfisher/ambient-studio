@@ -11,10 +11,14 @@
 /** @import { App } from "./routing.js" */
 import { copyFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { applyLocks } from "../domain/apply-locks.js";
+import { lockRefusal } from "../domain/nudge.js";
 import { penalizedScores } from "../domain/penalized-scores.js";
 import { proposeGenome } from "../domain/propose-genome.js";
+import { NO_SEARCH_SPACE, searchSpace } from "../domain/search-space.js";
 import { canonicalGenome } from "../engine/canonical-genome.js";
-import { keep } from "./generate-candidates.js";
+import { currentRevision, keep } from "./generate-candidates.js";
+import { locksInForce } from "./lock-store.js";
 import { verdictOf } from "./nudge-job.js";
 
 const SPEC = "spec.json";
@@ -55,6 +59,25 @@ const RUN_NAME = /^[a-z0-9][a-z0-9-]*$/;
  * @property {(number | null)[]} scores each valid point's score; null for a rejected one
  * @property {number[]} told what the optimizer was told, penalties included
  */
+
+/**
+ * What a search job reads when it starts: the vibe's current revision and live locks, the base
+ * with the locks applied, and the space. Throws when the base breaks a lock it can't take or
+ * the space has no dimension, which a lock set since the request can cause.
+ * @param {App} app
+ * @param {{ vibeId: number, base: Candidate, genome: Genome, raw: readonly string[] }} request
+ */
+export function searchStart(app, { vibeId, base, genome, raw }) {
+  const { revision, constraints } = currentRevision(app.store, vibeId);
+  const locks = locksInForce(app.store, vibeId);
+  const applied = applyLocks(genome, locks);
+  const refused = lockRefusal(applied);
+  if (refused !== null) throw new Error(`candidate ${base.id} ${refused}`);
+  const start = applied.genome;
+  const paths = searchSpace(start, locks, constraints, raw);
+  if (paths.length === 0) throw new Error(NO_SEARCH_SPACE);
+  return { revision, constraints, locks, start, paths };
+}
 
 /**
  * A run's folder. Throws on a name that isn't a plain folder name.

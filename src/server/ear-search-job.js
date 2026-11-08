@@ -14,46 +14,49 @@
 /** @import { Render } from "./render-store.js" */
 /** @import { App } from "./routing.js" */
 /** @import { SearchResults } from "./search-job.js" */
-import { readdir, rename, rm, writeFile } from "node:fs/promises";
+import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { applyLocks } from "../domain/apply-locks.js";
 import {
   EAR_DRAWS,
   EAR_OPTIMIZER,
+  EAR_PHASE,
   EAR_REJECTS,
   EAR_SCORE,
   MAX_EAR_DIMENSIONS,
 } from "../domain/ear-settings.js";
-import { lockRefusal } from "../domain/nudge.js";
 import { OPERATOR } from "../domain/operator.js";
 import { proposeGenome } from "../domain/propose-genome.js";
+import { OUTCOMES } from "../domain/rating-values.js";
 import { SEARCH_SIGMA } from "../domain/search-settings.js";
-import { searchSpace } from "../domain/search-space.js";
 import { canonicalGenome } from "../engine/canonical-genome.js";
 import { toVector } from "../engine/vector-view.js";
 import { excerptRequest } from "./candidate-excerpt.js";
 import { jobRecordings, STREAM_SEEDS } from "./candidate-job.js";
-import { currentRevision, keep } from "./generate-candidates.js";
+import { keep } from "./generate-candidates.js";
 import { putGenome } from "./generation-store.js";
 import { JOB_STEP } from "./job-steps.js";
-import { locksInForce } from "./lock-store.js";
 import { verdictOf } from "./nudge-job.js";
 import { renderExcerpt } from "./render-excerpt.js";
-import { askPoints, forkSearch, nextRun, startSearch, tellScores } from "./search-run.js";
+import { SEARCH_SOURCE, writeResults } from "./search-job.js";
+import {
+  askPoints,
+  forkSearch,
+  nextRun,
+  searchStart,
+  startSearch,
+  tellScores,
+} from "./search-run.js";
 
-/** The source every point stores. */
-const SOURCE = "optimizer";
-/** The run's summary, in the shape a model search writes, so the session folds its points. */
-const RESULTS = "results.json";
+const [, , , SKIP] = OUTCOMES;
 /** Each answer the owner could give, in the order the job renders its next point. */
 const BRANCHES = /** @type {const} */ ([
   ["loss", EAR_SCORE.loss],
   ["win", EAR_SCORE.win],
   ["tie", EAR_SCORE.tie],
-  ["skip", null],
+  [SKIP, null],
 ]);
 /** What `EarChannel.wait` gives when the owner pressed Stop. */
-export const STOP = Symbol("stop");
+const STOP = Symbol("the owner pressed Stop");
 
 /**
  * @typedef {object} EarRequest
@@ -75,7 +78,7 @@ export const STOP = Symbol("stop");
  * What the Quick A/B page reads of a search by ear.
  * @typedef {object} EarView
  * @property {number | null} jobId
- * @property {"preparing" | "asking" | "done"} phase drawing and rendering the next query,
+ * @property {(typeof EAR_PHASE)[keyof typeof EAR_PHASE]} phase drawing and rendering the next query,
  *   waiting for the owner's answer, or ended
  * @property {number} query the query asked or being drawn, counted from 0
  * @property {number} budget
@@ -110,7 +113,7 @@ export function createEarChannel(budget) {
   /** @type {EarView} */
   let view = {
     jobId: null,
-    phase: "preparing",
+    phase: EAR_PHASE.drawing,
     query: 0,
     budget,
     answered: 0,
@@ -125,7 +128,8 @@ export function createEarChannel(budget) {
   /** @type {{ query: number, resolve: (view: EarView) => void }[]} */
   let watchers = [];
   /** @param {number} query */
-  const past = (query) => view.phase === "done" || (view.phase === "asking" && view.query > query);
+  const past = (query) =>
+    view.phase === EAR_PHASE.finished || (view.phase === EAR_PHASE.listening && view.query > query);
   return {
     view: () => view,
     publish(patch) {
@@ -167,7 +171,7 @@ export function createEarChannel(budget) {
     answer(query, score) {
       if (waiting?.query !== query) {
         throw new Error(
-          view.phase === "done"
+          view.phase === EAR_PHASE.finished
             ? "This search by ear has ended, so it takes no more answers."
             : `The search by ear is not waiting for an answer to pair ${query + 1}.`,
         );
@@ -226,18 +230,6 @@ const playable = ({ id, seed }, render) => ({
 });
 
 /**
- * Writes the run's summary through a temp file: the best shown, every other point folded
- * under it.
- * @param {string} folder
- * @param {SearchResults} results
- */
-async function writeResults(folder, results) {
-  const file = join(folder, RESULTS);
-  await writeFile(`${file}.partial`, JSON.stringify(results));
-  await rename(`${file}.partial`, file);
-}
-
-/**
  * The job that searches by ear from `base` under the vibe's current revision and live locks,
  * read when it starts. Progress counts queries answered.
  * @param {App} app
@@ -261,7 +253,7 @@ export function earSearchJob(app, request, channel, { prepare = renderPrepared }
           : String(thrown);
       throw thrown;
     } finally {
-      channel.publish({ phase: "done", challenger: null, ready: 0, error });
+      channel.publish({ phase: EAR_PHASE.finished, challenger: null, ready: 0, error });
     }
   };
 }
@@ -278,16 +270,12 @@ async function searchByEar(app, request, channel, prepare, job) {
   const { signal } = job;
   const recordings = await jobRecordings(app);
   signal.throwIfAborted();
-  const { revision, constraints } = currentRevision(app.store, vibeId);
-  const locks = locksInForce(app.store, vibeId);
-  const applied = applyLocks(genome, locks);
-  const refused = lockRefusal(applied);
-  if (refused !== null) throw new Error(`candidate ${base.id} ${refused}`);
-  const start = applied.genome;
-  const paths = searchSpace(start, locks, constraints, raw);
-  if (paths.length === 0) {
-    throw new Error("every macro is locked or fixed by the brief and no path was chosen");
-  }
+  const { revision, constraints, locks, start, paths } = searchStart(app, {
+    vibeId,
+    base,
+    genome,
+    raw,
+  });
   if (paths.length > MAX_EAR_DIMENSIONS) {
     throw new Error(
       `a search by ear takes at most ${MAX_EAR_DIMENSIONS} dimensions, and this one has ${paths.length}`,
@@ -306,7 +294,7 @@ async function searchByEar(app, request, channel, prepare, job) {
   const batch = { store: app.store, vibeId, vibeRevisionId: revision.id, sessionId, locks };
   const origin = {
     seed: base.seed,
-    source: SOURCE,
+    source: SEARCH_SOURCE,
     parentIds: [base.id],
     operator: OPERATOR.optimizeEar,
     operatorParams: { run, seed, budget, paths },
@@ -420,7 +408,7 @@ async function searchByEar(app, request, channel, prepare, job) {
   let answered = 0;
   for (let query = 0; query < budget && !channel.view().stopped; query++) {
     job.progress(answered, budget, JOB_STEP.earDrawing(query + 1, budget));
-    channel.publish({ phase: "preparing", query, challenger: null, ready: 0 });
+    channel.publish({ phase: EAR_PHASE.drawing, query, challenger: null, ready: 0 });
     const drawn = await draw(folder, generation, seen, query);
     generation = drawn.generation;
     const challenger = /** @type {Candidate} */ (drawn.stored.at(-1));
@@ -431,7 +419,11 @@ async function searchByEar(app, request, channel, prepare, job) {
     const render = await prepare(app, request, recordings);
     await summarize();
     signal.throwIfAborted();
-    channel.publish({ phase: "asking", challenger: playable(challenger, render), ready: 0 });
+    channel.publish({
+      phase: EAR_PHASE.listening,
+      challenger: playable(challenger, render),
+      ready: 0,
+    });
     job.progress(answered, budget, JOB_STEP.earListening(query + 1, budget));
     const halt = new AbortController();
     const ahead = query + 1 < budget ? speculate(generation, halt.signal) : Promise.resolve();
@@ -447,7 +439,7 @@ async function searchByEar(app, request, channel, prepare, job) {
     await ahead;
     await removeForks();
     if (answer === STOP) break;
-    channel.publish({ phase: "preparing", challenger: null, ready: 0 });
+    channel.publish({ phase: EAR_PHASE.drawing, challenger: null, ready: 0 });
     await tellScores(app, folder, generation, [answer], signal);
     generation++;
     answered++;

@@ -12,6 +12,7 @@
 import { applyLocks } from "../domain/apply-locks.js";
 import {
   DEFAULT_EAR_QUERIES,
+  EAR_PHASE,
   earScore,
   MAX_EAR_DIMENSIONS,
   MAX_EAR_QUERIES,
@@ -558,7 +559,12 @@ export const SESSION_ROUTES = [
       if (rating?.sessionId !== session.id || rating.removedAt !== null) {
         throw new HttpError(400, `session ${session.id} has no live A/B rating ${ratingId}`);
       }
-      if (view.phase !== "asking" || view.query !== query || !view.best || !view.challenger) {
+      if (
+        view.phase !== EAR_PHASE.listening ||
+        view.query !== query ||
+        !view.best ||
+        !view.challenger
+      ) {
         throw new HttpError(
           409,
           `The search by ear is not waiting for an answer to pair ${query + 1}.`,

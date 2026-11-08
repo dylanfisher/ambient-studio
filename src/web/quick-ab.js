@@ -9,6 +9,7 @@
 /** @import { EarState } from "./quick-ab-ear.js" */
 /** @import { QuickAbAction } from "./quick-ab-keys.js" */
 /** @import { Playable } from "./quick-ab-session.js" */
+import { EAR_PHASE } from "../domain/ear-settings.js";
 import { OUTCOMES } from "../domain/rating-values.js";
 import { chosenOutcome, SCREEN_SIDES } from "./ab-rating.js";
 import { ACTIVE_SIDE } from "./ab-view.js";
@@ -216,7 +217,7 @@ function render() {
   const left = view.remaining;
   // Only the search-by-ear session's view has it.
   const ear = /** @type {{ ear?: EarState | null }} */ (view).ear ?? null;
-  page.stopEar.disabled = ear === null || ear.phase === "done" || ear.stopped;
+  page.stopEar.disabled = ear === null || ear.phase === EAR_PHASE.finished || ear.stopped;
   page.progressLine.textContent =
     view.phase === PHASE.done
       ? ""

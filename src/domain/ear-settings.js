@@ -24,6 +24,16 @@ export const MAX_EAR_DIMENSIONS = 12;
  */
 export const EAR_REJECTS = 8;
 
+/**
+ * What a search by ear is doing, as the server reports it and the page reads it: drawing and
+ * rendering a pair, waiting for the owner's choice on it, or finished.
+ */
+export const EAR_PHASE = Object.freeze({
+  drawing: "drawing",
+  listening: "listening",
+  finished: "finished",
+});
+
 /** What the optimizer is told of a new point: it beat the run's best, tied with it, or lost. */
 export const EAR_SCORE = Object.freeze({ win: 1, tie: 0.5, loss: 0 });
 
