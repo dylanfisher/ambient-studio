@@ -3,7 +3,8 @@
 // ticked. A test holds the shared model for a long while, so starting one asks to confirm, and
 // its button stays off until the test finishes. A model test is an evaluation in the API. The
 // taste model test (0045) has its own section, from taste-test-view.js, and the embed and fit
-// jobs that make the taste model have theirs (0046).
+// jobs that make the taste model have theirs (0046), and the optimizer test (0059) has its own
+// section, from optimizer-test-view.js.
 /** @import { JobStatus } from "./job-progress.js" */
 import { EVALUATION_COUNT } from "../domain/evaluation-size.js";
 import { JOB_KIND } from "../domain/job-kind.js";
@@ -28,7 +29,8 @@ import { jobControl } from "./job-control.js";
 import { JOB_STATE } from "./job-progress.js";
 import { jobBox } from "./job-view.js";
 import { oneAtATime } from "./one-at-a-time.js";
-import { ownerJob } from "./owner-job.js";
+import { optimizerTestView } from "./optimizer-test-view.js";
+import { NOT_STARTED, ownerJob } from "./owner-job.js";
 import {
   meaningText,
   rangeText,
@@ -270,7 +272,7 @@ const startTest = oneAtATime(async () => {
   const revise = page.reviseInput.checked;
   if (thinking === null) throw new Error("The page is still loading; try again in a moment.");
   if (!confirm(costText({ count, briefs: vibeIds.length, revise, thinking }))) {
-    status.say("Not started.");
+    status.say(NOT_STARTED);
     return;
   }
   start.wait();
@@ -334,6 +336,7 @@ status.run(async () => {
   );
   await loadReports();
   await tasteTestView(status);
+  await optimizerTestView(status, vibes);
   await followOwnerJobs();
   if (following === null) {
     status.say(

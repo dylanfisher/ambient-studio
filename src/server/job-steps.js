@@ -62,6 +62,13 @@ export const JOB_STEP = Object.freeze({
     `Searching by ear: waiting for your choice on pair ${n} of ${of}, and rendering what could come next`,
   /** @param {number} n @param {number} of */
   fittingVibe: (n, of) => `Learning your taste for brief ${n} of ${of}`,
+  /**
+   * A step of one of the optimizer test's searches (decision 0059).
+   * @param {number} n @param {number} of @param {number} run @param {number} runs
+   * @param {string} step the search's own step
+   */
+  optimizerTest: (n, of, run, runs, step) =>
+    `Testing the optimizer on brief ${n} of ${of}, search ${run} of ${runs}: ${step}`,
   testingCount: "Counting each brief's A/B choices",
   /** @param {number} n @param {number} of @param {number} session @param {number} sessions */
   testingFold: (n, of, session, sessions) =>

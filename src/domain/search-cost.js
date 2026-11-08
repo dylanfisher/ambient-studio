@@ -55,6 +55,27 @@ export function searchCostText(evaluations, seconds, { measured, control }) {
 }
 
 /**
+ * The optimizer test's confirm (decision 0059): every brief's runs, each a search and its
+ * control of `budget` evaluations.
+ * @param {number} briefs
+ * @param {number} runs per brief
+ * @param {number} budget evaluations per search
+ * @param {StepSeconds} seconds per evaluation
+ * @param {{ measured: boolean }} options as `searchCostText`'s
+ * @returns {string}
+ */
+export function optimizerTestCostText(briefs, runs, budget, seconds, { measured }) {
+  const evaluations = briefs * runs * 2 * budget;
+  const minutes = Math.max(1, Math.round(searchSeconds(evaluations, seconds) / 60));
+  return (
+    `Run the optimizer test on ${briefs} brief${briefs === 1 ? "" : "s"}? ` +
+    `Each brief gets ${runs} search${runs === 1 ? "" : "es"} of ${counted(budget, "evaluation")}, each followed by ${budget} medium nudges of the same start as its control, ${evaluations} evaluations in all. ` +
+    "Each renders an excerpt, analyzes its sound and scores it by your taste model; nothing is sent to the language model. " +
+    costLine(minutes, seconds, measured)
+  );
+}
+
+/**
  * The confirm's last sentence: the time, and where its figures come from.
  * @param {number} minutes
  * @param {StepSeconds} seconds
