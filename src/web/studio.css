@@ -759,3 +759,15 @@ audio[hidden] + .player {
 [hidden] {
   display: none;
 }
+
+/* The References page's peak strip (0050): dragging across it sets a region, so the browser
+   mustn't scroll or zoom under the pointer. */
+.peak-strip {
+  display: block;
+  width: 100%;
+  height: 96px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: crosshair;
+  touch-action: none;
+}

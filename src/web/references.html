@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>References · Ambient Studio</title>
+    <link rel="stylesheet" href="./studio.css" />
+    <script type="module" src="./references.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <nav class="nav" aria-label="Pages">
+        <a class="brand" href="./" title="Opens the dashboard: how the studio works, and every brief.">Ambient Studio</a>
+        <a href="./#briefs" title="Opens the list of briefs on the dashboard, where you open one or write a new one.">Briefs</a>
+        <a href="./references.html" aria-current="page" title="Opens this page, where you upload recordings to aim at and mark the parts you mean.">References</a>
+        <a href="./evaluation.html" title="Opens the model test page, which checks how often the model follows your briefs. It makes no audio.">Model test</a>
+      </nav>
+    </header>
+    <main class="page">
+      <div class="page-head">
+        <h1>References</h1>
+        <p class="help muted">
+          Upload a recording whose sound you want to aim at, then mark the parts you mean as
+          regions, each with a label and a note. Later steps measure a region and use it to set a
+          brief's ranges and to guide the model. A reference is only ever measured and listened
+          to here: its audio never plays in a candidate, a track or an export.
+        </p>
+        <p id="status" class="status" role="status" aria-live="polite">Loading the recordings…</p>
+      </div>
+
+      <section class="card stack" aria-labelledby="upload-heading">
+        <h2 id="upload-heading">Upload a recording</h2>
+        <p class="small muted">
+          WAV, AIFF, FLAC, MP3, AAC or ALAC in M4A, Ogg Vorbis or Opus; 10 seconds to 60 minutes
+          long, mono or stereo, and at most 1 GB. Uploading the same file twice keeps one copy.
+        </p>
+        <div class="row">
+          <input id="fileInput" type="file" accept=".wav,.aif,.aiff,.flac,.mp3,.m4a,.ogg,.oga,.opus,audio/*" title="Chooses the recording to upload. Nothing is sent until you press Upload." />
+          <button id="uploadButton" class="button primary" type="button" title="Sends the chosen recording to the studio, which checks it and keeps a copy. A long file takes a minute or so.">Upload</button>
+        </div>
+      </section>
+
+      <section aria-labelledby="list-heading">
+        <h2 id="list-heading">Your recordings</h2>
+        <p class="muted small">Oldest upload first. Open one to mark its regions.</p>
+        <ul id="referenceList" class="list"></ul>
+        <p id="noReferences" class="muted" hidden>No recordings yet. Upload one above.</p>
+      </section>
+
+      <section id="referenceView" class="card stack" aria-labelledby="referenceHeading" hidden>
+        <div class="section-head">
+          <h2 id="referenceHeading">recording</h2>
+          <button id="removeReferenceButton" class="button secondary small" type="button" title="Asks you to confirm, then takes this recording and its regions off the list. The studio keeps the file itself.">Remove this recording</button>
+        </div>
+        <p id="referenceFacts" class="small muted"></p>
+        <canvas id="peakStrip" class="peak-strip" role="img" aria-label="The recording's loudest moments over its length, with the chosen region shaded. Drag across it to set the start and end."></canvas>
+        <p class="small muted">Drag across the strip to fill in the start and end, or type them below.</p>
+        <!-- biome-ignore lint/a11y/useMediaCaption: a reference is listened to for its sound, with no speech to caption -->
+        <audio id="regionAudio" preload="none" title="Plays the times in the form, or a saved region."></audio>
+
+        <form id="regionForm" class="stack" novalidate>
+          <h3 id="regionFormHeading">New region</h3>
+          <div class="row">
+            <label class="field"
+              >Start
+              <input id="regionStart" name="regionStart" inputmode="decimal" size="10" placeholder="1:15.5" title="Where the region starts: seconds, such as 75.5, or minutes and seconds, such as 1:15.5." />
+            </label>
+            <label class="field"
+              >End
+              <input id="regionEnd" name="regionEnd" inputmode="decimal" size="10" placeholder="1:45" title="Where the region ends, after the start: seconds, or minutes and seconds." />
+            </label>
+            <button id="playFormButton" class="button outline" type="button" title="Plays the recording from the start to the end typed above, so you can hear the region before saving it.">Play these times</button>
+          </div>
+          <label class="field"
+            >Label
+            <input id="regionLabel" name="regionLabel" size="30" placeholder="the swell" title="A short name for the region, such as the swell or the rain. Later steps show it to the model." />
+          </label>
+          <label class="field" for="regionNote">Note</label>
+          <textarea id="regionNote" name="regionNote" rows="2" title="What you hear in this region and want more of. Later steps show it to the model."></textarea>
+          <div class="row">
+            <button id="saveRegionButton" class="button primary" type="submit" title="Saves the region with these times, label and note.">Save region</button>
+            <button id="cancelEditButton" class="button secondary" type="button" title="Stops changing the saved region and clears the form for a new one. The saved region stays as it was." hidden>Stop editing</button>
+          </div>
+        </form>
+
+        <h3>Regions</h3>
+        <ul id="regionList" class="list"></ul>
+        <p id="noRegions" class="muted small" hidden>No regions yet. Drag across the strip or type the times above.</p>
+      </section>
+    </main>
+    <template id="reference-item">
+      <li class="card">
+        <h3><a href="./references.html" data-part="link" title="Opens this recording, to mark its regions.">recording</a></h3>
+        <p class="muted small" data-part="facts"></p>
+      </li>
+    </template>
+    <template id="region-item">
+      <li class="card stack">
+        <div class="section-head">
+          <strong data-part="label">region</strong>
+          <span class="small muted" data-part="times"></span>
+        </div>
+        <p class="small" data-part="note"></p>
+        <p class="row">
+          <button class="button outline small" type="button" data-part="play" title="Plays this region from its start to its end.">Play</button>
+          <button class="button secondary small" type="button" data-part="edit" title="Puts this region in the form above, to change its times, label or note. Saving keeps the old version in the history.">Change</button>
+          <button class="button secondary small" type="button" data-part="remove" title="Asks you to confirm, then takes this region off the list. The studio keeps it in the history.">Remove</button>
+        </p>
+      </li>
+    </template>
+  </body>
+</html>

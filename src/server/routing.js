@@ -1,6 +1,6 @@
 // How the server matches a request to a route and reads and writes JSON (decision 0025). The
 // app's table is in routes.js; main.js dispatches.
-/** @import { IncomingMessage, ServerResponse } from "node:http" */
+/** @import { IncomingHttpHeaders, IncomingMessage, ServerResponse } from "node:http" */
 /** @import { Config } from "../config/config.js" */
 /** @import { Paths } from "../config/paths.js" */
 /** @import { JobRunner } from "./job-runner.js" */
@@ -145,18 +145,25 @@ function matchPath(pattern, segments) {
 }
 
 /**
+ * The 415 for a body not labeled `type`, or nothing when it is.
+ * @param {{ headers: IncomingHttpHeaders }} request
+ * @param {string} type
+ * @returns {HttpError | undefined}
+ */
+export function wrongType(request, type) {
+  const given = request.headers["content-type"]?.split(";")[0]?.trim().toLowerCase();
+  if (given === type) return undefined;
+  return new HttpError(415, `the request body must be ${type}, not ${given ?? "unlabeled"}`);
+}
+
+/**
  * Reads the request body as JSON, at most `MAX_BODY_BYTES`.
  * @param {IncomingMessage} request
  * @returns {Promise<unknown>}
  */
 export async function readJson(request) {
-  const type = request.headers["content-type"]?.split(";")[0]?.trim().toLowerCase();
-  if (type !== "application/json") {
-    throw new HttpError(
-      415,
-      `the request body must be application/json, not ${type ?? "unlabeled"}`,
-    );
-  }
+  const refused = wrongType(request, "application/json");
+  if (refused) throw refused;
   const tooBig = new HttpError(413, `the request body is over the ${MAX_BODY_BYTES}-byte limit`);
   // Past the limit the rest of the body is read and dropped, not left unread: closing the
   // connection on a client still sending resets it, and the client loses the 413.

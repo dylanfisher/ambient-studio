@@ -9,6 +9,12 @@ import { PCM24_BYTES } from "./encode-pcm24.js";
 /** The lame CLI, found on PATH like flac (0012); Homebrew puts it in /opt/homebrew/bin. */
 const LAME = "lame";
 
+/**
+ * How long lame may run before it is killed, in milliseconds. A 25 s excerpt takes about
+ * 0.18 s and a 5-minute reference region about 2 s.
+ */
+const LAME_TIMEOUT_MS = 60_000;
+
 /** The constant bit rate of every playback MP3, in kbps. */
 export const MP3_KBPS = 320;
 
@@ -36,6 +42,7 @@ export async function writeMp3(path, pcm, { channelCount, sampleRate }) {
   const args = ["-r", "-s", khz, "--bitwidth", bits, "--signed", "--little-endian", "-m", mode];
   const child = spawn(LAME, [...args, "-b", String(MP3_KBPS), "--cbr", "--silent", "-", path], {
     stdio: ["pipe", "ignore", "pipe"],
+    timeout: LAME_TIMEOUT_MS,
   });
   let stderr = "";
   child.stderr.setEncoding("utf8");

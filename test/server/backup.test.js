@@ -1,5 +1,5 @@
-// The backup: VACUUM INTO a dated folder, with the rated-audio folder copied beside it
-// (decision 0021).
+// The backup: VACUUM INTO a dated folder, with the rated-audio and references folders copied
+// beside it (decisions 0021 and 0050).
 import { existsSync } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -39,6 +39,8 @@ test("a backup opens with the same rows while a writer holds the WAL", async () 
   const ids = fillStore(store);
   await mkdir(paths.ratedAudio);
   await writeFile(join(paths.ratedAudio, "drone-7.flac"), "flac bytes");
+  await mkdir(paths.references);
+  await writeFile(join(paths.references, `${"1".repeat(64)}.wav`), "wav bytes");
   // The committed rows are still in the WAL, not yet checkpointed into the database file.
   expect((await stat(`${paths.database}-wal`)).size).toBeGreaterThan(0);
   const committed = everything(store.db);
@@ -58,6 +60,8 @@ test("a backup opens with the same rows while a writer holds the WAL", async () 
   cleanups.push(async () => copy.close());
   expect(everything(copy.db)).toEqual(committed);
   expect(await readFile(join(written.ratedAudio, "drone-7.flac"), "utf8")).toBe("flac bytes");
+  const reference = join(written.references, `${"1".repeat(64)}.wav`);
+  expect(await readFile(reference, "utf8")).toBe("wav bytes");
   // The copy is a database of its own: a write to it leaves the original alone.
   addNote(copy, { vibeId: ids.vibes, text: "only in the copy" });
   expect(everything(store.db)).toEqual(committed);
@@ -71,9 +75,10 @@ test("a second backup in the same second is refused", async () => {
   await expect(backup(made.paths, WHEN)).rejects.toThrow(/EEXIST/);
 });
 
-test("a backup with nothing rated yet writes an empty rated-audio folder", async () => {
+test("a backup with nothing rated or uploaded yet writes empty folders for both", async () => {
   const made = await tempStore();
   cleanups.push(made.remove);
-  const { ratedAudio } = await backup(made.paths, WHEN);
+  const { ratedAudio, references } = await backup(made.paths, WHEN);
   expect((await stat(ratedAudio)).isDirectory()).toBe(true);
+  expect((await stat(references)).isDirectory()).toBe(true);
 });

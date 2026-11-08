@@ -72,7 +72,7 @@ unneeded stays unused rather than being given to another step.
 | 0047 | The "what you like" summary | 4g | [written](decisions/0047-what-you-like.md) |
 | 0048 | Quick A/B, the excerpt player and MP3 playback audio | 4i | [written](decisions/0048-quick-ab-player-mp3.md) |
 | 0049 | The session table, hiding and rating marks | 4j | [written](decisions/0049-session-table-hiding-marks.md) |
-| 0050 | Reference uploads: formats, files, regions, ffmpeg decoding | 5a | — |
+| 0050 | Reference uploads: formats, files, regions, ffmpeg decoding | 5a | [written](decisions/0050-reference-uploads.md), provisional |
 | 0051 | Region analysis and ranges from a region | 5b | — |
 | 0052 | References in the prompt | 5c | — |
 | 0053 | Search space, proposals, ask/tell and the objective | 5d | [written](decisions/0053-search-space-ask-tell.md), provisional |
@@ -3325,3 +3325,10 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   `searchPaths`; the optimizer protocol keeps run state in `<dataRoot>/search/<run>/`, built in
   `search-run.js` until 5a's `paths()` lands. Making preference.py's JSON helpers public changed
   `model_code()`, so any fitted model refits; none were fitted. The gate passes, 1604 tests.
+- 2026-11-07: 5a merged as c369e8d (Opus: 334k tokens, 186 calls, 39.8 min including a fix round
+  of 5 min; reviewer Sonnet: 70k tokens, 11 calls, 7.2 min, PASS with a security pass finding no
+  path or argument injection, and three medium findings taken: bounds rounded to the millisecond,
+  a lossy file's end padded by at most 0.1 s, and timeouts plus one shared decode per span).
+  Uploads stream to a hashed name under `references/`, ffmpeg and ffprobe read only whitelisted
+  demuxers and the file protocol, and backups copy the folder. Migration 0008. The gate passes,
+  1661 tests.

@@ -10,6 +10,7 @@ import { addCandidate, addGeneration, putGenome } from "../../src/server/generat
 import { setHidden } from "../../src/server/hide-store.js";
 import { setLock } from "../../src/server/lock-store.js";
 import { addFeedback, addRatedAudio, addRating, addSketch } from "../../src/server/rating-store.js";
+import { addReferenceFile, addRegion } from "../../src/server/reference-store.js";
 import { startSession, stopSession } from "../../src/server/session-store.js";
 import { openStore } from "../../src/server/store.js";
 import { addNote, createVibe } from "../../src/server/vibe-store.js";
@@ -162,6 +163,23 @@ export function fillStore(store) {
   });
   const [hide] = setHidden(store, [candidate.id], true);
   if (!hide) throw new Error("fillStore's hide wrote no row");
+  const { reference } = addReferenceFile(store, {
+    sha256: "1".repeat(64),
+    fileName: "rain.wav",
+    format: "wav",
+    file: `${"1".repeat(64)}.wav`,
+    durationSeconds: 30,
+    channels: 2,
+    sampleRate: 48000,
+    sizeBytes: 5_760_044,
+  });
+  const region = addRegion(store, {
+    referenceFileId: reference.id,
+    startSeconds: 2,
+    endSeconds: 12,
+    label: "the hiss",
+    note: "",
+  });
   return {
     vibes: vibe.id,
     vibe_revisions: vibeRevisionId,
@@ -177,5 +195,7 @@ export function fillStore(store) {
     evaluations: evaluation.id,
     locks: lock.id,
     candidate_hides: hide.id,
+    reference_files: reference.id,
+    reference_regions: region.id,
   };
 }
