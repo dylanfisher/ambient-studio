@@ -18,6 +18,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
 
+from ambient_sidecar.preference import read_json, write_json
 from ambient_sidecar.protocol import Handler
 
 SPEC = "spec.json"
@@ -133,30 +134,18 @@ class ScriptedOptimizer:
 OPTIMIZERS: dict[str, Factory] = {"scripted": ScriptedOptimizer}
 
 
-def _read_json(path: Path) -> dict[str, Any]:
-    value: object = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(value, dict):
-        raise ValueError(f"{path} doesn't hold a JSON object")
-    record: dict[str, Any] = value  # pyright: ignore[reportUnknownVariableType]
-    return record
-
-
-def _write_new(path: Path, value: dict[str, Any]) -> None:
-    """Refuses a file that exists, since the server names a fresh one per request."""
-    with path.open("x", encoding="utf-8") as file:
-        file.write(json.dumps(value, allow_nan=False, separators=(",", ":")))
-
-
 def _save_state(run: Path, state: dict[str, Any]) -> None:
-    """Writes the state by a rename, so a sidecar killed mid-write leaves the last state whole."""
+    """Writes the state by a rename, so a sidecar killed mid-write leaves the last state whole.
+    A partial file such a kill left is removed first."""
     partial = run / f"{STATE}.partial"
-    partial.write_text(json.dumps(state, allow_nan=False, separators=(",", ":")), encoding="utf-8")
+    partial.unlink(missing_ok=True)
+    write_json(partial, state)
     os.replace(partial, run / STATE)
 
 
 def _load(run: Path) -> tuple[Spec, dict[str, Any], Optimizer]:
-    spec = Spec(_read_json(run / SPEC))
-    state = _read_json(run / STATE)
+    spec = Spec(read_json(run / SPEC))
+    state = read_json(run / STATE)
     return spec, state, OPTIMIZERS[spec.optimizer](spec, state["optimizer"])
 
 
@@ -167,7 +156,7 @@ def optimizer_start(params: dict[str, Any]) -> dict[str, Any]:
     run = spec_path.parent
     if (run / STATE).exists():
         raise ValueError(f"the run {run} has started already")
-    spec = Spec(_read_json(spec_path))
+    spec = Spec(read_json(spec_path))
     optimizer = OPTIMIZERS[spec.optimizer](spec, None)
     _save_state(run, {"optimizer": optimizer.state(), "pending": None, "generations": 0})
     return {"dimension": spec.dimension}
@@ -184,7 +173,7 @@ def optimizer_ask(params: dict[str, Any]) -> dict[str, Any]:
     points = _points(optimizer.ask(count), spec.dimension, "the optimizer's points")
     if len(points) != count:
         raise ValueError(f"the optimizer gave {len(points)} points, and {count} were asked")
-    _write_new(Path(params["out"]), {"points": points})
+    write_json(Path(params["out"]), {"points": points})
     _save_state(run, {**state, "optimizer": optimizer.state(), "pending": points})
     return {"count": count}
 
@@ -195,10 +184,10 @@ def optimizer_tell(params: dict[str, Any]) -> dict[str, Any]:
     pending = state["pending"]
     if pending is None:
         raise ValueError(f"the run {run} has no points waiting for scores")
-    points = _points(_read_json(Path(params["points"])).get("points"), spec.dimension, "points")
+    points = _points(read_json(Path(params["points"])).get("points"), spec.dimension, "points")
     if points != pending:
         raise ValueError("the points told aren't the points the last ask gave")
-    scores = _read_json(Path(params["scores"])).get("scores")
+    scores = read_json(Path(params["scores"])).get("scores")
     if (
         not isinstance(scores, list)
         or len(scores) != len(points)  # pyright: ignore[reportUnknownArgumentType]
