@@ -5,7 +5,8 @@
   [0025](0025-http-server-and-audio.md) (`audio/mpeg`),
   [0026](0026-job-runner-and-excerpt-renders.md) (the render cache holds MP3s, and capture renders
   again) and [0032](0032-plain-language-pages.md) (keys on the Quick A/B page). Amended by
-  [0046](0046-ranking-wildcards-pair-picker.md) (a third order, Best questions)
+  [0046](0046-ranking-wildcards-pair-picker.md) (a third order, Best questions) and
+  [0055](0055-search-by-ear.md) (a search-by-ear mode)
 
 ## Context
 
@@ -192,3 +193,11 @@ owner asked for keys here; every other page stays as 0032 has it.
 - 2026-11-07 (5a, [0050](0050-reference-uploads.md)): `writeMp3` kills lame after 60 s
   (`LAME_TIMEOUT_MS`); a 25 s excerpt takes about 0.18 s and a 5-minute reference region about
   2 s.
+- 2026-11-07 (5f, [0055](0055-search-by-ear.md)): a fourth way to use the page,
+  `quick-ab.html?id=<session>&ear`, opened by Search by ear on a candidate. It is champion mode
+  against a search instead of the pool: the search's best stays, and each challenger is a new
+  point the search drew. Each choice is saved by `POST …/ab-ratings` with the same body, so its
+  row is a Quick A/B rating like any other, and is then named to the search. Unlike the other
+  modes a choice is sent before the next pair shows, since the search draws from it, and Undo is
+  off. The order switch is hidden and a Stop the search button ends the run. Keys and the
+  player are unchanged.
