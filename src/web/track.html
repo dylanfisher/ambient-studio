@@ -30,7 +30,8 @@
           crossfade. Drag a block's edges, use the fields, or use the keys shown on each button.
           Play a section to hear its part of the sketch. Save keeps a new version and leaves the
           earlier ones as they were. Render a saved version to play the whole track, hear one
-          crossfade on its own, and export it as WAV and FLAC.
+          crossfade on its own, and export it as WAV and FLAC, with a stem for each voice if you
+          want them.
         </p>
         <p id="status" class="status" role="status" aria-live="polite">Loading…</p>
       </div>
@@ -99,6 +100,7 @@
           <button id="playTrack" class="button secondary" type="button" title="Plays the version's rendered track from where it was stopped, with the place it has reached marked on the timeline; press again to pause.">Play the track</button>
           <button id="playSeam" class="button outline" type="button" title="Renders the 30 seconds around the chosen section's crossfade, once, and plays them, so a change can be heard without rendering the whole track.">Hear the crossfade</button>
           <button id="exportTrack" class="button outline" type="button" title="Writes the rendered track as WAV and FLAC with a manifest into a new folder in the studio's exports folder. A version is exported once; its folder is never overwritten.">Export WAV and FLAC</button>
+          <button id="exportStems" class="button outline" type="button" title="Writes the same files plus one stem per voice, each a 32-bit float WAV at the mix's gain and never limited, after a confirm that says how long the stems take: about one track render each. A version is exported once; its folder is never overwritten.">Export with stems</button>
         </div>
         <!-- biome-ignore lint/a11y/useMediaCaption: instrumental tracks have no speech to caption -->
         <audio id="trackAudio" preload="none" title="Plays the rendered track, or the 30 seconds around a crossfade, as they were rendered."></audio>

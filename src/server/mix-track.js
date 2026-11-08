@@ -41,6 +41,8 @@ const CHANNELS = 2;
  * @property {number} [to] the track frame after the last wanted, the track's end when omitted
  * @property {AbortSignal} [signal] checked before each chunk
  * @property {(done: number, total: number, step: string) => void} [progress] before each chunk
+ * @property {(genome: Genome) => readonly string[]} [voices] limits each section's render to
+ *   the voices this gives for its genome, as a stem does; every voice when omitted
  */
 
 /** @param {number} seconds */
@@ -84,7 +86,7 @@ export async function* mixTrack(plan, options = {}) {
     );
   }
   const { starts, frames: total } = trackLayout(plan);
-  const { chunkSeconds = CHUNK_SECONDS, signal, progress } = options;
+  const { chunkSeconds = CHUNK_SECONDS, signal, progress, voices } = options;
   const from = Math.max(0, options.from ?? 0);
   const to = Math.min(total, options.to ?? total);
   const fadeFrames = {
@@ -154,7 +156,7 @@ export async function* mixTrack(plan, options = {}) {
     const { genome, seed, offset, duration, samples } = section;
     const rendered = renderChunks(
       genome,
-      { seed, offset, duration, samples },
+      { seed, offset, duration, samples, ...(voices && { voices: voices(genome) }) },
       {
         chunkSeconds,
         from: from - start,

@@ -42,7 +42,7 @@ import {
 import { bindTimelineKeys, TIMELINE_KEYS } from "./timeline-keys.js";
 import { blockText, sectionCount, timelineLayout } from "./timeline-layout.js";
 import { drawTimeline } from "./timeline-view.js";
-import { trackRenderText } from "./track-render-text.js";
+import { stemsText, trackRenderText } from "./track-render-text.js";
 
 const status = statusLine();
 const page = elementsById({
@@ -93,7 +93,12 @@ mountPlayer(page.sectionAudio, status.fail);
 mountPlayer(page.trackAudio, status.fail);
 const playControl = jobControl(buttons.play);
 /** The render, seam and export buttons share one hold: one track job runs at a time. */
-const TRACK_JOB_BUTTONS = /** @type {const} */ (["renderTrack", "playSeam", "exportTrack"]);
+const TRACK_JOB_BUTTONS = /** @type {const} */ ([
+  "renderTrack",
+  "playSeam",
+  "exportTrack",
+  "exportStems",
+]);
 const trackJobControls = TRACK_JOB_BUTTONS.map((name) => jobControl(buttons[name]));
 /** The actions that act on the saved version rather than the chosen section. */
 const VERSION_ACTIONS = new Set([
@@ -103,6 +108,7 @@ const VERSION_ACTIONS = new Set([
   "playTrack",
   "playSeam",
   "exportTrack",
+  "exportStems",
 ]);
 
 const idText = new URLSearchParams(location.search).get("id");
@@ -139,7 +145,8 @@ const windowAudio = /** @type {Map<string, string>} */ (new Map());
  * @property {{ url: string, seconds: number, loudness: { integrated: number, truePeak: number } } | null} preview
  * @property {{ transition: number, url: string, from: number }[]} seams
  * @property {string} folder the export's folder name
- * @property {{ folder: string, createdAt: number }[]} exports
+ * @property {string[]} stems the voice ids an export with stems writes one each for
+ * @property {{ kind: string, folder: string, createdAt: number }[]} exports
  */
 
 /** @type {RenderView | null} null while it is read, or when the version has no sections */
@@ -473,6 +480,7 @@ function drawRender() {
     ["playTrack", rendered?.preview != null],
     ["playSeam", rendered !== null && fade !== null && !held],
     ["exportTrack", rendered?.preview != null && rendered.exports.length === 0 && !held],
+    ["exportStems", rendered?.preview != null && rendered.exports.length === 0 && !held],
   ];
   // The card acts on the saved version, so an unsaved timeline turns it off.
   const saved = !unsaved();
@@ -492,9 +500,10 @@ function drawRender() {
     page.renderLine.textContent = `Version ${openedVersion} is rendered: ${clockTime(seconds)} at ${loudness.integrated.toFixed(1)} LUFS, its peak ${loudness.truePeak.toFixed(1)} dBTP.`;
   }
   page.exportList.replaceChildren(
-    ...(rendered?.exports ?? []).map(({ folder, createdAt }) => {
+    ...(rendered?.exports ?? []).map(({ kind, folder, createdAt }) => {
       const item = document.createElement("li");
-      item.textContent = `Exported ${formatTime(createdAt)} to the folder ${folder} in the studio's exports folder.`;
+      const what = kind === "stems" ? "with stems " : "";
+      item.textContent = `Exported ${what}${formatTime(createdAt)} to the folder ${folder} in the studio's exports folder.`;
       return item;
     }),
   );
@@ -609,6 +618,23 @@ async function exportTrack() {
   status.say(`Exported to ${result.path}.`);
 }
 
+/** Exports the rendered version with one stem per voice, after a confirm stating their time. */
+async function exportStems() {
+  if (!rendered?.preview) return;
+  if (!confirm(stemsText(rendered.estimate.cost, rendered.estimate, rendered.stems))) {
+    status.say(NOT_STARTED);
+    return;
+  }
+  const result = await trackJob(
+    `${trackPath(trackId)}/export`,
+    { revisionId: openedRevisionId(), kind: "stems" },
+    `Writing the WAV, the FLAC, ${rendered.stems.length} stems and the manifest.`,
+  );
+  if (result === null) return;
+  await readRender();
+  status.say(`Exported with stems to ${result.path}.`);
+}
+
 /** Moves the playhead to where the track player has reached. */
 function movePlayhead() {
   const length = draft === null ? 0 : arrangementLength(draft);
@@ -659,6 +685,7 @@ const actions = /** @type {Record<TimelineAction, () => void>} */ ({
   playTrack: whenOn("playTrack", async () => playTrack()),
   playSeam: whenOn("playSeam", playSeam),
   exportTrack: whenOn("exportTrack", exportTrack),
+  exportStems: whenOn("exportStems", exportStems),
 });
 for (const [name, action] of Object.entries(actions)) {
   buttons[/** @type {TimelineAction} */ (name)].onclick = () => status.run(action);

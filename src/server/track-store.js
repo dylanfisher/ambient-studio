@@ -27,12 +27,19 @@ import { insertRow, markRemoved, selectRow, selectRows, TABLE, transaction } fro
 /**
  * @typedef {object} TrackExportDraft
  * @property {number} trackRevisionId
- * @property {"mix" | "stems"} kind
+ * @property {ExportKind} kind
  * @property {string} folder relative to the data root's exports/
  * @property {string} manifestSha256
  */
 
 /** @typedef {TrackExportDraft & Removable & { id: number, createdAt: number }} TrackExport */
+
+/**
+ * What an export writes: the mix (0062), or the mix with one stem per voice id beside it (0063).
+ */
+export const EXPORT_KIND = Object.freeze({ mix: "mix", stems: "stems" });
+
+/** @typedef {typeof EXPORT_KIND[keyof typeof EXPORT_KIND]} ExportKind */
 
 /** Why a track was marked removed: the owner removed it. */
 export const TRACK_REMOVED = "removed";
