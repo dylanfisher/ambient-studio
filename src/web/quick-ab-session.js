@@ -385,8 +385,9 @@ export function createQuickAbSession({ sessionId, random, now, onChange, onError
 /** @typedef {ReturnType<typeof createQuickAbSession>} QuickAbSession */
 
 /**
- * The page's `beforeunload` listener: it asks before leaving while a rating is unsaved.
- * @param {QuickAbSession} session
+ * A page's `beforeunload` listener: it asks before leaving while something is unsaved, a rating
+ * on Quick A/B or an edit on the timeline (decision 0061).
+ * @param {Pick<QuickAbSession, "unsaved">} session
  * @returns {(event: BeforeUnloadEvent) => void}
  */
 export const unloadGuard = (session) => (event) => {

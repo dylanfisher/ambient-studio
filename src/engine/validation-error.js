@@ -3,6 +3,9 @@
 
 /** @typedef {{ path: string, message: string }} ValidationError */
 
+/** The message for a key an object must have and doesn't. */
+export const MISSING = "missing";
+
 /**
  * A value as an error message quotes it.
  * @param {unknown} value

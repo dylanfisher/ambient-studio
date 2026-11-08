@@ -18,12 +18,13 @@ import { ACTIVE_SIDE } from "./ab-view.js";
 import { getJson, VIBES_PATH } from "./api.js";
 import { trackAudio } from "./audio-player.js";
 import { cloneTemplate } from "./clone-template.js";
-import { elementById, elementsById } from "./element-by-id.js";
+import { elementsById } from "./element-by-id.js";
 import { mountPlayer, playAudio, switchPlayback } from "./excerpt-player.js";
+import { keyButtons } from "./key-buttons.js";
 import { createPlayedTracker } from "./played-tracker.js";
 import { POLL_MS } from "./poll-ms.js";
 import { createEarSession, NO_UNDO } from "./quick-ab-ear.js";
-import { bindQuickAbKeys, keyLabel, QUICK_AB_KEYS } from "./quick-ab-keys.js";
+import { bindQuickAbKeys, QUICK_AB_KEYS } from "./quick-ab-keys.js";
 import { ORDER_MODES } from "./quick-ab-order.js";
 import { createQuickAbSession, nameOf, PHASE, unloadGuard } from "./quick-ab-session.js";
 import { createSpotSession, NO_SPOT_UNDO, SPOT_NAMES } from "./quick-ab-spot.js";
@@ -78,17 +79,7 @@ const earMode = new URLSearchParams(location.search).has("ear");
 const spotMode = !earMode && new URLSearchParams(location.search).has("spot");
 
 /** Each action's button, which shows its key and does what the key does. */
-const buttons = /** @type {Record<QuickAbAction, HTMLButtonElement>} */ (
-  Object.fromEntries(
-    Object.entries(QUICK_AB_KEYS).map(([name, code]) => {
-      const button = elementById(name, HTMLButtonElement);
-      const kbd = document.createElement("kbd");
-      kbd.textContent = keyLabel(code);
-      button.append(" ", kbd);
-      return [name, button];
-    }),
-  )
-);
+const buttons = keyButtons(QUICK_AB_KEYS);
 const choiceButtons = [buttons.chooseLeft, buttons.same, buttons.chooseRight, buttons.skip];
 
 /**

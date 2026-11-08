@@ -5,6 +5,9 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
+import { EXCERPT_SECONDS } from "../../src/domain/excerpt-seconds.js";
+import { excerptOffset } from "../../src/engine/excerpt-offset.js";
+import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
 import { NO_CHECKPOINT_CACHE } from "../../src/server/embed-audio.js";
 import { embedJob } from "../../src/server/embed-job.js";
 import { findEmbedding, putEmbedding } from "../../src/server/embedding-store.js";
@@ -54,13 +57,19 @@ async function setup() {
     gainDb: 0,
   });
   markRemoved(app.store, TABLE.ratedAudio, removed.id, "test");
-  /** @param {number} seed @param {string} producer */
-  const render = (seed, producer) =>
+  /**
+   * A render of the drone genome's excerpt at `seed`, or of `window` when given.
+   * @param {number} seed
+   * @param {string} producer
+   * @param {{ offset: number, duration: number }} [window]
+   */
+  const render = (seed, producer, window) =>
     putRender(app.store, {
       genomeId,
       seed,
-      offset: 0,
-      duration: 25,
+      offset: excerptOffset(droneGenome, seed, EXCERPT_SECONDS),
+      duration: EXCERPT_SECONDS,
+      ...window,
       target: -16,
       producer,
       file: `render-${seed}.mp3`,
@@ -70,8 +79,11 @@ async function setup() {
   const kept = render(1, PRODUCER);
   render(2, "engine-0 features-old");
   render(3, PRODUCER);
+  // A track section's window (0061): its file is there, and it is still no excerpt.
+  const section = render(4, PRODUCER, { offset: 10, duration: 40 });
   await mkdir(app.paths.renderCache, { recursive: true });
   await writeFile(join(app.paths.renderCache, kept.file), "audio");
+  await writeFile(join(app.paths.renderCache, section.file), "audio");
   await mkdir(app.paths.ratedAudio, { recursive: true });
   for (const file of ["drone-7.flac", "drone-8.flac"]) {
     await writeFile(join(app.paths.ratedAudio, file), "audio");
@@ -95,7 +107,7 @@ const embeddedFiles = async (sidecar) =>
     .filter(({ method }) => method === "embed_audio")
     .map(({ params }) => params.audio);
 
-test("embeds only the rated audio and kept renders that have no row", async () => {
+test("embeds only the rated audio and kept excerpt renders that have no row, never a section", async () => {
   const { app, sidecar, checkpointCache, ratedAudioIds, kept } = await setup();
   const [first, second] = ratedAudioIds;
   putEmbedding(app.store, {

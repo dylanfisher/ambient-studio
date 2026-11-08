@@ -47,3 +47,17 @@ export function currentExcerpt(store, folder, candidate) {
   const found = findRender(store, { ...request, offset, duration, producer: PRODUCER });
   return found && cachedFile(folder, found) ? found : null;
 }
+
+/**
+ * Whether a render is its genome's excerpt at its seed, the window a candidate is rated on,
+ * rather than another window such as a track section's (decision 0061). The renders table
+ * holds both; whatever reads excerpts only, such as the embed job, keeps to these.
+ * @param {Store} store
+ * @param {Render} render
+ */
+export function isExcerptWindow(store, { genomeId, seed, offset, duration }) {
+  if (duration !== EXCERPT_SECONDS) return false;
+  const row = getGenome(store, genomeId);
+  if (!row) throw new Error(`there is no genome ${genomeId}`);
+  return offset === excerptOffset(row.genome, seed, duration);
+}

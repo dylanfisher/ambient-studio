@@ -4,6 +4,7 @@
 /** @import { IrreplaceableTable, Store } from "../../src/server/store.js" */
 import { loadConfig } from "../../src/config/config.js";
 import { paths } from "../../src/config/paths.js";
+import { emptyArrangement } from "../../src/domain/arrangement-schema.js";
 import { ATTACHMENT_KIND } from "../../src/domain/attachment-kind.js";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
 import { addAttachment } from "../../src/server/attachment-store.js";
@@ -15,6 +16,7 @@ import { addFeedback, addRatedAudio, addRating, addSketch } from "../../src/serv
 import { addReferenceFile, addRegion } from "../../src/server/reference-store.js";
 import { startSession, stopSession } from "../../src/server/session-store.js";
 import { openStore } from "../../src/server/store.js";
+import { addTrackExport, createTrack } from "../../src/server/track-store.js";
 import { addNote, createVibe } from "../../src/server/vibe-store.js";
 import { tempRoot } from "./temp-root.js";
 
@@ -189,6 +191,17 @@ export function fillStore(store) {
     regionId: region.id,
     details: {},
   });
+  const arrangement = {
+    ...emptyArrangement(),
+    sections: [{ sketchId: sketch.id, offset: 0, seconds: 60 }],
+  };
+  const { track, revision } = createTrack(store, { vibeId: vibe.id, name: "first", arrangement });
+  const trackExport = addTrackExport(store, {
+    trackRevisionId: revision.id,
+    kind: "mix",
+    folder: "first-1",
+    manifestSha256: "2".repeat(64),
+  });
   return {
     vibes: vibe.id,
     vibe_revisions: vibeRevisionId,
@@ -207,5 +220,8 @@ export function fillStore(store) {
     reference_files: reference.id,
     reference_regions: region.id,
     vibe_attachments: attachment.id,
+    tracks: track.id,
+    track_revisions: revision.id,
+    track_exports: trackExport.id,
   };
 }

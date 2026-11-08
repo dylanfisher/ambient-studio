@@ -5,7 +5,7 @@
 /** @import { ConstraintKind, Constraints } from "./constraint-schema.js" */
 import { checkValue } from "../engine/descriptor.js";
 import { isObject } from "../engine/is-object.js";
-import { checkKeys, show } from "../engine/validation-error.js";
+import { checkKeys, MISSING, show } from "../engine/validation-error.js";
 import { voiceTypeIds } from "../engine/voice-registry.js";
 import { CONSTRAINT_KINDS, FORM } from "./constraint-schema.js";
 
@@ -31,7 +31,7 @@ function checkRange(descriptor, given, path, errors) {
     if (given[end] !== undefined) {
       return checkValue(descriptor, given[end], `${path}.${end}`, errors);
     }
-    errors.push({ path: `${path}.${end}`, message: "missing" });
+    errors.push({ path: `${path}.${end}`, message: MISSING });
     return undefined;
   });
   if (typeof min === "number" && typeof max === "number" && min > max) {

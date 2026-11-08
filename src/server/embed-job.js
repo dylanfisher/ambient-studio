@@ -1,11 +1,13 @@
 // The owner-started embed job (decision 0042): fetches the CLAP checkpoint when it is missing,
 // drops every embedding made under another producer, and embeds every live rated audio and
-// every render under this server's producer that has no embedding. Nothing else starts it.
+// every excerpt render under this server's producer that has no embedding; a render of another
+// window, such as a track section's, is left out (0061). Nothing else starts it.
 /** @import { EmbeddingSource } from "./embedding-store.js" */
 /** @import { JobContext } from "./job-runner.js" */
 /** @import { App } from "./routing.js" */
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { isExcerptWindow } from "./candidate-excerpt.js";
 import { embedAudio, readEmbedder } from "./embed-audio.js";
 import { dropOtherEmbeddings, findEmbedding } from "./embedding-store.js";
 import { JOB_STEP } from "./job-steps.js";
@@ -49,6 +51,7 @@ export function embedJob(app) {
       else failed.push(`${file} is missing`);
     }
     for (const row of listRenders(app.store, PRODUCER)) {
+      if (!isExcerptWindow(app.store, row)) continue;
       const file = join(app.paths.renderCache, row.file);
       const source = { ratedAudioId: null, renderId: row.id };
       // A render whose file is gone is rendered again on its next request, under a new id.
