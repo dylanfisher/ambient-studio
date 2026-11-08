@@ -7,6 +7,7 @@ import { BENCH_RATE, trackCost, trackSeconds } from "../../src/domain/track-cost
 import { CHUNK_SECONDS } from "../../src/engine/chunk-windows.js";
 import { cost } from "../../src/engine/cost.js";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
+import { MORPH_HANDOVER } from "../../src/engine/morph.js";
 import { preRoll } from "../../src/engine/render-plan.js";
 
 const genomes = new Map([
@@ -45,6 +46,21 @@ test("the peak is both sections' cost in a crossfade, and the work counts each c
     one * 40 +
     chunks.reduce((sum, at, i) => sum + two * ((lengths[i] ?? 0) + preRoll(second, at)), 0);
   expect(found.work).toBeCloseTo(work, 9);
+});
+
+test("a morph counts both sections, and the incoming one only from the handover", () => {
+  const morphed = {
+    ...arrangement,
+    transitions: [{ kind: "morph", seconds: 12, curve: "smooth" }],
+  };
+  const morph = sectionGenome(morphed, 0, genomes);
+  // The morph's genome holds the incoming sketch's second drone, rising.
+  expect(morph.voices.map(({ id }) => id).sort()).toEqual(["b", "drone"]);
+  const two = cost(sectionGenome(morphed, 1, genomes));
+  const found = trackCost(morphed, genomes);
+  expect(found.peak).toBe(cost(morph) + two);
+  expect(found.audio).toBe(40 + 250 - (12 - MORPH_HANDOVER));
+  expect(found.length).toBe(278);
 });
 
 test("one section's peak is its own cost, and an empty track costs nothing", () => {

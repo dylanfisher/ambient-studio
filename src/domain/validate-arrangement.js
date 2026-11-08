@@ -5,7 +5,9 @@
 /** @import { Arrangement, Section } from "./arrangement-schema.js" */
 import { checkValue } from "../engine/descriptor.js";
 import { isObject } from "../engine/is-object.js";
+import { MORPH_HANDOVER, MORPH_LEAST } from "../engine/morph.js";
 import { MAX_DURATION } from "../engine/timeline.js";
+import { CURVES } from "../engine/trajectory.js";
 import { checkKeys, MISSING, show } from "../engine/validation-error.js";
 import { arrangementLength } from "./arrangement-length.js";
 import {
@@ -152,20 +154,39 @@ function checkTransitions(given, sections, passed, errors) {
       return;
     }
     const before = errors.length;
-    checkShape(transition, TRANSITION_KEYS, at, errors);
     const kinds = Object.values(TRANSITION_KIND);
-    if (transition.kind !== undefined && !kinds.includes(/** @type {any} */ (transition.kind))) {
-      const listed = kinds.map((kind) => JSON.stringify(kind)).join(", ");
-      errors.push({
-        path: `${at}.kind`,
-        message: `must be one of ${listed}, got ${show(transition.kind)}`,
-      });
+    const { kind } = transition;
+    if (kind !== undefined && !kinds.includes(/** @type {any} */ (kind))) {
+      const listed = kinds.map((name) => JSON.stringify(name)).join(", ");
+      errors.push({ path: `${at}.kind`, message: `must be one of ${listed}, got ${show(kind)}` });
     }
+    const morph = kind === TRANSITION_KIND.morph;
+    checkShape(
+      transition,
+      TRANSITION_KEYS[morph ? TRANSITION_KIND.morph : TRANSITION_KIND.crossfade],
+      at,
+      errors,
+    );
     if (transition.seconds !== undefined) {
       checkValue(TRANSITION_SECONDS, transition.seconds, `${at}.seconds`, errors);
     }
+    const { curve } = transition;
+    if (morph && curve !== undefined && !Object.hasOwn(CURVES, String(curve))) {
+      const listed = Object.keys(CURVES)
+        .map((name) => JSON.stringify(name))
+        .join(", ");
+      errors.push({ path: `${at}.curve`, message: `must be one of ${listed}, got ${show(curve)}` });
+    }
+    if (errors.length > before) return;
+    if (morph && /** @type {number} */ (transition.seconds) < MORPH_LEAST) {
+      errors.push({
+        path: `${at}.seconds`,
+        message: `a morph must be at least ${MORPH_LEAST} s: it moves, then hands over to the next section in its last ${MORPH_HANDOVER} s; got ${transition.seconds}`,
+      });
+      return;
+    }
     const [left, right] = [passed[i], passed[i + 1]];
-    if (errors.length > before || !left || !right) return;
+    if (!left || !right) return;
     const most = Math.min(left.seconds, right.seconds) / 2;
     if (/** @type {number} */ (transition.seconds) > most) {
       errors.push({

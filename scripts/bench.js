@@ -17,11 +17,16 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { loadavg, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { emptyArrangement } from "../src/domain/arrangement-schema.js";
+import { emptyArrangement, MORPH_CURVE } from "../src/domain/arrangement-schema.js";
 import { extractFeatures } from "../src/domain/extract-features.js";
 import { normalize } from "../src/domain/normalize.js";
 import { renderChecks } from "../src/domain/render-checks.js";
-import { sectionGenome } from "../src/domain/section-genome.js";
+import {
+  renderedTransition,
+  sectionGenome,
+  sectionMorph,
+  sectionWindow,
+} from "../src/domain/section-genome.js";
 import { trackCost } from "../src/domain/track-cost.js";
 import { trackFades } from "../src/domain/track-fades.js";
 import { cost } from "../src/engine/cost.js";
@@ -129,7 +134,8 @@ async function featuresChild(genome, duration, runs) {
 
 /**
  * The track case's arrangement and plan: five sections of the golden genomes, each extended to
- * its length as `sectionGenome` does, with equal crossfades between them, `length` seconds in all.
+ * its length as `sectionGenome` does, with equal transitions between them, the first a morph,
+ * `length` seconds in all.
  * @param {number} length
  */
 function benchTrack(length) {
@@ -150,16 +156,26 @@ function benchTrack(length) {
   const arrangement = {
     ...emptyArrangement(),
     sections: names.map((_, i) => ({ sketchId: i + 1, offset: TRACK.offset, seconds })),
-    transitions: names.slice(1).map(() => ({ kind: "crossfade", seconds: transition })),
+    // The first transition, example into drone, is a morph: the two share their pitch globals.
+    transitions: names
+      .slice(1)
+      .map((_, i) =>
+        i === 0
+          ? { kind: "morph", seconds: transition, curve: MORPH_CURVE }
+          : { kind: "crossfade", seconds: transition },
+      ),
   };
+  const morph = sectionMorph(arrangement, 0, genomes);
+  if (!morph?.ok) throw new Error(`the bench's morph falls back: ${morph?.reason}`);
   const plan = {
-    sections: arrangement.sections.map((section, index) => ({
+    sections: arrangement.sections.map((_, index) => ({
       genome: sectionGenome(arrangement, index, genomes),
       seed: SEED,
-      offset: section.offset,
-      duration: section.seconds,
+      ...sectionWindow(arrangement, index, genomes),
     })),
-    transitions: arrangement.transitions.map(({ seconds: s }) => s),
+    transitions: arrangement.transitions.map(
+      (_, index) => renderedTransition(arrangement, index, genomes).seconds,
+    ),
     fades: trackFades(arrangement, genomes),
   };
   return { plan, cost: trackCost(arrangement, genomes) };
@@ -213,7 +229,7 @@ function benchTracks() {
   for (const length of TRACK.lengths) {
     const { cost: found } = benchTrack(length);
     console.log(
-      `${length} s track of ${TRACK.genomes.join(", ")} from ${TRACK.offset} s, ${TRACK.transition} s crossfades, seed ${SEED}; peak cost ${found.peak.toFixed(1)}, ${(found.work / 1e3).toFixed(0)}k node-seconds; 1 timed run`,
+      `${length} s track of ${TRACK.genomes.join(", ")} from ${TRACK.offset} s, ${TRACK.transition} s transitions (the first a morph), seed ${SEED}; peak cost ${found.peak.toFixed(1)}, ${(found.work / 1e3).toFixed(0)}k node-seconds; 1 timed run`,
     );
     for (const mode of /** @type {TrackMode[]} */ (Object.keys(TRACK_MODES))) {
       console.log(`  ${load()}`);

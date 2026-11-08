@@ -1,17 +1,20 @@
 // The timeline's edits (decision 0061), with no DOM: each action a key and a button run makes
 // a new arrangement and leaves the one it was given as it was.
 import { expect, test } from "vitest";
-import { emptyArrangement } from "../../src/domain/arrangement-schema.js";
+import { emptyArrangement, MORPH_CURVE } from "../../src/domain/arrangement-schema.js";
+import { CURVES } from "../../src/engine/trajectory.js";
 import {
   addSection,
   dragEdge,
   moveSection,
+  nextCurve,
   removeSection,
   SECTION_STEP,
   setSection,
   setTransition,
   stepSection,
   stepTransition,
+  toggleMorph,
   transitionOf,
 } from "../../src/web/timeline-edits.js";
 
@@ -105,4 +108,31 @@ test("the selected section's crossfade is the one after it, or before the last",
   expect(stepTransition(THREE, 1, 1).transitions[1]?.seconds).toBe(6);
   expect(stepTransition(THREE, 1, -10).transitions[1]?.seconds).toBe(1);
   expect(setTransition(THREE, 0, 12).transitions[0]).toEqual({ kind: "crossfade", seconds: 12 });
+});
+
+test("a transition turns into a morph with the default curve and back, keeping its seconds", () => {
+  const morphed = toggleMorph(THREE, 1);
+  expect(morphed.transitions).toEqual([
+    { kind: "crossfade", seconds: 8 },
+    { kind: "morph", seconds: 5, curve: MORPH_CURVE },
+  ]);
+  expect(toggleMorph(morphed, 1)).toEqual(THREE);
+  expect(setTransition(morphed, 1, 9).transitions[1]).toEqual({
+    kind: "morph",
+    seconds: 9,
+    curve: MORPH_CURVE,
+  });
+});
+
+test("a morph's curve steps through 0007's curves in order, and a crossfade has none", () => {
+  const names = Object.keys(CURVES);
+  let arrangement = toggleMorph(THREE, 0);
+  const seen = [];
+  for (const _ of names) {
+    arrangement = nextCurve(arrangement, 0);
+    seen.push(arrangement.transitions[0]?.curve);
+  }
+  const from = names.indexOf(MORPH_CURVE);
+  expect(seen).toEqual(names.map((_, i) => names[(from + 1 + i) % names.length]));
+  expect(nextCurve(THREE, 0)).toEqual(THREE);
 });

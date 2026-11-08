@@ -7,6 +7,7 @@
 import { afterEach, expect, test } from "vitest";
 import { emptyArrangement } from "../../src/domain/arrangement-schema.js";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
+import { requireGenome } from "../../src/engine/validate-genome.js";
 import { addCandidate, putGenome } from "../../src/server/generation-store.js";
 import { addSketch } from "../../src/server/rating-store.js";
 import { listTrackRevisions } from "../../src/server/track-store.js";
@@ -85,6 +86,8 @@ test("a track is made with an empty first revision, and each save appends one", 
       notes: "keep",
       tags: ["cold"],
       duration: droneGenome.duration,
+      // The page checks a morph against both sketches' genomes as the owner edits (0064).
+      genome: requireGenome(droneGenome, "drone"),
       excerpt: null,
     },
   ]);

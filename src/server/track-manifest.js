@@ -11,7 +11,7 @@
 /** @import { RecordingEntry } from "./recording-index.js" */
 /** @import { Store } from "./store.js" */
 /** @import { Track, TrackRevision } from "./track-store.js" */
-import { sectionGenome } from "../domain/section-genome.js";
+import { renderedTransition, sectionGenome, sectionWindow } from "../domain/section-genome.js";
 import { trackCost } from "../domain/track-cost.js";
 import { trackFades } from "../domain/track-fades.js";
 import { sortedJson } from "../engine/canonical-genome.js";
@@ -37,8 +37,9 @@ import { getRevision } from "./vibe-store.js";
  * @property {number} sketchId
  * @property {number} candidateId
  * @property {number} seed the candidate's
- * @property {number} offset timeline seconds where the section starts
- * @property {number} duration the section's seconds
+ * @property {number} offset timeline seconds where the section's render starts: where the
+ *   section starts, or a morph's handover into it (`sectionWindow`)
+ * @property {number} duration seconds the section renders
  * @property {string} genomeHash of `genome`
  * @property {Genome} genome the section's, from `sectionGenome`, normalized
  */
@@ -48,7 +49,9 @@ import { getRevision } from "./vibe-store.js";
  * @typedef {object} TrackRecipe
  * @property {{ id: number, name: string, revisionId: number }} track
  * @property {ManifestSection[]} sections
- * @property {{ kind: string, seconds: number }[]} transitions
+ * @property {{ kind: string, seconds: number, morphSeconds?: number, curve?: string }[]} transitions
+ *   as the mix renders them (`renderedTransition`): `seconds` is the crossfade, a morph's
+ *   handover for a morph
  * @property {{ fadeIn: number, fadeOut: number }} fades the track's, in seconds
  * @property {number} chunkSeconds
  * @property {string} crossfadeLaw
@@ -127,6 +130,7 @@ export function trackRecipe(store, { track, revision, constraints }) {
   }
   const sections = arrangement.sections.map((section, index) => {
     const genome = sectionGenome(arrangement, index, genomes);
+    const window = sectionWindow(arrangement, index, genomes);
     const { candidateId, seed } = /** @type {{ candidateId: number, seed: number }} */ (
       candidates.get(section.sketchId)
     );
@@ -134,8 +138,8 @@ export function trackRecipe(store, { track, revision, constraints }) {
       sketchId: section.sketchId,
       candidateId,
       seed,
-      offset: section.offset,
-      duration: section.seconds,
+      offset: window.offset,
+      duration: window.duration,
       genomeHash: genomeHash(genome),
       genome,
     };
@@ -144,7 +148,9 @@ export function trackRecipe(store, { track, revision, constraints }) {
     recipe: {
       track: { id: track.id, name: track.name, revisionId: revision.id },
       sections,
-      transitions: arrangement.transitions.map(({ kind, seconds }) => ({ kind, seconds })),
+      transitions: arrangement.transitions.map((_, index) =>
+        renderedTransition(arrangement, index, genomes),
+      ),
       fades: trackFades(arrangement, genomes),
       chunkSeconds: CHUNK_SECONDS,
       crossfadeLaw: CROSSFADE_LAW,

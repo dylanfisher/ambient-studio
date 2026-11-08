@@ -1,13 +1,13 @@
-// What a track costs to render (decision 0062): the most cost sounding at once, which is two
-// sections during a crossfade since both render, and the work its chunks take, each chunk's
-// pre-roll included. The estimate divides the work by a rate, from the last track render or the
-// bench before any.
+// What a track costs to render (decisions 0062, 0064): the most cost sounding at once, which is
+// two sections during a crossfade or a morph's handover since both render, and the work its
+// chunks take, each chunk's pre-roll included. The estimate divides the work by a rate, from the
+// last track render or the bench before any.
 /** @import { Arrangement } from "./arrangement-schema.js" */
 import { CHUNK_SECONDS, chunkWindows } from "../engine/chunk-windows.js";
 import { cost } from "../engine/cost.js";
 import { preRoll } from "../engine/render-plan.js";
 import { arrangementLength } from "./arrangement-length.js";
-import { sectionGenome } from "./section-genome.js";
+import { sectionGenome, sectionWindow } from "./section-genome.js";
 
 /**
  * Node-seconds of render work a wall second, for a whole track render with its normalize and
@@ -32,15 +32,15 @@ export const BENCH_RATE = 4000;
  * @returns {TrackCost}
  */
 export function trackCost(arrangement, genomes, chunkSeconds = CHUNK_SECONDS) {
-  const costs = arrangement.sections.map((section, index) => {
+  const costs = arrangement.sections.map((_, index) => {
     const genome = sectionGenome(arrangement, index, genomes);
     const each = cost(genome);
-    const window = { offset: section.offset, duration: section.seconds };
+    const window = sectionWindow(arrangement, index, genomes);
     const work = chunkWindows(window, chunkSeconds).reduce(
       (sum, chunk) => sum + each * (chunk.duration + preRoll(genome, chunk.offset)),
       0,
     );
-    return { each, work, audio: section.seconds };
+    return { each, work, audio: window.duration };
   });
   const pairs = costs.slice(1).map(({ each }, i) => each + (costs[i]?.each ?? 0));
   return {

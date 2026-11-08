@@ -18,7 +18,8 @@ export const CURVES = Object.freeze({
 
 /** @typedef {keyof typeof CURVES} Curve */
 
-const DEFAULT_CURVE = "linear";
+/** The curve of a segment whose arriving point names none. */
+export const DEFAULT_CURVE = "linear";
 
 /**
  * Breakpoints as [seconds on the genome's timeline, value], times rising. Every point after the
@@ -27,7 +28,7 @@ const DEFAULT_CURVE = "linear";
  */
 
 /** Most breakpoints a trajectory may hold; a cap added later would invalidate stored genomes. */
-const MAX_POINTS = 64;
+export const MAX_POINTS = 64;
 
 const curveNames = Object.keys(CURVES);
 
