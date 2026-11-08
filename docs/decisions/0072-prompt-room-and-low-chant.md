@@ -4,7 +4,8 @@
 - **Status:** accepted; provisional: owner to confirm. Amends
   [0005](0005-genome-schema-table.md) (the schema text's limit, now 4,000 characters),
   [0024](0024-prompt-parse-repair-generation.md), [0038](0038-explore.md) and
-  [0058](0058-breeding.md) (examples, the base and the parents written without their defaults).
+  [0058](0058-breeding.md) (examples, the base and the parents written without their defaults),
+  and [0030](0030-seed-vibes-and-evaluation.md) (a fourth seed vibe).
 
 ## Context
 
@@ -50,6 +51,18 @@ After the change: the schema text 3,900 of 4,000; six examples 3,230 tokens and 
 locked 3,441, both of 4,096; a base with six examples 3,507 of 4,506, and its revision 4,325 of
 5,734. Acceptance 7's prompt (a seed-sized brief allowing only chant, cymbal, drum and noise,
 six rated four-voice examples) went from 4,149 to 3,500 tokens.
+
+**The low chant starting point** (`src/domain/vibes/low-chant.json`): allowed voices `chant`,
+`noise`, `bell`, `cymbal`, `drum`; `pulse` none; 300–900 s; −16 LUFS; `cymbalHits` 3 and
+`drumHits` 3; `brightness` 0.1–0.4. No tuning, scale or key, so the model picks the root. Its
+feature ranges, from a 30 s excerpt at 60 s and at 200 s of the test's seed genome (a twelve-
+singer chant, a cymbal at 2 a minute, a drum at 3, a brown noise bed): `centroidMean` at most
+700 Hz (measured 467), `onsetRate` at most 0.15 a second (0 and 0.03, so the swell isn't counted
+as onsets), `stereoWidth` at least 0.15 (0.21 and 0.26). `lowEndShare` is left out: the chant's
+fundamental is weak, so its share under 150 Hz is about 0.02, and a floor would push the model
+toward the `drone` voice, which the vibe doesn't allow. It sets no `bellNotes`: that kind is the only one `bell-field`
+sets alone, and 0030 has each seed set a kind no other does, so the brief keeps the bell rare
+instead.
 
 ## Alternatives considered
 

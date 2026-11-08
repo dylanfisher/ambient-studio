@@ -3,7 +3,8 @@
 - **Date:** 2026-11-06
 - **Status:** accepted; provisional: owner to confirm; amended by
   [0034](0034-feature-ranges-as-soft-targets.md) (the seed vibes' feature ranges) and
-  [0040](0040-revision-evaluation.md) (revision mode, which renders and revises)
+  [0040](0040-revision-evaluation.md) (revision mode, which renders and revises) and
+  [0072](0072-prompt-room-and-low-chant.md) (a fourth seed, `low-chant`)
 
 ## Context
 
@@ -172,3 +173,7 @@ failed request does. `GET /api/evaluations` also gives `thinking`, `queue.thinki
 page's time estimate. The page offers "Also
   test the revision step" and suggests 32 a vibe with it (`EVALUATION_COUNT.revise`). Reports
   stored before have none of these fields and display as before.
+- 2026-11-08: from step CV.4 ([0072](0072-prompt-room-and-low-chant.md)). A fourth seed,
+  `low-chant`: a low sung drone with sparse struck hits, allowing `chant`, `noise`, `bell`,
+  `cymbal` and `drum`, with `cymbalHits` 3 and `drumHits` 3 as the kinds no other seed sets, and
+  no bell ceiling, which stays `bell-field`'s own. All four target −16 LUFS and have no beat.

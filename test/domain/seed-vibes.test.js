@@ -10,12 +10,12 @@ import { SEED_GENOMES } from "../support/seed-genomes.js";
 const seeds = Object.entries(SEED_VIBES);
 
 describe("the seed vibes", () => {
-  test("every file in src/domain/vibes/ is listed, and there are three", () => {
+  test("every file in src/domain/vibes/ is listed, and there are four", () => {
     const files = readdirSync(new URL("../../src/domain/vibes/", import.meta.url));
     expect(Object.keys(SEED_VIBES).sort()).toEqual(
       files.map((file) => file.replace(/\.json$/, "")).sort(),
     );
-    expect(seeds).toHaveLength(3);
+    expect(seeds).toHaveLength(4);
   });
 
   test.each(seeds)("%s passes 2b's validator, targets -16 LUFS and has a brief", (_id, seed) => {
@@ -55,6 +55,8 @@ describe("the seed vibes", () => {
         "bellNotes",
         "grains",
         "padChords",
+        "cymbalHits",
+        "drumHits",
         "brightness",
         "cost",
       ]),
@@ -66,5 +68,17 @@ describe("the seed vibes", () => {
         seeds[i]?.[0],
       ).toBe(true);
     }
+  });
+
+  // Phase CV's starting point (decision 0072): the chant voices, with sparse struck hits.
+  // The bell ceiling stays bell-field's own kind, so the brief keeps the bell rare.
+  test("low-chant allows the chant, its bed and the struck voices, caps the cymbal and drum, and has no beat", () => {
+    const { constraints } = SEED_VIBES["low-chant"] ?? {};
+    expect(constraints?.allowedVoices).toEqual(["chant", "noise", "bell", "cymbal", "drum"]);
+    expect(constraints?.pulse).toBe("none");
+    expect(constraints).toMatchObject({
+      cymbalHits: expect.any(Number),
+      drumHits: expect.any(Number),
+    });
   });
 });

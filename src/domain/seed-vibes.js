@@ -4,6 +4,7 @@
 /** @import { Constraints } from "./constraint-schema.js" */
 import bellField from "./vibes/bell-field.json" with { type: "json" };
 import coldDorian from "./vibes/cold-dorian.json" with { type: "json" };
+import lowChant from "./vibes/low-chant.json" with { type: "json" };
 import tidalNoise from "./vibes/tidal-noise.json" with { type: "json" };
 
 /**
@@ -21,4 +22,5 @@ export const SEED_VIBES = Object.freeze({
   "cold-dorian": /** @type {SeedVibe} */ (coldDorian),
   "bell-field": /** @type {SeedVibe} */ (bellField),
   "tidal-noise": /** @type {SeedVibe} */ (tidalNoise),
+  "low-chant": /** @type {SeedVibe} */ (lowChant),
 });

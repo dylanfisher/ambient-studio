@@ -81,7 +81,8 @@ const counted = (rate) => rate && { count: rate.count, of: rate.of };
 describe("the evaluation job", () => {
   test("40 valid, 5 repairable and 3 truncated read 40/48 before repair, 45/48 after, 3 truncated", async () => {
     const { omlx, server, ok, loadSeeds, evaluate } = await setup();
-    const vibeIds = await loadSeeds();
+    // The first three seeds, whose counts give the interval below.
+    const vibeIds = (await loadSeeds()).slice(0, 3);
     const [cold, bells, tidal] = Object.keys(SEED_VIBES);
     omlx.script(
       ...vibeScript(/** @type {string} */ (cold), { valid: 14, repairable: 1, cut: 1 }),
@@ -238,7 +239,7 @@ describe("the evaluation job", () => {
     expect(omlx.requests[0]?.authorization).toBe(`Bearer ${TEST_OMLX_KEY}`);
     const [evaluation] = (await ok("GET", "/api/evaluations")).evaluations;
     expect(evaluation.report.stopped).toBe(job.error);
-    expect(evaluation.report.overall).toMatchObject({ requested: 6, made: 1, requestFailed: 1 });
+    expect(evaluation.report.overall).toMatchObject({ requested: 8, made: 1, requestFailed: 1 });
     for (const stored of [evaluation, job]) {
       expect(JSON.stringify(stored)).not.toContain(TEST_OMLX_KEY);
     }
@@ -277,14 +278,14 @@ describe("the evaluation job", () => {
     const [evaluation] = (await ok("GET", "/api/evaluations")).evaluations;
     expect(evaluation.report.stopped).toMatch(/cancelled/);
     expect(evaluation.report.overall).toMatchObject({
-      requested: 6,
+      requested: 8,
       made: 2,
       answered: 1,
       requestFailed: 1,
     });
     expect(counted(evaluation.report.overall.valid.beforeRepair)).toEqual({ count: 1, of: 1 });
     // The vibes the run never reached are listed with nothing made.
-    expect(evaluation.report.vibes.map((/** @type {any} */ v) => v.made)).toEqual([2, 0, 0]);
+    expect(evaluation.report.vibes.map((/** @type {any} */ v) => v.made)).toEqual([2, 0, 0, 0]);
   });
 
   test("two evaluations posted at once make one job and one 409", async () => {
