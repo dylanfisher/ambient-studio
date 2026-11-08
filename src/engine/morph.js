@@ -16,15 +16,17 @@ export const MORPH_LEAST = 2 * MORPH_HANDOVER;
 /**
  * Added to an incoming voice's id when an outgoing voice holds it, so the two play as two
  * instances. The id is part of every PRNG key (decision 0003), so this decides the incoming
- * instance's events. A morph whose voices already hold an id ending in it, or whose renamed id
- * would pass `VOICE_ID`'s 16 characters, falls back to a crossfade, so `voiceOfInstance` can
- * always tell an instance's voice from its id alone.
+ * instance's events. An instance is renamed only beside the outgoing voice whose id it takes,
+ * and a morph whose voices already hold an id ending in the suffix, or whose renamed id would
+ * pass `VOICE_ID`'s 16 characters, falls back to a crossfade, so `voiceOfInstance` always tells
+ * a listed instance's voice from its id.
  */
 export const MORPH_SUFFIX = "--in";
 
 /**
- * The voice id an instance in a morph's genome plays, which is its stem's (decision 0063): the
- * id without `MORPH_SUFFIX`, or the id itself.
+ * The voice id a morph's renamed instance plays, which is its stem's (decision 0063): its id
+ * without `MORPH_SUFFIX`. Only for the ids a morph lists as its instances: a sketch's own voice
+ * may end in the suffix too.
  * @param {string} id
  */
 export const voiceOfInstance = (id) =>

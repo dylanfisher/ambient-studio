@@ -4,7 +4,7 @@
 - **Status:** accepted; provisional: owner to confirm the 4 s handover, the `smooth` default
   curve, the 8 s shortest morph, splitting a voice whose fixed numbers differ, and the instance
   suffix. Amends [0062](0062-track-render-and-export.md) (section windows, the manifest's
-  transitions, the cost) and [0063](0063-stems-by-voice-id.md) (`stemOf`)
+  transitions, the cost) and [0063](0063-stems-by-voice-id.md) (stems by section)
 
 ## Context
 
@@ -34,7 +34,10 @@ genome because the plan's four arguments don't say where the morph sits. The mor
 the outgoing one, on its own timeline. It moves for the transition's seconds less
 `MORPH_HANDOVER` (4 s, `src/engine/morph.js`), and over those last 4 s the track crossfades from
 the morph's genome to the incoming section's own render, with 0062's equal-power law, which also
-hands the voices' events from the morph's seed and ids to the incoming section's.
+hands the voices' events from the morph's seed and ids to the incoming section's. Until the
+handover the incoming voices play the morph genome's events, drawn with the outgoing section's
+seed; at the handover they change to the incoming section's own, and the equal-power crossfade
+is what hides that change.
 
 - **Moving.** Every parameter that may be a trajectory and that both hold (`reverbLevel`,
   `delayFeedback`, `delayLevel`, the six macros, and each matched voice's) becomes a trajectory
@@ -59,28 +62,30 @@ hands the voices' events from the morph's seed and ids to the incoming section's
   it, are left out: they never sound in it.
   A voice whose fixed numbers differ (a drone's `root`, a pad's `notes`) splits too: a fixed number
   can't move, and jumping it at the handover would be a crossfade of the two pitches at the end.
-- **Ids.** An incoming instance whose id an outgoing voice holds is renamed
-  `<id>--in` (`MORPH_SUFFIX`); any other keeps its id. `voiceOfInstance(id)` in the same engine
-  file strips the suffix, and is the one inverse.
+- **Ids.** An incoming instance whose id an outgoing voice in the morph's genome holds is
+  renamed `<id>--in` (`MORPH_SUFFIX`); any other keeps its id. The morph lists its renamed
+  instances (`instances`), and `voiceOfInstance(id)` in the same engine file strips the suffix
+  from a listed one.
 - **Fallbacks.** The morph plays as a crossfade of its seconds when the two differ in `tuning`,
   `scale`, `key`, `pulse` or `bpm`; when the morph would hold more than `MAX_VOICES`; when a
   trajectory would pass `MAX_POINTS`; when a renamed id would pass `VOICE_ID`'s 16 characters
-  (an outgoing id over 12); or when a voice of either sketch already ends in `--in`, so
-  `voiceOfInstance` is never wrong in a morph. Each gives its reason in words.
+  (an outgoing id over 12); or when a voice of either sketch already ends in `--in`, so an
+  instance never takes a sketch voice's id. Each gives its reason in words.
 
 **Where it plugs in** (`src/domain/section-genome.js`). `sectionMorph(arrangement, i, genomes)`
 is the morph after section `i`, or null for a crossfade; `sectionGenome` returns the morph's
 genome when it holds; `sectionWindow` starts a section a morph leads into at the handover, its
 offset moved by the morph's seconds less 4, since before then the morph plays its voices;
-`renderedTransition` gives the transition as the mix renders it. The mix (`mixTrack`) is
+`renderedTransition` gives the transition as the mix renders it; `sectionInstances` gives a
+morph's renamed instances. The mix (`mixTrack`) is
 unchanged: a morph is a 4 s crossfade between the morph's genome and the shortened incoming
 window, and the track's length is the same as a crossfade's of the morph's seconds.
 
 **The manifest.** A morph's transition is `{kind: "morph", seconds: 4, morphSeconds, curve}`,
 `seconds` being what the mix crossfades, so `recipePlan`, the seam preview and `rerenderTrack` read
 it as they read a crossfade; a fallback is recorded as the crossfade it plays. Section windows
-are the rendered ones, and each section's genome is the morph's, which holds the rest of the
-rules (the floor, the ids, the trajectories). A crossfade-only track's recipe, and so its cache
+are the rendered ones, each section's genome is the morph's, which holds the rest of the rules
+(the floor, the ids, the trajectories), and a morph's section lists its `instances`. A crossfade-only track's recipe, and so its cache
 key, is unchanged. Changing `MORPH_HANDOVER`, `MORPH_SUFFIX` or what a morph writes changes a
 track's samples and bumps the engine version (0009).
 
@@ -88,14 +93,17 @@ track's samples and bumps the engine version (0009).
 handover is the morph genome's cost, which holds both sketches' voices, plus the incoming
 section's, and the incoming section's work starts at the handover.
 
-**Stems.** `stemOf` in `src/server/stem-voices.js` is `voiceOfInstance`, so a renamed instance
-joins its voice's stem (0063).
+**Stems.** `stemsOf` in `src/server/stem-voices.js` maps each voice of a section to its stem:
+a listed instance to `voiceOfInstance` of its id, any other voice to its own id, so a sketch's
+own `x--in` beside an `x` keeps its own stem (0063). `mixTrack`'s `voices` reads the planned
+section, which carries the instances from the manifest.
 
 **The page.** The timeline's transition line says what the chosen transition does
 (`transition-text.js`): a crossfade, a morph with its curve and how long it moves and hands over,
-or a morph that plays as a crossfade and why, from `sectionMorph` over the sketches' genomes, which
+a morph under 8 s and how much longer it must be, or a morph that plays as a crossfade and why, from `sectionMorph` over the sketches' genomes, which
 `GET /api/tracks/:id` now lists with each sketch. M turns the chosen transition into a morph or
-back, keeping its seconds; K steps a morph's curve through 0007's order. 6d added V for the export
+back, keeping its seconds; K steps a morph's curve through 0007's order, the button naming its
+shape in plain words. 6d added V for the export
 with stems in the same table.
 
 ## Alternatives considered
@@ -109,9 +117,10 @@ with stems in the same table.
   `early` segment there changes its shape before the morph, which acceptance 6 forbids.
 - **Fixed numbers stay outgoing, as the globals do** — rejected for voices: a drone's root
   would jump at the handover; for the globals there is one bus, so they can't split.
-- **Instance ids cut to fit and numbered** (`abcdefghijkl-in2`) — rejected: a stem couldn't tell
-  an instance's voice from its id alone, and 6d's `stemOf` reads ids only. A map from instance to
-  voice id beside the genome was rejected for the same reason: the stem path carries genomes.
+- **Instance ids cut to fit and numbered** (`abcdefghijkl-in2`) — rejected: the stem's name
+  couldn't be read back from the id.
+- **Telling an instance by its suffix alone** — rejected: a sketch may name its own voice
+  `x--in`, and its stem would merge into `x`'s.
 - **A morph shorter than 8 s that only crossfades** — rejected: the validator says why, as for a
   crossfade longer than half a section.
 - **Interpolating fixed globals and `reverbDecay` in steps** — rejected as 0006 rejects it: each
@@ -119,8 +128,13 @@ with stems in the same table.
 
 ## Consequences
 
-- Measured by test on scripted pairs (`test/domain/morph-genome.test.js`): every shared parameter
-  at the start, middle and end within 1e-12 of the curve in the encoded space; the render of the
+- **A stated exception to acceptance 6.** A parameter whose `smooth` or `early` segment starts
+  before the morph and runs past its end doesn't move at all: it follows its own segment through
+  the morph and jumps to the incoming value at the handover, under the crossfade. Moving it would
+  change the segment before the morph, which acceptance 6 forbids too. A test holds the branch.
+- Measured by test on scripted pairs (`test/domain/morph-genome.test.js`): every shared
+  parameter, for each of the four curves, at 0, a quarter, the middle and the end within 1e-12
+  of the curve in the encoded space; the render of the
   6 s before the morph against the outgoing genome's within 0007's tolerance; a three-section
   track through the routes renders and re-renders from its manifest to the same hash; a morph
   track's stems sum to its mix within the tolerance.
@@ -133,7 +147,7 @@ with stems in the same table.
   bounds every window; the estimate overstates the outgoing section's work.
 - The seam preview of a morph centers on its handover, so a morph longer than about 26 s is heard
   only in part.
-- A sketch voice whose id ends in `--in` makes every morph with it fall back, and outside a morph
-  its stem is named without the suffix. The LLM's ids so far are words and numbers.
+- A sketch voice whose id ends in `--in` makes every morph with it fall back. The LLM's ids so
+  far are words and numbers.
 - A morph across a chunk boundary is a trajectory like any other; chunks render it as 0062 says.
 - 6f's `applyLanes` runs on `sectionGenome`'s result, a morph's genome included.

@@ -40,7 +40,7 @@ export async function renderStem(plan, stem, { gainDb, path, chunkSeconds, signa
   const hash = newSha256();
   try {
     const mixing = mixTrack(plan, {
-      voices: (genome) => stemVoices(genome, stem),
+      voices: (section) => stemVoices(section, stem),
       ...(chunkSeconds !== undefined && { chunkSeconds }),
       ...(signal && { signal }),
       ...(progress && { progress }),

@@ -3,7 +3,7 @@
 /** @import { Transition } from "../domain/arrangement-schema.js" */
 /** @import { Curve } from "../engine/trajectory.js" */
 import { TRANSITION_KIND } from "../domain/arrangement-schema.js";
-import { MORPH_HANDOVER } from "../engine/morph.js";
+import { MORPH_HANDOVER, MORPH_LEAST } from "../engine/morph.js";
 
 /** Each curve's shape, in the words 0007 gives it. */
 const CURVE_WORDS = Object.freeze(
@@ -16,6 +16,12 @@ const CURVE_WORDS = Object.freeze(
 );
 
 /**
+ * A curve's shape in plain words, for its button.
+ * @param {Curve} curve
+ */
+export const curveWords = (curve) => CURVE_WORDS[curve];
+
+/**
  * @param {number} index the transition's, counted from 0
  * @param {Transition} transition
  * @param {{ ok: true } | { ok: false, reason: string } | null} morph whether a morph holds, from
@@ -25,6 +31,9 @@ const CURVE_WORDS = Object.freeze(
 export function transitionText(index, transition, morph) {
   const [from, into] = [`section ${index + 1}`, `section ${index + 2}`];
   if (transition.kind !== TRANSITION_KIND.morph) return `The crossfade from ${from} into ${into}.`;
+  if (transition.seconds < MORPH_LEAST) {
+    return `A morph needs at least ${MORPH_LEAST} s: its sounds move, then ${into} takes over in the last ${MORPH_HANDOVER} s. Make this one ${MORPH_LEAST - transition.seconds} s longer, or make it a crossfade again.`;
+  }
   if (morph && !morph.ok) {
     return `Section ${index + 1} plays into ${into} as a crossfade, not a morph: ${morph.reason}.`;
   }

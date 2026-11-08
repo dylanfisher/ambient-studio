@@ -12,6 +12,7 @@ import { emptyArrangement } from "../../src/domain/arrangement-schema.js";
 import {
   renderedTransition,
   sectionGenome,
+  sectionInstances,
   sectionWindow,
 } from "../../src/domain/section-genome.js";
 import { ENGINE_VERSION } from "../../src/engine/engine-version.js";
@@ -22,7 +23,7 @@ import { requireGenome } from "../../src/engine/validate-genome.js";
 import { mixTrack } from "../../src/server/mix-track.js";
 import { renderStem } from "../../src/server/render-stem.js";
 import { sha256Hex } from "../../src/server/sha256-hex.js";
-import { stemIds } from "../../src/server/stem-voices.js";
+import { stemIds, stemVoices } from "../../src/server/stem-voices.js";
 import { FLOAT32, headerBytes } from "../../src/server/wav-writer.js";
 import { difference, EXCERPT_BELOW_DB, EXCERPT_PEAK } from "../support/compare-renders.js";
 
@@ -170,6 +171,7 @@ test("a morph's renamed instance plays in its voice's stem, and the stems still 
       genome: sectionGenome(arrangement, index, genomes),
       seed: index + 1,
       ...sectionWindow(arrangement, index, genomes),
+      instances: sectionInstances(arrangement, index, genomes),
     })),
     transitions: [renderedTransition(arrangement, 0, genomes).seconds],
     fades: { fadeIn: 0, fadeOut: 0 },
@@ -180,6 +182,7 @@ test("a morph's renamed instance plays in its voice's stem, and the stems still 
     "high",
   ]);
   expect(stemIds(morphed.sections)).toEqual(["drone", "high"]);
+  expect(morphed.sections[0]?.instances).toEqual([`drone${MORPH_SUFFIX}`]);
   const frames = 24 * SAMPLE_RATE;
   /** @param {AsyncIterable<Float32Array[]>} blocks */
   const whole = async (blocks) => {
@@ -212,6 +215,22 @@ test("a morph's renamed instance plays in its voice's stem, and the stems still 
   );
   expect(peak).toBeLessThan(EXCERPT_PEAK);
   expect(belowDb).toBeGreaterThan(EXCERPT_BELOW_DB);
+});
+
+test("a sketch's own voice whose id ends in the morph's suffix keeps its own stem", () => {
+  const plain = requireGenome(
+    {
+      ...unfaded,
+      voices: [...unfaded.voices, { ...unfaded.voices[0], id: `drone${MORPH_SUFFIX}` }],
+    },
+    "drone and drone--in",
+  );
+  expect(stemIds([{ genome: plain }])).toEqual(["drone", `drone${MORPH_SUFFIX}`]);
+  expect(stemVoices({ genome: plain }, "drone")).toEqual(["drone"]);
+  // Listed as a morph's instance, the same id joins its voice's stem.
+  const morph = { genome: plain, instances: [`drone${MORPH_SUFFIX}`] };
+  expect(stemIds([morph])).toEqual(["drone"]);
+  expect(stemVoices(morph, "drone")).toEqual(["drone", `drone${MORPH_SUFFIX}`]);
 });
 
 test("cancel stops at the next chunk and removes the partial stem", async () => {

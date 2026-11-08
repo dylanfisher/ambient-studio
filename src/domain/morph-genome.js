@@ -32,9 +32,9 @@ import { paramName } from "./param-name.js";
  */
 
 /**
- * A morph's genome, or why the transition plays as a crossfade. A renamed instance's voice is
- * `voiceOfInstance` of its id.
- * @typedef {{ ok: true, genome: Genome } | { ok: false, reason: string }} Morph
+ * A morph's genome with the ids of its renamed instances, whose voice is `voiceOfInstance` of
+ * the id; or why the transition plays as a crossfade.
+ * @typedef {{ ok: true, genome: Genome, instances: string[] } | { ok: false, reason: string }} Morph
  */
 
 /** The globals that decide what a note or a beat is; a morph between two values can't move. */
@@ -90,7 +90,8 @@ function moveTo(descriptor, value, from, to, target, curve) {
     const split = /** @type {Curve} */ (next[2]);
     if (SPLITS.has(CURVES[split])) {
       const at = valueAt(/** @type {Trajectory} */ (value), from, descriptor.scale);
-      kept.push([from, descriptor.kind === "int" ? Math.round(at) : at, split]);
+      // No int parameter may be a trajectory, so the cut's value needs no rounding.
+      kept.push([from, at, split]);
     } else {
       kept.push([next[0], next[1], split]);
     }
@@ -223,6 +224,10 @@ export function morphGenome(outgoing, incoming, seconds, curve) {
   const voices = [];
   /** @type {Voice[]} */
   const rising = [];
+  /** The outgoing ids the morph's genome holds, which an incoming instance is renamed around. */
+  const kept = new Set();
+  /** @type {string[]} */
+  const instances = [];
   for (const voice of out.voices) {
     const match = incomingIds.get(voice.id);
     if (match && sameVoice(voice, match, { from, to, handover })) {
@@ -230,11 +235,13 @@ export function morphGenome(outgoing, incoming, seconds, curve) {
         ...voice,
         ...moveAll(voiceParams(voice.type), voice, match, `${GENOME_KEY.voices}.${voice.id}.`),
       });
+      kept.add(voice.id);
       continue;
     }
     if (match) rising.push(match);
     // An outgoing voice that would start after the morph never sounds in it, so it is left out.
     if (voice.start >= to) continue;
+    kept.add(voice.id);
     voices.push(
       voice.end <= from
         ? voice
@@ -250,7 +257,9 @@ export function morphGenome(outgoing, incoming, seconds, curve) {
     // An incoming voice that would start after the morph, or end before it, plays only in the
     // incoming section's own render.
     if (start >= to || end <= from) continue;
-    const id = outgoingIds.has(voice.id) ? `${voice.id}${MORPH_SUFFIX}` : voice.id;
+    // Renamed only beside the outgoing voice whose id it would take.
+    const id = kept.has(voice.id) ? `${voice.id}${MORPH_SUFFIX}` : voice.id;
+    if (id !== voice.id) instances.push(id);
     if (!VOICE_ID.test(id)) {
       return {
         ok: false,
@@ -292,5 +301,5 @@ export function morphGenome(outgoing, incoming, seconds, curve) {
     macros: { ...out.macros, ...moveAll(MACROS, out.macros, into.macros, `${GENOME_KEY.macros}.`) },
     voices,
   };
-  return { ok: true, genome: requireGenome(genome, "the morph's genome") };
+  return { ok: true, genome: requireGenome(genome, "the morph's genome"), instances };
 }

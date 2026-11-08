@@ -129,3 +129,16 @@ export function renderedTransition(arrangement, index, genomes) {
     curve: /** @type {Curve} */ (transition.curve),
   };
 }
+
+/**
+ * The ids of the renamed instances in the genome a section renders: a morph's, else none. A stem
+ * (0063) gathers each under `voiceOfInstance` of its id.
+ * @param {Arrangement} arrangement a valid one
+ * @param {number} index the section's
+ * @param {ReadonlyMap<number, unknown>} genomes
+ * @returns {string[]}
+ */
+export function sectionInstances(arrangement, index, genomes) {
+  const morph = sectionMorph(arrangement, index, genomes);
+  return morph?.ok ? morph.instances : [];
+}

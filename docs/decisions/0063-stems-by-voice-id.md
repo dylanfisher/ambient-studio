@@ -96,10 +96,13 @@ voice ids.
 
 ## Amendments
 
-- 2026-11-07: from step 6e ([0064](0064-morph-transitions.md)). `stemOf` is
-  `voiceOfInstance` from `src/engine/morph.js`: a morph renames an incoming voice whose id the
-  outgoing section holds to `<id>--in` (`MORPH_SUFFIX`), whole and never cut, and falls back to a
-  crossfade when that id would pass 16 characters or a voice already ends in the suffix, so the
-  id alone names the stem. `test/server/render-stem.test.js` holds a morph track whose renamed
-  drone plays in the drone's stem, the stems summing to the mix within the tolerance. The
-  timeline's keys table holds this step's V beside 6e's M (morph) and K (curve).
+- 2026-11-07: from step 6e ([0064](0064-morph-transitions.md)). `stemOf` is now `stemsOf`,
+  over a section rather than an id: a morph lists the incoming voices it renamed to
+  `<id>--in` (`MORPH_SUFFIX`) in its section's `instances`, carried in the manifest and the
+  planned section, and each listed instance joins `voiceOfInstance` of its id, the suffix
+  stripped; every other voice, a sketch's own `x--in` included, keeps its own stem.
+  `mixTrack`'s `voices` takes the planned section instead of its genome.
+  `test/server/render-stem.test.js` holds a morph track whose renamed drone plays in the drone's
+  stem, the stems summing to the mix within the tolerance, and a sketch's own `drone--in` beside
+  `drone` keeping its stem. The timeline's keys table holds this step's V beside 6e's M (morph)
+  and K (curve).

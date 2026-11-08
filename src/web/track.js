@@ -10,6 +10,7 @@
 /** @import { JobStatus } from "./job-progress.js" */
 /** @import { TimelineAction } from "./timeline-keys.js" */
 /** @import { TrackCost } from "../domain/track-cost.js" */
+/** @import { Curve } from "../engine/trajectory.js" */
 import { arrangementLength } from "../domain/arrangement-length.js";
 import {
   SECTION_FIELDS,
@@ -51,7 +52,7 @@ import { bindTimelineKeys, TIMELINE_KEYS } from "./timeline-keys.js";
 import { blockText, sectionCount, timelineLayout } from "./timeline-layout.js";
 import { drawTimeline } from "./timeline-view.js";
 import { stemsText, trackRenderText } from "./track-render-text.js";
-import { transitionText } from "./transition-text.js";
+import { curveWords, transitionText } from "./transition-text.js";
 
 const status = statusLine();
 const page = elementsById({
@@ -291,7 +292,10 @@ function draw() {
   const morphing = transition?.kind === TRANSITION_KIND.morph;
   buttons.curve.disabled = !morphing;
   label(buttons.morph, morphing ? "Make it a crossfade" : "Make it a morph");
-  label(buttons.curve, morphing ? `Curve: ${transition.curve}` : "Curve");
+  label(
+    buttons.curve,
+    morphing ? `Curve: ${curveWords(/** @type {Curve} */ (transition.curve))}` : "Curve",
+  );
   if (fade === null || transition === undefined) {
     page.fadeLine.textContent = "No crossfade: the track has one section.";
   } else {

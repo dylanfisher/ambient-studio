@@ -11,7 +11,12 @@
 /** @import { RecordingEntry } from "./recording-index.js" */
 /** @import { Store } from "./store.js" */
 /** @import { Track, TrackRevision } from "./track-store.js" */
-import { renderedTransition, sectionGenome, sectionWindow } from "../domain/section-genome.js";
+import {
+  renderedTransition,
+  sectionGenome,
+  sectionInstances,
+  sectionWindow,
+} from "../domain/section-genome.js";
 import { trackCost } from "../domain/track-cost.js";
 import { trackFades } from "../domain/track-fades.js";
 import { sortedJson } from "../engine/canonical-genome.js";
@@ -42,6 +47,7 @@ import { getRevision } from "./vibe-store.js";
  * @property {number} duration seconds the section renders
  * @property {string} genomeHash of `genome`
  * @property {Genome} genome the section's, from `sectionGenome`, normalized
+ * @property {string[]} [instances] a morph's renamed instances in `genome` (0064), when it has any
  */
 
 /**
@@ -131,6 +137,7 @@ export function trackRecipe(store, { track, revision, constraints }) {
   const sections = arrangement.sections.map((section, index) => {
     const genome = sectionGenome(arrangement, index, genomes);
     const window = sectionWindow(arrangement, index, genomes);
+    const instances = sectionInstances(arrangement, index, genomes);
     const { candidateId, seed } = /** @type {{ candidateId: number, seed: number }} */ (
       candidates.get(section.sketchId)
     );
@@ -142,6 +149,7 @@ export function trackRecipe(store, { track, revision, constraints }) {
       duration: window.duration,
       genomeHash: genomeHash(genome),
       genome,
+      ...(instances.length > 0 && { instances }),
     };
   });
   return {
@@ -215,10 +223,17 @@ export async function recipePlan({ sections, transitions, fades }, recordings, n
   /** @type {Record<string, string>} */
   const files = {};
   const planned = [];
-  for (const { genome, seed, offset, duration } of sections) {
+  for (const { genome, seed, offset, duration, instances } of sections) {
     const loaded = await loadSamples(genome, recordings, names);
     Object.assign(files, loaded.files);
-    planned.push({ genome, seed, offset, duration, samples: loaded.samples });
+    planned.push({
+      genome,
+      seed,
+      offset,
+      duration,
+      samples: loaded.samples,
+      ...(instances && { instances }),
+    });
   }
   return {
     plan: { sections: planned, transitions: transitions.map(({ seconds }) => seconds), fades },

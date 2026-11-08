@@ -119,10 +119,10 @@ const MOVES = SECONDS - MORPH_HANDOVER;
 /**
  * @param {Genome} outgoing
  * @param {Genome} incoming
- * @param {number} [seconds]
+ * @param {import("../../src/engine/trajectory.js").Curve} [curve]
  */
-const morph = (outgoing, incoming, seconds = SECONDS) =>
-  morphGenome({ genome: outgoing, at: OUT_AT }, { genome: incoming, at: IN_AT }, seconds, CURVE);
+const morph = (outgoing, incoming, curve = CURVE) =>
+  morphGenome({ genome: outgoing, at: OUT_AT }, { genome: incoming, at: IN_AT }, SECONDS, curve);
 
 /** @param {ReturnType<typeof morphGenome>} result */
 function held(result) {
@@ -160,41 +160,47 @@ describe("morphGenome", () => {
   const start = OUT_AT;
   const end = OUT_AT + MOVES;
 
-  test("every numeric parameter both hold moves along its encoded scale by the curve", () => {
-    /** @type {[string, import("../../src/engine/descriptor.js").DescriptorTable, Record<string, unknown>, Record<string, unknown>, Record<string, unknown>][]} */
-    const tables = [
-      ["globals", GLOBAL_PARAMS, OUT, IN, genome],
-      ["macros", MACROS, OUT.macros, IN.macros, genome.macros],
-      [
-        "voices.drone",
-        voiceParams("drone"),
-        voiceOf(OUT, "drone"),
-        voiceOf(IN, "drone"),
-        voiceOf(genome, "drone"),
-      ],
-    ];
-    let checked = 0;
-    for (const [where, table, out, into, morphed] of tables) {
-      for (const [name, descriptor] of Object.entries(table)) {
-        if (!allowsTrajectory(descriptor) || out[name] === undefined) continue;
-        const d = /** @type {import("../../src/engine/descriptor.js").NumberDescriptor} */ (
-          descriptor
-        );
-        const from = encode(d, rawAt(d, out[name], start));
-        const to = encode(d, rawAt(d, into[name], IN_AT + MOVES));
-        for (const x of [0, 0.5, 1]) {
-          const at = encode(d, rawAt(d, morphed[name], start + x * MOVES));
-          expect(at, `${where}.${name} at ${x}`).toBeCloseTo(
-            from + (to - from) * CURVES[CURVE](x),
-            12,
+  // Every curve, and a quarter of the way as well as the middle, since `smooth` and `linear`
+  // agree at 0, 0.5 and 1.
+  test.each(/** @type {import("../../src/engine/trajectory.js").Curve[]} */ (Object.keys(CURVES)))(
+    "every numeric parameter both hold moves along its encoded scale by the %s curve",
+    (curve) => {
+      const { genome } = held(morph(OUT, IN, curve));
+      /** @type {[string, import("../../src/engine/descriptor.js").DescriptorTable, Record<string, unknown>, Record<string, unknown>, Record<string, unknown>][]} */
+      const tables = [
+        ["globals", GLOBAL_PARAMS, OUT, IN, genome],
+        ["macros", MACROS, OUT.macros, IN.macros, genome.macros],
+        [
+          "voices.drone",
+          voiceParams("drone"),
+          voiceOf(OUT, "drone"),
+          voiceOf(IN, "drone"),
+          voiceOf(genome, "drone"),
+        ],
+      ];
+      let checked = 0;
+      for (const [where, table, out, into, morphed] of tables) {
+        for (const [name, descriptor] of Object.entries(table)) {
+          if (!allowsTrajectory(descriptor) || out[name] === undefined) continue;
+          const d = /** @type {import("../../src/engine/descriptor.js").NumberDescriptor} */ (
+            descriptor
           );
+          const from = encode(d, rawAt(d, out[name], start));
+          const to = encode(d, rawAt(d, into[name], IN_AT + MOVES));
+          for (const x of [0, 0.25, 0.5, 1]) {
+            const at = encode(d, rawAt(d, morphed[name], start + x * MOVES));
+            expect(at, `${where}.${name} at ${x}`).toBeCloseTo(
+              from + (to - from) * CURVES[curve](x),
+              12,
+            );
+          }
+          checked += 1;
         }
-        checked += 1;
       }
-    }
-    // reverbLevel, delayFeedback and delayLevel; six macros; the drone's level, cutoff and sweep.
-    expect(checked).toBe(12);
-  });
+      // reverbLevel, delayFeedback and delayLevel; six macros; the drone's level, cutoff and sweep.
+      expect(checked).toBe(12);
+    },
+  );
 
   test("reverbDecay, delayTime and the other fixed globals stay at the outgoing values", () => {
     expect(genome.reverbDecay).toBe(OUT.reverbDecay);
@@ -231,7 +237,7 @@ describe("morphGenome", () => {
     const cloud = voiceOf(genome, "cloud");
     expect(rawAt(VOICE_PARAMS.level, cloud.level, start)).toBe(FLOOR);
     expect(rawAt(VOICE_PARAMS.level, cloud.level, end)).toBe(-18);
-    for (const id of ["drone", "pad", "bell", "cloud"]) expect(voiceOfInstance(id)).toBe(id);
+    expect(result.instances.sort()).toEqual(["bell--in", "pad--in"]);
   });
 
   test("the render before the morph starts equals the outgoing section's", async () => {
@@ -300,6 +306,27 @@ describe("a parameter already a trajectory", () => {
       [24, 900, "smooth"],
       [OUT_AT + MOVES, 1400, CURVE],
     ]);
+  });
+
+  test("a curved segment that runs past the morph's end keeps it from moving, a stated exception", () => {
+    /** @type {Trajectory} */
+    const cutoff = {
+      points: [
+        [0, 250],
+        [40, 900, "early"],
+        [50, 300, "linear"],
+      ],
+    };
+    const { genome } = held(morph(outgoing(cutoff), incoming));
+    const moved = /** @type {Trajectory} */ (voiceOf(genome, "drone").cutoff);
+    // Kept to the end of the segment the morph starts inside, then held: no move to 1400.
+    expect(moved.points).toEqual([
+      [0, 250],
+      [40, 900, "early"],
+    ]);
+    for (const time of [5, OUT_AT, OUT_AT + MOVES]) {
+      expect(valueAt(moved, time, scale)).toBe(valueAt(cutoff, time, scale));
+    }
   });
 });
 
