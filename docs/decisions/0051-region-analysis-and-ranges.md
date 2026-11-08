@@ -46,7 +46,12 @@ beside the renders', which are embedded from their normalized MP3s. The job asks
 without fetching: with no checkpoint folder, or the checkpoint not in it, the features are kept
 and the result's `notEmbedded` says why, as the candidates job does. A sidecar failure while
 embedding fails the job with `analyzing the sound of region <id> (“<label>”) failed: …`, after
-the features are stored, so the next run embeds without measuring again.
+the features are stored, so the next run embeds without measuring again. A new embedder
+producer re-embeds the same way: the windows are decoded and normalized again for their WAVs,
+and their stored features are not read again. A cancel kills ffmpeg mid-decode (the job's
+signal reaches `decodeWithFfmpeg`) and stops between windows. The temp folder is removed when
+the job ends, however it ends; one a killed server left (`reference-cache/.analyze-*`) is
+removed when the next Analyze job starts, since only one runs at a time.
 
 **Derived rows** (`0009-region-analyses.sql`, `src/server/region-analysis-store.js`, listed in
 `NOT_APPEND_ONLY`): `region_analyses`, one row per region and target (UNIQUE), holding
