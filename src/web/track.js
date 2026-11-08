@@ -7,9 +7,9 @@
 // owner-started job through the excerpt player.
 /** @import { Arrangement, Section } from "../domain/arrangement-schema.js" */
 /** @import { ArrangementSketch } from "../domain/validate-arrangement.js" */
-/** @import { JobStatus } from "./job-progress.js" */
 /** @import { TimelineAction } from "./timeline-keys.js" */
 /** @import { TrackCost } from "../domain/track-cost.js" */
+/** @import { BlockSketch } from "./timeline-layout.js" */
 /** @import { Curve } from "../engine/trajectory.js" */
 import { arrangementLength } from "../domain/arrangement-length.js";
 import {
@@ -20,18 +20,17 @@ import {
 } from "../domain/arrangement-schema.js";
 import { sectionMorph } from "../domain/section-genome.js";
 import { validateArrangement } from "../domain/validate-arrangement.js";
-import { getJson, jobPath, postJson, startJob, trackPath } from "./api.js";
+import { getJson, postJson, trackPath } from "./api.js";
 import { cloneTemplate } from "./clone-template.js";
 import { elementsById } from "./element-by-id.js";
 import { clockTime, mountPlayer, playAudio } from "./excerpt-player.js";
-import { followJob } from "./follow-job.js";
 import { formatTime } from "./format-time.js";
 import { jobControl } from "./job-control.js";
-import { endedText, JOB_STATE } from "./job-progress.js";
-import { jobBox } from "./job-view.js";
 import { keyButtons } from "./key-buttons.js";
+import { materialCard } from "./material-card.js";
 import { NOT_STARTED } from "./owner-job.js";
 import { unloadGuard } from "./quick-ab-session.js";
+import { runJob } from "./run-job.js";
 import { statusLine } from "./status-line.js";
 import {
   addSection,
@@ -132,7 +131,7 @@ const trackId = Number(idText);
  * @property {{ id: number, name: string }} vibe
  * @property {{ id: number, arrangement: Arrangement, note: string, length: number, createdAt: number }[]} revisions
  *   oldest first
- * @property {{ id: number, candidateId: number, intent: string | null, notes: string, tags: string[], duration: number, genome: unknown }[]} sketches
+ * @property {{ id: number, candidateId: number, intent: string | null, notes: string, tags: string[], duration: number, genome: unknown, excerpt: { renderId: number, url: string, offset: number, duration: number } | null }[]} sketches
  */
 
 /** @type {TrackView | null} */
@@ -143,6 +142,8 @@ let draft = null;
 let kept = "";
 /** The version the timeline was opened from, counted from 1. */
 let openedVersion = 0;
+/** How many times a version was opened by hand from the list, which a steer's swap reads. */
+let openedByHand = 0;
 /** @type {number | null} the section the keys and buttons act on */
 let selected = null;
 /** Each section window's audio once rendered, by the section as JSON. */
@@ -263,6 +264,7 @@ function draw() {
     },
   );
   page.noSections.hidden = sections.length > 0;
+  material.draw(errors.length === 0);
 
   page.sectionBox.hidden = selected === null;
   page.timeline.append(playhead);
@@ -446,29 +448,22 @@ async function playSection() {
     play(known);
     return;
   }
-  playControl.wait();
   try {
-    const { job, refused } = await startJob(`${trackPath(trackId)}/section-audio`, section);
-    status.say(
-      refused ? `${refused} Showing that job's progress.` : "Rendering the section to play.",
-    );
-    const box = jobBox((current) =>
-      status.run(async () => box.show(await postJson(`${jobPath(current.id)}/cancel`, {}))),
-    );
-    page.jobBox.replaceChildren(box.root);
-    playControl.hold(job);
-    /** @type {JobStatus & { result?: any }} */
-    const finished = await followJob(job, (current) => box.show(current));
-    if (finished.state !== JOB_STATE.done) {
-      status.say(endedText(finished));
-      return;
-    }
-    if (refused) {
+    const finished = await runJob(status, {
+      path: `${trackPath(trackId)}/section-audio`,
+      body: section,
+      controls: [playControl],
+      boxes: page.jobBox,
+      started: "Rendering the section to play.",
+    });
+    if (finished === null) return;
+    if (finished.refused) {
       status.say("That job was for another window. Press Play again to render this one.");
       return;
     }
     const { url, duration } = finished.result;
     windowAudio.set(key, url);
+    material.remeasure();
     play(url);
     if (duration < section.seconds) {
       status.say(
@@ -476,7 +471,6 @@ async function playSection() {
       );
     }
   } finally {
-    playControl.release();
     draw();
   }
 }
@@ -555,24 +549,16 @@ function drawRender() {
  * @returns {Promise<any>}
  */
 async function trackJob(path, body, started) {
-  for (const control of trackJobControls) control.wait();
   try {
-    const { job, refused } = await startJob(path, body);
-    status.say(refused ? `${refused} Showing that job's progress.` : started);
-    const box = jobBox((current) =>
-      status.run(async () => box.show(await postJson(`${jobPath(current.id)}/cancel`, {}))),
-    );
-    page.renderJobBox.replaceChildren(box.root);
-    for (const control of trackJobControls) control.hold(job);
-    /** @type {JobStatus & { result?: any }} */
-    const finished = await followJob(job, (current) => box.show(current));
-    if (finished.state !== JOB_STATE.done) {
-      status.say(endedText(finished));
-      return null;
-    }
-    return refused ? null : finished.result;
+    const finished = await runJob(status, {
+      path,
+      body,
+      controls: trackJobControls,
+      boxes: page.renderJobBox,
+      started,
+    });
+    return finished === null || finished.refused ? null : finished.result;
   } finally {
-    for (const control of trackJobControls) control.release();
     draw();
   }
 }
@@ -759,8 +745,21 @@ async function load() {
   page.briefLink.textContent = read.vibe.name;
   page.pageTitle.textContent = read.track.name;
   document.title = `${read.track.name}, ${read.vibe.name} · Ambient Studio`;
+  listSketches(read.sketches);
+  openRevision(read.revisions.length - 1);
+  showRevisions();
+  draw();
+  await readRender();
+}
+
+/**
+ * Lists the brief's sketches to add.
+ * @param {readonly BlockSketch[]} sketches
+ */
+function listSketches(sketches) {
+  const chosen = page.sketchSelect.value;
   page.sketchSelect.replaceChildren(
-    ...read.sketches.map(
+    ...sketches.map(
       (sketch) =>
         new Option(
           `Sketch ${sketch.id}${sketch.intent ? `: ${sketch.intent}` : ""}, ${clockTime(sketch.duration)}`,
@@ -768,13 +767,35 @@ async function load() {
         ),
     ),
   );
-  page.noSketches.hidden = read.sketches.length > 0;
-  buttons.add.disabled = read.sketches.length === 0;
-  openRevision(read.revisions.length - 1);
-  showRevisions();
-  draw();
-  await readRender();
+  if (sketches.some(({ id }) => String(id) === chosen)) page.sketchSelect.value = chosen;
+  page.noSketches.hidden = sketches.length > 0;
+  buttons.add.disabled = sketches.length === 0;
 }
+
+// The material panel and the arc (decision 0066) keep to their own module and keys.
+const material = materialCard({
+  status,
+  trackId,
+  view: () => view,
+  draft: () => draft,
+  selected: () => selected,
+  unsaved,
+  opened: () => openedByHand,
+  place: ({ arrangement, index }) => edit(arrangement, index),
+  readSketches: async () => {
+    /** @type {TrackView} */
+    const read = await getJson(trackPath(trackId));
+    if (view === null) throw new Error("the sketches were read again before the track");
+    view = { ...view, sketches: read.sketches };
+    listSketches(read.sketches);
+    return read.sketches;
+  },
+  save: async (arrangement, note) => {
+    draft = arrangement;
+    page.noteInput.value = note;
+    await save();
+  },
+});
 
 /** Lists the revisions, newest first, each with Open. */
 function showRevisions() {
@@ -797,6 +818,7 @@ function showRevisions() {
               return;
             }
             openRevision(index);
+            openedByHand += 1;
             page.noteInput.value = index === newest ? "" : `From version ${index + 1}`;
             draw();
             void status.run(readRender);
@@ -819,4 +841,5 @@ status.run(async () => {
       ? "This brief has no sketches to place yet."
       : "Choose a sketch and add it, or choose a section to change it.",
   );
+  await material.load();
 });
