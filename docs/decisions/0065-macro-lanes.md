@@ -105,4 +105,11 @@ schema's order of macros. Lanes save with the rest of the arrangement.
   clamp, the seam, no points, a 62-point lane at the cap, a morph), and
   `test/server/track-render-routes.test.js` (a laned track renders, names its rule, and
   re-renders from its manifest to the same hash; a lane with no points keeps the cache key).
+- `./scripts/bench --track` with acceptance 4's two lanes (brightness and space, each across
+  the whole track) beside 0064's morph, on mbp2021 2026-11-08, one run each, load average
+  falling from 3.3 to 1.6 while another job ran: the 20-minute track rendered at 27.1x, peak
+  RSS 548 MiB, and with export at 17.3x, 573 MiB; the 10-minute one at 25.3x, 485 MiB, and
+  16.4x, 530 MiB. The 10-minute render's peak is 11.5% from the 20-minute one's, outside
+  0062's 10% in this one run (0064's run without lanes: 6.6%, 523 and 489 MiB). The 20-minute
+  peak rose 25 MiB; whether that is the lanes or the load needs a run on a quiet machine.
 - 6h's proposal writes `lanes`; its repair round quotes `checkLanes`' paths.
