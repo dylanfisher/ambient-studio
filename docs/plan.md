@@ -3384,3 +3384,10 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   marking the old ones removed; the archive is rebuilt on each read from the rated windows'
   descriptors; the fill job nudges elites beside empty cells, with its control on by default.
   The gate passes, 1840 tests.
+- 2026-11-07: 5i merged as 764c3cd (Opus: 328k tokens, 184 calls, 53 min including a fix round of
+  6.3 min; reviewer Sonnet: 71k tokens, 14 calls, 1.7 min, PASS with one design finding taken: a
+  child's `parentIds` lists only the parents its prompt held, the owner's picks staying in
+  `sketchIds`). Crossover is a fresh first prompt with both parents after the live locks, then one
+  small-step mutation per valid child from a new stream slot (slots 0–4 unchanged). The builder's
+  `--low` run had 13 render-backed route tests time out under load; the seeded-candidate helper
+  goes next. The gate passes, 1862 tests.
