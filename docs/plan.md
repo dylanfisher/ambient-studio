@@ -3633,3 +3633,13 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   4,096 tokens). buildPrompt trims or throws, so omlx never gets a prompt that is too long. The
   second test run caught a race in the upload receiver, an orphaned temp file after a 413; fixed
   in b878900 (Sonnet: 47k tokens, 17 calls, 9.8 min) with a deterministic test.
+- 2026-11-08: CV.2 merged as b0803db (Opus: 201k tokens, 105 calls, 49 min; reviewer Sonnet: 70k
+  tokens, 13 calls, 4.8 min, PASS with two nits, one taken in 0070). `singers` 1–12 are detuned
+  within `spread` cents and panned to alternating sides. Each draws its phrases from fixed slots,
+  so adding a singer keeps the others. A singer breathes only while fewer than half the singers
+  before it are breathing, otherwise it holds for up to another phrase, so six singers' worst
+  50 ms frame was 9.6 dB under the median. Singers after the first read one shared 2,048-point
+  waveform table. Cost is 107 for twelve at 65 Hz and 145 at 33 Hz, so twelve fit beside a 17 s
+  reverb, and render at about 21x. `breath` defaults to 0, so chants stored since CV.1 render as
+  they did. The builder's full test run saw 18 server tests time out while two builders and
+  omlx ran together; they pass alone. The merged check decides whether they need a hunt.

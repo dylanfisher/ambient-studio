@@ -78,7 +78,8 @@ fails it.
 **Parameters,** none of them trajectories: `singers` 1–12 (an integer, default 1, safe 1–8),
 `spread` 0–50 cents (default 12, safe 4–25), `pan` 0–1 (default 1, safe 0.5–1), `phrase` 3–30 s
 (log, default 8, safe 5–16), `breath` 0–2 s (default 0, safe 0.3–1). A `breath` of 0 means the
-singers never breathe, which is the default so every chant stored before CV.2 renders as it did.
+singers never breathe, which is the default so every chant stored before CV.2 renders as it did;
+the plan's range started at 0.3, and this one starts at 0 on purpose.
 The common `detune` still does nothing for the chant: `spread` is the ensemble's detune, in the
 cents the plan names and up to 50, where `detune` stops at 12.
 
