@@ -3,6 +3,7 @@
 // successor. Removing a file keeps its bytes in the references folder.
 /** @import { RegionFields } from "../domain/reference-region.js" */
 /** @import { Removable, Store } from "./store.js" */
+import { DETACHED, detachRegion } from "./attachment-store.js";
 import { insertRow, markRemoved, selectRow, selectRows, TABLE, transaction } from "./store.js";
 
 /**
@@ -85,7 +86,8 @@ export const getReferenceFile = (store, id) => selectRow(store, TABLE.referenceF
 export const listReferenceFiles = (store) => selectRows(store, TABLE.referenceFiles, PLAIN, {});
 
 /**
- * Marks a file removed, and its live regions with it, in one transaction. Its bytes stay.
+ * Marks a file removed, and its live regions with it, in one transaction, detaching them from
+ * every vibe (decision 0052). Its bytes stay.
  * @param {Store} store
  * @param {number} id
  */
@@ -93,6 +95,7 @@ export function removeReferenceFile(store, id) {
   transaction(store, () => {
     for (const region of listRegions(store, id)) {
       markRemoved(store, TABLE.referenceRegions, region.id, REMOVED.fileRemoved);
+      detachRegion(store, region.id, DETACHED.fileRemoved);
     }
     markRemoved(store, TABLE.referenceFiles, id, REMOVED.removed);
   });
@@ -131,8 +134,9 @@ export const listRegions = (store, referenceFileId) =>
 export const listAllRegions = (store) => selectRows(store, TABLE.referenceRegions, PLAIN, {});
 
 /**
- * Marks a live region replaced and adds its successor on the same file, in one transaction.
- * Throws when the region doesn't exist or was removed.
+ * Marks a live region replaced and adds its successor on the same file, in one transaction,
+ * detaching the old region from every vibe: the successor is measured anew before it is
+ * attached (decision 0052). Throws when the region doesn't exist or was removed.
  * @param {Store} store
  * @param {number} id
  * @param {RegionFields} fields
@@ -144,6 +148,7 @@ export function replaceRegion(store, id, { startSeconds, endSeconds, label, note
     if (!old) throw new Error(`there is no region ${id}`);
     if (old.removedAt !== null) throw new Error(`region ${id} was removed (${old.removedReason})`);
     markRemoved(store, TABLE.referenceRegions, id, REMOVED.replaced);
+    detachRegion(store, id, DETACHED.regionReplaced);
     return /** @type {Region} */ (
       insertRow(store, TABLE.referenceRegions, PLAIN, {
         referenceFileId: old.referenceFileId,
@@ -158,8 +163,12 @@ export function replaceRegion(store, id, { startSeconds, endSeconds, label, note
 }
 
 /**
+ * Marks a region removed and detaches it from every vibe, in one transaction.
  * @param {Store} store
  * @param {number} id
  */
 export const removeRegion = (store, id) =>
-  markRemoved(store, TABLE.referenceRegions, id, REMOVED.removed);
+  transaction(store, () => {
+    markRemoved(store, TABLE.referenceRegions, id, REMOVED.removed);
+    detachRegion(store, id, DETACHED.regionRemoved);
+  });

@@ -47,6 +47,7 @@ export const TABLE = /** @type {const} */ ({
   candidateHides: "candidate_hides",
   referenceFiles: "reference_files",
   referenceRegions: "reference_regions",
+  vibeAttachments: "vibe_attachments",
   renders: "renders",
   embeddings: "embeddings",
   regionAnalyses: "region_analyses",

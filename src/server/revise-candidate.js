@@ -115,6 +115,7 @@ export async function reviseCandidate(store, queue, firstTry, options) {
     sessionId: options.sessionId,
     requestGroup: options.requestGroup,
     exampleIds: /** @type {number[]} */ (first.exampleIds),
+    attachmentIds: /** @type {number[]} */ (first.attachmentIds),
     retrievalMethod: first.retrievalMethod,
     constraints,
     playable: options.playable,

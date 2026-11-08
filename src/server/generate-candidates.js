@@ -7,6 +7,7 @@
 /** @import { Config } from "../config/config.js" */
 /** @import { Lock } from "../domain/validate-lock.js" */
 /** @import { RecordingListing } from "../domain/recordings-text.js" */
+/** @import { PromptReference } from "../domain/references-text.js" */
 /** @import { Constraints } from "../domain/constraint-schema.js" */
 /** @import { FeatureRanges } from "../domain/target-schema.js" */
 /** @import { Finding, LintResult } from "../domain/lint-result.js" */
@@ -177,6 +178,9 @@ export const playableHashes = (recordings) =>
  *   when their rated audio has embeddings under its producer; omitted or null, by recency
  *   (decision 0024). The session's job passes one when the sidecar has a checkpoint, the
  *   evaluation none
+ * @property {readonly PromptReference[]} [references] the regions attached to the vibe, as
+ *   `promptReferences` reads them; omitted or empty for none. The session's job passes them, the
+ *   evaluation none (decision 0052)
  * @property {CandidateHook} [onCandidate]
  * @property {StepHook} [onStep]
  */
@@ -361,6 +365,8 @@ export function currentRevision(store, vibeId) {
  * @property {number | null} sessionId
  * @property {string} requestGroup
  * @property {number[]} exampleIds the examples in the prompt, logged with each generation
+ * @property {number[]} attachmentIds the vibe attachments the prompt held, logged with each
+ *   generation (decision 0052)
  * @property {string} retrievalMethod
  * @property {Constraints} constraints what each answer is linted against
  * @property {ReadonlySet<string>} playable hashes of the recordings the voice can play; a genome
@@ -403,6 +409,7 @@ export async function ask(batch, index, prompt, sampling, repairsId) {
     requestGroup: batch.requestGroup,
     prompt,
     exampleIds: batch.exampleIds,
+    attachmentIds: batch.attachmentIds,
     retrievalMethod: batch.retrievalMethod,
     model: config.omlx.model,
     sampling,
@@ -605,7 +612,18 @@ export async function generateCandidates(
   n,
   store,
   queue,
-  { config, seed, sessionId, locks, recordings, explore, textEmbedder, onCandidate, onStep },
+  {
+    config,
+    seed,
+    sessionId,
+    locks,
+    recordings,
+    explore,
+    textEmbedder,
+    references = [],
+    onCandidate,
+    onStep,
+  },
 ) {
   if (!Number.isInteger(n) || n < 1) throw new Error(`n must be a positive integer, got ${n}`);
   const { revision, constraints, ranges } = currentRevision(store, vibeId);
@@ -620,7 +638,7 @@ export async function generateCandidates(
     revision.brief,
     textEmbedder ?? null,
   );
-  const { messages, exampleIds, baseTrimmed } = buildPrompt(
+  const { messages, exampleIds, referenceIds, baseTrimmed } = buildPrompt(
     { ...revision, constraints, ranges },
     {
       notes: listNotes(store, vibeId).map((note) => note.text),
@@ -629,6 +647,7 @@ export async function generateCandidates(
       budgetTokens: config.queue.contextBudgetTokens,
       recordings,
       base: explore ? promptBase(explore, locks) : null,
+      references,
     },
   );
   /** @type {Batch} */
@@ -641,6 +660,7 @@ export async function generateCandidates(
     sessionId,
     requestGroup,
     exampleIds,
+    attachmentIds: referenceIds,
     retrievalMethod: method,
     constraints,
     playable: playableHashes(recordings),
