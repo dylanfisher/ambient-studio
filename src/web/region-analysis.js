@@ -1,6 +1,7 @@
 // A reference region's analysis as the References and brief pages read it (decision 0051):
 // start the Analyze job and follow it, and say what it found in a sentence.
 /** @import { JobStatus } from "./job-progress.js" */
+import { windowsText } from "../domain/region-windows.js";
 import { regionPath, startJob } from "./api.js";
 import { followJob } from "./follow-job.js";
 import { endedText, JOB_STATE, jobProgress } from "./job-progress.js";
@@ -40,7 +41,7 @@ export async function runAnalysis(regionId, vibeId, say) {
  * @param {AnalyzeResult} result
  */
 export function analysisText({ target, windows, embedded, notEmbedded }) {
-  const measured = `Measured on ${windows === 1 ? "1 window" : `${windows} windows`} at ${target} LUFS.`;
+  const measured = `Measured on ${windowsText(windows)} at ${target} LUFS.`;
   if (embedded) return `${measured} Its sound is analyzed too.`;
   return `${measured} Its sound isn't analyzed: ${notEmbedded ?? "no reason was given"}.`;
 }

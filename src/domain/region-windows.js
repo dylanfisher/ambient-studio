@@ -8,6 +8,12 @@ import { EXCERPT_SECONDS } from "./excerpt-seconds.js";
  */
 
 /**
+ * A count of windows in words, as in "1 window" or "4 windows".
+ * @param {number} count
+ */
+export const windowsText = (count) => (count === 1 ? "1 window" : `${count} windows`);
+
+/**
  * The windows of a region `frames` long. A region no longer than a window is one window, read
  * whole. A longer one gets a window every half window while one fits, and, when those leave a
  * tail, one more ending at the region's end, so no part of it goes unread.
