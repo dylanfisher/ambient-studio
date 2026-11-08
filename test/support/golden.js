@@ -116,7 +116,7 @@ export function goldenGenomes() {
  * @param {string} kind "raw" or "normalized"
  * @returns {GoldenWindow[]}
  */
-function goldenWindows(genome, kind) {
+export function goldenWindows(genome, kind) {
   const { duration } = requireGenome(genome, "a golden genome");
   const start = { name: "start", seed: SEED, offset: 0, duration: WINDOW_SECONDS };
   if (kind === "normalized") return [start];

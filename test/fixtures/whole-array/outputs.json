@@ -1,0 +1,332 @@
+{
+  "tech3341": {
+    "case 1": {
+      "integratedLoudness": -22.993297101682884,
+      "truePeak": -22.993304465401287,
+      "limiterSha256": "9ba17402ef91f13466498ea78355856006a6483382e2ef348fb2fdeb0e8b2f05",
+      "normalized": {
+        "loudness": -13.999999857817768,
+        "truePeak": -14.000007363725892,
+        "gainDb": 8.993297101682884,
+        "sha256": "6abbc13baaf53ca8b2e6fd105398e7844e59803ba0aa2b9365e0bfef46507911"
+      }
+    },
+    "case 2": {
+      "integratedLoudness": -32.993297040683004,
+      "truePeak": -32.99330377142135,
+      "limiterSha256": "672e7be17b477e721cd6ccd82e61a222aeba2324d8e0601e7197f30be16fef77",
+      "normalized": {
+        "loudness": -14.000000082154795,
+        "truePeak": -14.00000674505077,
+        "gainDb": 18.993297040683004,
+        "sha256": "8de78c6d44445876a7fd5617648222e743cb36ee7d7062869af4f6c5857f2ec4"
+      }
+    },
+    "case 3": {
+      "integratedLoudness": -23.013868674469784,
+      "truePeak": -22.993304465401287,
+      "limiterSha256": "021ec568d152f110c9b532d3a99b0d05e68fb517ff1d1a4a1dccad88b2ae1a4f",
+      "normalized": {
+        "loudness": -13.999999959494003,
+        "truePeak": -13.979435662351587,
+        "gainDb": 9.013868674469784,
+        "sha256": "08131659f88100a0e68606271b92fef32b44b669fe2f98e5bae1d61d7e683d7e"
+      }
+    },
+    "case 4": {
+      "integratedLoudness": -23.013868674469784,
+      "truePeak": -22.993304465401287,
+      "limiterSha256": "8c3faac7fdef1584003cc810e14555023a50faefed7477f598a6bf483f7659f5",
+      "normalized": {
+        "loudness": -13.999999959494003,
+        "truePeak": -13.979435662351587,
+        "gainDb": 9.013868674469784,
+        "sha256": "01ae155613c0e76d18a98aa933d135d33fa13118fed9b81a11720da31755fb42"
+      }
+    },
+    "case 5": {
+      "integratedLoudness": -22.97865743657876,
+      "truePeak": -19.993303920245964,
+      "limiterSha256": "c0ea52182de5e33218785c08ec02d2d15c2cb81c99e6155b2a5cd31042f3254c",
+      "normalized": {
+        "loudness": -14.000000022661554,
+        "truePeak": -11.014646827612902,
+        "gainDb": 8.97865743657876,
+        "sha256": "ba407b6115c4de530387203c8da739d205567128f1bca5f2d489d4f609f8fa1d"
+      }
+    },
+    "case 15": {
+      "integratedLoudness": -2.68969849637809,
+      "truePeak": -6.217063376179003,
+      "limiterSha256": "0aa450076b9f092e4a81ecc473701a7bc990992177bf3560eb6b63d9c2329f10",
+      "normalized": {
+        "loudness": -13.999999839229844,
+        "truePeak": -17.52736471795514,
+        "gainDb": -11.31030150362191,
+        "sha256": "82455068e5a1bc5e126d0f830e564d56c945a507ce1f9a84e5c81bacf4bb0ffe"
+      }
+    },
+    "case 16": {
+      "integratedLoudness": -2.6896986446809774,
+      "truePeak": -5.9759090337932275,
+      "limiterSha256": "9cc73dc9bcec61185789d88b7b0f9c4f82397b1dd0a25ae627db398323eda0bd",
+      "normalized": {
+        "loudness": -14.00000033539884,
+        "truePeak": -17.286210725317552,
+        "gainDb": -11.310301355319023,
+        "sha256": "52ba5813fdcdd5e4d8edadf32036a8ede6fa6414cde5da11cc50b12b0a63ff5c"
+      }
+    },
+    "case 17": {
+      "integratedLoudness": -2.692950590606069,
+      "truePeak": -6.3132751595923935,
+      "limiterSha256": "7d1638b8d0c96ab2e67b91575d7236c231af5894e625d3e5cd6f573eac1d87ed",
+      "normalized": {
+        "loudness": -13.999999860666458,
+        "truePeak": -17.6203243923426,
+        "gainDb": -11.307049409393931,
+        "sha256": "c9cd0ff5f2cd1b2d5b3dc07269b28c376598c3bf5751ab046394d115da793eea"
+      }
+    },
+    "case 18": {
+      "integratedLoudness": -2.70283915807766,
+      "truePeak": -6.026489256977294,
+      "limiterSha256": "4b9b58602e232db5be12854a9dbfbea8daceab5b211009518790c00efe40783e",
+      "normalized": {
+        "loudness": -14.000000076584067,
+        "truePeak": -17.32365016029715,
+        "gainDb": -11.29716084192234,
+        "sha256": "c91a7d3e6b9982c3a3a189c6578f5cbc75ab19b9df8d1fe01b84227acdcbef0a"
+      }
+    },
+    "case 19": {
+      "integratedLoudness": 6.3152835061733885,
+      "truePeak": 3.0290731170159995,
+      "limiterSha256": "b46d15313dc7e718bf983c5984b76dd848772bf4bd1b4aca82a2f606ba599be2",
+      "normalized": {
+        "loudness": -14.000000335371464,
+        "truePeak": -17.286210725317552,
+        "gainDb": -20.315283506173387,
+        "sha256": "26e723e0a075d675e826568bf0f6374f8a2924e717563d22897bc3808869a130"
+      }
+    },
+    "case 20": {
+      "integratedLoudness": "-Infinity",
+      "truePeak": -0.16785071647886346,
+      "limiterSha256": "b07faae1595d33ab0bfcd93c688f4ea14b74fd08aedddabc28e097ed7af0b882",
+      "normalized": {
+        "error": "normalize: the signal's loudness is -Infinity (no block above the -70 LUFS gate)"
+      }
+    },
+    "case 21": {
+      "integratedLoudness": "-Infinity",
+      "truePeak": -0.11945077696793771,
+      "limiterSha256": "07f4656f175985b7be1fca57065c73278068ae3e0460bb01d8ce339e73446ba7",
+      "normalized": {
+        "error": "normalize: the signal's loudness is -Infinity (no block above the -70 LUFS gate)"
+      }
+    },
+    "case 22": {
+      "integratedLoudness": "-Infinity",
+      "truePeak": -0.2323467974936243,
+      "limiterSha256": "8cc1199ca9a1ddd51db7688cccaab303877d3aec413ba231afb53de83bcebfa6",
+      "normalized": {
+        "error": "normalize: the signal's loudness is -Infinity (no block above the -70 LUFS gate)"
+      }
+    },
+    "case 23": {
+      "integratedLoudness": "-Infinity",
+      "truePeak": -0.11945077696793771,
+      "limiterSha256": "85b44df1b824ca13f4bc0e10cb2880252dc0ab22490bf47cc72ae527891f45c6",
+      "normalized": {
+        "error": "normalize: the signal's loudness is -Infinity (no block above the -70 LUFS gate)"
+      }
+    }
+  },
+  "golden": {
+    "platform": "darwin-arm64",
+    "cpu": "Apple M1 Max",
+    "windows": {
+      "bell/start": {
+        "integratedLoudness": -26.581285118436373,
+        "truePeak": -16.451140770179624,
+        "limiterSha256": "c90ba8267861f3b088ca98b1700ce8b922c8c7a45f192b757f7147d32e10480f",
+        "normalized": {
+          "loudness": -14.000000002037632,
+          "truePeak": -3.8698553854170963,
+          "gainDb": 12.581285118436373,
+          "sha256": "3127ee59fb541ce87b604e7d73b575a75d14fa4888841e55bd20d3055527aa8e"
+        }
+      },
+      "bell/end": {
+        "integratedLoudness": -68.11496715042918,
+        "truePeak": -57.204072492721636,
+        "limiterSha256": "5cd37414232aba5e259d0aa972385348ea24685d2f72f7c468abe7f005413d69",
+        "normalized": {
+          "error": "normalize: bringing -68.1 LUFS to -14 LUFS needs 54.1 dB of gain, more than the 40 dB cap"
+        }
+      },
+      "colundi/start": {
+        "integratedLoudness": -30.917007336049334,
+        "truePeak": -20.135015873106646,
+        "limiterSha256": "eac5eb610b7ae40acfa6c65e2b8c212b7aaca1b836b756390c453537e7ab7b3d",
+        "normalized": {
+          "loudness": -14.000000000207868,
+          "truePeak": -3.218008686070037,
+          "gainDb": 16.917007336049334,
+          "sha256": "42603978c8cc5ef720906492d1581a643cea77bdef3a883f2d862cd0a9e02229"
+        }
+      },
+      "colundi/end": {
+        "integratedLoudness": -52.451125189728444,
+        "truePeak": -38.93886783171077,
+        "limiterSha256": "223f382da37c0a2d92f865fbacb3e64cd93a94b52b1b500d8527c4e806c87acc",
+        "normalized": {
+          "loudness": -14.059515097956625,
+          "truePeak": -1.3999999771859533,
+          "gainDb": 39.31941043421157,
+          "sha256": "e505e3a7d91e3ce3f0e3dac783ac20ad73196ce920a13ce547c4357b80641202"
+        }
+      },
+      "drone/start": {
+        "integratedLoudness": -17.872635331670214,
+        "truePeak": -6.5974070539005405,
+        "limiterSha256": "31bf11ddbdc08637e00e107ffb996c767dee2764d8af30c8388fe9ff47fe54dd",
+        "normalized": {
+          "loudness": -13.99999999945584,
+          "truePeak": -2.7247715103772934,
+          "gainDb": 3.872635331670214,
+          "sha256": "58d8f2ee59bc2c37068a1820769aea5c4bda133356bbf63994eb95ee2325aa69"
+        }
+      },
+      "drone/end": {
+        "integratedLoudness": -51.922814186992824,
+        "truePeak": -36.39942113597364,
+        "limiterSha256": "665a21edcc337463888378df0162c899cc78a28632ec0a7e71d6c68d25c3b4a1",
+        "normalized": {
+          "loudness": -14.317679351474137,
+          "truePeak": -1.3999997349779902,
+          "gainDb": 39.71865168435155,
+          "sha256": "779cea1d8a13cff37dbb99c969c6a2c80925266c5c47a3486b138e913d28933a"
+        }
+      },
+      "example/start": {
+        "integratedLoudness": -26.9786532745353,
+        "truePeak": -13.225972367403793,
+        "limiterSha256": "bdaf3af2cb0588976a76ad9aad00d074df431c03bfbc331bee5398c2a9f0e764",
+        "normalized": {
+          "loudness": -14.028143244871089,
+          "truePeak": -1.3999997279241105,
+          "gainDb": 13.52261707106254,
+          "sha256": "3b581be920d85d3ef5bd63d7109efe799c15e4ad455840c76a8ddfb3491a79f1"
+        }
+      },
+      "example/end": {
+        "integratedLoudness": -54.31148327509933,
+        "truePeak": -41.58184571431206,
+        "limiterSha256": "71c9d0d9a25381ba11458df195e71b9cf0a1a659b0f75c1aaa1afac88a949c22",
+        "normalized": {
+          "error": "normalize: bringing -54.3 LUFS to -14 LUFS needs 40.3 dB of gain, more than the 40 dB cap"
+        }
+      },
+      "field-recording/start": {
+        "integratedLoudness": -28.841686467066793,
+        "truePeak": -16.298677060274716,
+        "limiterSha256": "ffeaa77e2e205b3742f16e7e14800b01cc79e2cd6921351990b4f03ef6b92c5e",
+        "normalized": {
+          "loudness": -14.000000001458547,
+          "truePeak": -1.456990274877338,
+          "gainDb": 14.841686467066793,
+          "sha256": "30be48fb68bca395558a5e4b7bdb8ef4eddab8035f5b5bcb76a6213739597fa9"
+        }
+      },
+      "field-recording/end": {
+        "integratedLoudness": -64.57060685450962,
+        "truePeak": -47.78119916303142,
+        "limiterSha256": "e905dd3be7c6619d016857afac3d72364c76166b07da160b4b49e90bf736a39d",
+        "normalized": {
+          "error": "normalize: bringing -64.6 LUFS to -14 LUFS needs 50.6 dB of gain, more than the 40 dB cap"
+        }
+      },
+      "granular-cloud/start": {
+        "integratedLoudness": -33.22541269818959,
+        "truePeak": -17.34053474663963,
+        "limiterSha256": "62d04b6d7d6a035a0944fe63450b3a0b6227b5476499b6d772fa523b5a04c110",
+        "normalized": {
+          "loudness": -14.120252623253805,
+          "truePeak": -1.399999742774384,
+          "gainDb": 23.23661206376874,
+          "sha256": "d689eab3b11891ef4fd431e2df1f264a4459e61c5f853926721e13f6af5e87c3"
+        }
+      },
+      "granular-cloud/end": {
+        "integratedLoudness": -66.36297932616522,
+        "truePeak": -53.3058326669437,
+        "limiterSha256": "fd50b35edf15c662a1922b2da2914624d0cc9ecd6ebc2ff0b1b9c07a223dfb0b",
+        "normalized": {
+          "error": "normalize: bringing -66.4 LUFS to -14 LUFS needs 52.4 dB of gain, more than the 40 dB cap"
+        }
+      },
+      "master-bus/start": {
+        "integratedLoudness": -17.38554275288304,
+        "truePeak": -9.041983708038991,
+        "limiterSha256": "ff9667082794f0cd03f8c8dad0ddf949826d67e037a48bcec6368573ede2dde7",
+        "normalized": {
+          "loudness": -14.000000001095335,
+          "truePeak": -5.65644117796118,
+          "gainDb": 3.3855427528830404,
+          "sha256": "b5092e93eca6470e88f1c9614c8e49f03cf388f7de9774e03e5915232a9c1e22"
+        }
+      },
+      "master-bus/end": {
+        "integratedLoudness": -17.958845713986666,
+        "truePeak": -8.025052083302848,
+        "limiterSha256": "ab62e64ae9278a3c6dfca33d3b74016821ebc8b97f503f3a25b39b8fa201e5bc",
+        "normalized": {
+          "loudness": -14.00000000139424,
+          "truePeak": -4.0662067526307135,
+          "gainDb": 3.9588457139866655,
+          "sha256": "f35e41a158d195cd3cd191dcb4fe451609a623e68ec9df4211ee99704340ece8"
+        }
+      },
+      "noise-bed/start": {
+        "integratedLoudness": -40.43698775623887,
+        "truePeak": -23.357768288327673,
+        "limiterSha256": "8e32e05752e9f6585e6333c2f1093c9113c93871c6b8aaaf74d2042dc32c5141",
+        "normalized": {
+          "loudness": -14.157288831578544,
+          "truePeak": -1.3999997069109738,
+          "gainDb": 31.379078762873817,
+          "sha256": "4bc14bbec47fdbfa51f0e337dc21bb3e7390c4ef59f36d3519ab8e662be71d4d"
+        }
+      },
+      "noise-bed/end": {
+        "integratedLoudness": "-Infinity",
+        "truePeak": -62.15971174341966,
+        "limiterSha256": "82283341cbf8f811d2567f45dc7619c24a64585c93388688ec65632ad860837c",
+        "normalized": {
+          "error": "normalize: the signal's loudness is -Infinity (no block above the -70 LUFS gate)"
+        }
+      },
+      "pad/start": {
+        "integratedLoudness": -24.605007154175905,
+        "truePeak": -13.155260409245601,
+        "limiterSha256": "dd071efe3414f9634a1a3aefaba36842afe327e5d82b7ac1d01dbe6980f9ecaf",
+        "normalized": {
+          "loudness": -13.99999999894746,
+          "truePeak": -2.550253117541263,
+          "gainDb": 10.605007154175905,
+          "sha256": "034506c3f7190fe2e9c2846491f525b5064e83477b42e7f5fe8488491079ac36"
+        }
+      },
+      "pad/end": {
+        "integratedLoudness": -59.71464424860565,
+        "truePeak": -46.167698830105756,
+        "limiterSha256": "80e4c47c0d17be48bd90f18ad532ec9c2863c2499471e78698fbcf5c1680e404",
+        "normalized": {
+          "error": "normalize: bringing -59.7 LUFS to -14 LUFS needs 45.7 dB of gain, more than the 40 dB cap"
+        }
+      }
+    }
+  }
+}
