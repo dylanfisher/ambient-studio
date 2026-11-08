@@ -6,7 +6,9 @@
   [0034](0034-feature-ranges-as-soft-targets.md) (the vibe's feature ranges in the user turn)
   and [0036](0036-revision-pass.md) (the request helpers, `followUp`, and revision candidates)
   and [0038](0038-explore.md) (the base section, its trimming, and explore children);
-  amended by step 4h (examples by CLAP similarity, below)
+  amended by step 4h (examples by CLAP similarity, below); amended by
+  [0052](0052-references-in-the-prompt.md) (the references section, its trimming, and
+  `attachmentIds`)
 
 ## Context
 
@@ -231,3 +233,12 @@ which 2l settles.
     "embedding the vibe's brief failed: …". It never falls back to recency.
   - *The budget* is unchanged: the prompt still holds at most three of each, trimmed from the
     end, so the seed-sized budget tests hold as they are.
+- 2026-11-07: from step 5c ([0052](0052-references-in-the-prompt.md)). `buildPrompt` takes
+  optional `references`, the reference regions attached to the vibe, written by `referencesText`
+  after the ranges and before the locks, and returns `referenceIds`. Over the budget the examples
+  are trimmed first, then the references from the end, then the base; each part kept is the most
+  of the later parts that still fit. `generateCandidates` takes `references` from the candidates
+  job (the evaluation passes none), and every generation stores `attachmentIds`, the
+  `vibe_attachments` rows its prompt held (migration 0010), which a revision copies from its
+  first try. `TextEmbedder.embedText` takes the text and what to call it in an error, since the
+  vocabulary's words go through it too.
