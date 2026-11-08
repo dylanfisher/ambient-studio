@@ -1,7 +1,8 @@
 # 0010. Events are created in suspend windows, parameters follow a 0.1 s control grid, and a render is one context
 
 - **Date:** 2026-11-06
-- **Status:** accepted; provisional: owner to confirm
+- **Status:** accepted; provisional: owner to confirm; amended by
+  [0062](0062-track-render-and-export.md) (a track renders as chunks, each its own context)
 
 ## Context
 
@@ -312,3 +313,10 @@ to 2.
   would need the flag, and the hook would do nothing in a browser. **Keeping every node for the
   whole render**: two 300 s renders matched, but it cost about 14.4 s against 13 s, and the
   densest bell's buffers over 900 s would need about 3.4 GB, over the 1.5 GiB ceiling.
+- 2026-11-07: from step 6c ([0062](0062-track-render-and-export.md)). A track, up to 20 minutes, renders each section's
+  window as 120 s chunks, each its own context with its own pre-roll, and joins them; the
+  rejection of segmented renders above stands for one genome's render, which stays one context.
+  The joins differ from one render of the window within 0007's tolerance, which the chunk test
+  holds at every seam, and the chunk length is in each track's manifest. A track's peak RSS on
+  the bench is about 600 MiB at 20 minutes, under phase 6's 1 GiB ceiling for a track; 0010's
+  1.5 GiB ceiling for one 900 s genome is unchanged.

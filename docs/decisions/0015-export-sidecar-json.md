@@ -2,7 +2,7 @@
 
 - **Date:** 2026-11-06
 - **Status:** accepted; provisional: owner to confirm; amended by
-  [0029](0029-sample-layer.md) (the `recordings` field)
+  [0029](0029-sample-layer.md) (the `recordings` field) and [0062](0062-track-render-and-export.md) (a track's manifest)
 
 ## Context
 
@@ -98,3 +98,10 @@ the three files.
   field recording, the sidecar holds `recordings`, each file's path in the folder by its
   SHA-256, before `genome`; `rerender` passes it on, so a recording gone from the folder fails
   with the file's name. The render CLI takes `--recordings DIR` in both forms.
+- 2026-11-07: from step 6c ([0062](0062-track-render-and-export.md)). A track's export writes a manifest in this sidecar's
+  form, with a section list in place of one genome, seed and window, plus the transitions, the
+  track's fades, the chunk length and the crossfade law; `pcmSha256` covers the same bytes, the
+  WAV's data chunk. It goes in a new folder per export under the data root's `exports/`, named
+  from the track's id, the version's number and a cleaned name, and refused when it exists.
+  `rerenderTrack` checks a manifest as `rerender` checks a sidecar, sharing
+  `rendererDifferences` and `SAME_RENDERERS` for the message, but writes nothing.

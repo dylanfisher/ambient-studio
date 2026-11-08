@@ -4,8 +4,8 @@
 - **Status:** accepted; amended by [0041](0041-sidecar-process.md) and
   [0042](0042-clap-embeddings.md) (the sidecar keys), and by [0044](0044-bayesian-bradley-terry.md)
   (the `models` folder), [0024](0024-prompt-parse-repair-generation.md) (the
-  `textEmbeddings` folder) and [0050](0050-reference-uploads.md) (the `references` and
-  `referenceCache` folders)
+  `textEmbeddings` folder), [0050](0050-reference-uploads.md) (the `references` and
+  `referenceCache` folders) and [0062](0062-track-render-and-export.md) (the `trackRenders` and `exports` folders)
 
 ## Context
 
@@ -134,3 +134,7 @@ only: `scripts/` and `test/` are tools, and a test stubs variables with `vi.stub
   `references` (`references/`), the owner's uploaded recordings, irreplaceable and backed up,
   each named by its SHA-256; and `referenceCache` (`reference-cache/`), derived: peak strips,
   playback MP3s of spans, and uploads still being checked.
+- 2026-11-07: from step 6c ([0062](0062-track-render-and-export.md)). `paths(dataRoot)` adds `trackRenders`
+  (`track-renders/`), derived: each track's newest render and its seam previews, and a render's
+  temp files while it runs; and `exports` (`exports/`), a folder per export the owner starts.
+  Neither is backed up: an export renders again from its manifest.
