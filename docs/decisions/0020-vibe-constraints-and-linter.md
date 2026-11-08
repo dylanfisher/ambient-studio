@@ -1,7 +1,8 @@
 # 0020. Vibe constraints are a table of kinds, and the linter reports without rewriting
 
 - **Date:** 2026-11-06
-- **Status:** accepted; provisional: owner to confirm
+- **Status:** accepted; provisional: owner to confirm; amended by
+  [0071](0071-cymbal-and-drum.md) (ceilings for the cymbal and the drum)
 
 ## Context
 
@@ -37,6 +38,8 @@ kinds' names as camelCase keys; unknown keys are errors.
 | `bannedVoices` | voices | registered types, none also allowed | no voice's type is listed | `$.voices[i].type` |
 | `bellNotes` | ceiling | in the bell's `density` range, notes a minute | each bell's highest effective `density` | `$.voices[i].density` |
 | `grains` | ceiling | in the cloud's `density` range, grains a second | each cloud's highest effective `density` | `$.voices[i].density` |
+| `cymbalHits` | ceiling | in the cymbal's `density` range, hits a minute | each cymbal's highest effective `density` | `$.voices[i].density` |
+| `drumHits` | ceiling | in the drum's `density` range, hits a minute | each drum's highest effective `density` | `$.voices[i].density` |
 | `padChords` | ceiling | 1 to 3 chords a minute | each pad's `60 / hold` | `$.voices[i].hold` |
 | `brightness` | range | 0 to 1 | `macros.brightness` from 0 s to `duration` | `$.macros.brightness` |
 | `cost` | ceiling | 0 to `COST_BUDGET` (560) | `cost(genome)` | `$` |
@@ -127,3 +130,10 @@ is checked by 2e's render checks, not repeated here.
   fails validation and needs a migration.
 - Constraints are irreplaceable data (AGENTS.md): a shape change to this table ships with a
   migration of stored vibes.
+
+## Amendments
+
+- 2026-11-08: from step CV.3 ([0071](0071-cymbal-and-drum.md)), provisional: owner to confirm.
+  `cymbalHits` and `drumHits` are density ceilings built as `bellNotes` is, macro offsets
+  included, stated in the prompt as `cymbal density at most 4 /min, macro offsets included`.
+  New kinds add keys and change no stored vibe, so no migration ships with them.

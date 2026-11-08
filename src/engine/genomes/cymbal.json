@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "duration": 60,
+  "tuning": "12-tet",
+  "scale": "aeolian",
+  "key": 9,
+  "fadeIn": 1,
+  "fadeOut": 15,
+  "width": -3,
+  "reverbDecay": 5,
+  "reverbLevel": -12,
+  "delayTime": 0.6,
+  "delayFeedback": 0.2,
+  "delayLevel": -28,
+  "macros": { "density": 0.7, "brightness": 0.4, "motion": 0.6 },
+  "voices": [
+    {
+      "id": "ride",
+      "type": "cymbal",
+      "level": -10,
+      "density": { "points": [[0, 18], [10, 3, "smooth"], [50, 12, "late"]] },
+      "decay": 8,
+      "center": { "points": [[0, 5000], [60, 7000]] },
+      "shimmer": 0.5
+    }
+  ]
+}

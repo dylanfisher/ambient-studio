@@ -10,16 +10,14 @@
 /** @import { Pitch } from "./pitch.js" */
 /** @import { Resolved } from "./effective-params.js" */
 /** @import { VoiceSetup, VoiceWindow } from "./render.js" */
-import { additiveTone, fmTone, pluckTone, shapeNote } from "./bell-notes.js";
-import { eventCost } from "./cost-unit.js";
+import { additiveTone, fmTone, pluckTone } from "./bell-notes.js";
 import { dbToGain } from "./decibels.js";
 import { choice, int, number } from "./descriptor.js";
-import { effectiveParams } from "./effective-params.js";
-import { eventSlots } from "./event-slots.js";
-import { highestValue } from "./highest-value.js";
 import { MACRO } from "./macro-table.js";
 import { resolvePitch, tuningFrequencies } from "./pitch.js";
-import { draw, fires } from "./prng.js";
+import { draw } from "./prng.js";
+import { buildStrikes, ringFrames, shapeHit, strikeCost, strikeFinder } from "./struck.js";
+import { DENSITY_ROW, JITTER_SLOT, strikeDensity } from "./struck-params.js";
 import { centsToRatio, isAbsolute } from "./tuning.js";
 import { getTuning } from "./tuning-registry.js";
 
@@ -29,16 +27,7 @@ const PARAMS = Object.freeze({
     default: "additive",
     description: "synthesis",
   }),
-  density: number({
-    min: 0.5,
-    max: 40,
-    default: 8,
-    unit: "/min",
-    scale: "log",
-    trajectory: true,
-    safe: [0.5, 8],
-    description: "notes",
-  }),
+  density: strikeDensity({ max: 40, default: 8, safe: [0.5, 8], description: "notes" }),
   decay: number({
     min: 0.3,
     max: 15,
@@ -67,16 +56,15 @@ const PARAMS = Object.freeze({
 
 /** @typedef {ValuesOf<typeof VOICE_PARAMS> & ValuesOf<typeof PARAMS>} BellVoice */
 
-/** Seconds between note candidates; each fires with probability density × STEP / 60. */
-const STEP = 0.25;
+/**
+ * Candidates every 0.25 s, each starting up to a whole step late, so notes don't fall on a pulse;
+ * at most eight notes sound at once.
+ */
+const GRID = Object.freeze({ step: 0.25, jitter: 1, most: 8 });
 /** The register fundamentals come from, in Hz. */
 const BAND = Object.freeze({ lo: 150, hi: 1100 });
 /** No partial goes above this, in Hz. */
 const TOP = 3000;
-/** Most notes sounding at once. */
-const MOST_NOTES = 8;
-/** Seconds the oldest note takes to fade when a new one would go over the cap. */
-const CUT_FADE = 0.05;
 /** The highest partial's ring as a share of the lowest's; those between fall in geometric steps. */
 const UPPER_RING = 0.5;
 /** A note's peak before the voice's level, at full velocity. */
@@ -99,7 +87,7 @@ const RATIOS = Object.freeze({
  * sample of a pluck's excitation, so each starts past the last slot the one before can use.
  */
 const SLOT = Object.freeze({
-  jitter: 1,
+  jitter: JITTER_SLOT,
   pitch: 2,
   velocity: 3,
   pan: 4,
@@ -116,81 +104,6 @@ const SLOT = Object.freeze({
 const darkness = (fall) => (fall - PARAMS.fall.min) / (PARAMS.fall.max - PARAMS.fall.min);
 
 /**
- * One note on the timeline.
- * @typedef {object} BellNote
- * @property {number} index the candidate slot on the voice's grid
- * @property {number} frame the timeline frame it starts on
- * @property {number} end the timeline frame it ends on: its ring's end, or where the cap cuts it
- * @property {boolean} cut whether the cap cuts it
- */
-
-/**
- * Frames a note rings: the lowest partial's decay.
- * @param {number} decay seconds
- * @param {number} rate
- */
-const ringFrames = (decay, rate) => Math.ceil(decay * rate);
-
-/**
- * Finds the voice's notes from the seed and the density at each candidate's time. Candidates
- * sit every 0.25 s from timeline 0, each moved later by a drawn fraction of that step so notes
- * don't fall on a pulse. A note starts inside the voice's start and end.
- * @param {Genome} genome
- * @param {Voice} voice
- * @param {number} seed
- * @param {number} rate
- * @returns {(from: number, to: number) => BellNote[]} the notes starting from `from` to before
- *   `to`, timeline seconds
- */
-function noteFinder(genome, voice, seed, rate) {
-  const values = /** @type {BellVoice} */ (/** @type {unknown} */ (voice));
-  const index = genome.voices.indexOf(voice);
-  const ring = ringFrames(values.decay, rate);
-  /** @type {Map<number, number | undefined>} candidate → its frame, if it fires */
-  const fired = new Map();
-  /** @param {number} k */
-  function onset(k) {
-    if (fired.has(k)) return fired.get(k);
-    const self = /** @type {Resolved<BellVoice>} */ (
-      /** @type {unknown} */ (effectiveParams(genome, k * STEP).voices[index])
-    );
-    const probability = Math.min(1, (self.density * STEP) / 60);
-    let frame;
-    if (fires(seed, voice.id, k, probability)) {
-      const time = (k + draw(seed, voice.id, k, SLOT.jitter)) * STEP;
-      // Whole frames, so an excerpt starts a note where a full render does.
-      const start = Math.ceil(time * rate);
-      if (start >= values.start * rate && start < values.end * rate) frame = start;
-    }
-    fired.set(k, frame);
-    return frame;
-  }
-  /** @param {number} fromFrame @param {number} toFrame @returns {{ index: number; frame: number }[]} */
-  function onsets(fromFrame, toFrame) {
-    const found = [];
-    for (
-      let k = Math.max(0, Math.floor(fromFrame / rate / STEP) - 1);
-      k * STEP * rate < toFrame;
-      k++
-    ) {
-      const frame = onset(k);
-      if (frame !== undefined && frame >= fromFrame && frame < toFrame)
-        found.push({ index: k, frame });
-    }
-    return found;
-  }
-  return (from, to) =>
-    onsets(from * rate, to * rate).map(({ index: k, frame }) => {
-      // The notes sounding are always the latest ones, since every note rings as long, so this
-      // one is cut where the eighth note after it starts.
-      const pusher = onsets(frame + 1, frame + ring)[MOST_NOTES - 1];
-      return pusher
-        ? { index: k, frame, end: pusher.frame, cut: true }
-        : { index: k, frame, end: frame + ring, cut: false };
-    });
-}
-
-/**
  * The bell's notes that start from `from` to before `to`, in timeline seconds.
  * @param {Genome} genome a normalized genome
  * @param {Voice} voice one of `genome.voices`
@@ -200,7 +113,7 @@ function noteFinder(genome, voice, seed, rate) {
  * @param {number} to
  */
 export const bellNotes = (genome, voice, seed, rate, from, to) =>
-  noteFinder(genome, voice, seed, rate)(from, to);
+  strikeFinder(genome, voice, seed, rate, GRID)(from, to);
 
 /**
  * The partials of a note on `fundamental`, before detuning: in an absolute tuning, the
@@ -294,70 +207,20 @@ export function bellNote(pitch, settings, seed, voiceId, index, rate) {
     tone = additiveTone(partials, frames, rate);
   }
   const attack = ATTACK.min + darkness(fall) * (ATTACK.max - ATTACK.min);
-  const gain = NOTE_PEAK * dbToGain(-VELOCITY_DB * u(SLOT.velocity));
-  return {
-    samples: shapeNote(tone, { attack, gain, rate }),
-    pan: (u(SLOT.pan) * 2 - 1) * PAN_SPREAD,
-  };
-}
-
-/**
- * Each note is a buffer source and a gain from its start to its end (decision 0010), at the
- * highest density the voice reaches; the cap only shortens notes, so it isn't counted. The
- * notes play through one slot gain each for the most that sound at once, alive through the
- * render.
- * @param {Voice} voice
- * @param {Genome} genome
- */
-function cost(voice, genome) {
-  const { decay } = /** @type {BellVoice} */ (/** @type {unknown} */ (voice));
-  const density = highestValue(genome, voice, "density", PARAMS.density, bell.macros);
-  return MOST_NOTES + eventCost({ rate: density / 60, seconds: decay, nodes: 2 });
+  const shape = { attack, peak: NOTE_PEAK, velocityDb: VELOCITY_DB, panSpread: PAN_SPREAD };
+  return shapeHit(tone, shape, { velocity: u(SLOT.velocity), pan: u(SLOT.pan) }, rate);
 }
 
 /**
  * @param {VoiceSetup} setup
  * @returns {VoiceWindow}
  */
-function build({ ctx, output, genome, voice, seed, from, startFrame, at }) {
-  const index = genome.voices.indexOf(voice);
+function build(setup) {
+  const { genome, voice, seed, ctx } = setup;
   const pitch = resolvePitch(getTuning(genome.tuning), genome.scale, genome.key);
-  const rate = ctx.sampleRate;
-  const notes = noteFinder(genome, voice, seed, rate);
-  /** @param {number} frame a timeline frame */
-  const frameTime = (frame) => at(from) + (frame - startFrame) / rate;
-  const fade = Math.round(CUT_FADE * rate);
-  const connect = eventSlots(ctx, output, MOST_NOTES);
-
-  return (windowFrom, windowTo) => {
-    for (const note of notes(windowFrom, windowTo)) {
-      if (note.frame < startFrame) continue;
-      const self = /** @type {Resolved<BellVoice>} */ (
-        /** @type {unknown} */ (effectiveParams(genome, note.frame / rate).voices[index])
-      );
-      const { samples, pan } = bellNote(pitch, self, seed, voice.id, note.index, rate);
-      // Equal-power pan, computed into the buffer's two channels rather than by a panner node.
-      const angle = ((pan + 1) * Math.PI) / 4;
-      const buffer = ctx.createBuffer(2, samples.length, rate);
-      [Math.cos(angle), Math.sin(angle)].forEach((share, channel) => {
-        const data = new Float32Array(samples.length);
-        for (let n = 0; n < samples.length; n++) data[n] = (samples[n] ?? 0) * share;
-        buffer.copyToChannel(data, channel);
-      });
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      const gain = ctx.createGain();
-      if (note.cut) {
-        // Faded out by the time the note over the cap starts, so eight at most ever sound.
-        gain.gain.setValueAtTime(1, frameTime(Math.max(note.frame, note.end - fade)));
-        gain.gain.linearRampToValueAtTime(0, frameTime(note.end));
-      }
-      source.connect(gain);
-      connect(gain, note.frame, note.end);
-      source.start(frameTime(note.frame));
-      source.stop(frameTime(note.end));
-    }
-  };
+  return buildStrikes(setup, GRID, (/** @type {Resolved<BellVoice>} */ self, index) =>
+    bellNote(pitch, self, seed, voice.id, index, ctx.sampleRate),
+  );
 }
 
 export const bell = {
@@ -365,12 +228,14 @@ export const bell = {
   description: "struck notes at random",
   params: PARAMS,
   macros: /** @type {MacroRow[]} */ ([
-    { macro: MACRO.density, param: "density", depth: 0.25 },
+    DENSITY_ROW,
     { macro: MACRO.brightness, param: "fall", depth: -0.25 },
   ]),
   /** A note rings for its decay. */
   longestEvent: (/** @type {Voice} */ voice) =>
     /** @type {BellVoice} */ (/** @type {unknown} */ (voice)).decay,
-  cost,
+  /** Eight slot gains, and a buffer source and a gain per note; its JS isn't counted (0013). */
+  cost: (/** @type {Voice} */ voice, /** @type {Genome} */ genome) =>
+    strikeCost(voice, genome, bell, { most: GRID.most, weight: 0 }),
   build,
 };

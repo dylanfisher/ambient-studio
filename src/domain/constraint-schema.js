@@ -9,7 +9,9 @@
 import { bell } from "../engine/bell.js";
 import { COST_BUDGET, cost } from "../engine/cost.js";
 import { IR_WEIGHT } from "../engine/cost-unit.js";
+import { cymbal } from "../engine/cymbal.js";
 import { isNumeric, number } from "../engine/descriptor.js";
+import { drum } from "../engine/drum.js";
 import { GLOBAL_PARAMS, MACROS } from "../engine/genome-schema.js";
 import { granularCloud } from "../engine/granular-cloud.js";
 import { highestValue } from "../engine/highest-value.js";
@@ -321,6 +323,8 @@ export const CONSTRAINT_KINDS = Object.freeze({
   bannedVoices: voiceList(false, bannedNotAllowed),
   bellNotes: densityCeiling(bell, bell.params.density),
   grains: densityCeiling(granularCloud, granularCloud.params.density),
+  cymbalHits: densityCeiling(cymbal, cymbal.params.density),
+  drumHits: densityCeiling(drum, drum.params.density),
   padChords,
   brightness,
   cost: renderCost,

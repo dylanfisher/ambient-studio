@@ -17,6 +17,8 @@ const full = {
   bannedVoices: ["noise"],
   bellNotes: 4,
   grains: 10,
+  cymbalHits: 4,
+  drumHits: 6,
   padChords: 1.5,
   brightness: { min: 0.3, max: 0.7 },
   cost: 300,
@@ -35,6 +37,8 @@ const lines = {
   bannedVoices: /^voice types never noise$/m,
   bellNotes: /^bell density at most 4 \/min, macro offsets included$/m,
   grains: /^granular density at most 10 \/s, macro offsets included$/m,
+  cymbalHits: /^cymbal density at most 4 \/min, macro offsets included$/m,
+  drumHits: /^drum density at most 6 \/min, macro offsets included$/m,
   padChords: /^pad hold at least 40 s \(at most 1\.5 chords a minute\)$/m,
   brightness:
     /^macros\.brightness stays between 0\.3 and 0\.7 the whole time \(a number, or a trajectory within that range\)$/m,

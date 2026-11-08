@@ -8,8 +8,10 @@
 /** @import { VoiceSetup, VoiceWindow } from "./render.js" */
 import { bell } from "./bell.js";
 import { chant } from "./chant.js";
+import { cymbal } from "./cymbal.js";
 import { isRecording } from "./descriptor.js";
 import { drone } from "./drone.js";
+import { drum } from "./drum.js";
 import { fieldRecording } from "./field-recording.js";
 import { VOICE_KEYS, VOICE_PARAMS } from "./genome-schema.js";
 import { granularCloud } from "./granular-cloud.js";
@@ -43,7 +45,17 @@ import { pad } from "./pad.js";
  * a list built while this module loads would hold it before it exists.
  * @returns {VoiceType[]}
  */
-const builtIn = () => [bell, chant, drone, fieldRecording, granularCloud, noiseBed, pad];
+const builtIn = () => [
+  bell,
+  chant,
+  cymbal,
+  drone,
+  drum,
+  fieldRecording,
+  granularCloud,
+  noiseBed,
+  pad,
+];
 
 /** @type {Map<string, VoiceType> | undefined} */
 let registered;

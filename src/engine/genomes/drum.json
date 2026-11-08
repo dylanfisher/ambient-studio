@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "duration": 60,
+  "tuning": "12-tet",
+  "scale": "dorian",
+  "key": 2,
+  "fadeIn": 0.5,
+  "fadeOut": 15,
+  "width": -3,
+  "reverbDecay": 5,
+  "reverbLevel": -14,
+  "delayTime": 0.5,
+  "delayFeedback": 0.2,
+  "delayLevel": -30,
+  "macros": { "density": 0.7, "brightness": 0.6 },
+  "voices": [
+    {
+      "id": "frame",
+      "type": "drum",
+      "level": -6,
+      "detune": 4,
+      "density": { "points": [[0, 30], [12, 4, "smooth"], [50, 24, "late"]] },
+      "decay": 0.8,
+      "root": 50,
+      "drop": { "points": [[0, 0.6], [60, 1.4]] }
+    }
+  ]
+}

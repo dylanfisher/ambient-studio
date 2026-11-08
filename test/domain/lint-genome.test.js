@@ -90,6 +90,20 @@ const kinds = [
     "$.voices[3].density",
   ],
   [
+    "cymbalHits",
+    { cymbalHits: 4 },
+    () => genome({ voices: [...voices, { id: "ride", type: "cymbal", density: 4 }] }),
+    () => genome({ voices: [...voices, { id: "ride", type: "cymbal", density: 8 }] }),
+    "$.voices[4].density",
+  ],
+  [
+    "drumHits",
+    { drumHits: 4 },
+    () => genome({ voices: [...voices, { id: "frame", type: "drum", density: 4 }] }),
+    () => genome({ voices: [...voices, { id: "frame", type: "drum", density: 8 }] }),
+    "$.voices[4].density",
+  ],
+  [
     "padChords",
     { padChords: 1.5 },
     () => withVoice(1, { hold: 40 }),
@@ -171,6 +185,19 @@ describe("lintGenome", () => {
     expect(lintGenome(dense, { bellNotes: 4 }).ok).toBe(true);
     const pushed = requireGenome({ ...dense, macros: { ...dense.macros, density: 1 } }, "pushed");
     expect(lintGenome(pushed, { bellNotes: 4 }).findings[0]?.path).toBe("$.voices[2].density");
+  });
+
+  test.each([
+    ["cymbalHits", "cymbal"],
+    ["drumHits", "drum"],
+  ])("%s counts the macros' offsets, as bellNotes does", (kind, type) => {
+    // Raw 3.5 hits a minute is under 4, but the density macro at 1 raises it past 4.
+    const dense = genome({ voices: [...voices, { id: "struck", type, density: 3.5 }] });
+    expect(lintGenome(dense, { [kind]: 4 }).ok).toBe(true);
+    const pushed = requireGenome({ ...dense, macros: { ...dense.macros, density: 1 } }, "pushed");
+    expect(lintGenome(pushed, { [kind]: 4 }).findings).toEqual([
+      { path: "$.voices[4].density", rule: kind, message: expect.stringMatching(/macro offsets/) },
+    ]);
   });
 
   test("a cost finding says how much of the cost is the reverb, so a repair knows to shorten it", () => {

@@ -5,6 +5,8 @@ import v8 from "node:v8";
 import vm from "node:vm";
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 import { bellNotes } from "../../src/engine/bell.js";
+import { cymbalHits } from "../../src/engine/cymbal.js";
+import { drumHits } from "../../src/engine/drum.js";
 import { ENGINE_VERSION } from "../../src/engine/engine-version.js";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
 import { randomGenome } from "../../src/engine/random-genome.js";
@@ -20,6 +22,12 @@ import {
 import { PULSE_EVERY, pulseVoice } from "../support/pulse-voice.js";
 
 const RATE = 48000;
+/** What each struck voice type plays in a stretch of the timeline. */
+const STRUCK = /** @type {Record<string, typeof bellNotes>} */ ({
+  bell: bellNotes,
+  cymbal: cymbalHits,
+  drum: drumHits,
+});
 // The stated tolerance, from renders measured on mbp2021: stems summed differ from the mix by
 // float rounding only (decision 0010).
 const STEM_PEAK = 1e-6;
@@ -356,15 +364,17 @@ describe("render", () => {
       for (const channel of result.channels) {
         expect(channel.every(Number.isFinite), `seed ${seed}`).toBe(true);
       }
-      // A bell plays only the notes its seed fires, so a genome of bells alone may play none
-      // in 2 s.
+      // A struck voice plays only the hits its seed fires, so a genome of struck voices alone
+      // may play none in 2 s.
       const silent = genome.voices.every(
-        (v) => v.type === "bell" && bellNotes(genome, v, seed, RATE, 0, 2).length === 0,
+        (v) => STRUCK[v.type]?.(genome, v, seed, RATE, 0, 2).length === 0,
       );
       expect(rms(result) > 0, `seed ${seed}`).toBe(!silent);
       if (rms(result) > 0) sounding++;
     }
-    expect(sounding).toBeGreaterThan(15);
+    // At least three in four sound; a genome of sparse cymbals and drums alone often plays
+    // nothing in its first 2 s.
+    expect(sounding).toBeGreaterThanOrEqual(15);
   });
 });
 
