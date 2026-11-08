@@ -162,7 +162,8 @@ export function spotPairs(search, control, count) {
 
 /**
  * The rating fields the tally reads.
- * @typedef {{ id: number, sessionId: number, outcome: string, a: Heard, b: Heard }} SpotRating
+ * @typedef {{ id: number, sessionId: number, orderSeed: number, outcome: string, a: Heard,
+ *   b: Heard }} SpotRating
  */
 
 /** @param {Heard} x @param {Heard} y */
@@ -170,7 +171,8 @@ const same = (x, y) => x.genomeId === y.genomeId && x.seed === y.seed;
 
 /**
  * The pair's rating: the latest made in the pair's session of the pair's two excerpts, either
- * way round, or null when there is none.
+ * way round, with the order seed the test stored, or null when there is none. The seed keeps an
+ * ordinary A/B rating of the same two excerpts from counting as a spot check.
  * @template {SpotRating} R
  * @param {SpotPair} pair
  * @param {readonly R[]} ratings live ratings
@@ -182,6 +184,7 @@ export function pairRating(pair, ratings) {
   for (const r of ratings) {
     const matches =
       r.sessionId === pair.sessionId &&
+      r.orderSeed === pair.orderSeed &&
       ((same(r.a, pair.search) && same(r.b, pair.control)) ||
         (same(r.a, pair.control) && same(r.b, pair.search)));
     if (matches && (found === null || r.id > found.id)) found = r;

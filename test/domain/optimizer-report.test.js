@@ -9,6 +9,7 @@ import {
   OPTIMIZER_TEST,
   OWNER_INCONCLUSIVE,
   ownerTally,
+  pairRating,
   spotPairs,
   VERDICT,
 } from "../../src/domain/optimizer-report.js";
@@ -151,7 +152,7 @@ describe("ownerTally", () => {
     const other = searchSide === "a" ? "b" : "a";
     const outcome = chose === "search" ? searchSide : chose === "control" ? other : chose;
     const [aGenomeId, bGenomeId] = searchSide === "a" ? [2 * n, 2 * n + 1] : [2 * n + 1, 2 * n];
-    return rating({ id: n + 1, outcome, aGenomeId, bGenomeId, sessionId: 1 });
+    return { ...rating({ id: n + 1, outcome, aGenomeId, bGenomeId, sessionId: 1 }), orderSeed: n };
   };
 
   const twelve = [...Array(12).keys()].map(pair);
@@ -192,5 +193,12 @@ describe("ownerTally", () => {
     const latest = { ...rated(1, "search"), id: 60 };
     const found = ownerTally([pair(0), pair(1)], [elsewhere, otherGenome, first, latest]);
     expect(found).toMatchObject({ wins: 1, losses: 0, decided: 1, unrated: 1 });
+  });
+
+  test("a rating of the pair's two sides under another order seed isn't the spot check", () => {
+    const ordinary = { ...rated(3, "search"), orderSeed: 999 };
+    expect(pairRating(pair(3), [ordinary])).toBeNull();
+    expect(ownerTally([pair(3)], [ordinary])).toMatchObject({ decided: 0, unrated: 1 });
+    expect(pairRating(pair(3), [rated(3, "search")])).toMatchObject({ orderSeed: 3 });
   });
 });

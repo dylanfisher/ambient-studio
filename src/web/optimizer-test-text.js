@@ -1,7 +1,7 @@
 // The optimizer test's report in plain words (decisions 0032 and 0059). No DOM here, so the
 // wording is tested. A brief's entry is the server's `OptimizerVibe` with the owner's choices
 // on its spot-check pairs counted (`owner`), read as JSON.
-import { OPTIMIZER_TEST, VERDICT } from "../domain/optimizer-report.js";
+import { OPTIMIZER_TEST, OWNER_INCONCLUSIVE, VERDICT } from "../domain/optimizer-report.js";
 
 /** @param {number} share from 0 to 1 */
 const percent = (share) => `${Math.round(share * 100)}%`;
@@ -53,7 +53,7 @@ export function ownerText({ owner, spotChecks }) {
   const { wins, decided, unrated, p, verdict } = owner;
   if (verdict === VERDICT.inconclusive) {
     return (
-      `By ear: inconclusive, waiting on data. You chose the search's side in ${wins} of ${decided} decided pairs, and the test needs ${OPTIMIZER_TEST.minimumPairs}` +
+      `By ear: ${OWNER_INCONCLUSIVE}. You chose the search's side in ${wins} of ${decided} decided pairs, and the test needs ${OPTIMIZER_TEST.minimumPairs}` +
       (unrated > 0 ? `; ${plural(unrated, "pair is", "pairs are")} still to rate.` : ".")
     );
   }

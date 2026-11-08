@@ -66,12 +66,12 @@ async function testedApp({ macros } = {}) {
   const { store } = made.app;
   const vibe = createVibe(store, { ...VIBE, constraints });
   const session = startSession(store, vibe.id);
-  /** @param {Record<string, number>} [set] */
-  const seedCandidate = (set) =>
+  /** @param {Record<string, number>} [set] @param {number} [sessionId] */
+  const seedCandidate = (set, sessionId = session.id) =>
     addCandidate(store, {
       generationId: null,
       vibeRevisionId: vibe.revision.id,
-      sessionId: session.id,
+      sessionId,
       genomeId: putGenome(
         store,
         vibe.id,
@@ -271,6 +271,48 @@ test("a brief with a model gets 3 searches with their controls, compared, paired
   expect(steps.at(-1)).toEqual([total, total, null]);
 });
 
+test("a cancel during the second search stores no report, and a second test then runs", async () => {
+  const made = await testedApp();
+  const { app, sidecar, vibe, candidate } = made;
+  const budget = 4;
+  // The first search whole, then the second's start and ask: the cancel comes before its tell.
+  scriptRuns(sidecar, budget, 1);
+  sidecar.script(
+    { do: "answer", result: { dimension: dimensions } },
+    { do: "answer", result: { count: budget }, points: { seed: 10, spread: 0.12 } },
+  );
+  const request = { vibes: [{ vibeId: vibe.id, candidateIds: [candidate.id] }], budget };
+  const score = await scripted(app)();
+  let batches = 0;
+  /** @type {number | undefined} */
+  let jobId;
+  // Each search of 4 points scores one generation, then one batch of its control.
+  const job = optimizerTestJob(app, request, {
+    makeScorer: async () => async (candidates, signal) => {
+      if (++batches === 3) app.jobs.cancel(/** @type {number} */ (jobId));
+      signal.throwIfAborted();
+      return score(candidates, signal);
+    },
+    check: hasModel,
+  });
+  const status = app.jobs.add("optimizer-test", job);
+  jobId = status.id;
+  await app.jobs.settled(status.id);
+  expect(app.jobs.get(status.id).state).toBe("cancelled");
+  expect(batches).toBe(3);
+  expect(reports(app)).toEqual([]);
+  expect(app.jobs.list().filter((j) => j.finishedAt === null)).toEqual([]);
+
+  scriptRuns(sidecar, budget, OPTIMIZER_TEST.runs);
+  const again = await run(
+    app,
+    optimizerTestJob(app, request, { makeScorer: scripted(app), check: hasModel }),
+  );
+  expect(again.error).toBeNull();
+  expect(again.state).toBe("done");
+  expect(reports(app)).toHaveLength(1);
+});
+
 test("a lower agreement bound at 0.5 stores the inconclusive verdict whatever the scores", async () => {
   const made = await testedApp();
   const { app, sidecar, vibe, candidate } = made;
@@ -335,8 +377,8 @@ test("the bases default to the top-ranked candidates under the current model, on
   const better = seedCandidate({ space: 0.2 });
   const best = seedCandidate({ space: 0.3 });
   const sameGenome = seedCandidate({ space: 0.3 });
-  const unranked = seedCandidate({ space: 0.4 });
   const stopped = startSession(store, vibe.id);
+  const unranked = seedCandidate({ space: 0.4 }, stopped.id);
   await mkdir(paths.renderCache, { recursive: true });
   /** @type {Map<number, number>} */
   const renders = new Map();

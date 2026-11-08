@@ -31,12 +31,16 @@ export function addEvaluation(store, { params, report }) {
 }
 
 /**
+ * The evaluation, or undefined when there is none or it is of another kind.
  * @param {Store} store
  * @param {number} id
+ * @param {string | null} [kind] one of `EVALUATION_KIND`; null for a generation run
  * @returns {Evaluation | undefined}
  */
-export function getEvaluation(store, id) {
-  return selectRow(store, TABLE.evaluations, EVALUATIONS, id);
+export function getEvaluation(store, id, kind = null) {
+  /** @type {Evaluation | undefined} */
+  const found = selectRow(store, TABLE.evaluations, EVALUATIONS, id);
+  return found && kindOf(found.params) === kind ? found : undefined;
 }
 
 /**

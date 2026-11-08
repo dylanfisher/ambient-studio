@@ -120,6 +120,8 @@ export function optimizerTestView(status, vibes) {
     done: "The optimizer test is done; its result is below. Rate the blind pairs to finish it.",
     body,
     onEnd: load,
+    ended:
+      "No result is stored for it. The points and control nudges of the searches it finished stay, the points in their base's session.",
   });
 
   async function load() {

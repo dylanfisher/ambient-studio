@@ -25,11 +25,13 @@ export const NOT_STARTED = "Not started.";
  * @param {() => Record<string, unknown> | null} [options.body] the body to start the job with,
  *   or null when the owner declines a confirm; `{}` when omitted
  * @param {() => Promise<void>} [options.onEnd] runs once the job has finished, however
+ * @param {string} [options.ended] added to what the status line says when the job stopped or
+ *   failed
  * @returns {{ follow: (job: JobStatus) => Promise<void> }}
  */
 export function ownerJob(
   status,
-  { button, boxes, path, started, done, body = () => ({}), onEnd = async () => {} },
+  { button, boxes, path, started, done, body = () => ({}), onEnd = async () => {}, ended = "" },
 ) {
   const control = jobControl(button);
   /** @type {ReturnType<typeof jobBox> | null} */
@@ -50,7 +52,11 @@ export function ownerJob(
     control.hold(job);
     try {
       const finished = await followJob(job, (current) => made.show(current));
-      status.say(finished.state === JOB_STATE.done ? done : endedText(finished));
+      status.say(
+        finished.state === JOB_STATE.done
+          ? done
+          : [endedText(finished), ended].filter(Boolean).join(" "),
+      );
     } finally {
       following = null;
       control.release();

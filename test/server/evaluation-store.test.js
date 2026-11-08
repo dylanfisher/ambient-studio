@@ -45,4 +45,7 @@ test("an optimizer test is listed by its kind, apart from the generation runs", 
   });
   expect(listEvaluations(made.store)).toEqual([run]);
   expect(listEvaluations(made.store, EVALUATION_KIND.optimizer)).toEqual([optimizer]);
+  expect(getEvaluation(made.store, optimizer.id)).toBeUndefined();
+  expect(getEvaluation(made.store, optimizer.id, EVALUATION_KIND.optimizer)).toEqual(optimizer);
+  expect(getEvaluation(made.store, run.id, EVALUATION_KIND.optimizer)).toBeUndefined();
 });

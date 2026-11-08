@@ -233,4 +233,6 @@ test("a stored test is read with the owner's spot-check choices, and a session l
     b: { id: second.control.candidateId, excerpt: { url: `/audio/${controlRender.id}` } },
   });
   expect((await studio.server.api("GET", "/api/sessions/999/spot-checks")).status).toBe(404);
+  // The generation runs' route doesn't serve an optimizer test.
+  expect((await studio.server.api("GET", `/api/evaluations/${stored.id}`)).status).toBe(404);
 });
