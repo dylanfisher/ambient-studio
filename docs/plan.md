@@ -1646,7 +1646,21 @@ added on 2026-11-07 at the owner's request, to rate faster before the model need
 - **Records:** amends 0024.
 - **Parallel:** none.
 
-**Result:**
+**Result:** built on 2026-11-07 at `97d951f`; held-out agreement is inconclusive, waiting on data. The
+owner asked to move on to phase 5.
+
+1. Every step, 4a–4j, is merged, and the gate passes (1,580 tests, the sidecar's pytest 54 passed
+   and 1 skipped). The sidecar, CLAP embeddings (`laion/clap-htsat-unfused`, 0042), the per-vibe
+   Bradley–Terry model with its Laplace posterior and cross-vibe prior, the taste test against
+   three baselines, the ranking with wildcards, the best-question picker, the "What you like"
+   summary, quick A/B, the session table and examples by sound are all in place.
+2. Held-out agreement: no number yet. On 2026-11-07 the studio held 0 A/B ratings, under 4e's
+   provisional minimum of 40 pairs over 3 sessions per vibe, so the taste test reports "not
+   enough data" for every vibe. The model, the ranking and the picker have only been run on
+   scripted data in tests.
+3. For the owner: run Analyze the sound, then Fit the taste model, on the Model test page; rate
+   with quick A/B ("Best questions" once a session is ranked); then run the taste test. Phase 5's
+   acceptance 4 reads its lower bound.
 
 ## Phase 5 — Optimizers
 
@@ -3297,3 +3311,9 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   before generating, kept, since the job starts it anyway). Examples are ordered by the cosine
   between the brief's text embedding and each genome's mean rated-audio embedding; unembedded
   genomes follow by recency, and the evaluation job stays on recency. The gate passes, 1539 tests.
+- 2026-11-07: 4f merged as 97d951f (Opus: 407k tokens, 258 calls, 36.4 min including a fix round
+  of 6.3 min; reviewer Sonnet: 80k tokens, 16 calls, 11 min, PASS with two medium findings taken:
+  a reorder never moves a row that is playing or held, and the job kinds are defined once in
+  `job-kind.js`). Ranking reads the current model only when a model file exists; ratings carry the
+  rank shown. Phase 4 is built; its Result is written with agreement inconclusive, waiting on data.
+  5d started beside 4f's fix round. The gate passes, 1580 tests.
