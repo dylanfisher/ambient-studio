@@ -192,6 +192,14 @@ pre {
   align-content: start;
 }
 
+/* A grid item's minimum width is its content's by default, so one wide select would widen
+   every field in its column; these let the items shrink to the column. */
+.stack > *,
+.constraints > *,
+.field > * {
+  min-width: 0;
+}
+
 .columns {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -405,6 +413,11 @@ textarea {
   font-size: 13px;
 }
 
+/* A select is as wide as its longest option, such as a long region name; cap it at its box. */
+select {
+  max-width: 100%;
+}
+
 input[type="checkbox"] {
   min-height: 0;
   width: 1rem;
@@ -430,6 +443,8 @@ textarea {
 }
 
 fieldset {
+  /* A fieldset's default minimum width is its content's, which would push it out of a column. */
+  min-width: 0;
   margin: 0;
   padding: 0.75rem;
   border: 1px solid var(--border);
