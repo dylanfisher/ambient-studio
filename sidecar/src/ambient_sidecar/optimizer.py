@@ -258,8 +258,8 @@ class PreferentialOptimizer:
     the new best; a tie keeps the best and is told as half a win each way; None, a skip, tells
     nothing and the point is forgotten.
 
-    An ask fits the pairwise GP to every choice told, draws `settings.draws` points near the
-    best, each position moved by a normal step of `settings.sigma` and clipped to [0, 1], and
+    An ask fits the pairwise GP to every choice told, draws `settings.draws` points uniformly
+    in the ball around the best of radius `settings.sigma` * sqrt(d), clipped to [0, 1], and
     answers the draw with the most expected improvement over the best. The draws come from a
     generator seeded by the spec's seed and the count of asks before, so one seed gives one run,
     and a state read back asks what an unbroken run would. The state is the points told, the
@@ -303,8 +303,14 @@ class PreferentialOptimizer:
         generator = numpy.random.default_rng([self.seed, self.asks])
         self.asks += 1
         best = numpy.array(self.points[self.best])
-        steps = generator.standard_normal((self.draws, self.dimension))
-        draws = numpy.clip(best + self.sigma * steps, 0.0, 1.0)
+        # Uniform in the ball of radius sigma * sqrt(d), a medium nudge's typical distance. With
+        # few choices told, expected improvement favors the draw farthest from the best, which
+        # among normal draws would sit about 4.7 steps out in 6 dimensions.
+        directions = generator.standard_normal((self.draws, self.dimension))
+        directions /= numpy.linalg.norm(directions, axis=1, keepdims=True)
+        radii = generator.random(self.draws) ** (1 / self.dimension)
+        reach = self.sigma * math.sqrt(self.dimension)
+        draws = numpy.clip(best + reach * radii[:, None] * directions, 0.0, 1.0)
         improvement = expected_improvement(self.posterior(), draws, self.best)
         # argmax takes the first of a tie, so one state gives one point.
         return [[float(u) for u in draws[int(numpy.argmax(improvement))]]]

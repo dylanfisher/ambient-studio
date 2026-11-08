@@ -388,3 +388,17 @@ def test_cma_es_refuses_a_null_score(tmp_path: Path) -> None:
     ask(run, 0, 5)
     with pytest.raises(ValueError, match="finite numbers"):
         tell(run, 0, [1.0, 1.0, None, 1.0, 1.0])  # pyright: ignore[reportArgumentType]
+
+
+def test_preferential_bo_draws_within_a_medium_nudge_s_distance_of_the_best(
+    tmp_path: Path,
+) -> None:
+    run = bo_run(tmp_path, "run-1", 4, BO_START)
+    best = BO_START
+    reach = 0.12 * math.sqrt(len(BO_START))
+    for query, outcome in enumerate([1.0, 0.0, 1.0, 0.0, 0.0, 1.0]):
+        [point] = ask(run, query, 1)
+        assert math.dist(point, best) <= reach + 1e-12
+        tell(run, query, [outcome])
+        if outcome == 1.0:
+            best = point
