@@ -3410,3 +3410,11 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   spot-check mode in quick A/B whose ratings count only under the pair's stored order seed. A
   cancelled test stores no report. Review passed; fixes added a cancel test, the order-seed match,
   and a 404 for optimizer rows on the generation-run route. Phase 5's Result written. 1,896 tests.
+- 2026-11-07 — 6b merged (4c8f195): tracks, track_revisions and track_exports (migration 0011,
+  append-only), `validateArrangement` with paths, the length as sections less overlaps, the track
+  routes, and the timeline page with a key and a button for every action. A section plays through
+  an owner-started section-audio job; the embed job skips any render that isn't the excerpt window
+  (`isExcerptWindow`). Defaults taken for the owner to overrule: one brief per track, extension to
+  900 s, a 1,200 s track. Review passed; fixes added the embed skip, a 409 test, a window check and
+  trigger checks after migrating. Under `--low` "reuses a cached excerpt" timed out twice; it
+  passes at normal priority. 1,954 tests.
