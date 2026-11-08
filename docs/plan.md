@@ -3438,3 +3438,11 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   limited, hashed in the manifest. Stems sum to the pre-limiter mix within 3.0e-7, 132 dB under.
   `stemOf` in `stem-voices.js` is where 6e's morph instances join their voice's stem. The
   orchestrator read the diff, as 6d's review line says. 2,122 tests.
+- 2026-11-07 — 6e merged (b9985de): `morphGenome` extends the outgoing genome across the
+  transition. Shared numeric parameters move along their encoded scale by the curve. A differing
+  or one-sided voice plays as two instances (`<id>--in`, listed in the manifest so only those join
+  their voice's stem). A 4 s handover crossfade ends the morph, and named fallbacks to a crossfade
+  cover a change of tuning, scale, key, pulse or tempo, too many voices or points, and long ids.
+  Crossfade-only tracks keep their render and cache key; the engine version is unchanged. Bench:
+  20 min at 27.2x and 523 MiB, 10 min at 489 MiB, a spread of 6.6% in one run. Review passed;
+  fixes pinned every curve in tests and named the kept-whole exception to acceptance 6. 2,161 tests.
