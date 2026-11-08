@@ -189,3 +189,6 @@ owner asked for keys here; every other page stays as 0032 has it.
   asks the pair the taste model is least sure how to order, under the same rules: no pair rated
   on the page or earlier in the session, none held by a failed save. The switch is three radio
   buttons; Best questions is off in a session the taste model hasn't ranked.
+- 2026-11-07 (5a, [0050](0050-reference-uploads.md)): `writeMp3` kills lame after 60 s
+  (`LAME_TIMEOUT_MS`); a 25 s excerpt takes about 0.18 s and a 5-minute reference region about
+  2 s.

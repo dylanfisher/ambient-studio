@@ -3,7 +3,7 @@
 // as a shortcut for typing. The bounds are checked by the domain's rule, which the server runs
 // on the same numbers.
 /** @import { RegionFields } from "../domain/reference-region.js" */
-import { regionProblem } from "../domain/reference-region.js";
+import { regionProblem, regionSeconds } from "../domain/reference-region.js";
 
 /** The form's input names, which are also its ids. */
 export const REGION_INPUT = Object.freeze({
@@ -85,7 +85,12 @@ export function readRegion(get, durationSeconds) {
   if (label === "") return { ok: false, message: "Give the region a label, such as “the swell”." };
   return {
     ok: true,
-    region: { startSeconds, endSeconds, label, note: get(REGION_INPUT.note).trim() },
+    region: {
+      startSeconds: regionSeconds(startSeconds),
+      endSeconds: regionSeconds(endSeconds),
+      label,
+      note: get(REGION_INPUT.note).trim(),
+    },
   };
 }
 
@@ -103,3 +108,10 @@ export function dragRegion(fromX, toX, width, durationSeconds) {
   const [a, b] = [at(fromX), at(toX)];
   return { startSeconds: Math.min(a, b), endSeconds: Math.max(a, b) };
 }
+
+/**
+ * The audio route's query for a span, its bounds to the millisecond as the route reads them.
+ * @param {{ startSeconds: number, endSeconds: number }} span
+ */
+export const spanQuery = ({ startSeconds, endSeconds }) =>
+  `start=${regionSeconds(startSeconds)}&end=${regionSeconds(endSeconds)}`;

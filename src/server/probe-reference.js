@@ -2,7 +2,7 @@
 // keeps (decision 0050): an accepted format, 10 s to 60 min, mono or stereo, one audio stream.
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { READ_OPTIONS } from "./decode-with-ffmpeg.js";
+import { FFMPEG_TIMEOUT_MS, READ_OPTIONS } from "./decode-with-ffmpeg.js";
 import { ACCEPTED_FORMATS, FORMATS_TEXT } from "./reference-formats.js";
 
 const run = promisify(execFile);
@@ -40,10 +40,11 @@ export async function probeReference(path) {
   /** @type {string} */
   let stdout;
   try {
-    ({ stdout } = await run(FFPROBE, [
-      ...READ_OPTIONS,
-      ...["-show_entries", entries, "-of", "json", "-i", path],
-    ]));
+    ({ stdout } = await run(
+      FFPROBE,
+      [...READ_OPTIONS, ...["-show_entries", entries, "-of", "json", "-i", path]],
+      { timeout: FFMPEG_TIMEOUT_MS.probe },
+    ));
   } catch (error) {
     // ffprobe exits 1 with "Invalid data found" for a file no allowed demuxer reads.
     if (/** @type {{ code?: unknown }} */ (error).code === 1) return notAudio;

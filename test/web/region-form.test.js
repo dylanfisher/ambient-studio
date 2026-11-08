@@ -9,6 +9,7 @@ import {
   REGION_INPUT,
   readRegion,
   regionValues,
+  spanQuery,
 } from "../../src/web/region-form.js";
 
 /**
@@ -87,6 +88,23 @@ describe("readRegion", () => {
   test("a saved region fills the form with the values it reads back", () => {
     const region = { startSeconds: 61.25, endSeconds: 75, label: "hiss", note: "" };
     expect(readRegion(getter(regionValues(region)), duration)).toEqual({ ok: true, region });
+  });
+});
+
+describe("milliseconds", () => {
+  test("a region is read and sent to the millisecond, which the audio route's query takes", () => {
+    const span = { startSeconds: 1 / 3, endSeconds: 4 + 2 / 3 };
+    expect(spanQuery(span)).toBe("start=0.333&end=4.667");
+    expect(spanQuery({ startSeconds: 61.23456789, endSeconds: 70 })).toBe("start=61.235&end=70");
+    const read = readRegion(
+      getter({
+        [REGION_INPUT.start]: "1:01.2345",
+        [REGION_INPUT.end]: "70.0004",
+        [REGION_INPUT.label]: "a",
+      }),
+      600,
+    );
+    expect(read).toMatchObject({ ok: true, region: { startSeconds: 61.235, endSeconds: 70 } });
   });
 });
 

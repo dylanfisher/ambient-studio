@@ -17,6 +17,13 @@
 export const REGION_SECONDS = Object.freeze({ min: 1, max: 300 });
 
 /**
+ * A region's bound to the millisecond: how the server stores it, the page sends it and the
+ * playback MP3 is named, so a stored bound always fits the audio route's query.
+ * @param {number} seconds
+ */
+export const regionSeconds = (seconds) => Math.round(seconds * 1000) / 1000;
+
+/**
  * What is wrong with a region's bounds, in a sentence for the owner, or null when nothing is.
  * @param {number} startSeconds
  * @param {number} endSeconds

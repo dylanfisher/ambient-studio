@@ -23,6 +23,7 @@ import {
   REGION_INPUT,
   readRegion,
   regionValues,
+  spanQuery,
 } from "./region-form.js";
 import { statusLine } from "./status-line.js";
 
@@ -164,7 +165,7 @@ function play({ startSeconds, endSeconds }) {
   if (!open) return;
   const problem = regionProblem(startSeconds, endSeconds, open.reference.durationSeconds);
   if (problem) throw new Error(problem);
-  const query = `start=${startSeconds}&end=${endSeconds}`;
+  const query = spanQuery({ startSeconds, endSeconds });
   page.regionAudio.src = `${referencePath(open.reference.id)}/audio?${query}`;
   status.say(`Playing ${timesText({ startSeconds, endSeconds, label: "", note: "" })}.`);
   playAudio(page.regionAudio, status.fail);

@@ -4,6 +4,7 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
@@ -11,6 +12,7 @@ import { FILE_NAME_HEADER, UPLOAD_TYPE } from "../../src/domain/reference-upload
 import { MAX_UPLOAD_BYTES } from "../../src/server/receive-upload.js";
 import { PEAK_COUNT } from "../../src/server/reference-peaks.js";
 import { getReferenceFile, getRegion, REMOVED } from "../../src/server/reference-store.js";
+import { spanQuery } from "../../src/web/region-form.js";
 import { startTestServer } from "../support/http-client.js";
 import { decodeMp3 } from "../support/mp3.js";
 import { FIXTURE_FORMATS, makeFixture, makeReference } from "../support/reference-fixtures.js";
@@ -47,6 +49,24 @@ async function referenceFiles() {
   const cache = await list(server.paths.referenceCache);
   return [...kept, ...cache.filter((name) => name.startsWith("upload-"))];
 }
+
+/**
+ * Waits until `check` holds, looking every 10 ms, for at most 5 s.
+ * @param {() => Promise<boolean>} check
+ * @param {string} what
+ */
+async function until(check, what) {
+  for (let tries = 0; tries < 500; tries++) {
+    if (await check()) return;
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`never happened: ${what}`);
+}
+
+/** Whether an upload's temp file is in the reference cache. */
+const uploading = async () =>
+  (await referenceFiles()).some((name) => String(name).startsWith("upload-"));
 
 const sha256 = (/** @type {Buffer} */ bytes) => createHash("sha256").update(bytes).digest("hex");
 
@@ -121,6 +141,26 @@ describe("refused uploads", () => {
     expect(await referenceFiles()).toEqual(
       expect.not.arrayContaining([expect.stringMatching(/^upload-/)]),
     );
+  });
+
+  test("a client that drops the connection mid-upload leaves no file behind", async () => {
+    const { hostname, port } = new URL(server.origin);
+    const outgoing = httpRequest({
+      hostname,
+      port,
+      method: "POST",
+      path: "/api/references",
+      headers: {
+        "content-type": UPLOAD_TYPE,
+        [FILE_NAME_HEADER]: "dropped.wav",
+        "content-length": String(10_000_000),
+      },
+    });
+    outgoing.on("error", () => undefined); // the reset this test causes
+    outgoing.write(Buffer.alloc(100_000, 7));
+    await until(uploading, "the upload's temp file appears");
+    outgoing.destroy();
+    await until(async () => !(await uploading()), "the temp file is removed");
   });
 
   test("a body that isn't an upload is a 415, and one without a file name a 400", async () => {
@@ -206,6 +246,25 @@ describe("one file", () => {
     expect(again.status).toBe(400);
   });
 
+  test("bounds are stored to the millisecond, and a stored region plays", async () => {
+    const regions = `/api/references/${reference.id}/regions`;
+    const { region } = (
+      await server.api("POST", regions, {
+        startSeconds: 1 / 3,
+        endSeconds: 4 + 2 / 3,
+        label: "thirds",
+        note: "",
+      })
+    ).json();
+    expect(region).toMatchObject({ startSeconds: 0.333, endSeconds: 4.667 });
+    const audio = await server.request(
+      "GET",
+      `/api/references/${reference.id}/audio?${spanQuery(region)}`,
+    );
+    expect(audio.status, audio.body.toString()).toBe(200);
+    await server.api("POST", `/api/reference-regions/${region.id}/remove`, {});
+  });
+
   test("a region outside the file or the limits is a 400 naming why", async () => {
     const regions = `/api/references/${reference.id}/regions`;
     /** @param {Record<string, unknown>} body */
@@ -248,6 +307,19 @@ describe("one file", () => {
     ).toBe(400);
     const outside = `/api/references/${reference.id}/audio?start=18&end=30`;
     expect((await server.request("GET", outside)).status).toBe(400);
+  });
+
+  test("two uploads of the same bytes at once give one row and one file", async () => {
+    const twin = await readFile(await makeReference(fixtures, "wav", { seed: 31, seconds: 15 }));
+    const replies = await Promise.all([upload(twin, "first.wav"), upload(twin, "second.wav")]);
+    expect(replies.map((reply) => reply.status)).toEqual([200, 200]);
+    const ids = replies.map((reply) => reply.json().reference.id);
+    expect(ids[0]).toBe(ids[1]);
+    const rows = (await server.api("GET", "/api/references")).json().references;
+    expect(rows.filter((/** @type {any} */ row) => row.sha256 === sha256(twin))).toHaveLength(1);
+    const kept = await readdir(server.paths.references);
+    expect(kept.filter((name) => name.startsWith(sha256(twin)))).toHaveLength(1);
+    expect(await uploading()).toBe(false);
   });
 
   test("removing the file keeps its bytes and marks its regions", async () => {

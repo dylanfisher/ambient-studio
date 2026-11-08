@@ -21,12 +21,26 @@ const F32_BYTES = 4;
 const CHANNELS = 2;
 
 /**
- * The options ffmpeg and ffprobe both take before a reference's path: errors only, and only the
- * accepted formats' demuxers, so a file that is really a playlist or a concat list can't make
- * either open other files.
+ * How long each ffmpeg or ffprobe call may run before it is killed, in milliseconds: a probe;
+ * a region's decode, at most 5 minutes of audio; and the peak strip's decode of up to an hour.
+ */
+export const FFMPEG_TIMEOUT_MS = Object.freeze({ probe: 30_000, region: 60_000, peaks: 300_000 });
+
+/**
+ * The most a region ending at the file's end may come up short, in seconds. ffprobe's length
+ * for MP3, AAC and Opus is an estimate: an Opus fixture probed 6.5 ms longer than it decodes.
+ * A shortfall up to this is padded with silence, so a region always holds the frames its
+ * bounds name; a larger one throws.
+ */
+export const END_SLACK_SECONDS = 0.1;
+
+/**
+ * The options ffmpeg and ffprobe both take before a reference's path: errors only, local files
+ * only, and only the accepted formats' demuxers, so a file that is really a playlist or a
+ * concat list can't make either open other files or URLs.
  */
 export const READ_OPTIONS = Object.freeze([
-  ...["-hide_banner", "-v", "error"],
+  ...["-hide_banner", "-v", "error", "-protocol_whitelist", "file"],
   ...["-format_whitelist", DEMUXERS.join(",")],
 ]);
 
@@ -59,8 +73,10 @@ export const rawStereoArgs = (rate) => [
 /**
  * Decodes `start` to `end` seconds of a reference file as 48 kHz stereo floats. `-ss` and `-t`
  * come after `-i`, so ffmpeg decodes from the start and drops what comes before `start`: slower
- * than seeking in the input, but exact to the frame in every format. Throws when ffmpeg fails,
- * and when it gives other than the frames the bounds name, as it does past the file's end.
+ * than seeking in the input, but exact to the frame in every format. An input seek was measured
+ * short by 352 frames on AAC and gave other samples on MP3 and Vorbis. Throws when ffmpeg
+ * fails, and when it gives more frames than the bounds name, or more than `END_SLACK_SECONDS`
+ * fewer; a smaller shortfall, at the file's end, is padded with silence.
  * @param {string} path
  * @param {number} start seconds
  * @param {number} end seconds, after `start`
@@ -77,19 +93,21 @@ export async function decodeWithFfmpeg(path, start, end) {
     {
       encoding: "buffer",
       maxBuffer: Number.POSITIVE_INFINITY,
+      timeout: FFMPEG_TIMEOUT_MS.region,
     },
   );
-  const frames = stdout.length / (F32_BYTES * CHANNELS);
-  const expected = Math.round((end - start) * DECODE_RATE);
-  if (frames !== expected) {
+  const decoded = stdout.length / (F32_BYTES * CHANNELS);
+  const frames = Math.round((end - start) * DECODE_RATE);
+  const short = frames - decoded;
+  if (short < 0 || short > END_SLACK_SECONDS * DECODE_RATE) {
     throw new Error(
-      `decoding ${start} s to ${end} s of ${path} gave ${frames} frames, not the ${expected} the bounds name`,
+      `decoding ${start} s to ${end} s of ${path} gave ${decoded} frames, not the ${frames} the bounds name`,
     );
   }
   // Copied, not viewed: a Buffer's offset into its pool needn't be a multiple of 4.
   const interleaved = new Float32Array(new Uint8Array(stdout).buffer);
   const channels = Array.from({ length: CHANNELS }, () => new Float32Array(frames));
-  for (let i = 0; i < frames; i++) {
+  for (let i = 0; i < decoded; i++) {
     for (const [c, channel] of channels.entries()) {
       channel[i] = /** @type {number} */ (interleaved[i * CHANNELS + c]);
     }

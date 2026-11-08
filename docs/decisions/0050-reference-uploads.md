@@ -48,9 +48,12 @@ by its hash and the extension of the format ffprobe found.
 **Security.** No text the owner sends reaches a path or a CLI argument: the paths given to
 ffmpeg and ffprobe are made by the server from a hash and a fixed extension, and the bounds of
 a region are numbers checked before they are formatted. The CLIs run through `execFile` or
-`spawn` with an argument array, never a shell. Both take `-format_whitelist` with the accepted
-demuxers only (`READ_OPTIONS`), so a file that is really an HLS playlist or a concat list can't
-make ffmpeg open other files or URLs. `application/octet-stream` and the custom header each
+`spawn` with an argument array, never a shell. Both take `-protocol_whitelist file` and
+`-format_whitelist` with the accepted demuxers only (`READ_OPTIONS`), so a file that is really
+an HLS playlist or a concat list can't make ffmpeg open other files or URLs. Every call has a
+timeout (`FFMPEG_TIMEOUT_MS`): 30 s for a probe, 60 s for a region's decode, 300 s for the peak
+strip's decode of up to an hour; lame has 60 s (`LAME_TIMEOUT_MS`), where a 5-minute region
+takes about 2 s. `application/octet-stream` and the custom header each
 make a cross-site `fetch` need a CORS preflight, which the server never answers, so 0025's
 cross-site argument still holds; the Host allowlist applies as before.
 
@@ -73,7 +76,9 @@ A region's bounds never change. Changing one marks it `replaced` and adds a row 
 file. `reference-store.js` holds the functions.
 
 **Regions.** 1 s to 5 min (`REGION_SECONDS`, `src/domain/reference-region.js`), inside the
-file's probed length. `regionProblem` is the one check: the route runs it, and the page runs it
+file's probed length, stored to the millisecond (`regionSeconds`, beside `regionProblem`). The
+page rounds the same way before it sends a region or asks for a span's audio, whose query
+takes at most three decimals, so a stored region always plays. `regionProblem` is the one check: the route runs it, and the page runs it
 before sending. The longest region bounds one decode's memory: 5 min of 48 kHz stereo floats is
 115 MB, and its 24-bit PCM for lame 86 MB more. Labels take up to 200 characters, notes 2 000
 (`MAX_CHARS`). Routes: `POST /api/references/:id/regions`, `POST
@@ -84,9 +89,15 @@ before sending. The longest region bounds one decode's memory: 5 min of 48 kHz s
 `ffmpeg -i <path> -ss <start> -t <length> -f f32le -ac 2 -ar 48000 -`. `-ss` after `-i`
 decodes from the start and drops what comes before: slower than an input seek, but exact to the
 frame. Measured on 12 s fixtures of all eight formats at 44.1 kHz, a 3.25 s region gave
-156 000 frames in each. A mono file plays in both channels, as 0029's voice does. A decode that
-gives other than `round((end − start) × 48000)` frames throws, naming both counts, rather than
-returning less than the bounds name. 0029's `decodeRecording` stays for the recordings folder.
+156 000 frames in each; with `-ss` before `-i` the AAC fixture gave 352 frames fewer, and MP3
+and Vorbis other samples, so the slower seek stays. A mono file plays in both channels, as
+0029's voice does.
+
+A region always holds `round((end − start) × 48000)` frames. ffprobe's length for MP3, AAC and
+Opus is an estimate (an Opus fixture probed 6.5 ms longer than it decodes, its pre-skip), so a
+region ending at the probed end can come up short. A shortfall of at most `END_SLACK_SECONDS`
+(0.1 s) is padded with silence; more, or more frames than named, throws with both counts.
+ffmpeg stops short only at the file's real end, so a region well inside the file never pads. 0029's `decodeRecording` stays for the recordings folder.
 
 **Peaks.** `measurePeaks` streams a decode at 8 kHz stereo and keeps the loudest sample in
 each of 1 000 equal slices (`PEAK_COUNT`), so an hour's file never sits in memory. They are
@@ -97,7 +108,8 @@ measures them again when the file is missing or holds another count.
 bounds rounded to the millisecond, decoded by `decodeWithFfmpeg`, encoded by 4i's `writeMp3`
 at 320 kbps (0048), and kept as `reference-cache/<sha256>-<start ms>-<end ms>.mp3`. It is sent
 by `sendMp3`, moved out of the audio route with the same byte ranges, which Safari needs to
-seek. The audio is the decode as it is, not normalized: it is what 5b measures before it
+seek. Requests for one span while its MP3 is being made share one decode. The audio is the
+decode as it is, not normalized: it is what 5b measures before it
 normalizes.
 
 **The page** (`references.html`, in every page's nav, so on the dashboard and each brief). An
@@ -132,8 +144,10 @@ check: canvas 2D, pointer events with `setPointerCapture`, `touch-action` and a 
   it decodes a whole file into memory at once.
 - **Trusting the extension of the owner's file name** — rejected: it is text the owner sent, so
   it would reach a path; the extension comes from what ffprobe found.
-- **`-ss` before `-i`** — rejected: an input seek lands on a packet boundary in compressed
-  formats, so a region would not be exact to the frame.
+- **`-ss` before `-i`** — rejected: measured, the AAC fixture came back 352 frames short and
+  MP3 and Vorbis gave other samples than a full decode.
+- **Returning fewer frames at the file's end** — rejected: 5b cuts a region into windows by
+  frame count, and a region that holds what its bounds name keeps that arithmetic in one place.
 - **Keeping one row per upload, duplicates included** — rejected: the plan asks for one row
   for the same bytes, and two rows would make 5b analyse the same file twice.
 - **A region MP3 named by region id** — rejected: the page plays unsaved times too, so the cache
@@ -145,8 +159,14 @@ check: canvas 2D, pointer events with `setPointerCapture`, `touch-action` and a 
 - 5b decodes regions with `decodeWithFfmpeg` and adds its analysis rows keyed by region; 5c's
   attachment table names live regions, and an attached region the owner changes is a new row.
 - A new irreplaceable table needs a row in `fillStore`, which now uploads and marks one.
-- The reference cache grows with every span played; it is derived and can be deleted whole.
+- The reference cache grows with every span played and nothing evicts it yet; it is derived and
+  can be deleted whole.
 - A 1 GiB upload over Wi-Fi needs to finish inside Node's default 300 s `requestTimeout`:
   about 27 Mbit/s. A slower link fails the upload; raising the timeout would need a record.
 
 ## Amendments
+
+- 2026-11-07: from the step's review, before merge. Bounds are stored and sent to the
+  millisecond; a region ending at a lossy file's probed end is padded by up to 0.1 s of
+  silence; every ffmpeg, ffprobe and lame call has a timeout; ffmpeg and ffprobe read local
+  files only; requests for one span share one decode; cache eviction waits.

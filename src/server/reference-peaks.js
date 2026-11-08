@@ -8,7 +8,7 @@ import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { FFMPEG, inputArgs, rawStereoArgs } from "./decode-with-ffmpeg.js";
+import { FFMPEG, FFMPEG_TIMEOUT_MS, inputArgs, rawStereoArgs } from "./decode-with-ffmpeg.js";
 import { isMissing } from "./file-inside.js";
 
 /** Slices in a strip: about one per pixel of the page's widest strip. */
@@ -33,6 +33,7 @@ export async function measurePeaks(path, durationSeconds) {
   const peaks = new Array(PEAK_COUNT).fill(0);
   const child = spawn(FFMPEG, [...inputArgs(path), ...rawStereoArgs(PEAK_RATE)], {
     stdio: ["ignore", "pipe", "pipe"],
+    timeout: FFMPEG_TIMEOUT_MS.peaks,
   });
   let stderr = "";
   child.stderr.setEncoding("utf8");

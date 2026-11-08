@@ -8,7 +8,7 @@
 /** @import { ReferenceFile } from "./reference-store.js" */
 import { mkdir, rename, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { regionProblem } from "../domain/reference-region.js";
+import { regionProblem, regionSeconds } from "../domain/reference-region.js";
 import { FILE_NAME_HEADER } from "../domain/reference-upload.js";
 import { probeReference } from "./probe-reference.js";
 import { receiveUpload } from "./receive-upload.js";
@@ -89,8 +89,8 @@ function regionFields(body, reference) {
   const given = fields(body, REGION_FIELDS);
   const bounds = { min: 0, max: reference.durationSeconds };
   const unbounded = { min: Number.NEGATIVE_INFINITY, max: Number.POSITIVE_INFINITY };
-  const startSeconds = finite(given, "startSeconds", bounds);
-  const endSeconds = finite(given, "endSeconds", unbounded);
+  const startSeconds = regionSeconds(finite(given, "startSeconds", bounds));
+  const endSeconds = regionSeconds(finite(given, "endSeconds", unbounded));
   const problem = regionProblem(startSeconds, endSeconds, reference.durationSeconds);
   if (problem) throw new HttpError(400, problem);
   return {
@@ -117,8 +117,8 @@ function requireRegion(store, params) {
   return { region, reference };
 }
 
-/** A time in a query, as plain decimal seconds. */
-const QUERY_SECONDS = /^\d{1,7}(\.\d{1,6})?$/;
+/** A time in a query, as plain decimal seconds to the millisecond, as `regionSeconds` gives it. */
+const QUERY_SECONDS = /^\d{1,7}(\.\d{1,3})?$/;
 
 /**
  * A query's time in seconds, or a 400.
