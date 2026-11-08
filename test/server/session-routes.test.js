@@ -328,8 +328,8 @@ test("a nudge through its route puts its children in the session's candidate lis
   const { server, omlx, ok, openSession, drive } = studio;
   const opened = await openSession();
   const { session } = opened;
-  const [{ candidate: base }] = await seedExcerpts(studio, opened, GENOMES.slice(0, 1));
-  const baseId = base.id;
+  const [base] = await seedExcerpts(studio, opened, GENOMES.slice(0, 1));
+  const baseId = base?.candidate.id;
 
   const job = await ok("POST", `/api/sessions/${session.id}/nudges`, {
     candidateId: baseId,
