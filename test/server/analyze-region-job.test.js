@@ -3,7 +3,7 @@
 // on the decoded, normalized window, the embedding is the unit mean of the windows', and a
 // sidecar failure fails the job naming the region and keeps the features.
 /** @import { TestApp } from "../support/test-app.js" */
-import { mkdir, rename } from "node:fs/promises";
+import { mkdir, readdir, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { extractFeatures } from "../../src/domain/extract-features.js";
@@ -77,6 +77,10 @@ const embeddedFiles = async () =>
     .filter(({ method }) => method === "embed_audio")
     .map(({ params }) => params.audio);
 
+/** The job's temp folders left in the reference cache. */
+const tempFolders = async () =>
+  (await readdir(made.app.paths.referenceCache)).filter((name) => name.startsWith(".analyze-"));
+
 /** @param {number} regionId */
 const stored = (regionId) =>
   findRegionAnalysis(made.app.store, { regionId, target: TARGET, producer: PRODUCER });
@@ -136,6 +140,32 @@ describe("a 60 s region", () => {
     expect(result).toMatchObject({ windows: 4, embedded: true });
     expect((await made.sidecar.received()).length).toBe(before + 1);
   });
+
+  test("under a new embedder producer, is embedded again in place without being measured again", async () => {
+    const first = stored(regions.long);
+    const next = { ...EMBEDDER, producer: "fake-clap@2 clap-bb" };
+    made.sidecar.script(
+      { do: "answer", result: next },
+      ...VECTORS.map((floats) => ({
+        do: /** @type {const} */ ("answer"),
+        result: { windows: 3 },
+        floats: [...floats].reverse(),
+      })),
+    );
+    /** @type {(string | null)[]} */
+    const steps = [];
+    await analyzeRegionJob(made.app, { regionId: regions.long, target: TARGET })({
+      signal: new AbortController().signal,
+      progress: (_done, _total, step) => steps.push(step),
+    });
+    const analysis = stored(regions.long);
+    expect(analysis?.id).toBe(first?.id);
+    expect(analysis?.windows).toEqual(first?.windows);
+    expect(analysis?.embeddingProducer).toBe(next.producer);
+    expect(analysis?.embedding).not.toEqual(first?.embedding);
+    expect(steps.filter((step) => step?.startsWith("Measuring"))).toEqual([]);
+    expect(await tempFolders()).toEqual([]);
+  });
 });
 
 describe("a 15 s region", () => {
@@ -151,6 +181,7 @@ describe("a 15 s region", () => {
     const analysis = stored(regions.short);
     expect(analysis?.windows.map((w) => [w.startSeconds, w.seconds])).toEqual([[0, 15]]);
     expect(analysis?.embedding).toBeNull();
+    expect(await tempFolders()).toEqual([]);
   });
 
   test("with the features kept, a second run embeds without measuring again", async () => {
@@ -226,4 +257,37 @@ test("a removed region is refused, naming it", async () => {
   await expect(analyzeRegionJob(app, { regionId: id, target: TARGET })(job())).rejects.toThrow(
     `region ${id} was removed`,
   );
+});
+
+test("a temp folder a killed server left behind is removed when the job starts", async () => {
+  const stale = join(made.app.paths.referenceCache, ".analyze-stale");
+  await mkdir(stale);
+  made.sidecar.script({ do: "answer", result: EMBEDDER });
+  await analyzeRegionJob(made.app, { regionId: regions.short, target: TARGET })(job());
+  expect(await tempFolders()).toEqual([]);
+});
+
+// Last: the hung request is only freed when the app is removed.
+test("a cancel while embedding stops the job, keeps the stored features and removes the temp folder", async () => {
+  const { app, sidecar } = made;
+  const regionId = addRegion(app.store, {
+    referenceFileId: 1,
+    startSeconds: 30,
+    endSeconds: 40,
+    label: "the cancelled one",
+    note: "",
+  }).id;
+  const before = (await sidecar.received()).length;
+  sidecar.script({ do: "answer", result: EMBEDDER }, { do: "hang" });
+  const controller = new AbortController();
+  const run = analyzeRegionJob(app, { regionId, target: TARGET })({
+    signal: controller.signal,
+    progress: () => undefined,
+  });
+  await sidecar.waitForReceived(before + 2);
+  controller.abort(new Error("job 9 was cancelled"));
+  await expect(run).rejects.toThrow(/cancelled/);
+  expect(stored(regionId)?.windows).toHaveLength(1);
+  expect(stored(regionId)?.embedding).toBeNull();
+  expect(await tempFolders()).toEqual([]);
 });

@@ -36,6 +36,8 @@ export const JOB_STEP = Object.freeze({
   /** @param {number} n @param {number} of */
   measuringWindow: (n, of) => `Measuring window ${n} of ${of} of the region`,
   /** @param {number} n @param {number} of */
+  preparingWindow: (n, of) => `Preparing window ${n} of ${of} of the region for sound analysis`,
+  /** @param {number} n @param {number} of */
   embeddingWindow: (n, of) => `Analyzing the sound of window ${n} of ${of} of the region`,
   fittingCheck: "Checking that every rated excerpt's sound is analyzed",
   ranking: "Ranking the candidates by your taste",

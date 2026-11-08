@@ -77,3 +77,10 @@ test("bounds that aren't a region are refused before ffmpeg runs", async () => {
   await expect(decodeWithFfmpeg(join(folder, "none.wav"), 3, 2)).rejects.toThrow(/start/);
   await expect(decodeWithFfmpeg(join(folder, "none.wav"), Number.NaN, 2)).rejects.toThrow(/start/);
 });
+
+test("an aborted signal stops the decode", async () => {
+  const path = await makeReference(folder, "wav", { seconds: 12, seed: 2 });
+  const controller = new AbortController();
+  controller.abort(new Error("cancelled"));
+  await expect(decodeWithFfmpeg(path, 0, 10, controller.signal)).rejects.toThrow(/abort/i);
+});

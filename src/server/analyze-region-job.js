@@ -6,7 +6,7 @@
 /** @import { RegionAnalysis, WindowAnalysis } from "./region-analysis-store.js" */
 /** @import { App } from "./routing.js" */
 /** @import { Region } from "./reference-store.js" */
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { extractFeatures } from "../domain/extract-features.js";
 import { normalize } from "../domain/normalize.js";
@@ -49,18 +49,35 @@ function liveRegion(app, regionId) {
   return region;
 }
 
+/** The prefix of the job's temp folders in the reference cache. */
+const TEMP_PREFIX = ".analyze-";
+
 /**
- * Decodes the region and measures each window, normalized to `target`, writing the audio the
- * owner would hear, or the decode where normalize couldn't take it, as a 48 kHz WAV in
- * `folder`, one window at a time so a 5-minute region's windows never sit in memory together.
+ * Removes temp folders a killed server left in the reference cache. Only one Analyze job runs
+ * at a time, so none of them is in use.
+ * @param {string} folder the reference cache
+ */
+async function sweepTempFolders(folder) {
+  for (const name of await readdir(folder)) {
+    if (name.startsWith(TEMP_PREFIX)) await rm(join(folder, name), { recursive: true });
+  }
+}
+
+/**
+ * Decodes the region and writes each window, normalized to `target`, as the owner would hear
+ * it, or the decode where normalize couldn't take it, as a 48 kHz WAV in `folder`, one window
+ * at a time so a 5-minute region's windows never sit in memory together. With `measure`, it
+ * also reads each window's features; without, `windows` is empty, for an embedding made again
+ * from features already stored.
  * @param {App} app
  * @param {Region} region
  * @param {number} target
  * @param {string} folder
  * @param {JobContext} job
+ * @param {boolean} measure
  * @returns {Promise<{ windows: WindowAnalysis[], files: string[] }>}
  */
-async function measureWindows(app, region, target, folder, { signal, progress }) {
+async function measureWindows(app, region, target, folder, { signal, progress }, measure) {
   const reference = getReferenceFile(app.store, region.referenceFileId);
   if (!reference) throw new Error(`region ${region.id} names no reference file`);
   progress(0, 0, JOB_STEP.decodingRegion);
@@ -68,6 +85,7 @@ async function measureWindows(app, region, target, folder, { signal, progress })
     join(app.paths.references, reference.file),
     region.startSeconds,
     region.endSeconds,
+    signal,
   );
   const { sampleRate } = decoded;
   const frames = /** @type {Float32Array} */ (decoded.channels[0]).length;
@@ -78,7 +96,8 @@ async function measureWindows(app, region, target, folder, { signal, progress })
   const files = [];
   for (const [index, { start, length }] of spans.entries()) {
     signal.throwIfAborted();
-    progress(index, spans.length, JOB_STEP.measuringWindow(index + 1, spans.length));
+    const step = measure ? JOB_STEP.measuringWindow : JOB_STEP.preparingWindow;
+    progress(index, spans.length, step(index + 1, spans.length));
     const channels = decoded.channels.map((channel) => channel.subarray(start, start + length));
     /** @type {ReturnType<typeof normalize> | null} */
     let heard = null;
@@ -91,12 +110,14 @@ async function measureWindows(app, region, target, folder, { signal, progress })
       // (0023): its heard features are null, and the reason is kept beside them.
       notHeard = /** @type {Error} */ (error).message;
     }
-    windows.push({
-      startSeconds: start / sampleRate,
-      seconds: length / sampleRate,
-      features: extractFeatures({ channels, sampleRate }, heard),
-      notHeard,
-    });
+    if (measure) {
+      windows.push({
+        startSeconds: start / sampleRate,
+        seconds: length / sampleRate,
+        features: extractFeatures({ channels, sampleRate }, heard),
+        notHeard,
+      });
+    }
     const file = join(folder, `window-${index + 1}.wav`);
     const audio = (heard ?? { channels }).channels;
     await writeWav(file, encodePcm24(audio), { channelCount: audio.length, sampleRate });
@@ -132,13 +153,14 @@ export function analyzeRegionJob(app, { regionId, target }) {
     const region = liveRegion(app, regionId);
     const key = { regionId, target, producer: PRODUCER };
     await mkdir(app.paths.referenceCache, { recursive: true });
-    const folder = await mkdtemp(join(app.paths.referenceCache, ".analyze-"));
+    await sweepTempFolders(app.paths.referenceCache);
+    const folder = await mkdtemp(join(app.paths.referenceCache, TEMP_PREFIX));
     try {
       /** @type {string[] | null} */
       let files = null;
       let analysis = findRegionAnalysis(app.store, key);
       if (!analysis) {
-        const measured = await measureWindows(app, region, target, folder, job);
+        const measured = await measureWindows(app, region, target, folder, job, true);
         files = measured.files;
         analysis = putRegionFeatures(app.store, { ...key, windows: measured.windows });
       }
@@ -146,7 +168,7 @@ export function analyzeRegionJob(app, { regionId, target }) {
       if (typeof embedder === "string") return result(analysis, embedder);
       if (analysis.embeddingProducer === embedder.producer) return result(analysis, null);
 
-      files ??= (await measureWindows(app, region, target, folder, job)).files;
+      files ??= (await measureWindows(app, region, target, folder, job, false)).files;
       /** @type {Float32Array[]} */
       const vectors = [];
       for (const [index, file] of files.entries()) {
