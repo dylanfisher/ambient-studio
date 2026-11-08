@@ -36,6 +36,7 @@ import {
   currentRevision,
   GENERATION_STEP,
   requestGroupName,
+  requestGroupPattern,
   samplingStream,
   sendRequest,
 } from "./generate-candidates.js";
@@ -47,9 +48,9 @@ import { findRegionAnalysis } from "./region-analysis-store.js";
 import { vibeLoudness } from "./render-excerpt.js";
 import { getRender } from "./render-store.js";
 import { RETRIEVAL_METHOD } from "./retrieve-examples.js";
-import { TABLE } from "./store.js";
+import { TABLE, transaction } from "./store.js";
 import { arrangementContext } from "./track-routes.js";
-import { createTrack } from "./track-store.js";
+import { addTrack } from "./track-store.js";
 import { readArchive } from "./vibe-archive.js";
 
 /** The answer's JSON schema, sent as `response_format` when the config asks for it (0022). */
@@ -214,8 +215,10 @@ const placed = (arrangement, elites, sketchIds, generationId) => ({
 /**
  * The job that proposes a track and stores it. When the proposal is still invalid after its one
  * repair, or the answer can't be repaired, the job fails, listing every finding, and no track or
- * sketch is made; every request stays stored as a generation. Cancelling the job cancels the
- * omlx queue, which is the job's alone while it runs.
+ * sketch is made; every request stays stored as a generation. A valid proposal's elite sketches,
+ * its check against them and its track are written in one transaction, so a throw there leaves
+ * none of them. Cancelling the job cancels the omlx queue: the runner runs one job at a time, so
+ * while this one runs the queue holds only its requests.
  * @param {App} app
  * @param {ProposeRequest} request
  * @returns {(job: JobContext) => Promise<{ trackId: number, revisionId: number,
@@ -316,25 +319,35 @@ export function proposeJob(app, { vibeId, name, length, arc, regionId }) {
         );
       }
       job.signal.throwIfAborted();
-      // An elite becomes a sketch once the proposal is valid, so a failed proposal keeps none.
-      // The sketch row alone: nothing is rendered, and the owner hasn't heard it to keep.
-      /** @type {Map<number, number>} */
-      const sketchIds = new Map();
-      for (const candidateId of new Set(verdict.elites.values())) {
-        sketchIds.set(candidateId, addSketch(store, { candidateId, notes: "", tags: [] }).id);
-      }
-      const arrangement = placed(verdict.arrangement, verdict.elites, sketchIds, generation.id);
-      const checked = validateArrangement(arrangement, arrangementContext(store, vibeId));
-      if (!checked.ok) {
-        throw new Error(
-          `the proposal failed its check once its elites were kept: ${JSON.stringify(checked.errors)}`,
-        );
-      }
-      const { track, revision: first } = createTrack(store, {
-        vibeId,
-        name,
-        arrangement: checked.arrangement,
-        note: repaired ? "Proposed by the model, after one repair" : "Proposed by the model",
+      const valid = verdict;
+      const kept = generation;
+      // The proposal passed with stand-in ids for its elites; only now is anything written, and
+      // all of it in one transaction, so a throw leaves no sketch without its track. The sketch
+      // row alone: nothing is rendered, and the owner hasn't heard the elite to keep a copy.
+      const {
+        track,
+        revision: first,
+        sketchIds,
+      } = transaction(store, () => {
+        /** @type {Map<number, number>} */
+        const sketchIds = new Map();
+        for (const candidateId of new Set(valid.elites.values())) {
+          sketchIds.set(candidateId, addSketch(store, { candidateId, notes: "", tags: [] }).id);
+        }
+        const arrangement = placed(valid.arrangement, valid.elites, sketchIds, kept.id);
+        const checked = validateArrangement(arrangement, arrangementContext(store, vibeId));
+        if (!checked.ok) {
+          throw new Error(
+            `the proposal failed its check once its elites were kept: ${JSON.stringify(checked.errors)}`,
+          );
+        }
+        const made = addTrack(store, {
+          vibeId,
+          name,
+          arrangement: checked.arrangement,
+          note: repaired ? "Proposed by the model, after one repair" : "Proposed by the model",
+        });
+        return { ...made, sketchIds };
       });
       job.progress(1, 1, null);
       return {
@@ -352,18 +365,15 @@ export function proposeJob(app, { vibeId, name, length, arc, regionId }) {
 }
 
 /**
- * How the proposals asked for so far came out, for acceptance 8's share: each request group of
- * operator `arrange` is valid when a track revision names one of its generations, failed when
- * its last request failed in the queue, and invalid otherwise.
+ * How the vibe's proposals asked for so far came out, for acceptance 8's share: each of its
+ * request groups of operator `arrange` is valid when a track revision names one of its
+ * generations, failed when its last request failed in the queue, and invalid otherwise.
  * @param {Store} store
+ * @param {number} vibeId
  * @returns {{ asked: number, valid: number, firstTry: number, invalid: number, failed: number }}
  */
-export function proposalShare(store) {
-  const pattern = requestGroupName(
-    /** @type {any} */ ("%"),
-    /** @type {any} */ ("%"),
-    OPERATOR.arrange,
-  );
+export function proposalShare(store, vibeId) {
+  const pattern = requestGroupPattern(vibeId, OPERATOR.arrange);
   const generations = store.db
     .prepare(
       `SELECT id, requestGroup, repairRound, error FROM ${TABLE.generations}

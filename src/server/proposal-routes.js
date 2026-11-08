@@ -1,6 +1,6 @@
 // The proposal routes (decision 0067): asking the model to propose a new track from a length,
 // an arc and, optionally, an attached region to follow, as an owner-started job, one at a time;
-// and how the proposals asked for so far came out, for acceptance 8's share.
+// and how the brief's proposals so far came out, for acceptance 8's share.
 /** @import { Route } from "./routing.js" */
 import { ARRANGEMENT_KEY, emptyArrangement } from "../domain/arrangement-schema.js";
 import { REGION_KEY } from "../domain/attachment-kind.js";
@@ -66,7 +66,7 @@ export const PROPOSAL_ROUTES = [
   },
   {
     method: "GET",
-    path: "/api/proposals",
-    handle: ({ app }) => proposalShare(app.store),
+    path: "/api/vibes/:vibeId/proposals",
+    handle: ({ app, params }) => proposalShare(app.store, requireVibe(app.store, params).id),
   },
 ];

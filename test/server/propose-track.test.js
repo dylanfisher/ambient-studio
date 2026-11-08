@@ -6,10 +6,13 @@
 // track-routes.test.js writes them.
 /** @import { Studio } from "../support/studio.js" */
 import { afterEach, expect, test } from "vitest";
+import { OPERATOR } from "../../src/domain/operator.js";
 import { ROLE } from "../../src/domain/prompt-tokens.js";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
+import { requestGroupName } from "../../src/server/generate-candidates.js";
 import {
   addCandidate,
+  addGeneration,
   getGeneration,
   listRequestGroup,
   putGenome,
@@ -210,7 +213,7 @@ test("an invalid answer gets one repair quoting its errors, the length among the
   const { tracks } = await studio.ok("GET", `/api/vibes/${studio.vibe.id}/tracks`);
   expect(tracks.map((/** @type {any} */ track) => track.id)).toEqual([finished.result.trackId]);
 
-  const share = await studio.ok("GET", "/api/proposals");
+  const share = await studio.ok("GET", `/api/vibes/${studio.vibe.id}/proposals`);
   expect(share).toEqual({ asked: 2, valid: 1, firstTry: 0, invalid: 1, failed: 0 });
 });
 
@@ -227,7 +230,10 @@ test("an answer with nothing to repair gets no repair, and the share counts it i
   expect(finished.state).toBe("failed");
   expect(finished.error).toMatch(/invalid, with nothing to repair/);
   expect(studio.omlx.requests).toHaveLength(1);
-  expect(await studio.ok("GET", "/api/proposals")).toMatchObject({ asked: 1, invalid: 1 });
+  expect(await studio.ok("GET", `/api/vibes/${studio.vibe.id}/proposals`)).toMatchObject({
+    asked: 1,
+    invalid: 1,
+  });
 });
 
 test("an elite the model names is kept as a sketch, and the section names it", async () => {
@@ -311,4 +317,131 @@ test("a proposal's ask is checked before anything is sent", async () => {
     expect(reply.json().error).toMatch(message);
   }
   expect(studio.omlx.requests).toHaveLength(0);
+});
+
+/**
+ * Rows in `table`.
+ * @param {Studio} studio
+ * @param {string} table
+ */
+const rows = ({ server }, table) =>
+  Number(server.store.db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get()?.n);
+
+/**
+ * The tracks, revisions and sketches stored now, the two seeded sketches included.
+ * @param {Studio} studio
+ */
+const stored = (studio) => ({
+  tracks: rows(studio, TABLE.tracks),
+  revisions: rows(studio, TABLE.trackRevisions),
+  sketches: rows(studio, TABLE.sketches),
+});
+const NOTHING_MADE = { tracks: 0, revisions: 0, sketches: 2 };
+
+/**
+ * One elite on the brief's map, not kept as a sketch.
+ * @param {Awaited<ReturnType<typeof setup>>} studio
+ */
+async function seedElite(studio) {
+  const { server, vibe } = studio;
+  const session = await studio.ok("POST", `/api/vibes/${vibe.id}/sessions`, {});
+  const elite = await seedMapCandidate(server.store, server.paths, {
+    vibeId: vibe.id,
+    vibeRevisionId: vibe.revision.id,
+    sessionId: session.id,
+    target: VIBE.constraints.loudness,
+    genome: mapGenome(0.4),
+    heard: { centroidMean: 600 },
+  });
+  await studio.ok("POST", `/api/vibes/${vibe.id}/axes`, {
+    axes: [
+      { source: "feature", name: "centroidMean", low: 200, high: 1000 },
+      { source: "macro", name: "motion", low: 0, high: 1 },
+    ],
+  });
+  return elite;
+}
+
+test("when storing a valid proposal throws, its elite's sketch goes back with the track", async () => {
+  const studio = await setup();
+  const elite = await seedElite(studio);
+  // The store refuses the track, after the elite's sketch is written in the same transaction.
+  studio.server.store.db.exec(
+    `CREATE TEMP TRIGGER refuse_tracks BEFORE INSERT ON ${TABLE.tracks}
+       BEGIN SELECT RAISE(ABORT, 'the test refuses tracks'); END`,
+  );
+  const finished = await propose(studio, [answer(studio.ids[0], elite.id, 308, "eliteId")]);
+  expect(finished.state).toBe("failed");
+  expect(finished.error).toContain("the test refuses tracks");
+  expect(stored(studio)).toEqual(NOTHING_MADE);
+});
+
+test("a cancel while the model answers ends the job cancelled and stores no track or sketch", async () => {
+  const studio = await setup();
+  // An elite on the map, so a sketch kept of it would be counted.
+  await seedElite(studio);
+  studio.omlx.script({ tokens: ['{"sections": '], holdAfter: 0 });
+  const job = await studio.ok("POST", `/api/vibes/${studio.vibe.id}/proposals`, {
+    name: "t",
+    length: 600,
+    arc: ARC,
+  });
+  await studio.omlx.waitForRequests(1);
+  await studio.ok("POST", `/api/jobs/${job.id}/cancel`, {});
+  await studio.drive(studio.server.jobs.settled(job.id));
+  studio.omlx.release();
+  expect((await studio.ok("GET", `/api/jobs/${job.id}`)).state).toBe("cancelled");
+  expect(stored(studio)).toEqual(NOTHING_MADE);
+});
+
+test("a cut-off answer gets no repair, and a request the queue fails counts as failed", async () => {
+  const studio = await setup();
+  studio.omlx.script({ tokens: ['{"sections": [', "]"], finishReason: "length" });
+  const cut = await propose(studio, []);
+  expect(cut.state).toBe("failed");
+  expect(cut.error).toMatch(/invalid, with nothing to repair[\s\S]*cut off/);
+  expect(studio.omlx.requests).toHaveLength(1);
+
+  studio.omlx.script({ status: 500, body: "the model fell over" });
+  const broken = await propose(studio, []);
+  expect(broken.state).toBe("failed");
+  expect(studio.omlx.requests).toHaveLength(2);
+  expect(await studio.ok("GET", `/api/vibes/${studio.vibe.id}/proposals`)).toEqual({
+    asked: 2,
+    valid: 0,
+    firstTry: 0,
+    invalid: 1,
+    failed: 1,
+  });
+  expect(stored(studio)).toEqual(NOTHING_MADE);
+});
+
+test("the share counts only the brief's own arrange groups", async () => {
+  const studio = await setup();
+  const finished = await propose(studio, [answer(...studio.ids, 308)]);
+  const store = studio.server.store;
+  const row = /** @type {import("../../src/server/generation-store.js").Generation} */ (
+    getGeneration(store, finished.result.generationId)
+  );
+  const { id, createdAt, removedAt, removedReason, ...draft } = row;
+  const other = await studio.ok("POST", "/api/vibes", { ...VIBE, name: "other" });
+  // Another brief's proposal, and another operator's group on this brief, both unanswered.
+  addGeneration(store, { ...draft, requestGroup: requestGroupName(other.id, 5, OPERATOR.arrange) });
+  addGeneration(store, {
+    ...draft,
+    requestGroup: requestGroupName(studio.vibe.id, 5, OPERATOR.explore),
+  });
+  // A brief whose id starts with this one's, as 11 does 1, is another brief too.
+  addGeneration(store, { ...draft, requestGroup: `vibe-${studio.vibe.id}1-arrange-5` });
+  expect(await studio.ok("GET", `/api/vibes/${studio.vibe.id}/proposals`)).toEqual({
+    asked: 1,
+    valid: 1,
+    firstTry: 1,
+    invalid: 0,
+    failed: 0,
+  });
+  expect(await studio.ok("GET", `/api/vibes/${other.id}/proposals`)).toMatchObject({
+    asked: 1,
+    invalid: 1,
+  });
 });

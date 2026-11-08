@@ -27,7 +27,15 @@ the breed estimate's route (`proposeCostText`). `POST /api/vibes/:id/proposals {
 arc, regionId}` checks the length and the arc with `validateArrangement`'s own rules (a 400),
 checks the region is attached and measured at the brief's loudness (a 409), refuses a second
 unfinished proposal (a 409 naming it), and adds a `propose` job. The job's result names the new
-track, and the page opens its timeline.
+track, and the page opens its timeline. Propose is a plain button, not a form's submit, so the
+browser never holds the minutes field to its min and max; the page checks for whole minutes
+within `TRACK_LENGTH` before the confirm, and the route checks again.
+
+**Cancelling** a proposal cancels the omlx queue, as the candidates job does. The job runner
+runs one job at a time (0026), so while a proposal runs no candidates, breed, evaluation or other
+omlx job is running, and the queue holds only the proposal's requests; a cancel can't reach
+another job's. A proposal added while another job runs waits its turn in the runner. A cancel
+while the model answers ends the job cancelled, with no track or sketch written.
 
 **The prompt** (`buildArrangePrompt` in `src/domain/arrange-prompt.js`) is two messages.
 - *system*: the task, the answer format, and the rules, each number read from the arrangement's
@@ -79,10 +87,13 @@ operator, since a proposal makes no candidate to store it on. `exampleIds` is em
 `retrievalMethod` is `none`, `attachmentIds` holds the region's attachment when one is followed,
 and `sessionId` is null. The sampling is the stream's first draw.
 
-**Elites become sketches on acceptance**: once the proposal is valid, each elite it names is
-kept as a sketch (`addSketch`, notes and tags empty, as 6g's placing leaves them), once however
-many sections name it, and its sections name that sketch; the arrangement is then checked again
-against the real sketches. The heard copy the sketch route keeps is left out: the owner hasn't
+**Elites become sketches on acceptance**: the proposal is checked with stand-in ids for its
+elites, and only once it is valid is anything written. Then, in one transaction, each elite it
+names is kept as a sketch (`addSketch`, notes and tags empty, as 6g's placing leaves them), once
+however many sections name it, its sections name that sketch, the arrangement is checked again
+against the real sketches, and the track and its first revision are written (`addTrack`, which
+`createTrack` wraps in its own transaction). A throw anywhere in that rolls all of it back, so no
+sketch is left without its track. The heard copy the sketch route keeps is left out: the owner hasn't
 heard the elite, and capturing it renders the excerpt again, which proposing doesn't do. An
 elite already kept is listed as its sketch, not as an elite.
 
@@ -92,7 +103,8 @@ one repair". It opens on the timeline like any version; nothing renders until th
 render. Edits save new revisions as before (0061) and the first is never changed; a later
 revision keeps the `proposal` id it was edited from, so the lineage to the generation stays.
 
-**The share** (`GET /api/proposals`, `proposalShare`): each `arrange` request group is valid when
+**The share** (`GET /api/vibes/:id/proposals`, `proposalShare`), per brief: each of the brief's
+`arrange` request groups, found by `requestGroupPattern` beside `requestGroupName`, is valid when
 a track revision names one of its generations (and first try when that is round 0), failed when
 its last request failed in the queue, and invalid otherwise. The brief page shows it under
 Propose: valid of those the model answered, the percent, first tries, still invalid, and failures

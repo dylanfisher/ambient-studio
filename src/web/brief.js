@@ -9,6 +9,8 @@
 /** @import { ValidationError } from "../engine/validation-error.js" */
 /** @import { ConstraintField } from "./constraint-fields.js" */
 /** @import { TargetField } from "./target-fields.js" */
+
+import { TRACK_LENGTH } from "../domain/arrangement-schema.js";
 import { ATTACHMENT_KIND, MAX_DIRECTIONS } from "../domain/attachment-kind.js";
 import { breedCostText } from "../domain/breed-cost.js";
 import { DEFAULT_BREEDS } from "../domain/breed-settings.js";
@@ -25,7 +27,6 @@ import {
   attachmentPath,
   BREED_ESTIMATE_PATH,
   getJson,
-  PROPOSALS_PATH,
   postJson,
   REGIONS_PATH,
   regionPath,
@@ -439,9 +440,12 @@ async function makeTrack() {
   location.assign(`./track.html?id=${track.id}`);
 }
 
-/** Says how the proposals so far came out (decision 0067). */
-async function showProposalShare() {
-  page.proposeShare.textContent = proposalShareText(await getJson(PROPOSALS_PATH));
+/**
+ * Says how the brief's proposals so far came out (decision 0067).
+ * @param {number} id the saved brief's
+ */
+async function showProposalShare(id) {
+  page.proposeShare.textContent = proposalShareText(await getJson(`${VIBES_PATH}/${id}/proposals`));
 }
 
 /** Asks the model to propose a track of the brief, after a confirm, and opens it. */
@@ -451,7 +455,13 @@ async function proposeTrack() {
   if (name === "") {
     throw new Error("Name the track first.");
   }
+  // Propose is a plain button, not a form's submit, so the browser never holds the field to
+  // its min and max; it is checked here, against the length a track may ask for.
   const minutes = Number(page.proposeMinutes.value);
+  const [least, most] = [TRACK_LENGTH.min / 60, TRACK_LENGTH.max / 60];
+  if (!Number.isInteger(minutes) || minutes < least || minutes > most) {
+    throw new Error(`Give the length as whole minutes, from ${least} to ${most}.`);
+  }
   const arc = page.proposeArc.value.trim();
   if (arc === "") {
     throw new Error("Write the arc first, such as emerge, plateau, dissolve.");
@@ -471,7 +481,7 @@ async function proposeTrack() {
     location.assign(`./track.html?id=${finished.result.trackId}`);
     return leaving();
   } finally {
-    await showProposalShare();
+    await showProposalShare(id);
   }
 }
 
@@ -484,7 +494,7 @@ async function load(id) {
     getJson(`${VIBES_PATH}/${id}/tracks`),
   ]);
   showTracks(tracks);
-  await showProposalShare();
+  await showProposalShare(id);
   const { revision } = vibe;
   page.lineageLink.href = `./lineage.html?id=${id}`;
   page.mapLink.href = `./map.html?id=${id}`;

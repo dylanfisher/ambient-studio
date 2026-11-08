@@ -110,7 +110,22 @@ export function batchOperator(explore, breed) {
  * @param {string | null} [operator] the first tries' operator; null or omitted for a root
  */
 export const requestGroupName = (vibeId, seed, operator = null) =>
-  `vibe-${vibeId}-${operator ?? "stream"}-${seed}`;
+  `${groupPrefix(vibeId, operator)}${seed}`;
+
+/**
+ * What every request group of the vibe and operator starts with, before its seed.
+ * @param {number} vibeId
+ * @param {string | null} operator
+ */
+const groupPrefix = (vibeId, operator) => `vibe-${vibeId}-${operator ?? "stream"}-`;
+
+/**
+ * A SQL `LIKE` pattern for every request group `requestGroupName` names for the vibe and
+ * operator, whatever the seed. Neither a vibe id nor an operator holds `%` or `_`.
+ * @param {number} vibeId
+ * @param {string} operator
+ */
+export const requestGroupPattern = (vibeId, operator) => `${groupPrefix(vibeId, operator)}%`;
 
 /**
  * The request group of the revisions made in one job (decision 0036), named from its first

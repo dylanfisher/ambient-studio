@@ -58,12 +58,19 @@ const EXPORTS = { json: [] };
  * @param {TrackDraft & { arrangement: Arrangement, note?: string }} draft
  * @returns {{ track: Track, revision: TrackRevision }}
  */
-export function createTrack(store, { vibeId, name, arrangement, note = "" }) {
-  return transaction(store, () => {
-    /** @type {Track} */
-    const track = insertRow(store, TABLE.tracks, TRACKS, { vibeId, name });
-    return { track, revision: reviseTrack(store, track.id, { arrangement, note }) };
-  });
+export const createTrack = (store, draft) => transaction(store, () => addTrack(store, draft));
+
+/**
+ * `createTrack` inside a transaction the caller holds, so rows it writes first, as a
+ * proposal's elite sketches (0067), go back with the track when anything throws.
+ * @param {Store} store
+ * @param {TrackDraft & { arrangement: Arrangement, note?: string }} draft
+ * @returns {{ track: Track, revision: TrackRevision }}
+ */
+export function addTrack(store, { vibeId, name, arrangement, note = "" }) {
+  /** @type {Track} */
+  const track = insertRow(store, TABLE.tracks, TRACKS, { vibeId, name });
+  return { track, revision: reviseTrack(store, track.id, { arrangement, note }) };
 }
 
 /**

@@ -117,9 +117,6 @@ export const SEARCH_ESTIMATE_PATH = "/api/search-estimate";
  */
 export const BREED_ESTIMATE_PATH = "/api/breed-estimate";
 
-/** How the proposals asked for so far came out (decision 0067). */
-export const PROPOSALS_PATH = "/api/proposals";
-
 /**
  * A session's route; its candidates, jobs and ratings are under it.
  * @param {number} sessionId

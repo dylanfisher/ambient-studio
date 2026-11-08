@@ -199,4 +199,3 @@ literal "save" | files src/web/material-actions.js src/web/track.js | the timeli
 literal "elite" | files src/domain/arrange-prompt.js src/domain/operator.js | OPERATOR's value for a fill step in operator; MATERIAL_KIND's word for a map elite on a proposal's material line in arrange-prompt
 literal "arrangement" | files src/domain/check-proposal.js src/server/track-store.js | the track revision's field in track-store; the rule of a validator finding in check-proposal
 literal "constraints" | files src/server/generate-candidates.js src/server/vibe-store.js | the vibe revision's JSON column in vibe-store; a Batch field a request leaves out, in generate-candidates' RequestBatch type
-literal "/api/proposals" | files src/server/proposal-routes.js src/web/api.js | the proposal share route, declared by the server and requested by the pages, which talk to it only over HTTP and can't import it (map.md)
