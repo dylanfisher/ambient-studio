@@ -54,6 +54,43 @@
         </div>
       </section>
 
+      <section class="card stack" aria-labelledby="lanes-heading">
+        <h2 id="lanes-heading">Macro lanes</h2>
+        <p class="small muted">
+          A lane moves one macro across the whole track, on top of what each section's sketch
+          does with it: each point adds to or takes from the sketch's own value, from −0.5 to 0.5,
+          and 0 changes nothing. Choose a lane, then add points and move them by the fields, the
+          buttons and their keys, or by dragging a point across in time or up and down.
+        </p>
+        <div id="lanes" class="lanes"></div>
+        <p id="pointLine" class="small"></p>
+        <div class="row">
+          <label class="field small"
+            >Point at, in seconds of the track
+            <input id="pointTimeInput" type="number" step="1" min="0" size="6" title="Where the chosen point is on the track, in seconds from its start. Points must be in order, earliest first." />
+          </label>
+          <label class="field small"
+            >Offset
+            <input id="pointOffsetInput" type="number" size="5" title="How much the chosen point adds to each section's own macro, from -0.5 to 0.5; below 0 it takes away, and 0 changes nothing." />
+          </label>
+        </div>
+        <div class="row">
+          <button id="lanePrevious" class="button outline small" type="button" title="Chooses the lane above the chosen one, which the point buttons and keys act on.">Lane above</button>
+          <button id="laneNext" class="button outline small" type="button" title="Chooses the lane below the chosen one, which the point buttons and keys act on.">Lane below</button>
+          <button id="pointPrevious" class="button outline small" type="button" title="Chooses the point before the chosen one in this lane.">Previous point</button>
+          <button id="pointNext" class="button outline small" type="button" title="Chooses the point after the chosen one in this lane.">Next point</button>
+          <button id="addPoint" class="button outline small" type="button" title="Adds a point after the chosen one, halfway to the next or a little after the last, at the lane's value there, so nothing sounds different until you move it.">Add a point</button>
+          <button id="removePoint" class="button outline small" type="button" title="Takes the chosen point out of the lane. A lane with no points changes nothing.">Remove the point</button>
+        </div>
+        <div class="row">
+          <button id="pointEarlier" class="button outline small" type="button" title="Moves the chosen point one step earlier on the track, the seconds on the button, stopping before the point ahead of it.">Earlier</button>
+          <button id="pointLater" class="button outline small" type="button" title="Moves the chosen point one step later on the track, the seconds on the button, stopping before the point after it.">Later</button>
+          <button id="offsetLower" class="button outline small" type="button" title="Lowers the chosen point's offset by the step on the button, down to -0.5.">Lower</button>
+          <button id="offsetHigher" class="button outline small" type="button" title="Raises the chosen point's offset by the step on the button, up to 0.5.">Higher</button>
+          <button id="pointCurve" class="button outline small" type="button" title="Changes how the lane moves into the chosen point: evenly, easing in and out, mostly near the start, or mostly near the end. The first point has no curve.">Curve into it</button>
+        </div>
+      </section>
+
       <section id="sectionBox" class="card stack" aria-labelledby="section-heading" hidden>
         <h2 id="section-heading">The chosen section</h2>
         <p id="sectionName"></p>

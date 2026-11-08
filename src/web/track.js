@@ -30,6 +30,7 @@ import { jobControl } from "./job-control.js";
 import { endedText, JOB_STATE } from "./job-progress.js";
 import { jobBox } from "./job-view.js";
 import { keyButtons } from "./key-buttons.js";
+import { lanePanel } from "./lane-panel.js";
 import { NOT_STARTED } from "./owner-job.js";
 import { unloadGuard } from "./quick-ab-session.js";
 import { statusLine } from "./status-line.js";
@@ -263,6 +264,7 @@ function draw() {
     },
   );
   page.noSections.hidden = sections.length > 0;
+  lanes.draw();
 
   page.sectionBox.hidden = selected === null;
   page.timeline.append(playhead);
@@ -730,6 +732,9 @@ for (const [name, action] of Object.entries(actions)) {
   buttons[/** @type {TimelineAction} */ (name)].onclick = () => status.run(action);
 }
 bindTimelineKeys(document, actions, () => document.activeElement);
+
+// The macro lanes (0065) edit the same draft, through `edit`, and bind their own keys.
+const lanes = lanePanel({ draft: () => draft, edit: (next) => edit(next), status });
 
 window.addEventListener("beforeunload", unloadGuard({ unsaved }));
 

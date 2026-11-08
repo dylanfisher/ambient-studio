@@ -894,6 +894,82 @@ audio[hidden] + .player {
   right: 0;
 }
 
+/* The macro lanes under the timeline (0065): per macro, its name over a strip as wide as the
+   timeline, so a point sits under the blocks it plays in; the line is drawn on a stretched
+   100 × 100 box, +0.5 at the top. The points take the pointer, so the browser mustn't scroll
+   under a drag. */
+.lanes {
+  display: grid;
+  gap: 6px;
+}
+
+.lane {
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+}
+
+.lane-name {
+  text-transform: capitalize;
+}
+
+.lane-name[aria-pressed="true"] {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.lane-strip {
+  position: relative;
+  justify-self: stretch;
+  height: 2.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--muted);
+}
+
+.lane-strip svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.lane-zero {
+  stroke: var(--input);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.lane-line {
+  fill: none;
+  stroke: var(--foreground);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.lane-point {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  padding: 0;
+  border: 2px solid var(--foreground);
+  border-radius: 50%;
+  background: var(--card);
+  cursor: move;
+  touch-action: none;
+}
+
+.lane-point[aria-pressed="true"] {
+  background: var(--primary);
+}
+
+.lane-point:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
 /* Where the track's preview has reached (0062); it takes no pointer, so the blocks stay usable. */
 .timeline-playhead {
   position: absolute;
