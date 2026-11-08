@@ -2,7 +2,8 @@
 
 - **Date:** 2026-11-07
 - **Status:** accepted; provisional: owner to confirm one brief per track, extending a section
-  past its sketch, the keys and the section player. Amends
+  past its sketch, the keys and the section player; amended by
+  [0065](0065-macro-lanes.md) (`lanes` hold macro lanes, under the timeline). Amends
   [0021](0021-store-tables-and-append-only.md) (the track tables) and
   [0032](0032-plain-language-pages.md) (the timeline page and its keys)
 
@@ -44,7 +45,7 @@ descriptor style of 0005 and 0020; every key is present in a stored one):
 
 - `length` (180–1200 s) and `arc` (one line, at most 200 characters) are what the owner asks a
   proposal for; both null on a hand-made track. `proposal` is the generation id 6h's arrangement
-  came from, or null. `lanes` must be empty until 6f.
+  came from, or null. `lanes` holds at most one macro lane per macro (0065).
 - A section names a live sketch of the track's own vibe, `offset` where it starts on the
   sketch's timeline, from 0 to under the sketch's duration, and `seconds`, at least 10.
 - `transitions` holds one between each pair of neighbors: `kind` `crossfade` (6e adds `morph`)
@@ -142,3 +143,11 @@ where a track is made by name:
   saved again until the section is removed; earlier revisions keep it.
 - Space on a focused button plays the section rather than pressing the button, as on Quick A/B;
   Enter still presses it.
+
+## Amendments
+
+- 2026-11-08: from step 6f ([0065](0065-macro-lanes.md)), provisional: owner to confirm.
+  `lanes` holds macro lanes, checked by `checkLanes` with paths such as
+  `$.lanes[0].points[2][1]`; stored arrangements hold `[]`, so none needs a migration. A Macro
+  lanes card under the timeline edits them by fields, drags and their own keys (↑ ↓ H L U O Q
+  W Y N D), none of which is a timeline key.

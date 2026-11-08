@@ -25,6 +25,7 @@ import { CROSSFADE_LAW } from "../engine/crossfade.js";
 import { ENGINE_VERSION } from "../engine/engine-version.js";
 import { SCHEMA_VERSION } from "../engine/genome-schema.js";
 import { isObject } from "../engine/is-object.js";
+import { LANE_CURVE, LANE_POINTS, LANE_SAMPLE_SECONDS } from "../engine/macro-lane.js";
 import { SAMPLE_RATE } from "../engine/render-plan.js";
 import { requireGenome } from "../engine/validate-genome.js";
 import { getCandidate, getGenome } from "./generation-store.js";
@@ -51,6 +52,11 @@ import { getRevision } from "./vibe-store.js";
  */
 
 /**
+ * How a lane is written into a section's macro (`src/engine/macro-lane.js`).
+ * @typedef {{ sampleSeconds: number, points: number, curve: string }} LaneRule
+ */
+
+/**
  * Everything that decides a track's samples, plus the track it came from.
  * @typedef {object} TrackRecipe
  * @property {{ id: number, name: string, revisionId: number }} track
@@ -61,6 +67,8 @@ import { getRevision } from "./vibe-store.js";
  * @property {{ fadeIn: number, fadeOut: number }} fades the track's, in seconds
  * @property {number} chunkSeconds
  * @property {string} crossfadeLaw
+ * @property {LaneRule} [laneRule] the macro lanes' rule (0065), when a lane has points: the
+ *   lanes themselves are in each section's genome
  * @property {TrackLoudness} loudness the vibe's target and the strictest section's ceiling
  * @property {number} engineVersion
  * @property {number} schemaVersion
@@ -162,6 +170,10 @@ export function trackRecipe(store, { track, revision, constraints }) {
       fades: trackFades(arrangement, genomes),
       chunkSeconds: CHUNK_SECONDS,
       crossfadeLaw: CROSSFADE_LAW,
+      // Named only when a lane has points, so a track with none keeps its recipe and cache key.
+      ...(arrangement.lanes.some(({ points }) => points.length > 0) && {
+        laneRule: { sampleSeconds: LANE_SAMPLE_SECONDS, points: LANE_POINTS, curve: LANE_CURVE },
+      }),
       loudness: {
         target: vibeLoudness(constraints),
         ceiling: Math.min(...sections.map(({ genome }) => genome.ceiling)),
@@ -187,6 +199,7 @@ export function recipeKey({
   fades,
   chunkSeconds,
   crossfadeLaw,
+  laneRule,
   loudness,
   engineVersion,
   schemaVersion,
@@ -202,6 +215,7 @@ export function recipeKey({
       fades,
       chunkSeconds,
       crossfadeLaw,
+      ...(laneRule && { laneRule }),
       loudness: { target, ceiling },
       engineVersion,
       schemaVersion,

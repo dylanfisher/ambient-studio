@@ -18,7 +18,7 @@ import {
   TRANSITION_KIND,
   TRANSITION_SECONDS,
 } from "../domain/arrangement-schema.js";
-import { sectionMorph } from "../domain/section-genome.js";
+import { sectionMorph, sectionThinning } from "../domain/section-genome.js";
 import { validateArrangement } from "../domain/validate-arrangement.js";
 import { getJson, postJson, trackPath } from "./api.js";
 import { cloneTemplate } from "./clone-template.js";
@@ -27,6 +27,7 @@ import { clockTime, mountPlayer, playAudio } from "./excerpt-player.js";
 import { formatTime } from "./format-time.js";
 import { jobControl } from "./job-control.js";
 import { keyButtons } from "./key-buttons.js";
+import { lanePanel } from "./lane-panel.js";
 import { materialCard } from "./material-card.js";
 import { NOT_STARTED } from "./owner-job.js";
 import { unloadGuard } from "./quick-ab-session.js";
@@ -264,6 +265,7 @@ function draw() {
     },
   );
   page.noSections.hidden = sections.length > 0;
+  lanes.draw();
   material.draw(errors.length === 0);
 
   page.sectionBox.hidden = selected === null;
@@ -716,6 +718,19 @@ for (const [name, action] of Object.entries(actions)) {
   buttons[/** @type {TimelineAction} */ (name)].onclick = () => status.run(action);
 }
 bindTimelineKeys(document, actions, () => document.activeElement);
+
+// The macro lanes (0065) edit the same draft, through `edit`, and bind their own keys.
+const lanes = lanePanel({
+  draft: () => draft,
+  edit: (next) => edit(next),
+  status,
+  thinned: () => {
+    const arrangement = draft;
+    if (arrangement === null || !checked(arrangement).ok) return [];
+    const genomes = sketchGenomes();
+    return arrangement.sections.map((_, i) => sectionThinning(arrangement, i, genomes));
+  },
+});
 
 window.addEventListener("beforeunload", unloadGuard({ unsaved }));
 

@@ -1,6 +1,8 @@
 // The timeline's keys (decision 0061): each action has one, each runs once per press, and none
 // fires while a field you type in has the focus. Checked on a fake document, as Quick A/B's are.
 import { expect, test } from "vitest";
+import { LANE_KEYS } from "../../src/web/lane-keys.js";
+import { MATERIAL_KEYS } from "../../src/web/material-keys.js";
 import { keyLabel } from "../../src/web/quick-ab-keys.js";
 import { bindTimelineKeys, TIMELINE_KEYS } from "../../src/web/timeline-keys.js";
 
@@ -98,4 +100,18 @@ test("no key fires in a field you type in, or with Cmd", () => {
   press("KeyS", { metaKey: true });
   press("KeyS");
   expect(ran).toEqual(["save"]);
+});
+
+test("the timeline page's three key tables share no key", () => {
+  // The timeline (0061), the macro lanes (0065) and the material panel (0066) bind their own
+  // tables on one page, so a key in two of them would run two actions.
+  const tables = { TIMELINE_KEYS, LANE_KEYS, MATERIAL_KEYS };
+  /** @type {Map<string, string[]>} */
+  const owners = new Map();
+  for (const [table, keys] of Object.entries(tables)) {
+    for (const [action, code] of Object.entries(keys)) {
+      owners.set(code, [...(owners.get(code) ?? []), `${table}.${action}`]);
+    }
+  }
+  expect([...owners].filter(([, names]) => names.length > 1)).toEqual([]);
 });

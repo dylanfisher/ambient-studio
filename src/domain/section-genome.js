@@ -1,12 +1,14 @@
 // A sketch's genome fitted to its section of a track (decision 0062). Every audio path of a
-// track goes through here: the render, the seam preview, the cost and, later, stems (6d), morphs
-// (`morphGenome`, 0064) and macro lanes (6f's `applyLanes`).
+// track goes through here: the render, the seam preview, the cost, stems (0063), morphs
+// (`morphGenome`, 0064) and macro lanes (`applyLanes`, 0065).
 /** @import { Arrangement } from "./arrangement-schema.js" */
 /** @import { Morph } from "./morph-genome.js" */
 /** @import { Genome } from "../engine/genome-schema.js" */
 /** @import { Curve } from "../engine/trajectory.js" */
 import { MORPH_HANDOVER } from "../engine/morph.js";
 import { requireGenome } from "../engine/validate-genome.js";
+import { applyLanes, thinnedMacros } from "./apply-lanes.js";
+import { sectionStarts } from "./arrangement-length.js";
 import { TRANSITION_KIND } from "./arrangement-schema.js";
 import { morphGenome } from "./morph-genome.js";
 
@@ -78,15 +80,46 @@ export function sectionMorph(arrangement, index, genomes) {
 
 /**
  * The genome a section renders: its fitted genome, or the morph into the next section when
- * their transition is a morph that holds.
+ * their transition is a morph that holds, with the track's macro lanes added over the section's
+ * span of the track. A morph's genome is on the outgoing section's timeline, so the span is the
+ * same.
  * @param {Arrangement} arrangement a valid one
  * @param {number} index the section's
  * @param {ReadonlyMap<number, unknown>} genomes each sketch's stored genome, by sketch id
  * @returns {Genome}
  */
 export function sectionGenome(arrangement, index, genomes) {
+  const { genome, span } = unlaned(arrangement, index, genomes);
+  return applyLanes(genome, arrangement.lanes, span);
+}
+
+/**
+ * A section's genome before lanes, and where it plays on the track.
+ * @param {Arrangement} arrangement a valid one
+ * @param {number} index the section's
+ * @param {ReadonlyMap<number, unknown>} genomes
+ */
+function unlaned(arrangement, index, genomes) {
   const morph = sectionMorph(arrangement, index, genomes);
-  return morph?.ok ? morph.genome : fittedGenome(arrangement, index, genomes);
+  const genome = morph?.ok ? morph.genome : fittedGenome(arrangement, index, genomes);
+  const { offset, seconds } = /** @type {import("./arrangement-schema.js").Section} */ (
+    arrangement.sections[index]
+  );
+  const at = /** @type {number} */ (sectionStarts(arrangement)[index]);
+  return { genome, span: { at, from: offset, to: offset + seconds } };
+}
+
+/**
+ * The macros whose own breakpoints the lanes thin in section `index` (`thinnedMacros`), so the
+ * page can say the sketch's own motion there is coarser.
+ * @param {Arrangement} arrangement a valid one
+ * @param {number} index the section's
+ * @param {ReadonlyMap<number, unknown>} genomes
+ * @returns {string[]}
+ */
+export function sectionThinning(arrangement, index, genomes) {
+  const { genome, span } = unlaned(arrangement, index, genomes);
+  return thinnedMacros(genome, arrangement.lanes, span);
 }
 
 /**

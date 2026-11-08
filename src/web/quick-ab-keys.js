@@ -23,6 +23,8 @@ export const QUICK_AB_KEYS = Object.freeze({
 const SHOWN = new Map([
   ["ArrowLeft", "←"],
   ["ArrowRight", "→"],
+  ["ArrowUp", "↑"],
+  ["ArrowDown", "↓"],
   ["Comma", ","],
   ["Period", "."],
   ["Minus", "−"],

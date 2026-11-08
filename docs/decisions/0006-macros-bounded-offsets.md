@@ -2,7 +2,8 @@
 
 - **Date:** 2026-11-05
 - **Status:** accepted; amended by [0035](0035-locks.md) (a locked raw value still follows the
-  macros)
+  macros) and [0065](0065-macro-lanes.md) (track automation is a lane of offsets on each
+  section's macros)
 
 ## Context
 
@@ -65,3 +66,8 @@ parameter's range. At 0.5 for every macro, effective values equal raw values exa
   changing `genomeHash` and the schema text. `macrosMoving(path, genome)` in `src/domain` reads
   this record's rows to list the macros that move a locked value, so the lock control can offer
   to lock them too.
+- 2026-11-08: from step 6f ([0065](0065-macro-lanes.md)), provisional: owner to confirm. Track
+  automation is a lane per macro of offsets from −0.5 to 0.5, added to each section's own
+  macro and clamped to 0–1, and written into the section's genome as the macro's trajectory.
+  The engine is unchanged: it reads a laned macro as any other trajectory, and the rows above
+  move raw parameters by it.
