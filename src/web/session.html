@@ -46,6 +46,7 @@
           <button id="askButton" class="button primary" type="button" title="Asks the local model for new candidates for this brief and renders a 25-second excerpt of each as it arrives. Takes about 1–2 minutes per candidate.">Ask for new candidates</button>
           <button id="excerptsButton" class="button outline" type="button" hidden title="Renders the excerpts that are missing, such as after a restart or a failed render. No model is asked; each excerpt takes a few seconds.">Render missing excerpts</button>
           <span class="spacer"></span>
+          <button id="bestQuestionButton" class="button outline" type="button" hidden title="Opens the A/B view on the pair of this session's candidates your taste model is least sure how to order, which teaches it the most. Pairs already compared in this session and hidden candidates are left out.">Best question</button>
           <a id="quickAbLink" class="button outline" href="./quick-ab.html" title="Opens Quick A/B: this session's candidates in pairs, one after another, to compare with the keys or buttons. The one you choose stays to meet the next. Hidden candidates are left out.">Quick A/B</a>
           <a id="lineageLink" class="button outline" href="./lineage.html" title="Opens the lineage page: every candidate of this brief's sessions, each under the one it was made from, to play and work from.">Lineage</a>
           <button id="stopButton" class="button destructive" type="button" title="Stops this session after you confirm: any running job is cancelled, and it takes no more candidates or ratings. Your ratings so far are kept.">Stop the session</button>
@@ -132,6 +133,7 @@
         <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" data-part="bar"><div class="progress-fill" data-part="fill"></div></div>
         <p class="small" data-part="step"></p>
         <p class="small muted" data-part="notEmbedded" hidden></p>
+        <p class="small muted" data-part="notRanked" hidden></p>
         <p class="small errors" data-part="error" hidden></p>
       </div>
     </template>
@@ -146,6 +148,8 @@
               <span class="muted small" data-part="rowId"></span>
               <span class="badge" data-part="thumbsBadge" hidden>thumbs</span>
               <span class="badge" data-part="sketchBadge" hidden>Kept as sketch</span>
+              <span class="badge" data-part="rankBadge" hidden></span>
+              <span class="badge" data-part="wildcardBadge" hidden>Wildcard</span>
             </div>
             <p class="small muted" data-part="origin"></p>
             <button class="button outline small" type="button" data-part="pairLink" hidden title="Shows the other version of this candidate in its place.">Show the other version</button>

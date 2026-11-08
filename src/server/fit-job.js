@@ -2,7 +2,8 @@
 // vibe's ratings, then the vibe's own model centered on it, through the sidecar's `fit`. A model
 // whose file is already there under its key is kept rather than fitted again. Nothing else
 // starts it.
-/** @import { Item, TrainingSet } from "../domain/training-set.js" */
+/** @import { ExcerptTerms, Item, TrainingSet } from "../domain/training-set.js" */
+/** @import { EmbeddingSource } from "./embedding-store.js" */
 /** @import { JobContext } from "./job-runner.js" */
 /** @import { ModelPlan, PlannedModel } from "./preference-model.js" */
 /** @import { App } from "./routing.js" */
@@ -29,6 +30,12 @@ const FLOAT_BYTES = 4;
  */
 
 /**
+ * An excerpt that may be unrated, as a candidate's excerpt is when the ranking scores it
+ * (decision 0046): named by what its embedding is of, with the terms an `Item` has.
+ * @typedef {ExcerptTerms & { source: EmbeddingSource }} SourcedItem
+ */
+
+/**
  * @param {Store} store
  * @param {TrainingSet} set
  * @param {object} options
@@ -37,8 +44,8 @@ const FLOAT_BYTES = 4;
  * @param {Record<string, unknown>} options.hyperparameters
  * @param {string | null} options.prior the prior model's file, or null for a prior's own fit
  * @param {string} options.embeddingsPath where `embeddings` will be written, absolute
- * @param {Item[]} [options.basisItems] excerpts listed first, for a prior's fit, which computes
- *   the basis from every item in its file
+ * @param {(Item | SourcedItem)[]} [options.basisItems] excerpts listed first, for a prior's
+ *   fit, which computes the basis from every item in its file, or for a `predict`
  * @returns {FitInput}
  */
 export function fitInput(
@@ -47,24 +54,30 @@ export function fitInput(
   { embeddingProducer, dimension, hyperparameters, prior, embeddingsPath, basisItems = [] },
 ) {
   const macroNames = Object.keys(MACROS);
-  /** @type {Map<number, number>} rated audio id to item index */
+  /** @type {Map<string, number>} each source's item index */
   const indices = new Map();
   /** @type {Record<string, unknown>[]} */
   const items = [];
   /** @type {Uint8Array[]} */
   const rows = [];
-  /** @param {Item} item */
+  /** @param {Item | SourcedItem} item */
   const index = (item) => {
-    const known = indices.get(item.ratedAudioId);
+    /** @type {EmbeddingSource} */
+    const source =
+      "source" in item ? item.source : { ratedAudioId: item.ratedAudioId, renderId: null };
+    const name =
+      source.ratedAudioId === null
+        ? `render ${source.renderId}`
+        : `rated audio ${source.ratedAudioId}`;
+    const known = indices.get(name);
     if (known !== undefined) return known;
-    const source = { ratedAudioId: item.ratedAudioId, renderId: null };
     const vector = findEmbedding(store, source, embeddingProducer)?.vector;
     if (vector?.length !== dimension * FLOAT_BYTES) {
       throw new Error(
-        `rated audio ${item.ratedAudioId} has ${vector ? `${vector.length} bytes of embedding, not ${dimension} floats` : "no embedding"}`,
+        `${name} has ${vector ? `${vector.length} bytes of embedding, not ${dimension} floats` : "no embedding"}`,
       );
     }
-    indices.set(item.ratedAudioId, items.length);
+    indices.set(name, items.length);
     rows.push(vector);
     items.push({
       features: FEATURE_NAMES.map(({ name }) => item.features[name] ?? null),

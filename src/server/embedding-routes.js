@@ -1,9 +1,10 @@
 // The embedding route (decision 0042): start the embed job. Nothing else starts it.
 /** @import { App, Route } from "./routing.js" */
+import { JOB_KIND } from "../domain/job-kind.js";
 import { embedJob } from "./embed-job.js";
 import { duplicateJob } from "./routing.js";
 
-const EMBED_JOB = "embed";
+const EMBED_JOB = JOB_KIND.embed;
 
 /**
  * The embed job that is queued or running, if any.

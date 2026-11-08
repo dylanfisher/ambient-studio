@@ -1,5 +1,6 @@
 // A job's status as the pages show it (decision 0032): what it is doing in a sentence, a bar
 // from its count, and how long it has run. No DOM here, so the wording is tested.
+import { JOB_KIND } from "../domain/job-kind.js";
 import { isObject } from "../engine/is-object.js";
 
 /** What each kind of job is called on the page. */
@@ -10,6 +11,8 @@ const TITLE = Object.freeze({
   agreement: "Taste model test",
   nudge: "Nudging a candidate",
   explore: "The model's variations of a candidate",
+  [JOB_KIND.embed]: "Analyzing the sound",
+  [JOB_KIND.fit]: "Fitting the taste model",
 });
 
 /** A job's states, as the server's job runner names them (decision 0026). */
@@ -56,6 +59,8 @@ const STATE = Object.freeze({
  * @property {string | null} error
  * @property {string | null} notEmbedded why a candidates job's excerpts weren't embedded
  *   (decision 0042), as a sentence; null when they were, or the job says nothing of it
+ * @property {string | null} notRanked why a candidates job left the session unranked
+ *   (decision 0046), as a sentence; null when it ranked it, or the job says nothing of it
  * @property {boolean} finished
  */
 
@@ -104,13 +109,14 @@ function elapsedText({ addedAt, startedAt, finishedAt }, now) {
 }
 
 /**
- * The reason a candidates job returns for not embedding its excerpts, or null.
+ * The reason a candidates job returns under `key`, as a sentence, or null.
  * @param {JobStatus} job
+ * @param {"notEmbedded" | "notRanked"} key
  */
-function notEmbeddedText({ result }) {
+function reasonText({ result }, key) {
   if (!isObject(result)) return null;
-  const { notEmbedded } = result;
-  return typeof notEmbedded === "string" ? sentence(notEmbedded) : null;
+  const reason = result[key];
+  return typeof reason === "string" ? sentence(reason) : null;
 }
 
 /**
@@ -133,7 +139,8 @@ export function jobProgress(job, now) {
     fraction: progress && progress.total > 0 ? progress.done / progress.total : null,
     elapsed: elapsedText(job, now),
     error: job.error,
-    notEmbedded: notEmbeddedText(job),
+    notEmbedded: reasonText(job, "notEmbedded"),
+    notRanked: reasonText(job, "notRanked"),
     finished: job.finishedAt !== null,
   };
 }

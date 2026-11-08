@@ -132,7 +132,9 @@ test("with no model file at all it says there is no model yet and asks the sidec
   const { app, vibe, sidecar } = await setup();
   const summary = await readPreferenceSummary(app, vibe.id, signal());
   expect(summary.state).toBe("none");
-  expect(summary.text).toMatch(/^No taste model yet\. .*fit job/);
+  expect(summary.text).toMatch(
+    /^No taste model yet\. .*Fit the taste model on the Model test page/,
+  );
   expect(await sidecar.received()).toEqual([]);
 });
 

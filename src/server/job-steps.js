@@ -33,6 +33,7 @@ export const JOB_STEP = Object.freeze({
   /** @param {number} n @param {number} of */
   embeddingExcerpt: (n, of) => `Analyzing the sound of excerpt ${n} of ${of}`,
   fittingCheck: "Checking that every rated excerpt's sound is analyzed",
+  ranking: "Ranking the candidates by your taste",
   /** @param {number} n @param {number} of */
   fittingVibe: (n, of) => `Learning your taste for brief ${n} of ${of}`,
   testingCount: "Counting each brief's A/B choices",

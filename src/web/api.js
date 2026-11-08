@@ -57,6 +57,15 @@ export const EVALUATIONS_PATH = "/api/evaluations";
 /** The taste model test's route: a POST starts one, a GET reads the last report and the job. */
 export const PREFERENCE_TESTS_PATH = "/api/preference-tests";
 
+/** The embed job's route: a POST starts it (decision 0042). */
+export const EMBEDDINGS_PATH = "/api/embeddings";
+
+/** The fit job's route: a POST starts it (decision 0044). */
+export const PREFERENCE_MODELS_PATH = "/api/preference-models";
+
+/** Every job since the server started, with its kind. */
+export const JOBS_PATH = "/api/jobs";
+
 /**
  * A session's route; its candidates, jobs and ratings are under it.
  * @param {number} sessionId

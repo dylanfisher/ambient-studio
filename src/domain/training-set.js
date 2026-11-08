@@ -43,13 +43,17 @@ import { FEEDBACK_KIND, OUTCOMES, THUMBS } from "./rating-values.js";
  */
 
 /**
- * One heard excerpt as the fit sees it.
- * @typedef {object} Item
- * @property {number} ratedAudioId what 4b embeds
- * @property {number} genomeId the candidate, for the fold's leak rule
+ * What the model reads of an excerpt beside its sound.
+ * @typedef {object} ExcerptTerms
  * @property {Record<string, number | null>} features each of `FEATURE_NAMES` by name, in its
  *   order; null where the excerpt had nothing to measure
  * @property {Record<MacroName, number>} macros each macro's mean over the heard window
+ */
+
+/**
+ * One heard excerpt as the fit sees it.
+ * @typedef {ExcerptTerms & { ratedAudioId: number, genomeId: number }} Item `ratedAudioId` is
+ *   what 4b embeds, and `genomeId` names the candidate, for the fold's leak rule
  */
 
 /**
@@ -92,6 +96,29 @@ const TIE_WEIGHT = 0.5;
 const byId = (x, y) => x.id - y.id;
 
 /**
+ * What the model reads of one excerpt beside its sound: its features, and each macro's mean
+ * over the excerpt's window. The ranking (decision 0046) describes a candidate's excerpt this
+ * way too, so a fit and a prediction read the same terms.
+ * @param {Genome} genome
+ * @param {Features} measured
+ * @param {number} offset timeline seconds
+ * @param {number} duration seconds
+ * @returns {ExcerptTerms}
+ */
+export function excerptTerms(genome, measured, offset, duration) {
+  return {
+    features: Object.fromEntries(
+      FEATURE_NAMES.map((entry) => [entry.name, featureValue(measured, entry)]),
+    ),
+    macros: /** @type {Record<MacroName, number>} */ (
+      Object.fromEntries(
+        MACRO_NAMES.map((macro) => [macro, macroWindow(genome, macro, offset, duration).mean]),
+      )
+    ),
+  };
+}
+
+/**
  * @param {object} input
  * @param {readonly RatingInput[]} input.ratings the vibe's A/B ratings; removed ones and skips
  *   are left out here
@@ -123,18 +150,7 @@ export function buildTrainingSet({ ratings, feedback, genomes, features }) {
     }
     const measured = features.get(ratedAudioId);
     if (!measured) return null;
-    return {
-      ratedAudioId,
-      genomeId,
-      features: Object.fromEntries(
-        FEATURE_NAMES.map((entry) => [entry.name, featureValue(measured, entry)]),
-      ),
-      macros: /** @type {Record<MacroName, number>} */ (
-        Object.fromEntries(
-          MACRO_NAMES.map((macro) => [macro, macroWindow(genome, macro, offset, duration).mean]),
-        )
-      ),
-    };
+    return { ratedAudioId, genomeId, ...excerptTerms(genome, measured, offset, duration) };
   }
 
   /** @type {Pair[]} */

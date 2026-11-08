@@ -5,6 +5,8 @@
 // panel, and the page keeps its scroll across a trip to Quick A/B or the A/B view (0049). Of a
 // revised pair, one row shows and links the other (0036). Each row also reads its features
 // against its brief's ranges, locks its values (0035), and explores or nudges from it (0039).
+// In a session ranked by the brief's taste model, the rows follow the ranking with each score,
+// and Best question opens the pair the model is least sure of (0046).
 // Played fraction and time taken are measured here as decision 0027 defines them. A "card" in
 // this file is one candidate's row and its More controls, a `<tbody>` of the table.
 /** @import { FeatureRanges } from "../domain/target-schema.js" */
@@ -24,7 +26,8 @@ import { abMarks, markText } from "./ab-marks.js";
 import { abView } from "./ab-view.js";
 import { getJson, jobPath, postJson, sessionPath, startJob, VIBES_PATH } from "./api.js";
 import { trackAudio } from "./audio-player.js";
-import { candidateRows } from "./candidate-rows.js";
+import { questionOf } from "./best-question.js";
+import { candidateRows, rowPlacement } from "./candidate-rows.js";
 import { createSelection } from "./candidate-selection.js";
 import { createCardHold } from "./card-hold.js";
 import { cloneTemplate } from "./clone-template.js";
@@ -40,13 +43,16 @@ import { oneAtATime } from "./one-at-a-time.js";
 import { intentText, originText, rejectText } from "./origin-text.js";
 import { createPairSwap } from "./pair-swap.js";
 import { createPlayedTracker } from "./played-tracker.js";
+import { createQuickAbOrder, ORDER_MODES, ratedPairKeys } from "./quick-ab-order.js";
 import { rangesReadout } from "./ranges-readout.js";
+import { rankText } from "./rank-text.js";
 import { keepOnClick, scrollMemory } from "./scroll-memory.js";
 import { statusLine } from "./status-line.js";
 import { steerControls } from "./steer-controls.js";
 
 const [UP, DOWN] = THUMBS;
 const [MORE, LESS] = MACRO_DIRECTIONS;
+const [, , BEST] = ORDER_MODES;
 const MACRO_NAMES = Object.keys(MACROS);
 
 const status = statusLine();
@@ -55,6 +61,7 @@ const page = elementsById({
   briefLink: HTMLAnchorElement,
   lineageLink: HTMLAnchorElement,
   quickAbLink: HTMLAnchorElement,
+  bestQuestionButton: HTMLButtonElement,
   countInput: HTMLInputElement,
   askButton: HTMLButtonElement,
   excerptsButton: HTMLButtonElement,
@@ -85,6 +92,8 @@ const CARD_PARTS = Object.freeze({
   rowId: HTMLElement,
   thumbsBadge: HTMLElement,
   sketchBadge: HTMLElement,
+  rankBadge: HTMLElement,
+  wildcardBadge: HTMLElement,
   intent: HTMLElement,
   origin: HTMLElement,
   rangesBox: HTMLElement,
@@ -145,6 +154,8 @@ const CARD_PARTS = Object.freeze({
  * @property {{ firstTryId: number, revisionId: number, shownId: number } | null} pair a first
  *   try and its revision, and which the server would show (decision 0036)
  * @property {boolean} hidden whether the owner hid it (decision 0049)
+ * @property {{ rank: number, score: number, wildcard: boolean, slot: number } | null} ranking
+ *   where its excerpt sits in the ranking, null when it has none (decision 0046)
  */
 
 /**
@@ -178,6 +189,8 @@ const pairSwap = createPairSwap();
 let marked = null;
 /** @type {{ ratings: any[], sketches: any[] }} */
 let rated = { ratings: [], sketches: [] };
+/** @type {import("./best-question.js").PairRanking | null} the session's ranking (0046) */
+let ranking = null;
 /** @type {{ id: number, path: string, candidateId: number }[]} the brief's live locks */
 let locks = [];
 /** @type {Map<number, FeatureRanges>} each brief version's ranges, by its id */
@@ -260,6 +273,22 @@ function showMarks(card) {
 }
 
 /**
+ * Where the card sits in the ranking, its score, and whether it is a wildcard.
+ * @param {Card} card
+ */
+function showRank(card) {
+  const place = card.candidate.ranking;
+  const { rankBadge, wildcardBadge } = card.parts;
+  rankBadge.hidden = place === null || ranking === null;
+  wildcardBadge.hidden = place === null || ranking === null || !place.wildcard;
+  if (place === null || ranking === null) return;
+  const shown = rankText(place, ranking.renderIds.length);
+  rankBadge.textContent = shown.text;
+  rankBadge.title = shown.title;
+  wildcardBadge.title = shown.wildcard ?? "";
+}
+
+/**
  * Shows the card's controls as the server last confirmed them: its live thumbs, one choice per
  * macro, and whether it is kept as a sketch.
  * @param {Card} card
@@ -279,6 +308,7 @@ function showRated(card) {
     buttons.more.setAttribute("aria-pressed", String(direction === MORE));
   }
   parts.sketchBadge.hidden = !rated.sketches.some((row) => row.candidateId === card.candidate.id);
+  showRank(card);
   showPlayed(card);
   showMarks(card);
 }
@@ -781,17 +811,58 @@ async function compare(card) {
     return;
   }
   const first = marked;
-  const firstExcerpt = first.candidate.excerpt;
-  if (!firstExcerpt) throw new Error(`${first.label} has lost its excerpt; mark again.`);
+  if (!first.candidate.excerpt) throw new Error(`${first.label} has lost its excerpt; mark again.`);
+  await openPair(card, first);
+}
+
+/**
+ * Draws the pair's sides on the server and opens the A/B view on them.
+ * @param {Card} a
+ * @param {Card} b
+ */
+async function openPair(a, b) {
   const pair = await postJson(`${SESSION}/ab-pairs`, {
-    a: measured(card).renderId,
-    b: firstExcerpt.renderId,
+    a: measured(a).renderId,
+    b: measured(b).renderId,
   });
   for (const other of cards) other.parts.audio.pause();
   scrollKept().save(window.scrollY);
   page.gridView.hidden = true;
-  ab.open(pair, { a: abCandidate(card), b: abCandidate(first) });
+  ab.open(pair, { a: abCandidate(a), b: abCandidate(b) });
   status.say("Play both sides, then choose which is better.");
+}
+
+/**
+ * Opens the A/B view on the pair the taste model is least sure how to order, among the shown
+ * candidates with an excerpt, leaving out pairs this session already compared (0046). It draws
+ * as Quick A/B's best questions does.
+ */
+async function bestQuestion() {
+  const pool = cards
+    .filter(({ candidate }) => candidate.excerpt !== null && !candidate.hidden)
+    .map(({ candidate }) => candidate);
+  const question = questionOf(ranking, pool);
+  if (!question) throw new Error("This session isn't ranked by your taste model.");
+  const order = createQuickAbOrder(
+    pool.map(({ id }) => id),
+    {
+      mode: BEST,
+      random: Math.random,
+      prior: ratedPairKeys(rated.ratings, sessionId, pool),
+      question,
+    },
+  );
+  const ids = order.pair();
+  if (!ids) {
+    status.say(
+      "Every pair the taste model can tell apart has been compared in this session. Ask for more candidates, or fit the model again on the Model test page.",
+    );
+    return;
+  }
+  unmark();
+  const [a, b] = ids.map((id) => cards.find((card) => card.candidate.id === id));
+  if (!a || !b) throw new Error(`the pair ${ids.join("–")} names a candidate with no row`);
+  await openPair(a, b);
 }
 
 /** What the pair link says on each side of a pair. */
@@ -819,16 +890,11 @@ function showPairs() {
   const held = {
     playing: (id) => {
       const card = byId.get(id);
-      return Boolean(card && !card.parts.audio.paused);
+      return Boolean(card && isPlaying(card));
     },
     editing: (id) => {
       const card = byId.get(id);
-      if (!card) return false;
-      const { note, tags } = card.parts;
-      return card.hold.held({
-        unsentText: note.value.trim() !== "" || tags.value.trim() !== "" || card.steer.unsent(),
-        pending: card.busy || card.locking || card.offered.length > 0,
-      });
+      return Boolean(card && isEditing(card));
     },
   };
   for (const card of cards) {
@@ -843,6 +909,8 @@ function showPairs() {
     card.parts.pairLink.textContent = link.text;
     card.parts.pairLink.title = link.title;
   }
+  // A row held when the table was last laid out takes its new place once it is released.
+  layoutRows();
 }
 
 /**
@@ -982,6 +1050,13 @@ function showControls() {
   // Recovery only: a candidates job renders its own excerpts (decision 0031).
   page.excerptsButton.hidden =
     stopped || Boolean(running) || posting || !cards.some((card) => !card.candidate.excerpt);
+  page.bestQuestionButton.hidden = ranking === null;
+  offBecause(
+    page.bestQuestionButton,
+    stopped
+      ? "This session is stopped, so it takes no more ratings. Start a new session from the brief page."
+      : null,
+  );
   showCardControls();
 }
 
@@ -1078,17 +1153,50 @@ const stopSession = oneAtATime(async () => {
   status.say(`Session ${sessionId} stopped. Start a new one from the brief page.`);
 });
 
+/** @param {Card} card whether its excerpt plays */
+const isPlaying = (card) => !card.parts.audio.paused;
+
 /**
- * Puts each row in its table in the order given, moving only the rows out of place, so a row
- * that stays where it was is never taken out of the page.
+ * Whether the card is in use (`card-hold.js`): the focus, a pointer pressed in it, text not
+ * yet sent, or a request or offer pending.
+ * @param {Card} card
+ */
+function isEditing(card) {
+  const { note, tags } = card.parts;
+  return card.hold.held({
+    unsentText: note.value.trim() !== "" || tags.value.trim() !== "" || card.steer.unsent(),
+    pending: card.busy || card.locking || card.offered.length > 0,
+  });
+}
+
+/**
+ * Puts the table's rows in the order given, moving only the rows out of place and never a row
+ * that plays or is in use (`rowPlacement`), since Safari pauses an `<audio>` and blurs a field
+ * taken out of the page. Such a row takes its place when `showPairs` runs after its release.
  * @param {HTMLTableElement} table
- * @param {readonly HTMLElement[]} rows
+ * @param {readonly Card[]} rows
  */
 function placeRows(table, rows) {
-  rows.forEach((row, i) => {
-    const at = table.tBodies[i];
-    if (at !== row) table.insertBefore(row, at ?? null);
+  const byRoot = new Map(cards.map((card) => [card.parts.root, card]));
+  const current = [...table.tBodies].flatMap((body) => {
+    const card = byRoot.get(body);
+    return card ? [card.candidate.id] : [];
   });
+  const held = new Set(
+    rows.filter((card) => isPlaying(card) || isEditing(card)).map((card) => card.candidate.id),
+  );
+  const byId = new Map(rows.map((card) => [card.candidate.id, card.parts.root]));
+  const { moves } = rowPlacement(
+    current,
+    rows.map((card) => card.candidate.id),
+    held,
+  );
+  for (const [id, before] of moves) {
+    table.insertBefore(
+      /** @type {HTMLElement} */ (byId.get(id)),
+      before === null ? null : /** @type {HTMLElement} */ (byId.get(before)),
+    );
+  }
 }
 
 /**
@@ -1109,10 +1217,10 @@ function layoutRows() {
    * @param {number} depth
    */
   const indent = (id, depth) => {
-    const { parts } = cardOf(id);
-    parts.branch.textContent = depth > 0 ? "↳" : "";
-    parts.nameCell.style.setProperty("--depth", String(depth));
-    return parts.root;
+    const card = cardOf(id);
+    card.parts.branch.textContent = depth > 0 ? "↳" : "";
+    card.parts.nameCell.style.setProperty("--depth", String(depth));
+    return card;
   };
   placeRows(
     page.candidateTable,
@@ -1141,8 +1249,10 @@ async function loadRatings() {
 
 /** Loads the candidates, updating each card in place. */
 async function loadCandidates() {
-  /** @type {{ candidates: Candidate[] }} */
-  const { candidates } = await getJson(`${SESSION}/candidates`);
+  /** @type {{ candidates: Candidate[], ranking: import("./best-question.js").PairRanking | null }} */
+  const listed = await getJson(`${SESSION}/candidates`);
+  const { candidates } = listed;
+  ranking = listed.ranking;
   // A brief saved while the session runs makes a version the page hasn't read yet.
   if (candidates.some((candidate) => !rangesByRevision.has(candidate.vibeRevisionId))) {
     await loadRanges();
@@ -1209,6 +1319,8 @@ async function loadCandidates() {
 page.askButton.onclick = () => status.run(askCandidates);
 page.excerptsButton.onclick = () => status.run(renderExcerpts);
 page.stopButton.onclick = () => status.run(stopSession);
+const askBest = oneAtATime(bestQuestion);
+page.bestQuestionButton.onclick = () => status.run(askBest);
 // A press ends wherever the pointer is released, so the page listens, not the card. The click
 // that follows a pointerup is dispatched before the deferred swap runs.
 // The page restores its own scroll once the rows are loaded; the browser's would land before them.

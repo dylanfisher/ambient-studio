@@ -120,7 +120,9 @@ test("under the minimum the text says so and names the shortfall, with no phrase
 
 test("with no model, or one with no terms, it says so and how to fit one", () => {
   const none = preferenceText({ state: "none", reason: null });
-  expect(none.text).toMatch(/^No taste model yet\. .*fit job/);
+  expect(none.text).toBe(
+    "No taste model yet. To fit one, press Analyze the sound and then Fit the taste model on the Model test page.",
+  );
   const why = preferenceText({ state: "none", reason: "the config names no folder" });
   expect(why.text).toMatch(/^No taste model yet: the config names no folder\. /);
   const empty = fitted(
@@ -138,7 +140,8 @@ test("with no model, or one with no terms, it says so and how to fit one", () =>
 test("a stale model is never described", () => {
   const { text } = preferenceText({ state: "stale" });
   expect(text).toMatch(/^The taste model is out of date/);
-  expect(text).toContain("fit job");
+  expect(text).toContain("Press Fit the taste model on the Model test page");
+  expect(text).not.toContain("POST");
 });
 
 test("a term the studio has no words for fails loudly", () => {

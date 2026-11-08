@@ -3,7 +3,8 @@
 - **Date:** 2026-11-07
 - **Status:** accepted; provisional: owner to confirm. Amends
   [0028](0028-session-ui-pages-and-keys.md) (the session page lists candidates as a table) and
-  [0042](0042-clap-embeddings.md) (the session page shows `notEmbedded`)
+  [0042](0042-clap-embeddings.md) (the session page shows `notEmbedded`). Amended by
+  [0046](0046-ranking-wildcards-pair-picker.md) (the roots' order in a ranked session)
 
 ## Context
 
@@ -135,3 +136,7 @@ used is newer than what 0028 lists, and CSS custom properties in `calc()`, `:not
   A/B view or Quick A/B; the hide route expands a hide to the whole revised pair and the
   candidates route reports the pair's state; marks are the excerpt's, and a candidate with no
   genome throws; a Hide pressed while the row is saving is an error, not ignored.
+- 2026-11-07 (4f, [0046](0046-ranking-wildcards-pair-picker.md)): in a session ranked by the
+  taste model, the roots follow the ranking, a revised pair by its better member, and unranked
+  roots come after; children keep their place under their parent. Ranked rows carry a rank and
+  score badge, and a wildcard a second badge.

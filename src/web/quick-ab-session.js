@@ -5,12 +5,13 @@
 // and buttons in. Every request goes through `api.js`, so a test answers them with a fake fetch.
 /** @import { AbPair } from "./ab-view.js" */
 /** @import { Outcome } from "./ab-rating.js" */
-/** @import { OrderMode, Pair } from "./quick-ab-order.js" */
+/** @import { OrderMode, Pair, Question } from "./quick-ab-order.js" */
 import { OUTCOMES } from "../domain/rating-values.js";
 import { abRatingBody } from "./ab-rating.js";
 import { getJson, postJson, sessionPath, VIBES_PATH } from "./api.js";
+import { questionOf } from "./best-question.js";
 import { outcomeText } from "./outcome-text.js";
-import { createQuickAbOrder, ORDER_MODES, pairKey } from "./quick-ab-order.js";
+import { createQuickAbOrder, ORDER_MODES, ratedPairKeys } from "./quick-ab-order.js";
 
 const [A, B] = OUTCOMES;
 const [CHAMPION] = ORDER_MODES;
@@ -87,6 +88,8 @@ const messageOf = (error) => (error instanceof Error ? error.message : String(er
  * @property {number | null} champion
  * @property {number} remaining
  * @property {number} poolSize
+ * @property {boolean} bestAvailable whether the session is ranked, so best questions can be
+ *   chosen (decision 0046)
  */
 
 /**
@@ -101,6 +104,8 @@ export function createQuickAbSession({ sessionId, random, now, onChange, onError
   /** @type {OrderMode} the mode the switch asks for, kept across a load */
   let mode = CHAMPION;
   let order = createQuickAbOrder([], { mode, random });
+  /** @type {Question | null} the pair picker, once a ranked session's pool is read */
+  let question = null;
   let nextSaveId = 1;
   /** @type {QuickAbView["phase"]} */
   let phase = PHASE.loading;
@@ -242,6 +247,7 @@ export function createQuickAbSession({ sessionId, random, now, onChange, onError
         champion: order.champion(),
         remaining: order.remaining(),
         poolSize: pool.size,
+        bestAvailable: question !== null,
       };
     },
 
@@ -251,21 +257,15 @@ export function createQuickAbSession({ sessionId, random, now, onChange, onError
     /** Reads the session's pool and the pairs it already rated, and shows the first pair. */
     async load() {
       const session = await getJson(SESSION);
-      const { candidates } = await getJson(`${SESSION}/candidates`);
+      const { candidates, ranking } = await getJson(`${SESSION}/candidates`);
       for (const candidate of poolOf(candidates)) pool.set(candidate.id, candidate);
+      question = questionOf(ranking, [...pool.values()]);
       const { ratings } = await getJson(`${VIBES_PATH}/${session.vibeId}/ratings`);
-      /** @type {Map<string, number>} */
-      const byWindow = new Map([...pool.values()].map((c) => [`${c.genomeId}:${c.seed}`, c.id]));
-      /** @type {string[]} */
-      const prior = [];
-      for (const rating of ratings) {
-        if (rating.sessionId !== sessionId || rating.removedAt !== null) continue;
-        const a = byWindow.get(`${rating.a.genomeId}:${rating.a.seed}`);
-        const b = byWindow.get(`${rating.b.genomeId}:${rating.b.seed}`);
-        if (a !== undefined && b !== undefined && a !== b) prior.push(pairKey([a, b]));
-      }
-      // `mode`, not the default: the switch may have changed while the pool was read.
-      order = createQuickAbOrder([...pool.keys()], { mode, random, prior });
+      const prior = ratedPairKeys(ratings, sessionId, [...pool.values()]);
+      // `mode`, not the default: the switch may have changed while the pool was read. Best
+      // questions can't be chosen until the ranking is read, so it is never the mode here
+      // without a picker.
+      order = createQuickAbOrder([...pool.keys()], { mode, random, prior, question });
       message =
         pool.size < 2
           ? "Nothing to compare yet."
@@ -370,8 +370,9 @@ export function createQuickAbSession({ sessionId, random, now, onChange, onError
      */
     setMode: (next) =>
       exclusive(async () => {
-        mode = next;
+        // The order refuses best questions in an unranked session, before the mode changes.
         order.setMode(next);
+        mode = next;
         if (phase === PHASE.done) await showPair();
         else onChange();
       }),
