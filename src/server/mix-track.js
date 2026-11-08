@@ -24,6 +24,7 @@ const CHANNELS = 2;
  * @property {number} offset timeline seconds
  * @property {number} duration seconds, the section's
  * @property {Samples} [samples] the recordings its genome plays
+ * @property {readonly string[]} [instances] a morph's renamed instances in its genome (0064)
  */
 
 /**
@@ -41,8 +42,8 @@ const CHANNELS = 2;
  * @property {number} [to] the track frame after the last wanted, the track's end when omitted
  * @property {AbortSignal} [signal] checked before each chunk
  * @property {(done: number, total: number, step: string) => void} [progress] before each chunk
- * @property {(genome: Genome) => readonly string[]} [voices] limits each section's render to
- *   the voices this gives for its genome, as a stem does; every voice when omitted
+ * @property {(section: PlannedSection) => readonly string[]} [voices] limits each section's
+ *   render to the voices this gives for it, as a stem does; every voice when omitted
  */
 
 /** @param {number} seconds */
@@ -156,7 +157,7 @@ export async function* mixTrack(plan, options = {}) {
     const { genome, seed, offset, duration, samples } = section;
     const rendered = renderChunks(
       genome,
-      { seed, offset, duration, samples, ...(voices && { voices: voices(genome) }) },
+      { seed, offset, duration, samples, ...(voices && { voices: voices(section) }) },
       {
         chunkSeconds,
         from: from - start,

@@ -15,6 +15,7 @@ import { CHUNK_SECONDS } from "../../src/engine/chunk-windows.js";
 import { CROSSFADE_LAW } from "../../src/engine/crossfade.js";
 import { ENGINE_VERSION } from "../../src/engine/engine-version.js";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
+import { MORPH_HANDOVER } from "../../src/engine/morph.js";
 import { requireGenome } from "../../src/engine/validate-genome.js";
 import { addCandidate, putGenome } from "../../src/server/generation-store.js";
 import { genomeHash } from "../../src/server/genome-hash.js";
@@ -219,6 +220,57 @@ test("a track renders from its route, previews as MP3, exports, and re-renders f
     false,
   );
   expect(listTrackExports(server.store, third.id)).toEqual([]);
+});
+
+test("a morph renders as the outgoing genome moving into the next, and one that can't falls back", async () => {
+  const studio = await setup();
+  const { ok, server, track, vibe } = studio;
+  const [same, other] = seedSketches(studio, vibe);
+  // A sketch into itself morphs; into a sketch in another key it plays as a crossfade (0064).
+  const arrangement = {
+    ...emptyArrangement(),
+    sections: [
+      { sketchId: same?.id, offset: 0, seconds: 16 },
+      { sketchId: same?.id, offset: 30, seconds: 16 },
+      { sketchId: other?.id, offset: 0, seconds: 16 },
+    ],
+    transitions: [
+      { kind: "morph", seconds: 8, curve: "smooth" },
+      { kind: "morph", seconds: 8, curve: "smooth" },
+    ],
+  };
+  const revision = await ok("POST", `/api/tracks/${track.id}/revisions`, {
+    arrangement,
+    note: "morphs",
+  });
+  const rendered = await runJob(studio, `/api/tracks/${track.id}/render`, {
+    revisionId: revision.id,
+  });
+  const manifest = JSON.parse(
+    await readFile(
+      join(server.paths.trackRenders, String(track.id), rendered.result.key, "manifest.json"),
+      "utf8",
+    ),
+  );
+  expect(manifest.transitions).toEqual([
+    { kind: "morph", seconds: MORPH_HANDOVER, morphSeconds: 8, curve: "smooth" },
+    { kind: "crossfade", seconds: 8 },
+  ]);
+  // The morph's incoming section renders from the handover, 4 s into the transition.
+  expect(manifest.sections.map((/** @type {any} */ s) => [s.offset, s.duration])).toEqual([
+    [0, 16],
+    [34, 12],
+    [0, 16],
+  ]);
+  expect(manifest.frames).toBe((16 + 16 + 16 - 8 - 8) * 48000);
+  const temp = await mkdtemp(join(server.paths.trackRenders, "rerender-"));
+  try {
+    expect(await rerenderTrack(manifest, { tempDir: temp })).toEqual({
+      pcmSha256: manifest.pcmSha256,
+    });
+  } finally {
+    await rm(temp, { recursive: true });
+  }
 });
 
 test("an export with stems writes a float WAV per voice id at the mix's gain, listed with its hash", async () => {

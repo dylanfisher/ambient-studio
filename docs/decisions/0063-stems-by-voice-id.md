@@ -2,7 +2,8 @@
 
 - **Date:** 2026-11-07
 - **Status:** accepted; provisional: owner to confirm stems as 32-bit float WAV, the export with
-  stems as one folder, and the stem file names. Amends
+  stems as one folder, and the stem file names; amended by
+  [0064](0064-morph-transitions.md) (a morph's instances join their voice's stem). Amends
   [0062](0062-track-render-and-export.md) (an export can write stems)
 
 ## Context
@@ -92,3 +93,16 @@ voice ids.
 - A voice id renamed between two sketches makes two stems; the stems follow ids, not sound.
 - Tests render a 7 s track for the sum, the silence, the unclipped sample and the cancel, and an
   18 s track of two sections through the route, about 30 s under `--low`.
+
+## Amendments
+
+- 2026-11-07: from step 6e ([0064](0064-morph-transitions.md)). `stemOf` is now `stemsOf`,
+  over a section rather than an id: a morph lists the incoming voices it renamed to
+  `<id>--in` (`MORPH_SUFFIX`) in its section's `instances`, carried in the manifest and the
+  planned section, and each listed instance joins `voiceOfInstance` of its id, the suffix
+  stripped; every other voice, a sketch's own `x--in` included, keeps its own stem.
+  `mixTrack`'s `voices` takes the planned section instead of its genome.
+  `test/server/render-stem.test.js` holds a morph track whose renamed drone plays in the drone's
+  stem, the stems summing to the mix within the tolerance, and a sketch's own `drone--in` beside
+  `drone` keeping its stem. The timeline's keys table holds this step's V beside 6e's M (morph)
+  and K (curve).

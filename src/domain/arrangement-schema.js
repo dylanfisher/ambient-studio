@@ -2,6 +2,7 @@
 // a section and a transition hold are descriptors, read by `validateArrangement` and by the
 // timeline page's fields. Stored as a track revision's JSON, every key present.
 /** @import { NumberDescriptor } from "../engine/descriptor.js" */
+/** @import { Curve } from "../engine/trajectory.js" */
 import { number } from "../engine/descriptor.js";
 import { MAX_DURATION } from "../engine/timeline.js";
 
@@ -21,8 +22,17 @@ export const ARRANGEMENT_KEY = Object.freeze({
   proposal: "proposal",
 });
 
-/** How one section passes to the next. 6e adds the morph. */
-export const TRANSITION_KIND = Object.freeze({ crossfade: "crossfade" });
+/**
+ * How one section passes to the next: a crossfade of the two, or a morph of the first into the
+ * second (decision 0064), which falls back to a crossfade when the two can't morph.
+ */
+export const TRANSITION_KIND = Object.freeze({ crossfade: "crossfade", morph: "morph" });
+
+/**
+ * A new morph's curve: no corner where it starts or ends.
+ * @type {Curve}
+ */
+export const MORPH_CURVE = "smooth";
 
 /**
  * The track length the owner asks for, from 3 to 20 minutes; null on a hand-made track.
@@ -81,8 +91,11 @@ export const TRANSITION_SECONDS = number({
   description: "how long the transition overlaps its two sections",
 });
 
-/** A transition's keys. */
-export const TRANSITION_KEYS = Object.freeze(["kind", "seconds"]);
+/** A transition's keys by its kind: a morph also names the curve its parameters move by. */
+export const TRANSITION_KEYS = Object.freeze({
+  [TRANSITION_KIND.crossfade]: Object.freeze(["kind", "seconds"]),
+  [TRANSITION_KIND.morph]: Object.freeze(["kind", "seconds", "curve"]),
+});
 
 /**
  * @typedef {object} Section
@@ -95,6 +108,7 @@ export const TRANSITION_KEYS = Object.freeze(["kind", "seconds"]);
  * @typedef {object} Transition
  * @property {string} kind a `TRANSITION_KIND` value
  * @property {number} seconds
+ * @property {string} [curve] a morph's: one of 0007's `CURVES`
  */
 
 /**

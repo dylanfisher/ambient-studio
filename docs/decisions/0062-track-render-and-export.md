@@ -3,7 +3,9 @@
 - **Date:** 2026-11-07
 - **Status:** accepted; provisional: owner to confirm the track's own fades, the chunk length,
   keeping one cached render per track, and the export folder's name; amended by
-  [0063](0063-stems-by-voice-id.md) (an export can write stems). Amends
+  [0063](0063-stems-by-voice-id.md) (an export can write stems) and
+  [0064](0064-morph-transitions.md) (morphs: section windows, the manifest's transitions, the
+  cost). Amends
   [0010](0010-event-windows-control-grid-memory.md) (a track renders as several contexts),
   [0015](0015-export-sidecar-json.md) (the track manifest),
   [0016](0016-render-speed-bench.md) (`--track`), [0019](0019-config-file-and-paths.md) (two
@@ -206,3 +208,11 @@ the 20-minute one's. No morph or lane yet: 6e and 6f add them to the case.
   float WAV per voice id into the same folder, lists each in the manifest's `stems` with its
   hash, and is logged as `stems` (0063). `mixTrack` takes `voices`, and `renderChunks` yields
   zeros without a context when `voices` is empty.
+- 2026-11-07: from step 6e ([0064](0064-morph-transitions.md)). A transition may be a morph.
+  `sectionGenome` returns the morph's genome for the section a morph leaves, `sectionWindow`
+  starts the section it enters at the morph's 4 s handover (`MORPH_HANDOVER`), and
+  `renderedTransition` records a morph in the manifest as `{kind: "morph", seconds: 4,
+  morphSeconds, curve}`, `seconds` being the crossfade the mix renders, so `mixTrack`,
+  `recipePlan`, the seam preview and `rerenderTrack` are unchanged. A morph that falls back is
+  recorded as its crossfade. `trackCost` reads both, so a morph's peak is the morph genome's cost
+  plus the incoming section's. The bench's first transition is now a morph.

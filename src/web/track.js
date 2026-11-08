@@ -10,8 +10,15 @@
 /** @import { JobStatus } from "./job-progress.js" */
 /** @import { TimelineAction } from "./timeline-keys.js" */
 /** @import { TrackCost } from "../domain/track-cost.js" */
+/** @import { Curve } from "../engine/trajectory.js" */
 import { arrangementLength } from "../domain/arrangement-length.js";
-import { SECTION_FIELDS, SECTION_KEY, TRANSITION_SECONDS } from "../domain/arrangement-schema.js";
+import {
+  SECTION_FIELDS,
+  SECTION_KEY,
+  TRANSITION_KIND,
+  TRANSITION_SECONDS,
+} from "../domain/arrangement-schema.js";
+import { sectionMorph } from "../domain/section-genome.js";
 import { validateArrangement } from "../domain/validate-arrangement.js";
 import { getJson, jobPath, postJson, startJob, trackPath } from "./api.js";
 import { cloneTemplate } from "./clone-template.js";
@@ -30,6 +37,7 @@ import {
   addSection,
   dragEdge,
   moveSection,
+  nextCurve,
   removeSection,
   SECTION_STEP,
   setSection,
@@ -37,12 +45,14 @@ import {
   stepSection,
   stepTransition,
   TRANSITION_STEP,
+  toggleMorph,
   transitionOf,
 } from "./timeline-edits.js";
 import { bindTimelineKeys, TIMELINE_KEYS } from "./timeline-keys.js";
 import { blockText, sectionCount, timelineLayout } from "./timeline-layout.js";
 import { drawTimeline } from "./timeline-view.js";
 import { stemsText, trackRenderText } from "./track-render-text.js";
+import { curveWords, transitionText } from "./transition-text.js";
 
 const status = statusLine();
 const page = elementsById({
@@ -122,7 +132,7 @@ const trackId = Number(idText);
  * @property {{ id: number, name: string }} vibe
  * @property {{ id: number, arrangement: Arrangement, note: string, length: number, createdAt: number }[]} revisions
  *   oldest first
- * @property {{ id: number, candidateId: number, intent: string | null, notes: string, tags: string[], duration: number }[]} sketches
+ * @property {{ id: number, candidateId: number, intent: string | null, notes: string, tags: string[], duration: number, genome: unknown }[]} sketches
  */
 
 /** @type {TrackView | null} */
@@ -277,16 +287,36 @@ function draw() {
   page.fadeField.hidden = fade === null;
   buttons.fadeShorter.disabled = fade === null;
   buttons.fadeLonger.disabled = fade === null;
-  if (fade === null) {
+  buttons.morph.disabled = fade === null;
+  const transition = fade === null ? undefined : arrangement.transitions[fade];
+  const morphing = transition?.kind === TRANSITION_KIND.morph;
+  buttons.curve.disabled = !morphing;
+  label(buttons.morph, morphing ? "Make it a crossfade" : "Make it a morph");
+  label(
+    buttons.curve,
+    morphing ? `Curve: ${curveWords(/** @type {Curve} */ (transition.curve))}` : "Curve",
+  );
+  if (fade === null || transition === undefined) {
     page.fadeLine.textContent = "No crossfade: the track has one section.";
   } else {
-    fill(
-      page.fadeInput,
-      /** @type {{ seconds: number }} */ (arrangement.transitions[fade]).seconds,
-    );
-    page.fadeLine.textContent = `The crossfade from section ${fade + 1} into section ${fade + 2}.`;
+    fill(page.fadeInput, transition.seconds);
+    // A morph is checked against both sketches' genomes only once the timeline is valid.
+    const morph = errors.length === 0 ? sectionMorph(arrangement, fade, sketchGenomes()) : null;
+    page.fadeLine.textContent = transitionText(fade, transition, morph);
   }
 }
+
+/**
+ * Puts `words` on a key button, before the key it shows.
+ * @param {HTMLButtonElement} button
+ * @param {string} words
+ */
+function label(button, words) {
+  button.firstChild?.replaceWith(document.createTextNode(words));
+}
+
+/** Each sketch's genome, by sketch id, as `sectionMorph` reads them. */
+const sketchGenomes = () => new Map((view?.sketches ?? []).map(({ id, genome }) => [id, genome]));
 
 /**
  * Puts a new arrangement on the timeline.
@@ -320,12 +350,19 @@ function onMove(step) {
   edit(moved.arrangement, moved.index);
 }
 
-/** @param {number} steps */
-const onFade = (steps) =>
+/**
+ * Runs `change` on the chosen section's transition, when there is one.
+ * @param {(arrangement: Arrangement, index: number) => Arrangement} change
+ */
+const onTransition = (change) =>
   onSelected((arrangement, index) => {
     const fade = transitionOf(arrangement, index);
-    return fade === null ? arrangement : stepTransition(arrangement, fade, steps);
+    return fade === null ? arrangement : change(arrangement, fade);
   });
+
+/** @param {number} steps */
+const onFade = (steps) =>
+  onTransition((arrangement, fade) => stepTransition(arrangement, fade, steps));
 
 /**
  * A field's number, or a throw naming the field.
@@ -677,6 +714,8 @@ const actions = /** @type {Record<TimelineAction, () => void>} */ ({
     onSelected((arrangement, index) => stepSection(arrangement, index, SECTION_KEY.offset, 1)),
   fadeShorter: () => onFade(-1),
   fadeLonger: () => onFade(1),
+  morph: () => onTransition(toggleMorph),
+  curve: () => onTransition(nextCurve),
   add,
   remove: () => onSelected((arrangement, index) => removeSection(arrangement, index)),
   play: () => void status.run(playSection),

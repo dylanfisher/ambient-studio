@@ -187,3 +187,4 @@ literal "pointermove" | files src/web/references.js src/web/timeline-view.js | t
 literal "lower" | files src/web/target-fields.js src/web/timeline-view.js | the lower bound of a feature range in target-fields, and the lower row of timeline blocks
 literal "upper" | files src/web/target-fields.js src/web/timeline-view.js | the upper bound of a feature range in target-fields, and the upper row of timeline blocks
 literal "beforeunload" | files src/web/quick-ab.js src/web/track.js | the window event each page with unsaved work adds unloadGuard to: Quick A/B's pending rating and the timeline's unsaved edit
+literal "smooth" | files src/domain/arrangement-schema.js src/domain/reference-words.js | the trajectory curve a new morph takes in arrangement-schema, a word describing a reference recording's texture in reference-words

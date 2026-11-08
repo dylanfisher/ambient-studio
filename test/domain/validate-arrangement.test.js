@@ -74,6 +74,15 @@ describe("validateArrangement", () => {
     expect(TRANSITION_SECONDS.default).toBe(8);
   });
 
+  test("a morph with its curve passes, and its length counts as a crossfade's", () => {
+    const morphed = changed(
+      (a) => (a.transitions[1] = { kind: "morph", seconds: 10, curve: "late" }),
+    );
+    expect(TRANSITION_KIND.morph).toBe("morph");
+    expect(validateArrangement(morphed, context)).toEqual({ ok: true, arrangement: morphed });
+    expect(arrangementLength(morphed)).toBe(arrangementLength(VALID));
+  });
+
   /** @type {[string, (copy: any) => void, string, RegExp][]} */
   const refused = [
     [
@@ -150,6 +159,30 @@ describe("validateArrangement", () => {
       (a) => delete a.transitions[1].seconds,
       "$.transitions[1].seconds",
       /missing/,
+    ],
+    [
+      "a morph with no curve",
+      (a) => (a.transitions[1] = { kind: "morph", seconds: 10 }),
+      "$.transitions[1].curve",
+      /missing/,
+    ],
+    [
+      "a morph with an unknown curve",
+      (a) => (a.transitions[1] = { kind: "morph", seconds: 10, curve: "steep" }),
+      "$.transitions[1].curve",
+      /"smooth"/,
+    ],
+    [
+      "a curve on a crossfade",
+      (a) => (a.transitions[1].curve = "smooth"),
+      "$.transitions[1].curve",
+      /unknown key/,
+    ],
+    [
+      "a morph too short to move before it hands over",
+      (a) => (a.transitions[1] = { kind: "morph", seconds: 7, curve: "linear" }),
+      "$.transitions[1].seconds",
+      /a morph must be at least 8 s/,
     ],
     ["an unknown key", (a) => (a.tempo = 90), "$.tempo", /unknown key/],
     [

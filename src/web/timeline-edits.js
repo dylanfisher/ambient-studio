@@ -4,11 +4,14 @@
 // shows the errors and Save waits for the owner to fix them, rather than an edit changing a
 // value the owner didn't touch.
 /** @import { Arrangement, Section } from "../domain/arrangement-schema.js" */
+/** @import { Curve } from "../engine/trajectory.js" */
 import {
+  MORPH_CURVE,
   SECTION_FIELDS,
   TRANSITION_KIND,
   TRANSITION_SECONDS,
 } from "../domain/arrangement-schema.js";
+import { CURVES } from "../engine/trajectory.js";
 
 /** The edges of a block a drag moves. */
 export const EDGE = Object.freeze({ start: "start", end: "end" });
@@ -185,4 +188,41 @@ export function stepTransition(arrangement, index, steps) {
   const now = /** @type {{ seconds: number }} */ (arrangement.transitions[index]).seconds;
   const seconds = Math.max(TRANSITION_SECONDS.min, tenths(now + steps * TRANSITION_STEP));
   return setTransition(arrangement, index, seconds);
+}
+
+/**
+ * Turns transition `index` from a crossfade into a morph with `MORPH_CURVE`, or back, keeping
+ * its seconds. A morph shorter than `MORPH_LEAST` shows as an error rather than growing.
+ * @param {Arrangement} arrangement
+ * @param {number} index
+ * @returns {Arrangement}
+ */
+export const toggleMorph = (arrangement, index) => ({
+  ...arrangement,
+  transitions: arrangement.transitions.map((transition, i) => {
+    if (i !== index) return transition;
+    const { seconds } = transition;
+    return transition.kind === TRANSITION_KIND.morph
+      ? { kind: TRANSITION_KIND.crossfade, seconds }
+      : { kind: TRANSITION_KIND.morph, seconds, curve: MORPH_CURVE };
+  }),
+});
+
+/**
+ * Gives morph `index` the next of 0007's curves, in their order; a crossfade has no curve and
+ * stays as it is.
+ * @param {Arrangement} arrangement
+ * @param {number} index
+ * @returns {Arrangement}
+ */
+export function nextCurve(arrangement, index) {
+  const names = /** @type {Curve[]} */ (Object.keys(CURVES));
+  return {
+    ...arrangement,
+    transitions: arrangement.transitions.map((transition, i) => {
+      if (i !== index || transition.kind !== TRANSITION_KIND.morph) return transition;
+      const at = names.indexOf(/** @type {Curve} */ (transition.curve));
+      return { ...transition, curve: /** @type {Curve} */ (names[(at + 1) % names.length]) };
+    }),
+  };
 }

@@ -99,13 +99,14 @@ const revisionView = (revision) => ({
 
 /**
  * The vibe's live sketches as the timeline places them, oldest first, each with its candidate's
- * intent, its genome's duration and its excerpt when one is cached.
+ * intent, its genome and the genome's duration, and its excerpt when one is cached. The page
+ * reads the genomes to say why a morph would play as a crossfade (0064).
  * @param {App} app
  * @param {number} vibeId
  */
 function trackMaterial(app, vibeId) {
   return listSketches(app.store, vibeId).map((sketch) => {
-    const { candidate, duration } = sketchParts(app.store, sketch);
+    const { candidate, genome, duration } = sketchParts(app.store, sketch);
     const excerpt = currentExcerpt(app.store, app.paths.renderCache, candidate);
     return {
       id: sketch.id,
@@ -114,6 +115,7 @@ function trackMaterial(app, vibeId) {
       notes: sketch.notes,
       tags: sketch.tags,
       duration,
+      genome,
       excerpt: excerpt && {
         url: `/audio/${excerpt.id}`,
         offset: excerpt.offset,

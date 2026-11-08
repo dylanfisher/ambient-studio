@@ -16,6 +16,8 @@ export const TIMELINE_KEYS = Object.freeze({
   startLater: "BracketRight",
   fadeShorter: "Semicolon",
   fadeLonger: "Quote",
+  morph: "KeyM",
+  curve: "KeyK",
   add: "KeyA",
   remove: "KeyX",
   play: "Space",
