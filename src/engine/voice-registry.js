@@ -7,6 +7,7 @@
 /** @import { MacroRow } from "./macro-table.js" */
 /** @import { VoiceSetup, VoiceWindow } from "./render.js" */
 import { bell } from "./bell.js";
+import { chant } from "./chant.js";
 import { isRecording } from "./descriptor.js";
 import { drone } from "./drone.js";
 import { fieldRecording } from "./field-recording.js";
@@ -42,7 +43,7 @@ import { pad } from "./pad.js";
  * a list built while this module loads would hold it before it exists.
  * @returns {VoiceType[]}
  */
-const builtIn = () => [bell, drone, fieldRecording, granularCloud, noiseBed, pad];
+const builtIn = () => [bell, chant, drone, fieldRecording, granularCloud, noiseBed, pad];
 
 /** @type {Map<string, VoiceType> | undefined} */
 let registered;

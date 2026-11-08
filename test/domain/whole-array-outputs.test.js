@@ -23,9 +23,16 @@ describe("the whole-array functions give the outputs recorded before streaming",
   });
 
   // Renders differ by CPU, so the golden windows count only on the machine that recorded them,
-  // as the golden hashes do (0009).
+  // as the golden hashes do (0009). A golden added after the recording has no outputs from the
+  // code before streaming to compare with.
   const sameMachine = env.platform === fixture.golden.platform && env.cpu === fixture.golden.cpu;
-  test.skipIf(!sameMachine).each(goldenGenomes())(
+  const recorded = goldenGenomes().filter(({ name }) =>
+    Object.hasOwn(fixture.golden.windows, `${name}/start`),
+  );
+  test("every recorded golden is still a golden", () => {
+    expect(2 * recorded.length).toBe(Object.keys(fixture.golden.windows).length);
+  });
+  test.skipIf(!sameMachine).each(recorded)(
     "on $name's golden windows",
     async ({ name, genome }) => {
       for (const window of goldenWindows(genome, "raw")) {

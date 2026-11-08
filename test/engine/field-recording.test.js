@@ -3,7 +3,6 @@
 // decodes them.
 /** @import { Genome } from "../../src/engine/genome-schema.js" */
 /** @import { Recording, Samples } from "../../src/engine/render.js" */
-import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setImmediate } from "node:timers/promises";
@@ -18,7 +17,12 @@ import { GLOBAL_PARAMS } from "../../src/engine/genome-schema.js";
 import recordingGenome from "../../src/engine/genomes/field-recording.json" with { type: "json" };
 import { randomGenome } from "../../src/engine/random-genome.js";
 import { requireGenome, validateGenome } from "../../src/engine/validate-genome.js";
-import { usesRecordings, voiceTypeIds } from "../../src/engine/voice-registry.js";
+import {
+  registerVoice,
+  unregisterVoice,
+  usesRecordings,
+  voiceTypeIds,
+} from "../../src/engine/voice-registry.js";
 import { decodeRecording } from "../../src/server/load-samples.js";
 import { renderOffline } from "../../src/server/render-offline.js";
 import { expectExcerptMatches, renderUpFront, rms } from "../support/compare-renders.js";
@@ -71,24 +75,20 @@ describe("the field-recording voice", () => {
     expect(voiceTypeIds().filter(usesRecordings)).toEqual([fieldRecording.type]);
   });
 
-  test("randomGenome never draws it, and every seed draws what it drew before the voice", () => {
-    // SHA-256 of canonicalGenome(randomGenome(seed)) + "\n" for seeds 0–199, measured on main
-    // before the voice was registered.
-    const before = [
-      { options: {}, sha256: "1608f7e895b214790d2e58b0a3bc46f656911bf60968ded6fb4a4da874bfbc9a" },
-      {
-        options: { costCap: Infinity },
-        sha256: "c55970007a1c0b67ec0eb6516d4add022599973c3f69b216e61e0294b4d3eadd",
-      },
-    ];
-    for (const { options, sha256 } of before) {
-      const hash = createHash("sha256");
-      for (let seed = 0; seed < 200; seed++) {
-        const genome = randomGenome(seed, options);
-        expect(genome.voices.some((v) => v.type === fieldRecording.type)).toBe(false);
-        hash.update(`${canonicalGenome(genome)}\n`);
-      }
-      expect(hash.digest("hex"), JSON.stringify(options)).toBe(sha256);
+  test("randomGenome never draws it, and every seed draws what it draws without the voice", () => {
+    const options = [{}, { costCap: Infinity }];
+    /** @param {{ costCap?: number }} option */
+    const draws = (option) =>
+      Array.from({ length: 200 }, (_, seed) => canonicalGenome(randomGenome(seed, option)));
+    const withVoice = options.map(draws);
+    for (const texts of withVoice) {
+      for (const text of texts) expect(text).not.toContain(`"type":"${fieldRecording.type}"`);
+    }
+    unregisterVoice(fieldRecording.type);
+    try {
+      expect(options.map(draws)).toEqual(withVoice);
+    } finally {
+      registerVoice(fieldRecording);
     }
   });
 

@@ -1,7 +1,8 @@
 # 0014. Grains and noise are computed in JS into one buffer a window, with grains capped at 30 a second
 
 - **Date:** 2026-11-06
-- **Status:** accepted; provisional: owner to confirm
+- **Status:** accepted; provisional: owner to confirm; amended by [0069](0069-chant-voice.md) (a
+  second JS-mixed voice)
 
 ## Context
 
@@ -162,3 +163,10 @@ up-front scheduling render identical samples for both.
   re-measures, including `SWEPT_FILTER_WEIGHT`.
 - A sampled or resampled source (another voice, the sample layer) can replace the generated tone
   without changing how grains are scheduled or mixed.
+
+## Amendments
+
+- 2026-11-08: from step CV.1 ([0069](0069-chant-voice.md)), provisional: owner to confirm. The chant
+  is a second voice mixed in JS into one stereo buffer a window, played through `playWindowBuffer`
+  as the noise bed's is. Its cost counts the JS the way this record measured the noise bed's,
+  against a voice of known cost in the same process: 0.9 node-seconds a partial and 23 a singer.

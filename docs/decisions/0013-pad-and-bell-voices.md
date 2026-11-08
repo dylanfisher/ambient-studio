@@ -1,7 +1,8 @@
 # 0013. The pad plays oscillator chords on a grid; bell notes are computed into buffers
 
 - **Date:** 2026-11-06
-- **Status:** accepted; provisional: owner to confirm
+- **Status:** accepted; provisional: owner to confirm; amended by [0069](0069-chant-voice.md) (the
+  chant shares the drone's root snapping)
 
 ## Context
 
@@ -159,3 +160,6 @@ Schema text: pad 247 characters, bell 268; the whole text is 2,462 of 3,000.
   collection; the panning, envelope values and costs are in
   [0010](0010-event-windows-control-grid-memory.md)'s amendment of this date. The densest pad
   now costs 37.6, 551.6 beside the longest reverb. `ENGINE_VERSION` is 2.
+- 2026-11-08: from step CV.1 ([0069](0069-chant-voice.md)), provisional: owner to confirm. The chant
+  voice snaps its root with the drone's `droneFundamental`, so its `root` takes the drone's 33–135
+  Hz register and description from `drone.params.root`.
