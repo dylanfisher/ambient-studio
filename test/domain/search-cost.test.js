@@ -5,6 +5,7 @@ import {
   BENCH_SECONDS,
   fillCostText,
   medianTimings,
+  optimizerTestCostText,
   searchCostText,
   searchSeconds,
   steerCostText,
@@ -54,5 +55,15 @@ test("the map's fill confirm gives both arms' time, and states the model request
   );
   expect(fillCostText(20, 5, seconds, { measured: false, control: false })).toBe(
     "Fill the map with 20 steps? Each nudges a candidate beside an empty cell, renders the excerpt and places it on the map. 5 steps of them ask the language model for a variation, 5 requests to it, which wait their turn and add their own time. That is about 1 minute, at 2 s to render and 0.5 s to analyze each, from the bench, since no search has run yet.",
+  );
+});
+
+test("the optimizer test's confirm counts every brief's runs and both arms of each", () => {
+  // 2 briefs × 3 runs × 2 arms × 96 = 1152 evaluations at 2.5 s: 48 minutes.
+  expect(optimizerTestCostText(2, 3, 96, { render: 2, embed: 0.5 }, { measured: true })).toBe(
+    "Run the optimizer test on 2 briefs? Each brief gets 3 searches of 96 evaluations, each followed by 96 medium nudges of the same start as its control, 1152 evaluations in all. Each renders an excerpt, analyzes its sound and scores it by your taste model; nothing is sent to the language model. That is about 48 minutes, at 2 s to render and 0.5 s to analyze each, the medians of the last search.",
+  );
+  expect(optimizerTestCostText(1, 3, 10, BENCH_SECONDS, { measured: false })).toMatch(
+    /^Run the optimizer test on 1 brief\? .* 60 evaluations in all\. .*from the bench/,
   );
 });

@@ -2,6 +2,7 @@
 import { afterEach, expect, test } from "vitest";
 import {
   addEvaluation,
+  EVALUATION_KIND,
   getEvaluation,
   listEvaluations,
 } from "../../src/server/evaluation-store.js";
@@ -32,4 +33,19 @@ test("the evaluations not removed are listed oldest first", async () => {
   const third = addEvaluation(made.store, { params: { count: 3 }, report: { n: 3 } });
   markRemoved(made.store, TABLE.evaluations, removed.id, "a test run");
   expect(listEvaluations(made.store)).toEqual([first, third]);
+});
+
+test("an optimizer test is listed by its kind, apart from the generation runs", async () => {
+  const made = await tempStore();
+  cleanups.push(made.remove);
+  const run = addEvaluation(made.store, { params: { count: 1 }, report: { n: 1 } });
+  const optimizer = addEvaluation(made.store, {
+    params: { kind: EVALUATION_KIND.optimizer, budget: 96 },
+    report: { vibes: [] },
+  });
+  expect(listEvaluations(made.store)).toEqual([run]);
+  expect(listEvaluations(made.store, EVALUATION_KIND.optimizer)).toEqual([optimizer]);
+  expect(getEvaluation(made.store, optimizer.id)).toBeUndefined();
+  expect(getEvaluation(made.store, optimizer.id, EVALUATION_KIND.optimizer)).toEqual(optimizer);
+  expect(getEvaluation(made.store, run.id, EVALUATION_KIND.optimizer)).toBeUndefined();
 });

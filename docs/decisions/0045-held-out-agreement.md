@@ -3,7 +3,9 @@
 - **Date:** 2026-11-07
 - **Status:** accepted; provisional: owner to confirm the minimum once there are A/B choices to
   test. Amends [0044](0044-bayesian-bradley-terry.md) (`modelPlan` takes the hyperparameters;
-  the features-only baseline keeps its embeddings file).
+  the features-only baseline keeps its embeddings file). Amended by
+  [0059](0059-optimizer-evaluation.md) (the optimizer test reads the agreement's lower bound,
+  and its reports go in `evaluations`).
 
 ## Context
 
@@ -115,3 +117,16 @@ the model and each baseline as "71% of 41, probably between 50% and 86%".
 - 0044's prior strengths can now be compared by agreement. Changing one changes every key and
   refits.
 - 5j amends this record.
+
+## Amendments
+
+- 2026-11-07: step 5j reads this test's report. The optimizer test
+  ([0059](0059-optimizer-evaluation.md)) copies each brief's model agreement (`share`, `low`,
+  `high`, `scored`) and the report's `createdAt` into its own report when it runs, and counts
+  the taste model's comparison of a search with its control only when `low` is above 0.5. With
+  no report, or a brief below the minimum, the comparison reads "inconclusive: the model doesn't
+  yet beat chance on held-out pairs". This report stays a derived file. The optimizer test's
+  reports go in `evaluations`, which this record rejected for its own: they hold search runs
+  and the owner's spot-check pairs, which can't be rebuilt, and `params.kind` (`optimizer-test`)
+  tells them from the generation runs, with no new column, so no migration. `listEvaluations`
+  takes the kind, and the generation runs are the rows with none.

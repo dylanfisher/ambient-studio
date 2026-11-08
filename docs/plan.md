@@ -2066,7 +2066,16 @@ moved chain) is on main before 5e starts, and 5e builds on 5d's merge.
   axes say.
 - Breed two sketches and say whether the children sound like both.
 
-**Result:**
+**Result:** built on 2026-11-07 at `4f936b2`; the optimizer evaluation is inconclusive, waiting on
+data. The orchestrator moved on to phase 6, as 5j says.
+
+1. Every step, 5a–5j, is merged, and the gate passes (1,896 tests, the sidecar's pytest 95 passed
+   and 1 skipped). Acceptances 1, 2, 3, 6 and 7 are met by tests over fakes for omlx and the
+   sidecar; their owner runs are in the checks above.
+2. Acceptance 4 has no number yet: the studio holds 0 A/B ratings, so no vibe meets 4e's minimum,
+   no model has held-out agreement above chance, and the optimizer test has not been started. The
+   owner starts it from the Model test page and rates its spot-check pairs.
+3. Acceptance 5's coverage beside the nudges' waits on the owner choosing axes and starting a fill.
 
 ## Phase 6 — Track builder
 
@@ -3396,3 +3405,8 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   rates an excerpt asks for `measured`, which renders once per worker and copies the result.
   `rating-routes` drops from 46 s to 16 s, 57 s to 21 s under load; no test neared the 30 s
   timeout in the loaded runs. Rating tests still render on capture. The gate passes, 1862 tests.
+- 2026-11-07 — 5j merged (4f936b2): the optimizer test on the Model test page, 3 CMA runs plus a
+  control per vibe, 4 rank-matched pairs a run, the verdict rule on 4e's agreement, and a
+  spot-check mode in quick A/B whose ratings count only under the pair's stored order seed. A
+  cancelled test stores no report. Review passed; fixes added a cancel test, the order-seed match,
+  and a 404 for optimizer rows on the generation-run route. Phase 5's Result written. 1,896 tests.

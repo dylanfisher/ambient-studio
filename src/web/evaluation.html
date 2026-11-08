@@ -30,7 +30,8 @@
           sends every one that misses one of the brief's feature ranges back to the model twice:
           once with its measurements and once without, to find out whether hearing the
           measurements helps. The taste model test, further down, checks something else: how
-          well the studio has learned your own A/B choices.
+          well the studio has learned your own A/B choices, and the optimizer test checks
+          whether a search scored by that model finds better candidates than plain nudges.
         </p>
         <p id="status" class="status" role="status" aria-live="polite">Loading…</p>
       </div>
@@ -95,6 +96,37 @@
         <div id="tasteJobBox" class="stack"></div>
         <p id="tasteNone" class="muted small">No taste model test has finished yet.</p>
         <div id="tasteResults" class="grid"></div>
+      </section>
+
+      <section class="card stack" aria-labelledby="optimizer-heading">
+        <h2 id="optimizer-heading">Test the optimizer</h2>
+        <p class="small muted">
+          For each brief you tick, this runs 3 searches, each scored by your taste model, and
+          after each one the same number of plain medium nudges of the same start as a control.
+          It then compares the two bests of each search, by the model and by your ears. The
+          model's comparison counts only once the taste model test above finds the model picks
+          your choices more often than chance. For your ears it queues 12 blind pairs per brief,
+          4 per search, in Quick A/B: you choose without knowing which side is which, and the
+          result needs 12 decided pairs. A brief needs a fitted taste model, and starts from the
+          candidates you name or, with the field empty, its best-ranked ones. It runs on this
+          computer's processor and never uses the shared model, but renders every point, so it
+          takes from minutes to hours; the confirm says how long.
+        </p>
+        <fieldset class="stack">
+          <legend>Briefs to test</legend>
+          <div id="optimizerChoices" class="stack"></div>
+        </fieldset>
+        <div class="row">
+          <label class="small"
+            >Evaluations per search
+            <input id="optimizerBudget" type="number" min="1" step="1" size="4" title="How many points each search renders and scores, and how many nudges its control makes. More finds better points but takes longer; the confirm says how long." />
+          </label>
+          <button id="optimizerButton" class="button primary" type="button" title="Asks you to confirm, then starts the optimizer test on the ticked briefs. It first says how many excerpts that renders and about how long it takes.">Start the optimizer test</button>
+          <span id="optimizerWhen" class="small muted"></span>
+        </div>
+        <div id="optimizerJobBox" class="stack"></div>
+        <p id="optimizerNone" class="muted small">No optimizer test has finished yet.</p>
+        <div id="optimizerResults" class="grid"></div>
       </section>
 
       <div class="columns">
@@ -174,6 +206,26 @@
         <p class="small" data-part="summary"></p>
         <dl class="facts small" data-part="facts"></dl>
       </div>
+    </template>
+    <template id="optimizer-choice">
+      <div class="row small">
+        <label class="check"><input data-part="input" type="checkbox" title="Includes this brief in the next optimizer test." /> <span data-part="name">brief</span></label>
+        <label
+          >Start from
+          <input data-part="bases" type="text" size="14" placeholder="its best-ranked" title="Up to 3 candidate numbers to start the searches from, such as 12, 15, in sessions still open. Left empty, the searches start from the brief's best-ranked candidates." />
+        </label>
+      </div>
+    </template>
+    <template id="optimizer-card">
+      <div class="card stack">
+        <h3 data-part="title">brief</h3>
+        <p class="small" data-part="summary"></p>
+        <dl class="facts small" data-part="facts"></dl>
+        <div class="row" data-part="links"></div>
+      </div>
+    </template>
+    <template id="optimizer-spot-link">
+      <a class="button outline small" href="./quick-ab.html" title="Opens Quick A/B on a session with the optimizer test's pairs still to rate, neither side named.">Rate the blind pairs</a>
     </template>
     <template id="tally">
       <div class="card stack">

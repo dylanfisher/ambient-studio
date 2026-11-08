@@ -8,4 +8,6 @@ export const JOB_KIND = Object.freeze({
   embed: "embed",
   /** The fit job: every brief's taste model (0044). */
   fit: "fit",
+  /** The optimizer test: searches against their controls on the chosen briefs (0059). */
+  optimizerTest: "optimizer-test",
 });
