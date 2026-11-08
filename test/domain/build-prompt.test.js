@@ -536,3 +536,131 @@ describe("buildPrompt with references", () => {
     expect(tokens(revised)).toBeLessThan(BUDGET);
   });
 });
+
+// Breeding's crossover (decision 0058): two parents in one fresh first prompt.
+describe("buildPrompt with two parents", () => {
+  const parts = { notes, locks, examples: examples(2), budgetTokens: BUDGET, recordings: [] };
+  const parents = { a: colundiGenome, b: exampleGenome };
+  const references = [attached(11), attached(12)];
+  /** @param {ChatMessage[]} messages */
+  const user = (messages) => /** @type {ChatMessage} */ (messages[1]).content;
+  const sectionA = `Parent A:\n${canonicalGenome(colundiGenome)}`;
+  const sectionB = `Parent B:\n${canonicalGenome(exampleGenome)}`;
+
+  test("holds parent A then parent B after the examples, and asks for one child of both", () => {
+    const { messages, exampleIds, parentsTrimmed } = buildPrompt(revision, {
+      ...parts,
+      parents,
+    });
+    expect(exampleIds).toEqual([1, 2]);
+    expect(parentsTrimmed).toEqual([]);
+    const text = user(messages);
+    expect(text).toContain(`\n\n${sectionA}\n\n${sectionB}\n\n`);
+    expect(text.indexOf("Disliked:")).toBeLessThan(text.indexOf(sectionA));
+    expect(text).toMatch(
+      /Write one child of parents A and B for this vibe, taking parts from each, such as voices from one and settings from the other: keep the locked values exactly\.$/,
+    );
+    expect(text).not.toContain("Write one new genome");
+    expect(text).not.toContain("The base genome to vary");
+    // Everything before parent A is the plain first prompt's.
+    const plain = user(buildPrompt(revision, parts).messages);
+    expect(text.slice(0, text.indexOf(sectionA))).toBe(
+      plain.slice(0, plain.indexOf("Write one new genome")),
+    );
+  });
+
+  test("with no locks, the ask says nothing of them", () => {
+    const text = user(buildPrompt(revision, { ...parts, locks: [], parents }).messages);
+    expect(text).toMatch(/such as voices from one and settings from the other\.$/);
+  });
+
+  test("a prompt can't hold a base and two parents", () => {
+    const base = { genome: exampleGenome, direction: null };
+    expect(() => buildPrompt(revision, { ...parts, base, parents })).toThrow(
+      /^a prompt holds an explore's base or two parents, not both$/,
+    );
+  });
+
+  test("examples go first, then references, then parent B, then parent A", () => {
+    const all = { ...parts, references, parents };
+    /** @param {Partial<Parameters<typeof buildPrompt>[1]>} over */
+    const size = (over) =>
+      tokens(
+        buildPrompt(revision, { ...all, ...over, budgetTokens: Number.MAX_SAFE_INTEGER }).messages,
+      );
+
+    // Room for both parents, nothing else: the examples and references go first.
+    const both = size({ examples: [], references: [] });
+    expect(buildPrompt(revision, { ...all, budgetTokens: both })).toMatchObject({
+      exampleIds: [],
+      referenceIds: [],
+      parentsTrimmed: [],
+    });
+
+    // Room for less: parent B goes, and parent A is the base an explore would vary, with the
+    // references and examples that fit without B.
+    const aAlone = size({
+      examples: [],
+      references: [],
+      parents: null,
+      base: { genome: colundiGenome, direction: null },
+    });
+    expect(aAlone).toBeLessThan(both);
+    const withoutB = buildPrompt(revision, { ...all, budgetTokens: both - 1 });
+    expect(withoutB.parentsTrimmed).toEqual(["B"]);
+    const text = user(withoutB.messages);
+    expect(text).toContain(`The base genome to vary:\n${canonicalGenome(colundiGenome)}`);
+    expect(text).not.toContain(canonicalGenome(exampleGenome));
+    expect(text).not.toContain("Parent B");
+
+    // Room for neither: A goes too, and the prompt is the plain first prompt.
+    const trimmed = buildPrompt(revision, { ...all, budgetTokens: aAlone - 1 });
+    expect(trimmed.parentsTrimmed).toEqual(["B", "A"]);
+    expect(trimmed.messages).toEqual(
+      buildPrompt(revision, { ...parts, references, budgetTokens: aAlone - 1 }).messages,
+    );
+
+    const plain = size({ examples: [], references: [], parents: null });
+    expect(() => buildPrompt(revision, { ...all, budgetTokens: plain - 1 })).toThrow(
+      /^the prompt is about \d+ tokens with no examples and no parents, over the \d+-token budget/,
+    );
+  });
+
+  test("a prompt without parents is never marked trimmed", () => {
+    expect(buildPrompt(revision, parts).parentsTrimmed).toEqual([]);
+  });
+
+  test("a seed-sized vibe with two parents and six examples fits with room for its revision", () => {
+    const seedSized = {
+      name: "cold dorian drone and pad",
+      brief: "b".repeat(600),
+      constraints: full,
+      ranges: allRanges,
+    };
+    const { messages, exampleIds, parentsTrimmed } = buildPrompt(seedSized, {
+      notes: Array.from({ length: 12 }, () => "n".repeat(150)),
+      locks: [...locks, { path: "macros.space", value: 0.6 }],
+      examples: examples(6),
+      budgetTokens: BUDGET,
+      recordings: [],
+      parents,
+    });
+    expect(exampleIds).toHaveLength(6);
+    expect(parentsTrimmed).toEqual([]);
+    expect(user(messages)).toContain(`${sectionA}\n\n${sectionB}`);
+    // About 4,600 tokens: 0038's prompt with a second genome in place of the direction. The
+    // child's revision replays it untrimmed with an ask that misses every range (0036).
+    const misses = Object.keys(allRanges).map((name) => ({
+      path: `features.${name}`,
+      rule: "target",
+      message: `${name} is 0.9; the vibe asks for a value from 0.12 to 0.34`,
+    }));
+    const revised = followUp(
+      messages,
+      { intent: "a child", genome: colundiGenome },
+      revisionAsk({ locks, ranges: allRanges, features: MEASURED, misses }),
+    );
+    expect(tokens(messages)).toBeLessThan(BUDGET * 0.6);
+    expect(tokens(revised)).toBeLessThan(BUDGET * 0.75);
+  });
+});
