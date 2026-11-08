@@ -4,9 +4,11 @@
 // what is still saving or failed to save stays on screen until it is resolved, and leaving the
 // page asks first. With `&ear` in the address the page is in search-by-ear mode (0055): the
 // pairs come from the session's search by ear through `quick-ab-ear.js`, the order switch is
-// hidden and Stop ends the search.
+// hidden and Stop ends the search. With `&spot` it is in spot-check mode (0059): the pairs are
+// the session's from the optimizer test, through `quick-ab-spot.js`, and neither side is named.
 /** @import { PlayedTracker } from "./played-tracker.js" */
 /** @import { EarState } from "./quick-ab-ear.js" */
+/** @import { SpotState } from "./quick-ab-spot.js" */
 /** @import { QuickAbAction } from "./quick-ab-keys.js" */
 /** @import { Playable } from "./quick-ab-session.js" */
 import { EAR_IDLE_MS, EAR_PHASE } from "../domain/ear-settings.js";
@@ -24,6 +26,7 @@ import { createEarSession, NO_UNDO } from "./quick-ab-ear.js";
 import { bindQuickAbKeys, keyLabel, QUICK_AB_KEYS } from "./quick-ab-keys.js";
 import { ORDER_MODES } from "./quick-ab-order.js";
 import { createQuickAbSession, nameOf, PHASE, unloadGuard } from "./quick-ab-session.js";
+import { createSpotSession, NO_SPOT_UNDO, SPOT_NAMES } from "./quick-ab-spot.js";
 import { statusLine } from "./status-line.js";
 
 const [, , TIE, SKIP] = OUTCOMES;
@@ -41,6 +44,7 @@ const page = elementsById({
   orderModes: HTMLElement,
   pageTitle: HTMLElement,
   earHelp: HTMLElement,
+  spotHelp: HTMLElement,
   stopEar: HTMLButtonElement,
   progressLine: HTMLElement,
   saveLine: HTMLElement,
@@ -71,6 +75,7 @@ const idText = new URLSearchParams(location.search).get("id");
 if (idText === null) throw new Error("quick-ab.html needs ?id=<session id>");
 const sessionId = Number(idText);
 const earMode = new URLSearchParams(location.search).has("ear");
+const spotMode = !earMode && new URLSearchParams(location.search).has("spot");
 
 /** Each action's button, which shows its key and does what the key does. */
 const buttons = /** @type {Record<QuickAbAction, HTMLButtonElement>} */ (
@@ -131,8 +136,12 @@ const earSession = earMode
       onChange: render,
     })
   : null;
+const spotSession = spotMode
+  ? createSpotSession({ sessionId, now: () => performance.now(), onChange: render })
+  : null;
 const session =
   earSession ??
+  spotSession ??
   createQuickAbSession({
     sessionId,
     random: Math.random,
@@ -140,13 +149,19 @@ const session =
     onChange: render,
     onError: status.fail,
   });
-page.orderModes.hidden = earMode;
+page.orderModes.hidden = earMode || spotMode;
 page.earHelp.hidden = !earMode;
+page.spotHelp.hidden = !spotMode;
 page.stopEar.hidden = !earMode;
 if (earMode) {
   page.pageTitle.textContent = "Search by ear";
   buttons.undo.disabled = true;
   buttons.undo.title = NO_UNDO;
+}
+if (spotMode) {
+  page.pageTitle.textContent = "Spot check";
+  buttons.undo.disabled = true;
+  buttons.undo.title = NO_SPOT_UNDO;
 }
 
 /** @param {Side} side */
@@ -175,7 +190,8 @@ function wire(shown) {
     const side = sides[which];
     const candidate = shown[which];
     side.audio.pause();
-    side.name.textContent = nameOf(candidate.id);
+    // A spot check is blind: a candidate's number would say which arm made it.
+    side.name.textContent = spotMode ? SPOT_NAMES[which] : nameOf(candidate.id);
     side.audio.src = candidate.excerpt.url;
     const tracker = createPlayedTracker(candidate.excerpt.duration);
     side.tracker = tracker;
@@ -215,33 +231,38 @@ function render() {
   page.modeBest.title = view.bestAvailable ? BEST_TITLE : NO_BEST_TITLE;
 
   const left = view.remaining;
-  // Only the search-by-ear session's view has it.
+  // Only the search-by-ear and spot-check sessions' views have these.
   const ear = /** @type {{ ear?: EarState | null }} */ (view).ear ?? null;
+  const spot = /** @type {{ spot?: SpotState | null }} */ (view).spot ?? null;
   page.stopEar.disabled = ear === null || ear.phase === EAR_PHASE.finished || ear.stopped;
   page.progressLine.textContent =
     view.phase === PHASE.done
       ? ""
-      : ear
-        ? `Pair ${ear.query + 1} of ${ear.budget}.` +
-          (view.champion === null
-            ? ""
-            : ` The one that stays is the best so far: ${nameOf(view.champion)}.`)
-        : view.mode === RANDOM || view.mode === BEST
-          ? `${left} pair${left === 1 ? "" : "s"} not yet rated, this one included.`
-          : `${left} challenger${left === 1 ? "" : "s"} still to come, this one included.` +
-            (view.champion === null ? "" : ` The one that stays: ${nameOf(view.champion)}.`);
+      : spot
+        ? `Pair ${spot.rated + 1} of ${spot.total}.`
+        : ear
+          ? `Pair ${ear.query + 1} of ${ear.budget}.` +
+            (view.champion === null
+              ? ""
+              : ` The one that stays is the best so far: ${nameOf(view.champion)}.`)
+          : view.mode === RANDOM || view.mode === BEST
+            ? `${left} pair${left === 1 ? "" : "s"} not yet rated, this one included.`
+            : `${left} challenger${left === 1 ? "" : "s"} still to come, this one included.` +
+              (view.champion === null ? "" : ` The one that stays: ${nameOf(view.champion)}.`);
 
   page.doneLine.hidden = view.phase !== PHASE.done;
   const best = view.champion === null ? "" : ` The last one chosen is ${nameOf(view.champion)}.`;
-  page.doneLine.textContent = ear
-    ? earDoneText(ear)
-    : view.poolSize < 2
-      ? "This session has fewer than two candidates with an excerpt, so there is nothing to compare. Ask for candidates on the session page first."
-      : view.mode === RANDOM
-        ? `Every pair has been rated.${best} Undo takes the last choice back.`
-        : view.mode === BEST
-          ? `Every pair the taste model can order has been rated.${best} Choose Random pairs to keep comparing.`
-          : `Every candidate has had a turn.${best} Choose Random pairs to keep comparing.`;
+  page.doneLine.textContent = spot
+    ? spotDoneText(spot)
+    : ear
+      ? earDoneText(ear)
+      : view.poolSize < 2
+        ? "This session has fewer than two candidates with an excerpt, so there is nothing to compare. Ask for candidates on the session page first."
+        : view.mode === RANDOM
+          ? `Every pair has been rated.${best} Undo takes the last choice back.`
+          : view.mode === BEST
+            ? `Every pair the taste model can order has been rated.${best} Choose Random pairs to keep comparing.`
+            : `Every candidate has had a turn.${best} Choose Random pairs to keep comparing.`;
 
   const problems = [view.pairError, view.undoError].filter(Boolean);
   const saving =
@@ -265,6 +286,22 @@ function render() {
     said = view.message;
     status.say(said);
   }
+}
+
+/**
+ * What the done line says once the spot check has no pair left to play.
+ * @param {SpotState} spot
+ */
+function spotDoneText({ total, rated, missing, stopped }) {
+  if (stopped) {
+    return "This session has stopped, so it takes no more choices. Its spot-check pairs can't be rated.";
+  }
+  if (total === 0) return "This session has no spot-check pairs from an optimizer test.";
+  const unplayable =
+    missing === 0
+      ? ""
+      : ` ${missing} more ${missing === 1 ? "has" : "have"} no excerpt to play: the render cache no longer holds it.`;
+  return `${rated} of ${total} spot-check pairs are rated.${unplayable} The Model test page shows what they found.`;
 }
 
 /**
@@ -351,6 +388,6 @@ status.run(async () => {
   page.briefLink.textContent = vibe.revision.name;
   page.sessionLink.href = `./session.html?id=${sessionId}`;
   page.sessionLink.textContent = `Session ${sessionId}`;
-  const name = earMode ? "Search by ear" : "Quick A/B";
+  const name = earMode ? "Search by ear" : spotMode ? "Spot check" : "Quick A/B";
   document.title = `${name}, session ${sessionId}, ${vibe.revision.name} · Ambient Studio`;
 });

@@ -6,7 +6,8 @@
   [0026](0026-job-runner-and-excerpt-renders.md) (the render cache holds MP3s, and capture renders
   again) and [0032](0032-plain-language-pages.md) (keys on the Quick A/B page). Amended by
   [0046](0046-ranking-wildcards-pair-picker.md) (a third order, Best questions) and
-  [0055](0055-search-by-ear.md) (a search-by-ear mode)
+  [0055](0055-search-by-ear.md) (a search-by-ear mode) and
+  [0059](0059-optimizer-evaluation.md) (a spot-check mode)
 
 ## Context
 

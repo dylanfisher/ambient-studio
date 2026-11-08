@@ -1,7 +1,7 @@
-// A button that starts a job only the owner starts, the embed job (decision 0042) or the fit job
-// (0044), on the Model test page (0046): held off while its job runs, which a box beside it
-// follows with its step and a Cancel. A job already running when the page opens is followed
-// too, so a reload doesn't lose it.
+// A button that starts a job only the owner starts, the embed job (decision 0042), the fit job
+// (0044) or the optimizer test (0059), on the Model test page (0046): held off while its job
+// runs, which a box beside it follows with its step and a Cancel. A job already running when
+// the page opens is followed too, so a reload doesn't lose it.
 /** @import { JobStatus } from "./job-progress.js" */
 /** @import { statusLine } from "./status-line.js" */
 import { jobPath, postJson, startJob } from "./api.js";
@@ -11,6 +11,9 @@ import { endedText, JOB_STATE } from "./job-progress.js";
 import { jobBox } from "./job-view.js";
 import { oneAtATime } from "./one-at-a-time.js";
 
+/** What the status line says when the owner declines a confirm. */
+export const NOT_STARTED = "Not started.";
+
 /**
  * @param {ReturnType<typeof statusLine>} status the page's status line
  * @param {object} options
@@ -19,9 +22,15 @@ import { oneAtATime } from "./one-at-a-time.js";
  * @param {string} options.path the route a POST to starts the job
  * @param {string} options.started what the status line says once it has started
  * @param {string} options.done what it says once the job is done
+ * @param {() => Record<string, unknown> | null} [options.body] the body to start the job with,
+ *   or null when the owner declines a confirm; `{}` when omitted
+ * @param {() => Promise<void>} [options.onEnd] runs once the job has finished, however
  * @returns {{ follow: (job: JobStatus) => Promise<void> }}
  */
-export function ownerJob(status, { button, boxes, path, started, done }) {
+export function ownerJob(
+  status,
+  { button, boxes, path, started, done, body = () => ({}), onEnd = async () => {} },
+) {
   const control = jobControl(button);
   /** @type {ReturnType<typeof jobBox> | null} */
   let box = null;
@@ -46,12 +55,18 @@ export function ownerJob(status, { button, boxes, path, started, done }) {
       following = null;
       control.release();
     }
+    await onEnd();
   }
 
   const start = oneAtATime(async () => {
+    const sent = body();
+    if (sent === null) {
+      status.say(NOT_STARTED);
+      return;
+    }
     control.wait();
     try {
-      const { job, refused } = await startJob(path, {});
+      const { job, refused } = await startJob(path, sent);
       status.say(refused ? `${refused} Showing that job's progress.` : started);
       status.run(() => follow(job));
     } catch (error) {

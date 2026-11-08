@@ -7,6 +7,7 @@ import { EMBEDDING_ROUTES } from "./embedding-routes.js";
 import { EVALUATION_ROUTES } from "./evaluation-routes.js";
 import { LINEAGE_ROUTES } from "./lineage-routes.js";
 import { LOCK_ROUTES } from "./lock-routes.js";
+import { OPTIMIZER_TEST_ROUTES } from "./optimizer-test-routes.js";
 import { PREFERENCE_ROUTES } from "./preference-routes.js";
 import { RATING_ROUTES } from "./rating-routes.js";
 import { REFERENCE_ROUTES } from "./reference-routes.js";
@@ -26,6 +27,7 @@ export const ROUTES = [
   ...EVALUATION_ROUTES,
   ...EMBEDDING_ROUTES,
   ...PREFERENCE_ROUTES,
+  ...OPTIMIZER_TEST_ROUTES,
   ...REFERENCE_ROUTES,
   ...REGION_ANALYSIS_ROUTES,
   ...ATTACHMENT_ROUTES,

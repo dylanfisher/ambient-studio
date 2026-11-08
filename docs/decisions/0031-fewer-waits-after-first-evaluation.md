@@ -16,7 +16,8 @@
   steps), [0055](0055-search-by-ear.md) (the search by ear's) and
   [0056](0056-directions-sliders-reference-target.md) (the steer's) and
   [0057](0057-map-elites-archive-and-map.md) (the map's fill) and
-  [0058](0058-breeding.md) (the breed's).
+  [0058](0058-breeding.md) (the breed's) and
+  [0059](0059-optimizer-evaluation.md) (the optimizer test's).
 
 ## Context
 
@@ -77,6 +78,7 @@ made by an older server.
 | `POST /api/sessions/:id/breeds` | the session has a breed unfinished with the same two sketches, in the same order, and count |
 | `POST /api/sessions/:id/fills` | the session has a fill of the map unfinished, with any settings |
 | `POST /api/evaluations` | any evaluation is unfinished |
+| `POST /api/optimizer-tests` | any optimizer test is unfinished |
 
 "Unfinished" is queued or running. Another session's job is another action and is accepted. The
 check and the add run with no `await` between them, so two requests at once give one job and one
@@ -101,6 +103,7 @@ when a job finishes, however it finishes, so a stopped job never shows a stale s
 | fill | steps, and the control's nudges after them / budget, twice it with the control | "Filling the map: step 3 of 200", an explore step's own steps, "Filling the map's control: nudge 3 of 200", then the ranking |
 | search by ear | pairs answered / budget | "Searching by ear: drawing and rendering pair 3 of 20", "Searching by ear: waiting for your choice on pair 3 of 20, and rendering what could come next" |
 | evaluation | candidates stored, across every vibe / vibes × count | "Asking the model for candidate 19 of 48", fixing and waiting as above, numbered across every vibe |
+| optimizer test | points asked and control nudges, across every brief's searches / briefs × 3 × twice the budget | "Testing the optimizer on brief 1 of 2, search 2 of 3: " followed by the search's own step |
 
 The waiting step comes from a per-request `onRetry` the queue now calls after its own, which
 `generateCandidates` turns into an `onStep({index, kind})` callback. It stays until that request

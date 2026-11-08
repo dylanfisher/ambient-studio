@@ -59,6 +59,13 @@ export const EVALUATIONS_PATH = "/api/evaluations";
 /** The taste model test's route: a POST starts one, a GET reads the last report and the job. */
 export const PREFERENCE_TESTS_PATH = "/api/preference-tests";
 
+/**
+ * The optimizer test's route: a POST starts one, a GET lists the stored tests with the owner's
+ * spot-check choices, the unfinished job and the search estimate (decision 0059). A session's
+ * spot-check pairs are at `/spot-checks` under its route.
+ */
+export const OPTIMIZER_TESTS_PATH = "/api/optimizer-tests";
+
 /** The embed job's route: a POST starts it (decision 0042). */
 export const EMBEDDINGS_PATH = "/api/embeddings";
 
