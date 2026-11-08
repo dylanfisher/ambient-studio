@@ -186,7 +186,7 @@ function vowelResonances(vowel) {
  * @param {Float64Array} out
  * @param {{ hz: number; vowel: number; focus: number; tilt: number }} at
  */
-export function partialAmplitudes(out, { hz, vowel, focus, tilt }) {
+function partialAmplitudes(out, { hz, vowel, focus, tilt }) {
   const { lower, upper } = vowelResonances(vowel);
   const upperGain = dbToGain(UPPER_DB);
   const chestGain = dbToGain(CHEST.db);
