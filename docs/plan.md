@@ -3425,3 +3425,11 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   fails a test. A header-first WAV writer (PCM24 and float32) closes and removes its file on any
   failure. The producer key moved, so cached excerpts re-render once and regions are analyzed again
   before attaching; no audio changes. 2,082 tests.
+- 2026-11-07 — 6c merged (f826736): `sectionGenome`, `renderChunks` (`CHUNK_SECONDS` 120),
+  the equal-power crossfade, the track-render job through 6a's streaming forms, an MP3 preview with
+  a playhead, a 30 s seam preview, and WAV + FLAC export with a manifest that re-renders to the
+  same hash. Bench, render only: 20 min at 27.2x and 544 MiB, 10 min at 25.4x and 467 MiB, so 10x
+  and 1 GiB pass; the spread is 14.2% against 10%, open: JS-held buffers are flat at about 176 MiB,
+  so the growth is the audio library's native memory. A seam at 120 s with a 20 s reverb is 121 dB
+  under. Review passed; fixes made the manifest name its own revision, let cancel reach lame and
+  flac, and added a long-reverb seam test. 2,116 tests.
