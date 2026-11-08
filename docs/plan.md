@@ -3362,3 +3362,10 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   ENOTCONN on macOS (2 in 1,200 under load), a product bug, now accepted as flac closing first.
   The 30 s timeouts in session-routes and rating-routes didn't reproduce; their setup renders two
   25 s excerpts per test, and a seeded-candidate helper is the likely cure if they recur.
+- 2026-11-07: 5c merged as ba04d22 (Opus: 323k tokens, 167 calls, 58 min including a fix round of
+  3.8 min; reviewer Sonnet: 64k tokens, 17 calls, 14 min, FAIL on two vocabulary words swapped to
+  pass the dupes check, restored with allow-list entries; a stale region embedding now refuses
+  with "press Measure" instead of giving no words). Attachments live in `vibe_attachments`
+  (migration 0010) with per-kind `details` checks for 5g and 5h, and generations record what the
+  prompt kept in `attachmentIds`. Two regions add about 250 tokens to the seed-sized prompt, at
+  most 1,500. The gate passes, 1774 tests.
