@@ -102,6 +102,9 @@ export function originText({ operator, operatorParams, parentIds, search }, name
     const best = search?.shown ? " Shown as the search's best: the one you chose last." : "";
     return `Pair ${operatorParams.query + 1} of a search by ear from ${parent}: you compared it with the best so far.${best}`;
   }
+  if (operator === OPERATOR.elite) {
+    return `A ${operatorParams.stepSize} nudge of ${parent}, the best in a cell beside an empty one on the brief's map, made by filling the map with no model request.`;
+  }
   throw new Error(`the page doesn't know the operator ${operator}`);
 }
 
@@ -114,6 +117,7 @@ const OPERATOR_WORDS = Object.freeze({
   [OPERATOR.optimizeEar]: "searched by ear",
   [OPERATOR.steer]: "steered",
   [OPERATOR.breed]: "bred",
+  [OPERATOR.elite]: "map fill",
 });
 
 /**
@@ -135,7 +139,7 @@ export function operatorLabel(operator) {
 export function intentText(candidate) {
   const { intent, operator } = candidate;
   if (intent !== null) return intent;
-  if (operator === OPERATOR.nudge || isMutation(candidate)) {
+  if (operator === OPERATOR.nudge || operator === OPERATOR.elite || isMutation(candidate)) {
     return "A nudge has no intent of its own: it is its base with some numbers moved.";
   }
   if (
@@ -157,8 +161,9 @@ export function rejectText(candidate) {
   const { operator, rejectReason } = candidate;
   const why = REJECTED[/** @type {keyof typeof REJECTED} */ (rejectReason)];
   if (why === undefined) throw new Error(`the page doesn't know the reject reason ${rejectReason}`);
-  if (operator === OPERATOR.nudge || isMutation(candidate))
+  if (operator === OPERATOR.nudge || operator === OPERATOR.elite || isMutation(candidate)) {
     return `a nudge draw ${why}, so it was drawn again`;
+  }
   if (operator === OPERATOR.optimize || operator === OPERATOR.steer) {
     return `a search point ${why}, so it was told a low score`;
   }

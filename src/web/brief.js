@@ -32,6 +32,14 @@ import {
   VIBES_PATH,
 } from "./api.js";
 import { attachable, attachedStatus, attachHelp } from "./attached-regions.js";
+import {
+  axesLine,
+  axisChoices,
+  axisValue,
+  chosenAxes,
+  NO_AXIS,
+  SUGGESTED_AXES,
+} from "./axis-choices.js";
 import { cloneTemplate } from "./clone-template.js";
 import {
   constraintFields,
@@ -83,6 +91,7 @@ const page = elementsById({
   noteButton: HTMLButtonElement,
   sessionList: HTMLUListElement,
   lineageLink: HTMLAnchorElement,
+  mapLink: HTMLAnchorElement,
   noteList: HTMLUListElement,
   noteForm: HTMLFormElement,
   noteText: HTMLTextAreaElement,
@@ -99,6 +108,11 @@ const page = elementsById({
   parentB: HTMLSelectElement,
   breedButton: HTMLButtonElement,
   breedHelp: HTMLElement,
+  axesLine: HTMLElement,
+  axisSelect0: HTMLSelectElement,
+  axisSelect1: HTMLSelectElement,
+  axisSelect2: HTMLSelectElement,
+  axesButton: HTMLButtonElement,
   ratingList: HTMLUListElement,
   noRatings: HTMLElement,
   revisionList: HTMLUListElement,
@@ -386,6 +400,7 @@ async function load(id) {
   ]);
   const { revision } = vibe;
   page.lineageLink.href = `./lineage.html?id=${id}`;
+  page.mapLink.href = `./map.html?id=${id}`;
   document.title = `${revision.name} · Ambient Studio`;
   page.pageTitle.textContent = revision.name;
   page.briefName.value = revision.name;
@@ -487,8 +502,10 @@ async function showAttached(id, regions, names) {
     target,
     references: attached,
     directions,
+    axes,
   } = await getJson(`${VIBES_PATH}/${id}/attachments`);
   showDirections(directions);
+  showAxes(directions, attached, axes);
   page.attachedList.replaceChildren(
     ...attached.map((/** @type {any} */ row) => {
       const item = cloneTemplate("attached-item", {
@@ -528,6 +545,51 @@ async function showAttached(id, regions, names) {
   page.attachSelect.disabled = choices.length === 0;
   page.attachButton.disabled = choices.length === 0;
 }
+
+/** The map's axis selects, first to third. */
+const axisSelects = () => [page.axisSelect0, page.axisSelect1, page.axisSelect2];
+/** @type {import("./axis-choices.js").AxisChoice[]} */
+let axisOptions = [];
+
+/**
+ * The map's axes (decision 0057): a select per axis over every choice the brief has, each set
+ * to the stored axis, or to the suggestion before any is chosen; a choice the owner made and
+ * hasn't saved is kept.
+ * @param {{ id: number, near: string | null, far: string }[]} directions
+ * @param {{ regionId: number, label: string }[]} references
+ * @param {Parameters<typeof axisValue>[0][]} axes the stored ones, oldest first
+ */
+function showAxes(directions, references, axes) {
+  axisOptions = axisChoices(directions, references);
+  const stored = axes.length > 0 ? axes.map(axisValue) : SUGGESTED_AXES;
+  for (const [i, select] of axisSelects().entries()) {
+    const chosen = select.value;
+    const options = axisOptions.map(({ value, text }) => new Option(text, value));
+    if (i === 2) options.unshift(new Option("None", NO_AXIS));
+    select.replaceChildren(...options);
+    const wanted = select.dataset.touched ? chosen : (stored[i] ?? NO_AXIS);
+    if (axisOptions.some(({ value }) => value === wanted) || wanted === NO_AXIS) {
+      select.value = wanted;
+    }
+    select.onchange = () => {
+      select.dataset.touched = "true";
+    };
+  }
+  page.axesLine.textContent = axesLine(axes, axisOptions);
+}
+
+const saveAxes = oneAtATime(async () => {
+  const id = savedId();
+  const body = chosenAxes(
+    axisSelects().map((select) => select.value),
+    axisOptions,
+  );
+  if (typeof body === "string") throw new Error(body);
+  await postJson(`${VIBES_PATH}/${id}/axes`, body);
+  for (const select of axisSelects()) delete select.dataset.touched;
+  await showRegions(id);
+  status.say("Saved the map's axes. Open the map from a session, or with Map above.");
+});
 
 /**
  * The brief's directions (decision 0056), each with Remove.
@@ -742,6 +804,7 @@ page.regionRangesButton.onclick = () => status.run(setRangesFromRegion);
 page.attachButton.onclick = () => status.run(attach);
 page.directionButton.onclick = () => status.run(addDirection);
 page.breedButton.onclick = () => status.run(breed);
+page.axesButton.onclick = () => status.run(saveAxes);
 
 if (vibeId === null) {
   page.pageTitle.textContent = "New brief";

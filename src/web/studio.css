@@ -771,3 +771,46 @@ audio[hidden] + .player {
   cursor: crosshair;
   touch-action: none;
 }
+
+/* The map page's grid (0057): a table of square cell buttons, scrolled sideways on a narrow
+   screen rather than squeezed. A filled cell reads as a card, an empty one as a dashed gap. */
+.map-scroll {
+  overflow-x: auto;
+}
+
+.map-grid {
+  border-collapse: separate;
+  border-spacing: 3px;
+}
+
+.map-cell {
+  display: block;
+  width: 6.5rem;
+  height: 4.5rem;
+  padding: 0.25rem;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+}
+
+.map-cell.empty {
+  border-style: dashed;
+  background: transparent;
+}
+
+.map-cell[aria-pressed="true"] {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.map-cell:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}

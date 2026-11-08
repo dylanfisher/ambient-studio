@@ -3377,3 +3377,10 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   text-to-audio gap cancels; the region term is clamped to [0, 1]). Directions are
   `vibe_attachments` rows of kind `direction`; steer is 5e's job with direction, region and
   model terms, scales read once a run, and needs no model. The gate passes, 1804 tests.
+- 2026-11-07: 5h merged as 6c1a8e4 (Opus: 429k tokens, 238 calls, 39.3 min including a fix round
+  of 3.2 min; reviewer Sonnet: 90k tokens, 11 calls, 1.3 min, PASS with minor findings taken: axis
+  details refuse prototype keys, the map page coalesces archive reads, an open cell's controls
+  keep their held state). Axes are `vibe_attachments` rows of kind `axis`, replaced as a set by
+  marking the old ones removed; the archive is rebuilt on each read from the rated windows'
+  descriptors; the fill job nudges elites beside empty cells, with its control on by default.
+  The gate passes, 1840 tests.

@@ -81,6 +81,24 @@ describe("originText", () => {
     );
   });
 
+  test("a map fill's child is a nudge of the elite it started from", () => {
+    const child = candidate({
+      operator: "elite",
+      parentIds: [3],
+      operatorParams: { stepSize: "medium" },
+    });
+    expect(originText(child, nameOf)).toBe(
+      "A medium nudge of candidate 3, the best in a cell beside an empty one on the brief's map, made by filling the map with no model request.",
+    );
+    expect(operatorLabel("elite")).toBe("map fill");
+    expect(intentText(child)).toBe(
+      "A nudge has no intent of its own: it is its base with some numbers moved.",
+    );
+    expect(rejectText({ ...child, rejectReason: REJECT_REASON.repeated })).toBe(
+      "a nudge draw that landed on a genome already made, so it was drawn again",
+    );
+  });
+
   test("a search-by-ear point names its pair and base, and says when it is the best", () => {
     const point = candidate({
       operator: "optimize-ear",

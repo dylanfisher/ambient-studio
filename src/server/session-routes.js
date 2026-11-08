@@ -1,9 +1,10 @@
 // The session and job routes (decision 0027): a session's state and stop, asking for
 // candidates, nudging (0037), exploring (0038), searching (0054) and steering (0056) from one,
-// breeding two sketches (0058) and the breed's estimate, re-rendering
-// missing excerpts, the candidates with their excerpts, revised pairs (0036), places in the
-// ranking (0046) and a search's shown points, hiding and showing them again (0049), and job
-// status and cancel. Stopping a session cancels its jobs, and with them their omlx requests.
+// breeding two sketches (0058) and the breed's estimate, filling the brief's map (0057),
+// re-rendering missing excerpts, the candidates with their excerpts, revised pairs (0036),
+// places in the ranking (0046) and a search's shown points, hiding and showing them again
+// (0049), and job status and cancel. Stopping a session cancels its jobs, and with them their
+// omlx requests.
 /** @import { Candidate } from "./generation-store.js" */
 /** @import { JobStatus } from "./job-runner.js" */
 /** @import { IncomingMessage } from "node:http" */
@@ -22,6 +23,7 @@ import {
   MAX_EAR_QUERIES,
 } from "../domain/ear-settings.js";
 import { DEFAULT_EXPLORES, NOT_ONE_LINE } from "../domain/explore-direction.js";
+import { DEFAULT_FILL_BUDGET, MAX_FILL_BUDGET } from "../domain/fill-settings.js";
 import { DEFAULT_NUDGES, lockRefusal, STEP_SIZE } from "../domain/nudge.js";
 import { OPERATOR } from "../domain/operator.js";
 import { percentiles } from "../domain/percentiles.js";
@@ -37,6 +39,7 @@ import { currentExcerpt } from "./candidate-excerpt.js";
 import { candidateJob, DEFAULT_CANDIDATES, excerptJob, MAX_CANDIDATES } from "./candidate-job.js";
 import { candidatePairs } from "./candidate-pair.js";
 import { createEarChannel, earChannel, earSearchJob, setEarChannel } from "./ear-search-job.js";
+import { fillJob } from "./fill-job.js";
 import { BREED_OPERATOR, currentRevision, EXPLORE_OPERATOR } from "./generate-candidates.js";
 import {
   getCandidate,
@@ -50,12 +53,22 @@ import { locksInForce } from "./lock-store.js";
 import { NUDGE_OPERATOR, nudgeJob } from "./nudge-job.js";
 import { currentModel } from "./preference-summary.js";
 import { FEEDBACK_KIND, getRating, getSketch, listSessionFeedback } from "./rating-store.js";
-import { fields, idParam, integer, MAX_CHARS, oneOf, rowId, text } from "./request-fields.js";
+import {
+  fields,
+  finite,
+  idParam,
+  integer,
+  MAX_CHARS,
+  oneOf,
+  rowId,
+  text,
+} from "./request-fields.js";
 import { duplicateJob, HttpError, wrongType } from "./routing.js";
 import { readSearchResults, searchEstimate, searchJob, searchRefusal } from "./search-job.js";
 import { readRanking } from "./session-ranking.js";
 import { getSession, stopSession } from "./session-store.js";
 import { readChosenSteering, steerJob } from "./steer-job.js";
+import { archiveContext } from "./vibe-archive.js";
 
 /**
  * A candidate's live feedback, with the ids a remove names (decision 0031): its thumbs, and each
@@ -147,6 +160,8 @@ const STEER = OPERATOR.steer;
 const BREED = BREED_OPERATOR;
 /** The requests the model answered that a breed's estimate takes its median from. */
 const RECENT_REQUESTS = 20;
+/** The map's fill is named for the operator its children store (decision 0057). */
+const FILL = OPERATOR.elite;
 /** The type a browser labels a beacon's string body with. */
 const BEACON_TYPE = "text/plain";
 const STEP_SIZES = /** @type {(keyof typeof STEP_SIZE)[]} */ (Object.keys(STEP_SIZE));
@@ -203,6 +218,9 @@ const DUPLICATE = Object.freeze({
   /** @param {number} id */
   [EAR]: (id) =>
     `This session is already searching by ear (job ${id}). Finish or stop it on the Quick A/B page first.`,
+  /** @param {number} id */
+  [FILL]: (id) =>
+    `This session is already filling the map (job ${id}). Wait for it to finish, or cancel it.`,
 });
 
 /**
@@ -769,6 +787,34 @@ export const SESSION_ROUTES = [
     method: "GET",
     path: "/api/search-estimate",
     handle: ({ app }) => searchEstimate(app.paths.search),
+  },
+  {
+    method: "POST",
+    path: "/api/sessions/:sessionId/fills",
+    handle: async ({ app, params, body }) => {
+      const session = requireOpenSession(app, params);
+      const given = fields(await body(), ["budget", "exploreShare", "control"]);
+      const budget =
+        given.budget === undefined
+          ? DEFAULT_FILL_BUDGET
+          : integer(given, "budget", { min: 1, max: MAX_FILL_BUDGET });
+      const exploreShare =
+        given.exploreShare === undefined ? 0 : finite(given, "exploreShare", { min: 0, max: 1 });
+      const control = given.control ?? true;
+      if (typeof control !== "boolean") {
+        throw new HttpError(400, `control must be true or false, got ${JSON.stringify(control)}`);
+      }
+      const { reason } = await archiveContext(app, session.vibeId, new AbortController().signal);
+      if (reason !== null) throw new HttpError(409, reason);
+      const request = {
+        vibeId: session.vibeId,
+        sessionId: session.id,
+        budget,
+        exploreShare,
+        control,
+      };
+      return addSessionJob(app, requireOpenSession(app, params), FILL, fillJob(app, request));
+    },
   },
   {
     method: "POST",

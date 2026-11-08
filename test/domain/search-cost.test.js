@@ -3,6 +3,7 @@
 import { expect, test } from "vitest";
 import {
   BENCH_SECONDS,
+  fillCostText,
   medianTimings,
   searchCostText,
   searchSeconds,
@@ -43,5 +44,15 @@ test("the confirm says the cost, where its figures come from, and that it uses n
 test("a steer's confirm says it scores by the sliders and regions, the taste model only a little", () => {
   expect(steerCostText(32, { render: 2.5, embed: 0.5 }, { measured: true })).toBe(
     "Steer from this candidate with 32 evaluations? Each renders an excerpt, analyzes its sound and scores it by where it sits on the sliders you moved and how near it is to the regions you chose, and a little by your taste model when the brief has one; nothing is sent to the language model. That is about 2 minutes, at 2.5 s to render and 0.5 s to analyze each, the medians of the last search.",
+  );
+});
+
+test("the map's fill confirm gives both arms' time, and states the model requests its explore steps make", () => {
+  const seconds = { render: 2, embed: 0.5 };
+  expect(fillCostText(200, 0, seconds, { measured: true, control: true })).toBe(
+    "Fill the map with 200 steps, then 200 medium nudges from the same starts as a control that isn't shown? Each nudges a candidate beside an empty cell, renders the excerpt and places it on the map. Nothing is sent to the language model. That is about 17 minutes, at 2 s to render and 0.5 s to analyze each, the medians of the last search.",
+  );
+  expect(fillCostText(20, 5, seconds, { measured: false, control: false })).toBe(
+    "Fill the map with 20 steps? Each nudges a candidate beside an empty cell, renders the excerpt and places it on the map. 5 steps of them ask the language model for a variation, 5 requests to it, which wait their turn and add their own time. That is about 1 minute, at 2 s to render and 0.5 s to analyze each, from the bench, since no search has run yet.",
   );
 });

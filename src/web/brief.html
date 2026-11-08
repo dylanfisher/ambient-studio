@@ -81,6 +81,7 @@
               <h2 id="sessions-heading">Sessions</h2>
               <span class="spacer"></span>
               <a id="lineageLink" class="button outline" href="./lineage.html" title="Opens the lineage page: every candidate of this brief's sessions, each under the one it was made from, to play and work from.">Lineage</a>
+              <a id="mapLink" class="button outline" href="./map.html" title="Opens the map page: this brief's candidates placed by how they sound on the axes chosen on the brief page, the best in each cell, to play and fill.">Map</a>
               <button id="startButton" class="button primary" type="button" title="Starts a session for this brief and opens it. On the session page, ask for candidates to have the model write them and the studio render a 25-second excerpt of each.">Start a session</button>
             </div>
             <p class="small muted">A session is one sitting of listening and rating. Open sessions can take more candidates.</p>
@@ -166,6 +167,32 @@
               <button id="breedButton" class="button outline" type="button" title="Asks the model for children of the two sketches, after a confirm that says how many and how long the requests take, then opens the session page they appear on.">Breed</button>
             </div>
             <p id="breedHelp" class="small muted"></p>
+          </section>
+
+          <section class="card stack" aria-labelledby="axes-heading">
+            <h2 id="axes-heading">Axes for the map</h2>
+            <p class="small muted">
+              Choose two or three things to place this brief's candidates by, such as dark to
+              bright by static to evolving. The map page then shows the best candidate in each
+              cell and fills the empty ones. A direction or a region chosen here needs its sound
+              analysis. Choosing again replaces the axes; no new version of the brief is saved.
+            </p>
+            <p id="axesLine" class="small"></p>
+            <div class="row">
+              <label class="field"
+                >Across
+                <select id="axisSelect0" title="Chooses what the map's first axis, left to right, places each candidate by."></select>
+              </label>
+              <label class="field"
+                >Up
+                <select id="axisSelect1" title="Chooses what the map's second axis, bottom to top, places each candidate by."></select>
+              </label>
+              <label class="field"
+                >Third, optional
+                <select id="axisSelect2" title="Chooses a third axis for the map, shown one slice at a time, or none."></select>
+              </label>
+              <button id="axesButton" class="button outline" type="button" title="Saves the chosen axes for this brief's map, replacing any chosen before. No new version of the brief is saved.">Use these axes</button>
+            </div>
           </section>
 
           <section class="card stack" aria-labelledby="ratings-heading">

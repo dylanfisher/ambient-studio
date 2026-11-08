@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Map · Ambient Studio</title>
+    <link rel="stylesheet" href="./studio.css" />
+    <script type="module" src="./map.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <nav class="nav" aria-label="Pages">
+        <a class="brand" href="./" title="Opens the dashboard: how the studio works, and every brief.">Ambient Studio</a>
+        <a href="./#briefs" aria-current="page" title="Opens the list of briefs on the dashboard, where you open one or write a new one.">Briefs</a>
+        <a href="./references.html" title="Opens the references page, where you upload recordings to aim at and mark the parts you mean.">References</a>
+        <a href="./evaluation.html" title="Opens the model test page, which checks how often the model follows your briefs. It makes no audio.">Model test</a>
+      </nav>
+    </header>
+    <main class="page">
+      <div class="page-head">
+        <p class="crumbs small muted">
+          <a href="./#briefs" title="Goes back to the list of briefs.">Briefs</a> /
+          <a id="briefLink" href="./" title="Opens this brief, to edit it, choose the map's axes, start a session or read every rating.">Brief</a> /
+        </p>
+        <h1 id="pageTitle">Map</h1>
+        <p class="help muted">
+          Every candidate of this brief placed by how it sounds, on the two or three axes chosen
+          on the brief page. Each cell shows the best candidate that lands there. Click a cell,
+          or press Enter on it, to play that candidate; the arrow keys move between cells. Fill
+          the map to make candidates aimed at the empty cells, and explore, nudge or keep a
+          sketch from the cell you opened.
+        </p>
+        <p id="status" class="status" role="status" aria-live="polite">Loading…</p>
+      </div>
+
+      <section class="card stack" aria-labelledby="fill-heading">
+        <h2 id="fill-heading">Fill the map</h2>
+        <p id="coverageLine" class="small"></p>
+        <p id="sessionLine" class="small muted"></p>
+        <div class="row">
+          <label class="field small"
+            >Steps
+            <input id="budgetInput" type="number" step="1" size="5" title="How many steps the fill takes, from 1 to 400. Each nudges a candidate beside an empty cell and renders the excerpt." />
+          </label>
+          <label class="field small"
+            >Steps that ask the model, in percent
+            <input id="shareInput" type="number" step="5" min="0" max="100" size="4" title="The share of steps that ask the language model for a variation toward the empty cell instead of nudging, from 0 to 100 percent. Each such step waits its turn for the model." />
+          </label>
+          <label class="check small"
+            ><input id="controlSwitch" type="checkbox" checked title="Also makes as many medium nudges from the candidates beside an empty cell at the start, never shown, to compare how much of the map each fills." />
+            With a control</label
+          >
+          <button id="fillButton" class="button" type="button" title="Fills the map's empty cells from the candidates beside them. Asks first, with the time it takes and any requests to the model.">Fill the map</button>
+          <a id="sessionLink" class="button outline" href="./" hidden title="Opens the session the fill and the open cell's explores and nudges go to, where you rate what they make.">Open the session</a>
+        </div>
+        <div id="jobBox" class="stack"></div>
+      </section>
+
+      <section class="card stack" aria-labelledby="map-heading">
+        <h2 id="map-heading">The map</h2>
+        <p id="axisAcross" class="small"></p>
+        <p id="axisUp" class="small"></p>
+        <label id="layerField" class="field small" hidden
+          ><span id="layerName">Third axis</span>
+          <select id="layerSelect" title="Chooses which slice of the third axis the table shows, from its low end to its high end."></select>
+        </label>
+        <p id="noMap" class="muted small" hidden></p>
+        <div class="map-scroll">
+          <table id="grid" class="map-grid" aria-label="The map's cells: across, the first axis from low to high; up, the second axis from low to high"></table>
+        </div>
+      </section>
+
+      <section id="openBox" class="card stack" aria-labelledby="open-heading" hidden>
+        <h2 id="open-heading">The open cell</h2>
+        <p id="openLine" class="small"></p>
+        <!-- biome-ignore lint/a11y/useMediaCaption: instrumental excerpts have no speech to caption -->
+        <audio id="openAudio" preload="none" title="Plays the open cell's best candidate's 25-second excerpt."></audio>
+        <div class="row">
+          <button id="sketchButton" class="button outline small" type="button" title="Keeps the open cell's candidate as a sketch of this brief, with the excerpt as you heard it. The brief page lists it.">Keep as sketch</button>
+        </div>
+        <div id="openSteer"></div>
+      </section>
+    </main>
+
+    <template id="job-progress">
+      <div class="job">
+        <div class="row">
+          <strong data-part="title">job</strong>
+          <span class="badge" data-part="state">state</span>
+          <span class="muted small" data-part="elapsed"></span>
+          <span class="spacer"></span>
+          <button class="button outline small" type="button" data-part="cancel" title="Cancels this job. Candidates and excerpts it already made are kept.">Cancel</button>
+        </div>
+        <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" data-part="bar"><div class="progress-fill" data-part="fill"></div></div>
+        <p class="small" data-part="step"></p>
+        <p class="small muted" data-part="notEmbedded" hidden></p>
+        <p class="small muted" data-part="notRanked" hidden></p>
+        <p class="small errors" data-part="error" hidden></p>
+      </div>
+    </template>
+
+    <template id="steer-controls">
+      <div class="stack small">
+        <div class="row">
+          <input data-part="direction" type="text" size="22" placeholder="A direction, such as slower" title="An optional one-line direction for Explore from here, such as slower or less bell. The model reads it as you wrote it." />
+          <button class="button outline small" type="button" data-part="explore" title="Asks the model for variations of this candidate, following the direction if you wrote one, and renders an excerpt of each. Takes about 1–2 minutes per variation.">Explore from here</button>
+        </div>
+        <div class="row">
+          <select data-part="stepSize" title="How far Nudge from here moves this candidate's numbers: a small, medium or large step."></select>
+          <button class="button outline small" type="button" data-part="nudge" title="Makes children of this candidate by moving its numbers a step, with no model request, and renders an excerpt of each. Takes a few seconds per child.">Nudge from here</button>
+        </div>
+        <div class="row">
+          <input data-part="budget" type="number" step="1" size="5" title="How many points Search from here tries, from 1 to 400. Each one renders an excerpt and is scored by your taste model." />
+          <label class="row small"><input data-part="control" type="checkbox" title="Also makes as many medium nudges of this candidate after the search, scored the same way and never shown, to test whether the search beats nudging." /> With a control</label>
+          <button class="button outline small" type="button" data-part="search" title="Searches near this candidate, scoring each point by your taste model with no model request. Asks first, with the time it takes.">Search from here</button>
+        </div>
+        <div class="row">
+          <input data-part="queries" type="number" step="1" size="5" title="How many pairs Search by ear asks you, from 1 to 60." />
+          <button class="button outline small" type="button" data-part="ear" title="Searches near this candidate by your ear, on the Quick A/B page.">Search by ear</button>
+        </div>
+      </div>
+    </template>
+  </body>
+</html>

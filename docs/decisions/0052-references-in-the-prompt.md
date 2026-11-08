@@ -2,7 +2,8 @@
 
 - **Date:** 2026-11-07
 - **Status:** accepted; provisional: owner to confirm. Amended by
-  [0056](0056-directions-sliders-reference-target.md) (the `direction` kind). Amends
+  [0056](0056-directions-sliders-reference-target.md) (the `direction` kind) and
+  [0057](0057-map-elites-archive-and-map.md) (the `axis` kind). Amends
   [0024](0024-prompt-parse-repair-generation.md) (a section after the ranges, its place in the
   trimming order, `attachmentIds` on each generation) and
   [0034](0034-feature-ranges-as-soft-targets.md) (what goes beside the ranges lives outside
@@ -153,3 +154,11 @@ needs it. The texts are `src/web/attached-regions.js`, with no DOM.
   removes either. The prompt doesn't read directions, so `generations.attachmentIds` still lists
   only references; each steer point records the directions and regions it read in
   `operatorParams.steer`.
+- 2026-11-07: from step 5h ([0057](0057-map-elites-archive-and-map.md)). `ATTACHMENT_KIND`
+  gains `axis`. Its `details` are `{source, name | directionId, ends, bins}`: `source` one of
+  feature, macro, direction and region; a ranged feature's or a macro's `name`, or a direction
+  attachment's `directionId`; `ends` `[low, high]`, either null for the default; `bins` a whole
+  number from 2 to 16. An axis on a region names it in `regionId`, which only that source may
+  set. `POST /api/vibes/:id/axes` replaces the live axes in one transaction, marking them
+  `axes replaced`, and `GET /api/vibes/:id/attachments` lists `axes`. Axes make no revision and
+  the prompt doesn't read them.

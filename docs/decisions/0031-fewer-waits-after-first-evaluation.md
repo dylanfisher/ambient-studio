@@ -15,6 +15,7 @@
   step), [0054](0054-model-in-the-loop-cma-es.md) (the search's conflict rule and progress
   steps), [0055](0055-search-by-ear.md) (the search by ear's) and
   [0056](0056-directions-sliders-reference-target.md) (the steer's) and
+  [0057](0057-map-elites-archive-and-map.md) (the map's fill) and
   [0058](0058-breeding.md) (the breed's).
 
 ## Context
@@ -74,6 +75,7 @@ made by an older server.
 | `POST /api/sessions/:id/ear-searches` | the session has a search by ear unfinished, from any base |
 | `POST /api/sessions/:id/steers` | the session has a steer unfinished with the same base, budget, directions with their settings, and regions |
 | `POST /api/sessions/:id/breeds` | the session has a breed unfinished with the same two sketches, in the same order, and count |
+| `POST /api/sessions/:id/fills` | the session has a fill of the map unfinished, with any settings |
 | `POST /api/evaluations` | any evaluation is unfinished |
 
 "Unfinished" is queued or running. Another session's job is another action and is accepted. The
@@ -96,6 +98,7 @@ when a job finishes, however it finishes, so a stopped job never shows a stale s
 | search | points asked, and the control's nudges after them / budget, twice the budget with the control | "Searching: generation 3 of 10", "Scoring the search's control nudges: batch 2 of 10", then "Ranking the candidates by your taste" |
 | steer | points asked / budget | "Steering: generation 2 of 4", then "Ranking the candidates by your taste" |
 | breed | crossover children finished (stored, rendered, measured, revised and mutated when needed) / asked for | "Asking the model for child 2 of 4", the candidates job's fixing, rendering, measuring, revising and waiting steps, then "Rendering the mutation of child 2 of 4" |
+| fill | steps, and the control's nudges after them / budget, twice it with the control | "Filling the map: step 3 of 200", an explore step's own steps, "Filling the map's control: nudge 3 of 200", then the ranking |
 | search by ear | pairs answered / budget | "Searching by ear: drawing and rendering pair 3 of 20", "Searching by ear: waiting for your choice on pair 3 of 20, and rendering what could come next" |
 | evaluation | candidates stored, across every vibe / vibes × count | "Asking the model for candidate 19 of 48", fixing and waiting as above, numbered across every vibe |
 
@@ -210,6 +213,12 @@ identity. No rated audio is removed when a rating is.
   before any job is added, a brief with no CLAP checkpoint or a chosen direction or region that
   can't be placed yet, but never for want of a taste model. The progress table gains steer,
   reported once per generation. Operator `steer` is the job's kind and its points' operator.
+- 2026-11-07: from step 5h ([0057](0057-map-elites-archive-and-map.md)). The conflict table
+  gains the fill's row: `POST /api/sessions/:id/fills` is refused while the session has any
+  unfinished fill, since the brief has one map; anything else queues. It refuses with a 409,
+  before any job is added, a brief whose map has no axes to read. The progress table gains fill,
+  reported once per step. Operator `elite` is the job's kind and its children's operator, and
+  `elite-control` the control's.
 - 2026-11-07: from step 5i ([0058](0058-breeding.md)). The conflict table gains the breed's
   row: `POST /api/sessions/:id/breeds` is refused while the session has an unfinished breed with
   the same sketches in the same order and count, its action the JSON of `[a, b, count]`;

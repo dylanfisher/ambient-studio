@@ -20,4 +20,8 @@ export const OPERATOR = Object.freeze({
   steer: "steer",
   /** Breeding: a crossover child of two parents by the model, or its one small nudge (0058). */
   breed: "breed",
+  /** A fill step of the brief's map: a nudge of an elite beside an empty cell (0057). */
+  elite: "elite",
+  /** The fill's control: as many medium nudges from the same starts, never shown (0057). */
+  eliteControl: "elite-control",
 });

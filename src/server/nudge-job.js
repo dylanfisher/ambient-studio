@@ -20,7 +20,7 @@ import { renderExcerpt } from "./render-excerpt.js";
 
 /** The operator a nudge child stores, and the source its row gives. */
 export const NUDGE_OPERATOR = OPERATOR.nudge;
-const SOURCE = "mutation";
+export const NUDGE_SOURCE = "mutation";
 
 /**
  * @typedef {object} NudgeRequest
@@ -76,7 +76,7 @@ export function nudgeJob(app, { vibeId, sessionId, base, genome, stepSize, count
     // A child keeps the base's seed, so it differs from the base only in its genome.
     const origin = {
       seed: base.seed,
-      source: SOURCE,
+      source: NUDGE_SOURCE,
       parentIds: [base.id],
       operator: NUDGE_OPERATOR,
       operatorParams: { stepSize, seed },

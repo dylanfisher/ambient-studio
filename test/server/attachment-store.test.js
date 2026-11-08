@@ -30,6 +30,7 @@ afterEach(async () => {
 
 const REFERENCE = ATTACHMENT_KIND.reference;
 const DIRECTION = ATTACHMENT_KIND.direction;
+const AXIS = ATTACHMENT_KIND.axis;
 
 /**
  * A vibe and a file with two regions.
@@ -202,8 +203,8 @@ test("each kind's details are checked: a reference takes none, and an unknown ki
     addAttachment(store, { vibeId: vibe.id, kind: REFERENCE, regionId, details: { weight: 1 } }),
   ).toThrow("the reference attachment's details are wrong: a reference takes no details, {}");
   expect(() =>
-    addAttachment(store, { vibeId: vibe.id, kind: "axis", regionId: null, details: {} }),
-  ).toThrow('there is no attachment kind "axis"');
+    addAttachment(store, { vibeId: vibe.id, kind: "slider", regionId: null, details: {} }),
+  ).toThrow('there is no attachment kind "slider"');
   expect(listAttachments(store, vibe.id, REFERENCE)).toEqual([]);
 });
 
@@ -243,4 +244,81 @@ test("a direction holds its two ends, the near one null for the vibe's excerpts,
     "a direction names no region",
   );
   expect(listAttachments(store, vibe.id, DIRECTION)).toHaveLength(2);
+});
+
+test("an axis holds its source, its ends and its bins, and names a region only for a region's", async () => {
+  const made = await tempStore();
+  cleanups.push(made.remove);
+  const { store } = made;
+  const { vibe, regions } = seeded(store);
+  const regionId = regions[0]?.id ?? 0;
+  const revisions = store.db.prepare("SELECT COUNT(*) AS n FROM vibe_revisions").get();
+  /** @param {Record<string, unknown>} details @param {number | null} [region] */
+  const add = (details, region = null) =>
+    addAttachment(store, { vibeId: vibe.id, kind: AXIS, regionId: region, details });
+  const ends = [null, null];
+  add({ source: "feature", name: "centroidMean", ends: [200, 900], bins: 8 });
+  add({ source: "macro", name: "motion", ends, bins: 8 });
+  add({ source: "direction", directionId: 4, ends: [null, 0.3], bins: 6 });
+  add({ source: "region", ends, bins: 6 }, regionId);
+  expect(listAttachments(store, vibe.id, AXIS).map(({ details }) => details.source)).toEqual([
+    "feature",
+    "macro",
+    "direction",
+    "region",
+  ]);
+  expect(listAttachments(store, vibe.id, AXIS).at(-1)?.regionId).toBe(regionId);
+  expect(store.db.prepare("SELECT COUNT(*) AS n FROM vibe_revisions").get()).toEqual(revisions);
+
+  /** @type {[Record<string, unknown>, string, number | null][]} */
+  const wrong = [
+    [
+      { source: "loudness", ends, bins: 8 },
+      "an axis's source is feature, macro, direction or region",
+      null,
+    ],
+    [
+      { source: "feature", name: "truePeak", ends, bins: 8 },
+      "is not a feature a range may name",
+      null,
+    ],
+    [{ source: "macro", name: "colour", ends, bins: 8 }, "is not a macro", null],
+    [
+      { source: "macro", name: "motion", ends, bins: 8, weight: 1 },
+      "{source, name, ends, bins}",
+      null,
+    ],
+    [{ source: "direction", directionId: 0, ends, bins: 8 }, "a direction attachment's id", null],
+    [{ source: "region", ends, bins: 8 }, "an axis on a region names it", null],
+    [
+      { source: "macro", name: "motion", ends, bins: 8 },
+      "names a region only on a region",
+      regionId,
+    ],
+    [
+      { source: "macro", name: "motion", ends: [0.6, 0.4], bins: 8 },
+      "its low end must be under its high end",
+      null,
+    ],
+    [{ source: "macro", name: "motion", ends: [0.4], bins: 8 }, "its ends are [low, high]", null],
+    [
+      { source: "macro", name: "motion", ends, bins: 1 },
+      "its bins are a whole number from 2 to 16",
+      null,
+    ],
+    // A prototype's key is no source or name.
+    [{ source: "constructor", ends, bins: 8 }, "an axis's source is feature, macro", null],
+    [
+      { source: "feature", name: "toString", ends, bins: 8 },
+      "is not a feature a range may name",
+      null,
+    ],
+    [{ source: "macro", name: "hasOwnProperty", ends, bins: 8 }, "is not a macro", null],
+    [{ source: "macro", name: 3, ends, bins: 8 }, "is not a macro", null],
+    [{ source: "region", ends, bins: 8 }, "an axis on a region names it", -1],
+  ];
+  for (const [details, message, region] of wrong) {
+    expect(() => add(details, region)).toThrow(message);
+  }
+  expect(listAttachments(store, vibe.id, AXIS)).toHaveLength(4);
 });

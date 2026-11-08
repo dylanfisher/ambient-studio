@@ -15,6 +15,7 @@ const TITLE = Object.freeze({
   [OPERATOR.optimize]: "Searching by your taste model",
   [OPERATOR.optimizeEar]: "Searching by ear",
   [OPERATOR.steer]: "Steering by the sliders",
+  [OPERATOR.elite]: "Filling the map",
   [JOB_KIND.analyze]: "Analyzing a region",
   [JOB_KIND.embed]: "Analyzing the sound",
   [JOB_KIND.fit]: "Fitting the taste model",

@@ -21,8 +21,7 @@ export function percentiles(values) {
     throw new Error(`percentiles take finite numbers, got ${values.join(", ")}`);
   }
   const sorted = [...values].sort((a, b) => a - b);
-  const rank = (/** @type {number} */ p) =>
-    /** @type {number} */ (sorted[Math.ceil((p / 100) * sorted.length) - 1]);
+  const rank = (/** @type {number} */ p) => nearestRank(sorted, p);
   return {
     count: sorted.length,
     p50: rank(50),
@@ -31,3 +30,12 @@ export function percentiles(values) {
     max: /** @type {number} */ (sorted.at(-1)),
   };
 }
+
+/**
+ * The p-th percentile of values sorted ascending, by nearest rank.
+ * @param {readonly number[]} sorted at least one
+ * @param {number} p above 0, at most 100
+ * @returns {number}
+ */
+export const nearestRank = (sorted, p) =>
+  /** @type {number} */ (sorted[Math.max(0, Math.ceil((p / 100) * sorted.length) - 1)]);

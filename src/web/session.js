@@ -64,6 +64,7 @@ const page = elementsById({
   pageTitle: HTMLElement,
   briefLink: HTMLAnchorElement,
   lineageLink: HTMLAnchorElement,
+  mapLink: HTMLAnchorElement,
   quickAbLink: HTMLAnchorElement,
   bestQuestionButton: HTMLButtonElement,
   countInput: HTMLInputElement,
@@ -1435,6 +1436,7 @@ status.run(async () => {
   page.briefLink.href = `./brief.html?id=${session.vibeId}`;
   page.briefLink.textContent = vibe.revision.name;
   page.lineageLink.href = `./lineage.html?id=${session.vibeId}&session=${sessionId}`;
+  page.mapLink.href = `./map.html?id=${session.vibeId}&session=${sessionId}`;
   page.quickAbLink.href = `./quick-ab.html?id=${sessionId}`;
   document.title = `Session ${sessionId}, ${vibe.revision.name} · Ambient Studio`;
   await loadRanges();
