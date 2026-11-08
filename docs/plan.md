@@ -3340,3 +3340,10 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   distance under 0.1 (0054): the best point is a sample at the final step size, about 0.05 from
   the optimum at the median of 30 seeds. `paths().search` replaces search-run's own path. The
   gate passes, 1682 tests.
+- 2026-11-07: 5b merged as c2d4a94 (Opus: 286k tokens, 144 calls, 29.4 min including a fix round
+  of 6 min; reviewer Sonnet: 64k tokens, 11 calls, 7.1 min, PASS with low findings taken: a
+  migration test for 0009, a sweep of leftover temp folders, cancel kills ffmpeg, and job tests
+  for cancel, failure and a re-embed that skips measuring). Regions are read in 25 s windows
+  hopped by 12.5 s plus a tail, normalized as renders are, into a derived `region_analyses`
+  table (migration 0009). Two render-backed route tests hit the 30 s timeout once under load in
+  the builder's run; they passed alone and in the gate. The gate passes, 1719 tests.
