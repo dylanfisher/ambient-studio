@@ -2439,6 +2439,135 @@ acceptance 8's share waits on the owner's run.
 4. Defaults taken for the owner to overrule (0061, 0063): one brief per track, sections extended up
    to 900 s, a 1,200 s track, stems as 32-bit float WAV, the 1 GiB ceiling.
 
+## Phase CV — Chant voices
+
+**Goal:** sound like a low ensemble chant. Today's drone is a stack of sines that only fall in
+level going up, so its fundamental is always its loudest partial, and no voice moves faster than
+a 20 s cycle except the noise bed. This phase adds voices for a sung drone, its breath and
+pulse, and sparse struck percussion, without changing any existing voice, so no existing genome
+renders differently and the engine version stays 2 (0009). Committed files describe the sound
+only and name no recording.
+
+**Target, from measurements the owner asked for:** a fundamental of 55–80 Hz held within about
+2 Hz, drifting up to a semitone over minutes; a weak fundamental, about 19 dB under the strongest
+partial, which is the 5th about half the time and the 7th about a quarter, switching as the vowel
+changes; nearly all energy at 200–800 Hz and about 20 dB less above 800 Hz; a level swell about
+every 2.6 s; breath dips of about 0.6 s every 3–21 s (median 8 s) that never fall silent, because
+singers breathe at different times; 10–16 LU of loudness range a minute; about 5 struck hits a
+minute, 3–24 s apart; a hall of about 5 s; side/mid about 0.75.
+
+**Acceptance, as measurable checks:**
+
+1. **The sung partials.** A `chant` voice with one singer at a 65 Hz root renders with its
+   strongest partial among harmonics 4–8 and the fundamental at least 12 dB under it; moving
+   `vowel` from one end to the other moves the strongest partial by at least two harmonics;
+   the spectral centroid of the default voice is under 700 Hz.
+2. **Pulse and breath.** The level envelope's modulation spectrum of the default voice peaks
+   within 10% of its `pulse` rate. With one singer, every breath falls at least 20 dB; with six
+   or more, no 50 ms frame of a 60 s render falls more than 12 dB under the median level.
+3. **Ensemble.** Six singers at a `spread` above 0 give a side/mid ratio of at least 0.5 under
+   neutral width, and their pitches differ, each within `spread` cents of the root.
+4. **Slow drift.** `bend` is a trajectory in cents; a bend from 0 to 100 over 120 s raises the
+   measured fundamental by a semitone, within 2%.
+5. **Percussion.** A `cymbal` voice and a `drum` voice place hits on their own grids from
+   timeline 0 at their density, thinned as 0003 says, with seeded timing; a cymbal's hit decays
+   over its `decay` with most of its energy above 2 kHz, a drum's below 200 Hz.
+6. **Reproducible and fast.** Every new voice renders the same samples in an excerpt as in a
+   full render (0007, 0010) and has a golden hash at engine version 2 (0009) while every
+   existing golden hash is unchanged. `./scripts/bench` renders a 20-minute genome with a
+   12-singer chant, a cymbal and a drum at a render-only median of at least 10× real time on
+   mbp2021, and each voice's `cost` bounds its densest window under `COST_BUDGET`.
+7. **The model can use them.** The generation prompt's schema text lists the new voices and stays
+   within its token check; a brief that allows only `chant`, `cymbal`, `drum` and `noise` gets
+   valid candidates from the fake omlx after at most one repair; a "low chant" starting point
+   is on the dashboard.
+
+**Gate:** `./scripts/check`; the bench; the owner's listening check.
+
+### Steps
+
+Order: CV.1, then CV.2 ‖ CV.3, then CV.4. The owner can try a single sung voice after CV.1.
+
+#### CV.1 — The chant voice: sung partials, vowel, bend and pulse
+
+- **Builds:** `src/engine/chant.js`, registered in `voice-registry.js`. One singer, mixed in JS
+  into one stereo buffer per 2 s event window as the granular cloud is (0014), with phase taken
+  from timeline time so a window holds the same samples in an excerpt as in a full render:
+  - **Source:** harmonics of the root up to about 3 kHz, falling by a `tilt` in dB per octave.
+  - **Formants:** two or three resonances shaping the partials' levels, set by `vowel` (0–1, a
+    trajectory) between vowel targets, with a `focus` in dB that raises the partial nearest the
+    upper resonance above its neighbors.
+  - **Pitch:** `root` in Hz snaps to the nearest scale note as the drone's does; `bend` in cents
+    (a trajectory, about ±200) moves the whole voice from there.
+  - **Pulse:** a level swell at `pulse` Hz (about 0.1–1.5) with a `depth` (0–1, a trajectory).
+  - **Macros** on its own parameters, in 0006's table: the builder picks the rows.
+  - The partials are computed cheaply (a recurrence or a table, not one `Math.sin` per partial
+    per sample); `cost` counts the JS mixing as 0014 measures it.
+- **Tiers:** engine.
+- **Tests first:** acceptance 1, 2's pulse and 4; window equality against a full render at
+  several offsets; validation of every parameter; a golden hash `chant.json` at v2 written by
+  `scripts/write-golden.js` while every other golden file is unchanged.
+- **Records:** writes 0069: the source, the formant model, vowel targets, pulse, cost. Amends
+  0013 (the shared root snapping, if reused) and 0014 (a second JS-mixed voice).
+- **Parallel:** none. Review: yes, with a performance pass (a new voice on the render path).
+
+#### CV.2 — Singers, phrases and breath
+
+- **Builds:** in `chant.js`, `singers` (1–12) copies of CV.1's singer, each detuned by a seeded
+  amount within `spread` cents and panned within a seeded `pan` spread. Each singer sings
+  phrases separated by breaths: phrase lengths drawn around `phrase` seconds (about 3–30) and
+  breaths of about `breath` seconds (0.3–2), on that singer's own schedule from timeline 0, so
+  singers breathe at different times and an excerpt finds the same breaths (0003, 0007). A
+  breath fades the singer out and in over a short ramp, not a click. `cost` grows with
+  `singers`.
+- **Tiers:** engine.
+- **Tests first:** acceptance 2's breath and 3; one singer's output equals CV.1's at the same
+  seed and parameters, or the record says why not; window equality with 12 singers; the golden
+  `chant.json` gets a second genome with six singers.
+- **Records:** writes 0070: the phrase schedule, its draws and slots, the stagger, the cost.
+- **Parallel:** with CV.3; CV.3 adds two lines to `voice-registry.js` and its own golden files,
+  so neither edits the other's files. Review: yes, with a performance pass.
+
+#### CV.3 — Cymbal and drum
+
+- **Builds:** `src/engine/cymbal.js` and `src/engine/drum.js`, registered in
+  `voice-registry.js`, both struck voices on the bell's pattern (0013): candidates on a grid from
+  timeline 0, thinned at the effective density, each hit a JS-computed buffer created in the
+  window that holds its start, with a cap on hits sounding at once.
+  - **Cymbal:** seeded noise through a few inharmonic resonances, bright, with a `decay` of up
+    to about 12 s and a shimmer.
+  - **Drum:** a low membrane, a pitch that falls quickly after the strike, a short `decay`.
+  - Both: `density` in hits a minute, low by default (about 4), a trajectory; macros as the bell
+    has; a bell-notes-style ceiling constraint for each, in 0020's table.
+- **Tiers:** engine, domain (the constraint kinds).
+- **Tests first:** acceptance 5; window equality; thinning keeps every hit when density rises;
+  golden `cymbal.json` and `drum.json` at v2; the constraint kinds lint as `bellNotes` does.
+- **Records:** writes 0071: both voices, their grids, caps and constraints. Amends 0020.
+- **Parallel:** with CV.2. Review: yes, with a performance pass.
+
+#### CV.4 — The model and a starting point
+
+- **Builds:** checks that the generation prompt's schema text describes the three new voices
+  well enough for the model (each description line says what the voice is for), that the prompt
+  stays within its token check with every voice listed, and adds a "low chant" starting point
+  in `src/domain/seed-vibes.js` (allowed voices `chant`, `noise`, `bell`, `cymbal`, `drum`; no
+  pulse; a low, dark description; no recording named). Runs the 20-minute bench of acceptance 6
+  and writes the numbers in the log.
+- **Tiers:** domain, server (tests only), scripts (the bench genome).
+- **Tests first:** acceptance 7 against the fake omlx; the starting point validates and lints.
+- **Records:** writes 0072 only if a choice the earlier records don't settle comes up.
+- **Parallel:** none. Review: the orchestrator reads the diff.
+
+**Pending owner checks** (after CV.1 and after CV.4, on mbp2015 and mbp2026):
+
+- Render a candidate from the "low chant" starting point and say whether it sounds sung.
+- Move `vowel` and `bend` on one candidate and listen for the overtone moving and the pitch
+  drifting.
+- Listen for breaths in a six-singer candidate: the group should never go silent.
+- Say whether the cymbal and drum hits sit in the room or sound pasted on.
+
+**Result:**
+
 ## Phase 7 — Album builder
 
 **Goal:** tracks ordered into an album with an arc. **Acceptance:** ordering; energy, brightness
@@ -3489,3 +3618,6 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   revision. Elites the model picks become sketches in the same transaction as the track, so a
   failure leaves no rows. The share of valid proposals per brief is shown under Propose. The review
   failed on orphan sketches; fixed. Phase 6's Result written. 2,236 tests.
+- 2026-11-08: phase CV written at the owner's request after measuring a chant recording they
+  chose ("create a phase to add these, then implement them as orchestrator"). It adds voices
+  only, so the engine version stays 2. Records 0069–0072 are reserved for its steps.
