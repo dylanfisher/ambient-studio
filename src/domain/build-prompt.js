@@ -1,10 +1,12 @@
 // The generation prompt: a system message with the answer format and the genome schema, and a
-// user message with the vibe, its constraints and feature ranges, the locks, the owner's notes
-// and rated examples, and for an explore the base to vary, under the context budget (decisions
-// 0024, 0034 and 0038). Examples go first when it doesn't fit, then the base.
+// user message with the vibe, its constraints and feature ranges, the reference regions attached
+// to it, the locks, the owner's notes and rated examples, and for an explore the base to vary,
+// under the context budget (decisions 0024, 0034, 0038 and 0052). Examples go first when it
+// doesn't fit, then the references, then the base.
 /** @import { Constraints } from "./constraint-schema.js" */
 /** @import { ChatMessage } from "./prompt-tokens.js" */
 /** @import { RecordingListing } from "./recordings-text.js" */
+/** @import { PromptReference } from "./references-text.js" */
 /** @import { FeatureRanges } from "./target-schema.js" */
 /** @import { Lock } from "./validate-lock.js" */
 import { canonicalGenome } from "../engine/canonical-genome.js";
@@ -13,6 +15,7 @@ import { constraintsText } from "./constraints-text.js";
 import { ANSWER_KEY } from "./extract-genome.js";
 import { estimateTokens, promptText, ROLE } from "./prompt-tokens.js";
 import { recordingsText } from "./recordings-text.js";
+import { referencesText } from "./references-text.js";
 import { targetsText } from "./targets-text.js";
 
 /**
@@ -49,11 +52,19 @@ import { targetsText } from "./targets-text.js";
  *   the config sets no folder; the system message lists the playable ones
  * @property {PromptBase | null} [base] an explore's base; a prompt without one asks for a new
  *   genome
+ * @property {readonly PromptReference[]} [references] the regions attached to the vibe, at most
+ *   two; trimmed from the end after the examples
  */
 
 /**
- * `baseTrimmed` is true when a base was given and left out to fit the budget.
- * @typedef {{ messages: ChatMessage[], exampleIds: number[], baseTrimmed: boolean }} Prompt
+ * `referenceIds` are the references the prompt holds; `baseTrimmed` is true when a base was given
+ * and left out to fit the budget.
+ * @typedef {{
+ *   messages: ChatMessage[],
+ *   exampleIds: number[],
+ *   referenceIds: number[],
+ *   baseTrimmed: boolean,
+ * }} Prompt
  */
 
 /** The answer format, written the way the model should write it. */
@@ -115,17 +126,38 @@ function baseAndAsk(base, locks) {
 }
 
 /**
+ * The parts one prompt is written from, once trimmed.
+ * @typedef {object} KeptParts
+ * @property {string[]} notes
+ * @property {readonly Lock[]} locks
+ * @property {PromptExample[]} examples
+ * @property {readonly RecordingListing[]} recordings
+ * @property {PromptBase | null} base
+ * @property {readonly PromptReference[]} references
+ */
+
+/**
+ * The parts trimmed to fit the budget.
+ * @typedef {object} Trimmable
+ * @property {PromptExample[]} examples
+ * @property {readonly PromptReference[]} references
+ * @property {PromptBase | null} base
+ */
+
+/**
  * @param {PromptRevision} revision
- * @param {Omit<PromptParts, "budgetTokens" | "base"> & { base: PromptBase | null }} parts
+ * @param {KeptParts} parts
  * @returns {ChatMessage[]}
  */
-function messages(revision, { notes, locks, examples, recordings, base }) {
+function messages(revision, { notes, locks, examples, recordings, base, references }) {
   const offered = recordingsText(recordings);
   const targets = targetsText(revision.ranges);
+  const attached = referencesText(references);
   const user = [
     `Vibe: ${revision.name}\n${revision.brief}`,
     constraintsText(revision.constraints),
     ...(targets === "" ? [] : [targets]),
+    ...(attached === "" ? [] : [attached]),
     ...locksText(locks),
     ...section(
       "The owner's notes, oldest first:",
@@ -147,27 +179,49 @@ function messages(revision, { notes, locks, examples, recordings, base }) {
 
 /**
  * The prompt for one generation request. Examples are trimmed from the end until it fits the
- * budget, then the base. Throws when it doesn't fit with both trimmed.
+ * budget, then references from the end, then the base; each part kept is the most of the parts
+ * after it that still fit, so when the base goes, the references and examples that fit without
+ * it come back. Throws when it doesn't fit with all three trimmed.
  * @param {PromptRevision} revision
  * @param {PromptParts} parts
  * @returns {Prompt}
  */
-export function buildPrompt(revision, { budgetTokens, examples, base = null, ...rest }) {
-  const tokens = (/** @type {PromptExample[]} */ kept, /** @type {PromptBase | null} */ keptBase) =>
-    estimateTokens(promptText(messages(revision, { ...rest, examples: kept, base: keptBase })));
-  const keptBase = base !== null && tokens([], base) > budgetTokens ? null : base;
-  const bare = tokens([], keptBase);
-  if (bare > budgetTokens) {
+export function buildPrompt(
+  revision,
+  { budgetTokens, examples, base = null, references = [], ...rest },
+) {
+  /** @param {Trimmable} kept */
+  const fits = (kept) =>
+    estimateTokens(promptText(messages(revision, { ...rest, ...kept }))) <= budgetTokens;
+  const keptBase = base !== null && !fits({ examples: [], references: [], base }) ? null : base;
+  if (!fits({ examples: [], references: [], base: keptBase })) {
+    const bare = estimateTokens(
+      promptText(messages(revision, { ...rest, examples: [], references: [], base: keptBase })),
+    );
     const none = base === null ? "no examples" : "no examples and no base";
     throw new Error(
       `the prompt is about ${bare} tokens with ${none}, over the ${budgetTokens}-token budget; shorten the vibe's brief or notes`,
     );
   }
+  let keptReferences = references;
+  while (
+    keptReferences.length > 0 &&
+    !fits({ examples: [], references: keptReferences, base: keptBase })
+  ) {
+    keptReferences = keptReferences.slice(0, -1);
+  }
   let kept = examples;
-  while (kept.length > 0 && tokens(kept, keptBase) > budgetTokens) kept = kept.slice(0, -1);
+  while (kept.length > 0 && !fits({ examples: kept, references: keptReferences, base: keptBase }))
+    kept = kept.slice(0, -1);
   return {
-    messages: messages(revision, { ...rest, examples: kept, base: keptBase }),
+    messages: messages(revision, {
+      ...rest,
+      examples: kept,
+      references: keptReferences,
+      base: keptBase,
+    }),
     exampleIds: kept.map((e) => e.id),
+    referenceIds: keptReferences.map((r) => r.id),
     baseTrimmed: keptBase !== base,
   };
 }
