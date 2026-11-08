@@ -1,15 +1,17 @@
 // The explore, nudge and search controls of a session card or a lineage node (decisions 0039,
 // 0054), from the page's `steer-controls` template: a direction field with the explore button,
-// a step size with the nudge button, and a budget and control switch with the search button,
-// which asks first with the cost. Each button is off from its click until its job finishes
+// a step size with the nudge button, a budget and control switch with the search button,
+// which asks first with the cost, and a count of pairs with Search by ear, which opens the
+// Quick A/B page in its search-by-ear mode (0055). Each button is off from its click until its job finishes
 // (0032). The page sends the request and follows the job; this builds the request.
 /** @import { JobControl } from "./job-control.js" */
+import { DEFAULT_EAR_QUERIES, MAX_EAR_QUERIES } from "../domain/ear-settings.js";
 import { DEFAULT_EXPLORES, DIRECTION_CHARS, NOT_ONE_LINE } from "../domain/explore-direction.js";
 import { DEFAULT_NUDGES, STEP_SIZE } from "../domain/nudge.js";
 import { searchCostText } from "../domain/search-cost.js";
 import { DEFAULT_SEARCH_BUDGET, MAX_SEARCH_BUDGET } from "../domain/search-settings.js";
 import { SHOWN_POINTS } from "../domain/search-shown.js";
-import { getJson, SEARCH_ESTIMATE_PATH, sessionPath } from "./api.js";
+import { ApiError, getJson, postJson, SEARCH_ESTIMATE_PATH, sessionPath } from "./api.js";
 import { cloneTemplate } from "./clone-template.js";
 import { jobControl } from "./job-control.js";
 
@@ -29,6 +31,8 @@ export const steerTitles = () => ({
   nudge: `Makes ${DEFAULT_NUDGES} children of this candidate by moving its numbers a step, with no model request, and renders an excerpt of each. Takes a few seconds per child.`,
   search: `Searches near this candidate, scoring each point by your taste model with no model request, and shows the best ${SHOWN_POINTS} that sound different, the rest folded under them. Asks first, with the time it takes.`,
   budget: `How many points Search from here tries, from 1 to ${MAX_SEARCH_BUDGET}. Each one renders an excerpt and is scored by your taste model.`,
+  ear: "Searches near this candidate by your ear: opens Quick A/B, where the best so far meets one new variation at a time, and each choice steers the next. No model request; the next variation renders while you listen.",
+  queries: `How many pairs Search by ear asks you, from 1 to ${MAX_EAR_QUERIES}. Each takes about as long as hearing the two excerpts.`,
 });
 
 /**
@@ -62,7 +66,12 @@ export function steerControls({ candidateId, sessionId, start, run }) {
     budget: HTMLInputElement,
     control: HTMLInputElement,
     search: HTMLButtonElement,
+    queries: HTMLInputElement,
+    ear: HTMLButtonElement,
   });
+  parts.queries.min = "1";
+  parts.queries.max = String(MAX_EAR_QUERIES);
+  parts.queries.value = String(DEFAULT_EAR_QUERIES);
   parts.budget.min = "1";
   parts.budget.max = String(MAX_SEARCH_BUDGET);
   parts.budget.value = String(DEFAULT_SEARCH_BUDGET);
@@ -82,6 +91,8 @@ export function steerControls({ candidateId, sessionId, start, run }) {
   parts.nudge.title = titles.nudge;
   parts.search.title = titles.search;
   parts.budget.title = titles.budget;
+  parts.ear.title = titles.ear;
+  parts.queries.title = titles.queries;
   const explore = jobControl(parts.explore);
   const nudge = jobControl(parts.nudge);
   const search = jobControl(parts.search);
@@ -131,6 +142,26 @@ export function steerControls({ candidateId, sessionId, start, run }) {
       await start(search, path, { candidateId, budget, control });
     });
 
+  // The search runs on the Quick A/B page, so this button opens it rather than following a job
+  // here; a search by ear already running in the session is opened as it is.
+  parts.ear.onclick = () =>
+    run(async () => {
+      const queries = Number(parts.queries.value);
+      if (!Number.isInteger(queries) || queries < 1 || queries > MAX_EAR_QUERIES) {
+        throw new Error(
+          `Search by ear's pairs must be a whole number from 1 to ${MAX_EAR_QUERIES}.`,
+        );
+      }
+      const id = session();
+      try {
+        await postJson(`${sessionPath(id)}/ear-searches`, { candidateId, queries });
+      } catch (error) {
+        const running = error instanceof ApiError && error.status === 409 && error.body?.jobId;
+        if (!running) throw error;
+      }
+      location.assign(`./quick-ab.html?id=${id}&ear`);
+    });
+
   /** @type {WeakMap<HTMLButtonElement, string>} */
   const idle = new WeakMap([
     [parts.explore, parts.explore.title],
@@ -150,6 +181,8 @@ export function steerControls({ candidateId, sessionId, start, run }) {
         button.disabled = why !== null;
         button.title = why ?? /** @type {string} */ (idle.get(button));
       }
+      parts.ear.disabled = why !== null;
+      parts.ear.title = why ?? titles.ear;
     },
   };
 }

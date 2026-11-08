@@ -36,6 +36,15 @@
           about the same, W skips, Space pauses or plays, and Z undoes the last choice. Keys do
           nothing while you are typing in a field.
         </p>
+        <p id="earHelp" class="help muted" hidden>
+          Searching by ear: the one that stays is the best so far, and the other is a new
+          variation near it, chosen to learn the most about what you like. If you choose the new
+          one, it becomes the best and stays. The next variation is rendered while you listen.
+          Each choice is saved as an ordinary A/B choice, so it also teaches your taste model.
+          About the same and Skip move on too; Skip tells the search nothing. Undo is off here,
+          since the search has already used your choice. Stop ends the search; its best is shown
+          first on the session page.
+        </p>
         <p id="status" class="status" role="status" aria-live="polite">Loading…</p>
       </div>
 
@@ -43,7 +52,7 @@
         <div class="row">
           <h2 id="quick-heading">Which is better?</h2>
           <span class="spacer"></span>
-          <div class="row small" role="radiogroup" aria-label="Order of the pairs">
+          <div id="orderModes" class="row small" role="radiogroup" aria-label="Order of the pairs">
             <label class="check"
               ><input id="modeChampion" type="radio" name="orderMode" value="champion" checked title="Keeps the one you chose to meet the next candidate, until every candidate has had a turn. Changing it starts from the next pair." />
               The one chosen stays</label
@@ -94,6 +103,7 @@
           <button id="skip" class="button outline" type="button" title="Saves that you couldn't choose, and shows the next pair with a new candidate.">Skip</button>
           <button id="playPause" class="button outline" type="button" title="Pauses the excerpt that is playing, or plays the one you heard last.">Play or pause</button>
           <button id="undo" class="button outline" type="button" title="Removes the last choice you saved, and brings its pair back to choose again.">Undo</button>
+          <button id="stopEar" class="button outline" type="button" hidden title="Ends the search by ear now. Every choice so far is kept, and its best is shown first on the session page.">Stop the search</button>
         </div>
       </section>
     </main>

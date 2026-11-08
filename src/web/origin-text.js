@@ -60,6 +60,10 @@ export function originText({ operator, operatorParams, parentIds, search }, name
         : "";
     return `Point ${point + 1} of generation ${generation + 1} of a search from ${parent}, scored by your taste model with no model request.${shown}`;
   }
+  if (operator === OPERATOR.optimizeEar) {
+    const best = search?.shown ? " Shown as the search's best: the one you chose last." : "";
+    return `Pair ${operatorParams.query + 1} of a search by ear from ${parent}: you compared it with the best so far.${best}`;
+  }
   throw new Error(`the page doesn't know the operator ${operator}`);
 }
 
@@ -69,6 +73,7 @@ const OPERATOR_WORDS = Object.freeze({
   [OPERATOR.nudge]: "nudged",
   [OPERATOR.explore]: "variation",
   [OPERATOR.optimize]: "searched",
+  [OPERATOR.optimizeEar]: "searched by ear",
 });
 
 /**
@@ -92,7 +97,7 @@ export function intentText({ intent, operator }) {
   if (operator === OPERATOR.nudge) {
     return "A nudge has no intent of its own: it is its base with some numbers moved.";
   }
-  if (operator === OPERATOR.optimize) {
+  if (operator === OPERATOR.optimize || operator === OPERATOR.optimizeEar) {
     return "A search point has no intent of its own: it is its base with some numbers moved.";
   }
   return "The model gave no intent.";
@@ -108,5 +113,8 @@ export function rejectText({ operator, rejectReason }) {
   if (why === undefined) throw new Error(`the page doesn't know the reject reason ${rejectReason}`);
   if (operator === OPERATOR.nudge) return `a nudge draw ${why}, so it was drawn again`;
   if (operator === OPERATOR.optimize) return `a search point ${why}, so it was told a low score`;
+  if (operator === OPERATOR.optimizeEar) {
+    return `a search-by-ear point ${why}, so it was told as a loss and never played`;
+  }
   return `a model answer ${why}`;
 }

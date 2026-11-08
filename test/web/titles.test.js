@@ -2,6 +2,7 @@
 // templates included, and the titles the modules set on what they build.
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
+import { MAX_EAR_QUERIES } from "../../src/domain/ear-settings.js";
 import { DEFAULT_EXPLORES } from "../../src/domain/explore-direction.js";
 import { macroTitles } from "../../src/domain/macro-words.js";
 import { DEFAULT_NUDGES } from "../../src/domain/nudge.js";
@@ -73,6 +74,12 @@ describe("titles the modules set", () => {
     expect(budget).toContain(`from 1 to ${MAX_SEARCH_BUDGET}`);
     expect(explore).toContain(`for ${DEFAULT_EXPLORES} variations`);
     expect(nudge).toContain(`Makes ${DEFAULT_NUDGES} children`);
+  });
+
+  test("Search by ear's button and count have titles, the count naming its limit", () => {
+    const { ear, queries } = steerTitles();
+    expect([ear, queries].every(isSentence)).toBe(true);
+    expect(queries).toContain(`from 1 to ${MAX_EAR_QUERIES}`);
   });
 
   test("each macro's three choices have a title", () => {
