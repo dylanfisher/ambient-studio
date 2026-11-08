@@ -3621,3 +3621,15 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
 - 2026-11-08: phase CV written at the owner's request after measuring a chant recording they
   chose ("create a phase to add these, then implement them as orchestrator"). It adds voices
   only, so the engine version stays 2. Records 0069–0072 are reserved for its steps.
+- 2026-11-08: CV.1 merged as 55268c9 and 05a3677 (Opus: 222k tokens, 86 calls, 30.9 min including
+  a fix round of 0.5 min; reviewer Sonnet: 69k tokens, 21 calls, 5.3 min, CHANGES NEEDED: the
+  chant source was missing from the feature extractor's hash, now fixed). `chant` is one sung
+  singer: harmonics up to 3 kHz under a tilt, two vowel resonances and a weak low one, `focus`,
+  `bend` in cents summed from timeline 0, and a `pulse` swell. At defaults the 5th harmonic is
+  strongest, with the fundamental 18 dB under it and the centroid at 511 Hz; vowel moves the peak
+  from the 4th to the 10th harmonic. Cost is 4 + 23 a singer + 0.9 a partial, and twelve full
+  singers would cost about 770, so CV.2 has to share work between them. Two tests fail until CV.4
+  (schema text 3,341 against 3,000 characters; the every-voice-locked prompt 4,190 against
+  4,096 tokens). buildPrompt trims or throws, so omlx never gets a prompt that is too long. The
+  second test run caught a race in the upload receiver, an orphaned temp file after a 413; fixed
+  in b878900 (Sonnet: 47k tokens, 17 calls, 9.8 min) with a deterministic test.
