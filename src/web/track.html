@@ -29,7 +29,8 @@
           move it, set where it starts in its sketch and how long it plays, and set its
           crossfade. Drag a block's edges, use the fields, or use the keys shown on each button.
           Play a section to hear its part of the sketch. Save keeps a new version and leaves the
-          earlier ones as they were. Rendering the whole track comes later.
+          earlier ones as they were. Render a saved version to play the whole track, hear one
+          crossfade on its own, and export it as WAV and FLAC.
         </p>
         <p id="status" class="status" role="status" aria-live="polite">Loading…</p>
       </div>
@@ -88,6 +89,21 @@
         <!-- biome-ignore lint/a11y/useMediaCaption: instrumental sections have no speech to caption -->
         <audio id="sectionAudio" preload="none" title="Plays the chosen section's part of its sketch, rendered as it will sound in the track."></audio>
         <div id="jobBox" class="stack"></div>
+      </section>
+
+      <section class="card stack" aria-labelledby="render-heading">
+        <h2 id="render-heading">Render and export</h2>
+        <p id="renderLine" class="small"></p>
+        <div class="row">
+          <button id="renderTrack" class="button primary" type="button" title="Renders the whole of the version on the timeline, normalized to the brief's loudness, after a confirm that says how long it takes. Nothing renders until you press it.">Render the track</button>
+          <button id="playTrack" class="button secondary" type="button" title="Plays the version's rendered track from where it was stopped, with the place it has reached marked on the timeline; press again to pause.">Play the track</button>
+          <button id="playSeam" class="button outline" type="button" title="Renders the 30 seconds around the chosen section's crossfade, once, and plays them, so a change can be heard without rendering the whole track.">Hear the crossfade</button>
+          <button id="exportTrack" class="button outline" type="button" title="Writes the rendered track as WAV and FLAC with a manifest into a new folder in the studio's exports folder. A version is exported once; its folder is never overwritten.">Export WAV and FLAC</button>
+        </div>
+        <!-- biome-ignore lint/a11y/useMediaCaption: instrumental tracks have no speech to caption -->
+        <audio id="trackAudio" preload="none" title="Plays the rendered track, or the 30 seconds around a crossfade, as they were rendered."></audio>
+        <ul id="exportList" class="list small"></ul>
+        <div id="renderJobBox" class="stack"></div>
       </section>
 
       <section class="card stack" aria-labelledby="add-heading">

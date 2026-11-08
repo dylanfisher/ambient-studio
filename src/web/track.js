@@ -9,6 +9,7 @@
 /** @import { ArrangementSketch } from "../domain/validate-arrangement.js" */
 /** @import { JobStatus } from "./job-progress.js" */
 /** @import { TimelineAction } from "./timeline-keys.js" */
+/** @import { TrackCost } from "../domain/track-cost.js" */
 import { arrangementLength } from "../domain/arrangement-length.js";
 import { SECTION_FIELDS, SECTION_KEY, TRANSITION_SECONDS } from "../domain/arrangement-schema.js";
 import { validateArrangement } from "../domain/validate-arrangement.js";
@@ -22,6 +23,7 @@ import { jobControl } from "./job-control.js";
 import { endedText, JOB_STATE } from "./job-progress.js";
 import { jobBox } from "./job-view.js";
 import { keyButtons } from "./key-buttons.js";
+import { NOT_STARTED } from "./owner-job.js";
 import { unloadGuard } from "./quick-ab-session.js";
 import { statusLine } from "./status-line.js";
 import {
@@ -40,6 +42,7 @@ import {
 import { bindTimelineKeys, TIMELINE_KEYS } from "./timeline-keys.js";
 import { blockText, sectionCount, timelineLayout } from "./timeline-layout.js";
 import { drawTimeline } from "./timeline-view.js";
+import { trackRenderText } from "./track-render-text.js";
 
 const status = statusLine();
 const page = elementsById({
@@ -64,6 +67,10 @@ const page = elementsById({
   sketchSelect: HTMLSelectElement,
   noSketches: HTMLElement,
   revisionList: HTMLUListElement,
+  renderLine: HTMLElement,
+  trackAudio: HTMLAudioElement,
+  exportList: HTMLUListElement,
+  renderJobBox: HTMLElement,
 });
 
 /** Each action's button, which shows its key and does what the key does. */
@@ -83,7 +90,20 @@ page.secondsInput.min = String(SECTION_FIELDS.seconds.min);
 page.offsetInput.min = String(SECTION_FIELDS.offset.min);
 page.fadeInput.min = String(TRANSITION_SECONDS.min);
 mountPlayer(page.sectionAudio, status.fail);
+mountPlayer(page.trackAudio, status.fail);
 const playControl = jobControl(buttons.play);
+/** The render, seam and export buttons share one hold: one track job runs at a time. */
+const TRACK_JOB_BUTTONS = /** @type {const} */ (["renderTrack", "playSeam", "exportTrack"]);
+const trackJobControls = TRACK_JOB_BUTTONS.map((name) => jobControl(buttons[name]));
+/** The actions that act on the saved version rather than the chosen section. */
+const VERSION_ACTIONS = new Set([
+  "add",
+  "save",
+  "renderTrack",
+  "playTrack",
+  "playSeam",
+  "exportTrack",
+]);
 
 const idText = new URLSearchParams(location.search).get("id");
 if (idText === null) throw new Error("track.html needs ?id=<track id>");
@@ -111,6 +131,24 @@ let openedVersion = 0;
 let selected = null;
 /** Each section window's audio once rendered, by the section as JSON. */
 const windowAudio = /** @type {Map<string, string>} */ (new Map());
+
+/**
+ * The opened version's render, as `GET …/revisions/:id/render` gives it.
+ * @typedef {object} RenderView
+ * @property {{ cost: TrackCost, rate: number, measured: boolean }} estimate
+ * @property {{ url: string, seconds: number, loudness: { integrated: number, truePeak: number } } | null} preview
+ * @property {{ transition: number, url: string, from: number }[]} seams
+ * @property {string} folder the export's folder name
+ * @property {{ folder: string, createdAt: number }[]} exports
+ */
+
+/** @type {RenderView | null} null while it is read, or when the version has no sections */
+let rendered = null;
+/** Track seconds at the start of what the track player plays: 0, or a seam preview's start. */
+let playedFrom = 0;
+const playhead = document.createElement("div");
+playhead.className = "timeline-playhead";
+playhead.hidden = true;
 
 /** @param {number} id */
 const sketchOf = (id) => view?.sketches.find((sketch) => sketch.id === id);
@@ -210,8 +248,10 @@ function draw() {
   page.noSections.hidden = sections.length > 0;
 
   page.sectionBox.hidden = selected === null;
+  page.timeline.append(playhead);
+  drawRender();
   for (const name of /** @type {TimelineAction[]} */ (Object.keys(TIMELINE_KEYS))) {
-    if (name !== "add" && name !== "save") buttons[name].disabled = selected === null;
+    if (!VERSION_ACTIONS.has(name)) buttons[name].disabled = selected === null;
   }
   // A render that is running keeps Play off, whatever is chosen.
   if (playControl.held()) buttons.play.disabled = true;
@@ -250,6 +290,8 @@ function edit(next, choose) {
   draft = next;
   if (choose !== undefined) selected = choose;
   draw();
+  // An edit back to the saved version makes it renderable again.
+  if (!unsaved() && rendered === null) void status.run(readRender);
 }
 
 /**
@@ -402,6 +444,191 @@ function play(url) {
   playAudio(page.sectionAudio, status.fail);
 }
 
+/** The opened version's id, counted as the server stores it. */
+const openedRevisionId = () => {
+  const revision = view?.revisions[openedVersion - 1];
+  if (!revision) throw new Error(`there is no version ${openedVersion}`);
+  return revision.id;
+};
+
+/** Reads the opened version's render state, then draws it. */
+async function readRender() {
+  rendered = null;
+  drawRender();
+  if (draft === null || draft.sections.length === 0 || unsaved()) return;
+  const id = openedRevisionId();
+  /** @type {RenderView} */
+  const read = await getJson(`${trackPath(trackId)}/revisions/${id}/render`);
+  if (openedRevisionId() === id) rendered = read;
+  drawRender();
+}
+
+/** Draws the render card from `rendered`: what is rendered and exported, and which buttons work. */
+function drawRender() {
+  const held = trackJobControls.some((control) => control.held());
+  const fade = draft === null || selected === null ? null : transitionOf(draft, selected);
+  /** @type {[string, boolean][]} */
+  const ready = [
+    ["renderTrack", rendered !== null && !held],
+    ["playTrack", rendered?.preview != null],
+    ["playSeam", rendered !== null && fade !== null && !held],
+    ["exportTrack", rendered?.preview != null && rendered.exports.length === 0 && !held],
+  ];
+  // The card acts on the saved version, so an unsaved timeline turns it off.
+  const saved = !unsaved();
+  for (const [name, on] of ready) {
+    buttons[/** @type {TimelineAction} */ (name)].disabled = !(on && saved);
+  }
+  if (draft === null || draft.sections.length === 0) {
+    page.renderLine.textContent = "Add a section and save to render the track.";
+  } else if (unsaved()) {
+    page.renderLine.textContent = "Save the timeline first: only a saved version renders.";
+  } else if (rendered === null) {
+    page.renderLine.textContent = `Reading version ${openedVersion}'s render…`;
+  } else if (rendered.preview === null) {
+    page.renderLine.textContent = `Version ${openedVersion} isn't rendered yet.`;
+  } else {
+    const { seconds, loudness } = rendered.preview;
+    page.renderLine.textContent = `Version ${openedVersion} is rendered: ${clockTime(seconds)} at ${loudness.integrated.toFixed(1)} LUFS, its peak ${loudness.truePeak.toFixed(1)} dBTP.`;
+  }
+  page.exportList.replaceChildren(
+    ...(rendered?.exports ?? []).map(({ folder, createdAt }) => {
+      const item = document.createElement("li");
+      item.textContent = `Exported ${formatTime(createdAt)} to the folder ${folder} in the studio's exports folder.`;
+      return item;
+    }),
+  );
+}
+
+/**
+ * Starts a track job by its route, follows it in the render card, and returns its result once
+ * done, or null when it stopped or failed.
+ * @param {string} path
+ * @param {Record<string, unknown>} body
+ * @param {string} started what the status line says once it has started
+ * @returns {Promise<any>}
+ */
+async function trackJob(path, body, started) {
+  for (const control of trackJobControls) control.wait();
+  try {
+    const { job, refused } = await startJob(path, body);
+    status.say(refused ? `${refused} Showing that job's progress.` : started);
+    const box = jobBox((current) =>
+      status.run(async () => box.show(await postJson(`${jobPath(current.id)}/cancel`, {}))),
+    );
+    page.renderJobBox.replaceChildren(box.root);
+    for (const control of trackJobControls) control.hold(job);
+    /** @type {JobStatus & { result?: any }} */
+    const finished = await followJob(job, (current) => box.show(current));
+    if (finished.state !== JOB_STATE.done) {
+      status.say(endedText(finished));
+      return null;
+    }
+    return refused ? null : finished.result;
+  } finally {
+    for (const control of trackJobControls) control.release();
+    draw();
+  }
+}
+
+/** Renders the opened version after a confirm stating its estimate. */
+async function renderTrack() {
+  if (rendered === null) return;
+  if (!confirm(trackRenderText(rendered.estimate.cost, rendered.estimate))) {
+    status.say(NOT_STARTED);
+    return;
+  }
+  const result = await trackJob(
+    `${trackPath(trackId)}/render`,
+    { revisionId: openedRevisionId() },
+    "Rendering the track.",
+  );
+  if (result === null) return;
+  await readRender();
+  status.say(
+    result.cached ? "This version was already rendered." : "Rendered. Press Play the track.",
+  );
+}
+
+/**
+ * Plays `url` in the track player, its first second at `from` on the track.
+ * @param {string} url
+ * @param {number} from
+ */
+function playTrackAudio(url, from) {
+  const absolute = new URL(url, location.href).href;
+  if (page.trackAudio.src !== absolute) {
+    page.trackAudio.src = url;
+    playedFrom = from;
+  }
+  playAudio(page.trackAudio, status.fail);
+}
+
+/** Plays or pauses the rendered track. */
+function playTrack() {
+  const preview = rendered?.preview;
+  if (!preview) return;
+  const absolute = new URL(preview.url, location.href).href;
+  if (page.trackAudio.src === absolute && !page.trackAudio.paused) {
+    page.trackAudio.pause();
+    return;
+  }
+  playTrackAudio(preview.url, 0);
+}
+
+/** Plays the 30 s around the chosen section's crossfade, rendering them first when needed. */
+async function playSeam() {
+  if (draft === null || selected === null || rendered === null) return;
+  const transition = transitionOf(draft, selected);
+  if (transition === null) return;
+  const known = rendered.seams.find((seam) => seam.transition === transition);
+  if (known) {
+    playTrackAudio(known.url, known.from);
+    return;
+  }
+  const result = await trackJob(
+    `${trackPath(trackId)}/seam-preview`,
+    { revisionId: openedRevisionId(), transition },
+    `Rendering the crossfade from section ${transition + 1} into section ${transition + 2}.`,
+  );
+  if (result === null) return;
+  await readRender();
+  playTrackAudio(result.url, result.from);
+}
+
+/** Exports the rendered version into a new folder. */
+async function exportTrack() {
+  if (!rendered?.preview) return;
+  const result = await trackJob(
+    `${trackPath(trackId)}/export`,
+    { revisionId: openedRevisionId() },
+    "Writing the WAV, the FLAC and the manifest.",
+  );
+  if (result === null) return;
+  await readRender();
+  status.say(`Exported to ${result.path}.`);
+}
+
+/** Moves the playhead to where the track player has reached. */
+function movePlayhead() {
+  const length = draft === null ? 0 : arrangementLength(draft);
+  const at = playedFrom + page.trackAudio.currentTime;
+  playhead.hidden = !(length > 0) || page.trackAudio.src === "";
+  playhead.style.left = `${Math.min(100, (at / length) * 100)}%`;
+}
+page.trackAudio.addEventListener("timeupdate", movePlayhead);
+page.trackAudio.addEventListener("seeked", movePlayhead);
+
+/**
+ * Runs `action` only while its button is on, since a key presses it whatever the button shows:
+ * the render card is off while the timeline is unsaved or a track job runs.
+ * @param {TimelineAction} name
+ * @param {() => Promise<void>} action
+ */
+const whenOn = (name, action) => () => {
+  if (!buttons[name].disabled) void status.run(action);
+};
+
 /** Each action, run by its button and its key. */
 const actions = /** @type {Record<TimelineAction, () => void>} */ ({
   selectPrevious: () => {
@@ -428,6 +655,10 @@ const actions = /** @type {Record<TimelineAction, () => void>} */ ({
   remove: () => onSelected((arrangement, index) => removeSection(arrangement, index)),
   play: () => void status.run(playSection),
   save: () => void status.run(save),
+  renderTrack: whenOn("renderTrack", renderTrack),
+  playTrack: whenOn("playTrack", async () => playTrack()),
+  playSeam: whenOn("playSeam", playSeam),
+  exportTrack: whenOn("exportTrack", exportTrack),
 });
 for (const [name, action] of Object.entries(actions)) {
   buttons[/** @type {TimelineAction} */ (name)].onclick = () => status.run(action);
@@ -443,6 +674,10 @@ window.addEventListener("beforeunload", unloadGuard({ unsaved }));
 function openRevision(index) {
   const revision = view?.revisions[index];
   if (!revision) throw new Error(`there is no version ${index + 1}`);
+  rendered = null;
+  page.trackAudio.pause();
+  page.trackAudio.removeAttribute("src");
+  playhead.hidden = true;
   draft = structuredClone(revision.arrangement);
   kept = JSON.stringify(draft);
   openedVersion = index + 1;
@@ -472,6 +707,7 @@ async function load() {
   openRevision(read.revisions.length - 1);
   showRevisions();
   draw();
+  await readRender();
 }
 
 /** Lists the revisions, newest first, each with Open. */
@@ -497,6 +733,7 @@ function showRevisions() {
             openRevision(index);
             page.noteInput.value = index === newest ? "" : `From version ${index + 1}`;
             draw();
+            void status.run(readRender);
             status.say(
               index === newest
                 ? `Opened version ${index + 1}, the newest.`

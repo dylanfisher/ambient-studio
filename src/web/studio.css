@@ -893,3 +893,14 @@ audio[hidden] + .player {
 .timeline-edge.end {
   right: 0;
 }
+
+/* Where the track's preview has reached (0062); it takes no pointer, so the blocks stay usable. */
+.timeline-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--primary);
+  pointer-events: none;
+}

@@ -20,6 +20,10 @@ export const TIMELINE_KEYS = Object.freeze({
   remove: "KeyX",
   play: "Space",
   save: "KeyS",
+  renderTrack: "KeyR",
+  playTrack: "KeyP",
+  playSeam: "KeyC",
+  exportTrack: "KeyE",
 });
 
 /** @typedef {keyof typeof TIMELINE_KEYS} TimelineAction */
