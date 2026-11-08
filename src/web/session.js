@@ -27,7 +27,7 @@ import { abView } from "./ab-view.js";
 import { getJson, jobPath, postJson, sessionPath, startJob, VIBES_PATH } from "./api.js";
 import { trackAudio } from "./audio-player.js";
 import { questionOf } from "./best-question.js";
-import { candidateRows } from "./candidate-rows.js";
+import { candidateRows, rowPlacement } from "./candidate-rows.js";
 import { createSelection } from "./candidate-selection.js";
 import { createCardHold } from "./card-hold.js";
 import { cloneTemplate } from "./clone-template.js";
@@ -890,16 +890,11 @@ function showPairs() {
   const held = {
     playing: (id) => {
       const card = byId.get(id);
-      return Boolean(card && !card.parts.audio.paused);
+      return Boolean(card && isPlaying(card));
     },
     editing: (id) => {
       const card = byId.get(id);
-      if (!card) return false;
-      const { note, tags } = card.parts;
-      return card.hold.held({
-        unsentText: note.value.trim() !== "" || tags.value.trim() !== "" || card.steer.unsent(),
-        pending: card.busy || card.locking || card.offered.length > 0,
-      });
+      return Boolean(card && isEditing(card));
     },
   };
   for (const card of cards) {
@@ -914,6 +909,8 @@ function showPairs() {
     card.parts.pairLink.textContent = link.text;
     card.parts.pairLink.title = link.title;
   }
+  // A row held when the table was last laid out takes its new place once it is released.
+  layoutRows();
 }
 
 /**
@@ -1156,17 +1153,50 @@ const stopSession = oneAtATime(async () => {
   status.say(`Session ${sessionId} stopped. Start a new one from the brief page.`);
 });
 
+/** @param {Card} card whether its excerpt plays */
+const isPlaying = (card) => !card.parts.audio.paused;
+
 /**
- * Puts each row in its table in the order given, moving only the rows out of place, so a row
- * that stays where it was is never taken out of the page.
+ * Whether the card is in use (`card-hold.js`): the focus, a pointer pressed in it, text not
+ * yet sent, or a request or offer pending.
+ * @param {Card} card
+ */
+function isEditing(card) {
+  const { note, tags } = card.parts;
+  return card.hold.held({
+    unsentText: note.value.trim() !== "" || tags.value.trim() !== "" || card.steer.unsent(),
+    pending: card.busy || card.locking || card.offered.length > 0,
+  });
+}
+
+/**
+ * Puts the table's rows in the order given, moving only the rows out of place and never a row
+ * that plays or is in use (`rowPlacement`), since Safari pauses an `<audio>` and blurs a field
+ * taken out of the page. Such a row takes its place when `showPairs` runs after its release.
  * @param {HTMLTableElement} table
- * @param {readonly HTMLElement[]} rows
+ * @param {readonly Card[]} rows
  */
 function placeRows(table, rows) {
-  rows.forEach((row, i) => {
-    const at = table.tBodies[i];
-    if (at !== row) table.insertBefore(row, at ?? null);
+  const byRoot = new Map(cards.map((card) => [card.parts.root, card]));
+  const current = [...table.tBodies].flatMap((body) => {
+    const card = byRoot.get(body);
+    return card ? [card.candidate.id] : [];
   });
+  const held = new Set(
+    rows.filter((card) => isPlaying(card) || isEditing(card)).map((card) => card.candidate.id),
+  );
+  const byId = new Map(rows.map((card) => [card.candidate.id, card.parts.root]));
+  const { moves } = rowPlacement(
+    current,
+    rows.map((card) => card.candidate.id),
+    held,
+  );
+  for (const [id, before] of moves) {
+    table.insertBefore(
+      /** @type {HTMLElement} */ (byId.get(id)),
+      before === null ? null : /** @type {HTMLElement} */ (byId.get(before)),
+    );
+  }
 }
 
 /**
@@ -1187,10 +1217,10 @@ function layoutRows() {
    * @param {number} depth
    */
   const indent = (id, depth) => {
-    const { parts } = cardOf(id);
-    parts.branch.textContent = depth > 0 ? "↳" : "";
-    parts.nameCell.style.setProperty("--depth", String(depth));
-    return parts.root;
+    const card = cardOf(id);
+    card.parts.branch.textContent = depth > 0 ? "↳" : "";
+    card.parts.nameCell.style.setProperty("--depth", String(depth));
+    return card;
   };
   placeRows(
     page.candidateTable,

@@ -110,4 +110,3 @@ literal "ENOENT" | files src/server/file-inside.js src/server/preference-test-st
 literal "/api/embeddings" | files src/server/embedding-routes.js src/web/api.js | the embed job's route, declared by the server and requested by the pages, which talk to it only over HTTP and can't import it (map.md)
 literal "/api/preference-models" | files src/server/preference-routes.js src/web/api.js | the fit job's route, declared by the server and requested by the pages, which talk to it only over HTTP and can't import it (map.md)
 literal "/api/jobs" | files src/server/session-routes.js src/web/api.js | the jobs route, declared by the server and requested by the pages, which talk to it only over HTTP and can't import it (map.md)
-literal "embed" | files src/server/embedding-routes.js src/web/evaluation.js | the embed job's kind, given by the server's route and read by the Model test page to follow a running one, which talk only over HTTP (map.md)

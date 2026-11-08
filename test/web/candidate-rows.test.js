@@ -2,7 +2,7 @@
 // revised pair in one place with the children of either under it, and hidden candidates moved
 // to the hidden list, their children left in the table as roots that name them.
 import { expect, test } from "vitest";
-import { candidateRows } from "../../src/web/candidate-rows.js";
+import { candidateRows, rowPlacement } from "../../src/web/candidate-rows.js";
 
 /**
  * @param {number} id
@@ -121,4 +121,69 @@ test("ranked roots follow their slots, children stay under their parent, and unr
     [3, 1],
     [2, 0],
   ]);
+});
+
+// Placing the rows without moving one in use (decision 0046): Safari pauses a detached
+// `<audio>` and blurs a detached field, so a held row stays put and the rest order around it.
+
+/**
+ * Applies the moves to the current order, as the page's insertBefore calls would.
+ * @param {number[]} current
+ * @param {[number, number | null][]} moves each row and the row it goes before, null for last
+ */
+const apply = (current, moves) => {
+  const rows = [...current];
+  for (const [id, before] of moves) {
+    const at = rows.indexOf(id);
+    if (at >= 0) rows.splice(at, 1);
+    rows.splice(before === null ? rows.length : rows.indexOf(before), 0, id);
+  }
+  return rows;
+};
+
+test("with nothing held, the rows take the wanted order", () => {
+  const { order, moves } = rowPlacement([1, 2, 3, 4], [4, 2, 1, 3], new Set());
+  expect(order).toEqual([4, 2, 1, 3]);
+  expect(apply([1, 2, 3, 4], moves)).toEqual(order);
+});
+
+test("a held row keeps its place and is never moved, and the rest order around it", () => {
+  const current = [1, 2, 3, 4];
+  const { order, moves } = rowPlacement(current, [4, 3, 2, 1], new Set([2]));
+  expect(order).toEqual([4, 2, 3, 1]);
+  expect(moves.map(([id]) => id)).not.toContain(2);
+  expect(apply(current, moves)).toEqual(order);
+});
+
+test("rows already in place aren't moved, and new rows come in around held ones", () => {
+  expect(rowPlacement([1, 2, 3], [1, 2, 3], new Set([2])).moves).toEqual([]);
+  const { order, moves } = rowPlacement([1, 2, 3], [5, 3, 2, 1, 6], new Set([1, 3]));
+  expect(order).toEqual([1, 5, 3, 2, 6]);
+  expect(moves.map(([id]) => id).filter((id) => id === 1 || id === 3)).toEqual([]);
+  expect(apply([1, 2, 3], moves)).toEqual(order);
+});
+
+test("a held row leaving the table, as a hide does, still leaves it", () => {
+  const { order, moves } = rowPlacement([1, 2, 3], [3, 1], new Set([2]));
+  expect(order).toEqual([3, 1]);
+  expect(apply([1, 2, 3], moves).filter((id) => id !== 2)).toEqual(order);
+});
+
+test("unranked rows added to a ranked session keep the ranked rows' order (the ranking unchanged)", () => {
+  /** @param {number} id @param {number | null} slot */
+  const ranked = (id, slot) => ({ ...candidate(id), ranking: slot === null ? null : { slot } });
+  const before = candidateRows([ranked(1, 2), ranked(2, 1)]).shown.map(({ id }) => id);
+  const after = candidateRows([ranked(1, 2), ranked(2, 1), ranked(3, null), ranked(4, null)]);
+  const ids = after.shown.map(({ id }) => id);
+  expect(ids.slice(0, 2)).toEqual(before);
+  expect(rowPlacement(before, ids, new Set()).moves).toEqual([
+    [4, null],
+    [3, 4],
+  ]);
+});
+
+test("a held row coming into the table, as Show again sends it, comes in", () => {
+  const { order, moves } = rowPlacement([1, 3], [1, 2, 3], new Set([2]));
+  expect(order).toEqual([1, 2, 3]);
+  expect(moves).toEqual([[2, 3]]);
 });

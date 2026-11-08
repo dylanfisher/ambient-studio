@@ -2,6 +2,7 @@
 // taste model test, which nothing else starts, read the test's last report, and read a vibe's
 // taste summary.
 /** @import { App, Route } from "./routing.js" */
+import { JOB_KIND } from "../domain/job-kind.js";
 import { fitJob } from "./fit-job.js";
 import { readPreferenceSummary } from "./preference-summary.js";
 import { preferenceTestJob } from "./preference-test-job.js";
@@ -9,7 +10,7 @@ import { readPreferenceTest } from "./preference-test-store.js";
 import { duplicateJob } from "./routing.js";
 import { requireVibe } from "./vibe-routes.js";
 
-const FIT_JOB = "fit";
+const FIT_JOB = JOB_KIND.fit;
 const TEST_JOB = "agreement";
 
 /**

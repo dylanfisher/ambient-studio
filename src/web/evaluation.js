@@ -6,6 +6,7 @@
 // jobs that make the taste model have theirs (0046).
 /** @import { JobStatus } from "./job-progress.js" */
 import { EVALUATION_COUNT } from "../domain/evaluation-size.js";
+import { JOB_KIND } from "../domain/job-kind.js";
 import {
   EMBEDDINGS_PATH,
   EVALUATIONS_PATH,
@@ -288,7 +289,7 @@ page.startButton.onclick = () => status.run(startTest);
 /** The embed and fit jobs' buttons, by the kind of job each starts (decisions 0042, 0044). */
 const ownerJobs = new Map([
   [
-    "embed",
+    JOB_KIND.embed,
     ownerJob(status, {
       button: page.embedButton,
       boxes: page.fitJobBox,
@@ -298,7 +299,7 @@ const ownerJobs = new Map([
     }),
   ],
   [
-    "fit",
+    JOB_KIND.fit,
     ownerJob(status, {
       button: page.fitButton,
       boxes: page.fitJobBox,

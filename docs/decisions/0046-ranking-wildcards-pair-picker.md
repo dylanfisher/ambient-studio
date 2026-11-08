@@ -113,3 +113,15 @@ you like" text points at the two buttons.
 - Phase 5 reads the same `predict` wrapper and `widestPair`; 5f's EI picker is its own.
 - A nudge job doesn't embed or rank; its children show unranked until Analyze the sound and the
   next candidates job.
+
+## Amendments
+
+- 2026-11-07: from the step's review, before merge. A reorder never moves a row whose excerpt
+  plays or that `card-hold.js` holds (the focus, a pointer pressed, unsent text, a request or
+  offer pending), since Safari pauses an `<audio>` and blurs a field taken out of the page:
+  `rowPlacement` keeps it in its place and orders the rest around it, and it takes its own place
+  when it is released. A row moving between the table and the hidden panel still moves. While a
+  candidates job runs, the old ranking file stays and orders the same roots the same way, so
+  existing rows keep their places and new, unranked ones come in after the ranked roots; the
+  order changes only when the job writes the new ranking. The embed and fit jobs' kinds are
+  `JOB_KIND` in `src/domain/job-kind.js`, read by the routes and the Model test page.
