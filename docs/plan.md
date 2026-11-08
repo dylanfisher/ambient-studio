@@ -3433,3 +3433,8 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   so the growth is the audio library's native memory. A seam at 120 s with a 20 s reverb is 121 dB
   under. Review passed; fixes made the manifest name its own revision, let cancel reach lame and
   flac, and added a long-reverb seam test. 2,116 tests.
+- 2026-11-07 — 6d merged (d1f3139): "Export with stems" writes one 32-bit float WAV per voice id
+  beside the mix, each through 6c's `mixTrack` with a voice filter, at the mix's gain, never
+  limited, hashed in the manifest. Stems sum to the pre-limiter mix within 3.0e-7, 132 dB under.
+  `stemOf` in `stem-voices.js` is where 6e's morph instances join their voice's stem. The
+  orchestrator read the diff, as 6d's review line says. 2,122 tests.
