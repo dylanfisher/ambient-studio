@@ -12,6 +12,8 @@
 //                                   with four transitions, the first a morph, and two macro lanes
 //                                   (decisions 0062, 0064, 0065), each rendered alone and
 //                                   rendered and exported, against phase 6's 1 GiB ceiling
+//   ./scripts/bench --chant         20 minutes of a 12-singer chant that breathes, a cymbal and
+//                                   a drum (phase CV's acceptance 6), rendered alone
 /** @import { Lane } from "../src/domain/lane-schema.js" */
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -69,13 +71,30 @@ const TRACK = Object.freeze({
   ceiling: 2 ** 30,
   spread: 0.1,
 });
+/**
+ * Phase CV's acceptance 6: the chant golden with twelve singers, which breathe, beside the
+ * cymbal's and the drum's golden voices at their default density, on a 900 s timeline. A genome
+ * is at most 900 s, so its 20 minutes are a track of two sections of it from `offset`, crossfaded
+ * over `transition` seconds, mixed as the track job mixes. `runs` timed runs in one child with
+ * no warm-up keep the case under 5 minutes (agent rule 9).
+ */
+const CHANT = Object.freeze({ length: 1200, offset: 30, transition: 10, runs: 3, density: 4 });
 /** What a track child's per-chunk memory lines start with, on stderr. */
 const MEMORY_LINE = "memory";
 const TRACK_MODES = Object.freeze({ "track-render": "render", "track-export": "render+export" });
 
 /** @typedef {keyof typeof MODES} Mode */
 /** @typedef {keyof typeof TRACK_MODES} TrackMode */
-/** @typedef {Mode | TrackMode | "features"} ChildMode */
+/** @typedef {Mode | TrackMode | "features" | "chant"} ChildMode */
+
+/** @param {string} name a golden genome's file name, without `.json` */
+const golden = (name) =>
+  JSON.parse(
+    readFileSync(
+      fileURLToPath(new URL(`../src/engine/genomes/${name}.json`, import.meta.url)),
+      "utf8",
+    ),
+  );
 
 /**
  * The example genome stretched to `duration` when the case is longer than its timeline, so the
@@ -96,6 +115,7 @@ function benchGenome(duration) {
  */
 async function child(mode, duration, runs) {
   if (mode === "track-render" || mode === "track-export") return trackChild(mode, duration);
+  if (mode === "chant") return chantChild(runs);
   const genome = benchGenome(duration);
   if (mode === "features") return featuresChild(genome, duration, runs);
   /** @type {number[]} */
@@ -145,17 +165,7 @@ function benchTrack(length) {
   const { genomes: names, transition } = TRACK;
   const seconds = (length + transition * (names.length - 1)) / names.length;
   /** @type {Map<number, unknown>} */
-  const genomes = new Map(
-    names.map((name, i) => [
-      i + 1,
-      JSON.parse(
-        readFileSync(
-          fileURLToPath(new URL(`../src/engine/genomes/${name}.json`, import.meta.url)),
-          "utf8",
-        ),
-      ),
-    ]),
-  );
+  const genomes = new Map(names.map((name, i) => [i + 1, golden(name)]));
   const arrangement = {
     ...emptyArrangement(),
     sections: names.map((_, i) => ({ sketchId: i + 1, offset: TRACK.offset, seconds })),
@@ -201,6 +211,81 @@ function benchTrack(length) {
     fades: trackFades(arrangement, genomes),
   };
   return { plan, cost: trackCost(arrangement, genomes) };
+}
+
+/** The chant case's genome, arrangement and plan, as `benchTrack` gives a track's. */
+function chantTrack() {
+  const chant = golden("chant-ensemble");
+  const genome = requireGenome(
+    {
+      ...chant,
+      duration: 900,
+      voices: [
+        { ...chant.voices[0], singers: 12 },
+        { ...golden("cymbal").voices[0], density: CHANT.density },
+        { ...golden("drum").voices[0], density: CHANT.density },
+      ],
+    },
+    "the chant bench genome",
+  );
+  const { length, offset, transition } = CHANT;
+  const seconds = (length + transition) / 2;
+  const genomes = new Map([[1, genome]]);
+  const arrangement = {
+    ...emptyArrangement(),
+    sections: [0, 1].map(() => ({ sketchId: 1, offset, seconds })),
+    transitions: [{ kind: "crossfade", seconds: transition }],
+  };
+  const plan = {
+    sections: arrangement.sections.map((_, index) => ({
+      genome: sectionGenome(arrangement, index, genomes),
+      seed: SEED,
+      ...sectionWindow(arrangement, index, genomes),
+    })),
+    transitions: [renderedTransition(arrangement, 0, genomes).seconds],
+    fades: trackFades(arrangement, genomes),
+  };
+  return { genome, plan, cost: trackCost(arrangement, genomes) };
+}
+
+/**
+ * The chant child: `runs` timed runs of the chant track's mix, render alone, printed as `child`
+ * prints.
+ * @param {number} runs
+ */
+async function chantChild(runs) {
+  const { plan } = chantTrack();
+  /** @type {number[]} */
+  const seconds = [];
+  for (let run = 0; run < runs; run++) {
+    const start = performance.now();
+    let frames = 0;
+    for await (const block of mixTrack(plan)) frames += block[0]?.length ?? 0;
+    if (frames === 0) throw new Error("bench: the chant track mixed no frames");
+    seconds.push((performance.now() - start) / 1000);
+  }
+  console.log(JSON.stringify(seconds));
+}
+
+/** The chant case: its median against the 10x target, the spread of its runs and its peak RSS. */
+function benchChant() {
+  const { genome, cost: found } = chantTrack();
+  const { length, runs } = CHANT;
+  const [chant] = genome.voices;
+  console.log(
+    `${length} s track of chant-ensemble with ${chant && "singers" in chant ? chant.singers : "?"} singers, a cymbal and a drum at ${CHANT.density}/min, seed ${SEED}; peak cost ${found.peak.toFixed(1)}; ${runs} timed runs, no warm-up`,
+  );
+  console.log(`  ${load()}`);
+  const { seconds, rss } = measure("chant", length, runs);
+  const ratios = seconds.map((s) => length / s);
+  const middle = median(ratios);
+  console.log(
+    `  render median ${middle.toFixed(1)}x, ${Math.min(...ratios).toFixed(1)}x to ${Math.max(...ratios).toFixed(1)}x; peak RSS ${mib(rss)}; runs ${seconds.map((s) => s.toFixed(1)).join(" ")} s`,
+  );
+  console.log(`  ${load()}`);
+  console.log(
+    `  render-only median ${middle >= TARGET_SPEED ? "meets" : "misses"} the ${TARGET_SPEED}x target`,
+  );
 }
 
 /**
@@ -365,13 +450,16 @@ if (childAt !== -1) {
     mode !== "export" &&
     mode !== "features" &&
     mode !== "track-render" &&
-    mode !== "track-export"
+    mode !== "track-export" &&
+    mode !== "chant"
   ) {
     throw new Error(`bench: no mode "${mode}"`);
   }
   await child(mode, Number(duration), Number(runs));
 } else if (process.argv.includes("--track")) {
   benchTracks();
+} else if (process.argv.includes("--chant")) {
+  benchChant();
 } else if (process.argv.includes("--features")) {
   benchFeatures();
 } else {

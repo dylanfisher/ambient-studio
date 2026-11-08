@@ -64,6 +64,14 @@ toward the `drone` voice, which the vibe doesn't allow. It sets no `bellNotes`: 
 sets alone, and 0030 has each seed set a kind no other does, so the brief keeps the bell rare
 instead.
 
+**The bench's chant case** (`./scripts/bench --chant`): the chant golden with twelve singers,
+breathing as the golden does, beside the cymbal's and the drum's golden voices at 4 hits a
+minute, on a 900 s timeline. A genome is at most 900 s, so acceptance 6's 20 minutes are a track
+of two 605 s sections of it with a 10 s crossfade, mixed by `mixTrack` as the track job mixes.
+Three timed runs in one child, with no warm-up, keep it under 5 minutes. On mbp2021 with omlx
+serving (load average 1.1–1.4): peak cost 465.5, render median 27.2x, runs 27.2x to 27.4x (44.1,
+44.1, 43.8 s), peak RSS 634 MiB.
+
 ## Alternatives considered
 
 - **Shorter descriptions until the text is under 3,000** — rejected: about 90% of the
@@ -74,6 +82,9 @@ instead.
   the one part of the prompt that carries their taste, to keep text the schema already says.
 - **Concise lock values** — rejected for now: a whole-voice lock is rare, and its value is the
   one the model must copy exactly.
+- **A 1,200 s genome for the bench** — rejected: the schema caps `duration` at 900 s, and a
+  20-minute piece is a track (0062).
+
 ## Consequences
 
 - Each example is about half its old length, so more of them fit, and a model that copies their
