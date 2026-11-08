@@ -14,6 +14,7 @@ import { decode, insertRow, selectRow, selectRows, TABLE } from "./store.js";
  * @property {string} requestGroup shared by the candidates of one request
  * @property {unknown} prompt the messages sent
  * @property {unknown[]} exampleIds the examples retrieved into the prompt
+ * @property {unknown[]} attachmentIds the vibe attachments the prompt held (decision 0052)
  * @property {string} retrievalMethod
  * @property {string} model
  * @property {unknown} sampling
@@ -69,7 +70,9 @@ import { decode, insertRow, selectRow, selectRows, TABLE } from "./store.js";
 
 /** @typedef {CandidateDraft & Removable & { id: number, createdAt: number }} Candidate */
 
-const GENERATIONS = { json: ["prompt", "exampleIds", "sampling", "requestParams", "retries"] };
+const GENERATIONS = {
+  json: ["prompt", "exampleIds", "attachmentIds", "sampling", "requestParams", "retries"],
+};
 const GENOMES = { json: ["genome"] };
 const CANDIDATES = { json: ["parentIds", "locks", "operatorParams", "lint", "rejectedGenome"] };
 

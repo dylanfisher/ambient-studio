@@ -74,7 +74,7 @@ unneeded stays unused rather than being given to another step.
 | 0049 | The session table, hiding and rating marks | 4j | [written](decisions/0049-session-table-hiding-marks.md) |
 | 0050 | Reference uploads: formats, files, regions, ffmpeg decoding | 5a | [written](decisions/0050-reference-uploads.md), provisional |
 | 0051 | Region analysis and ranges from a region | 5b | — |
-| 0052 | References in the prompt | 5c | — |
+| 0052 | References in the prompt | 5c | [written](decisions/0052-references-in-the-prompt.md), provisional |
 | 0053 | Search space, proposals, ask/tell and the objective | 5d | [written](decisions/0053-search-space-ask-tell.md), provisional |
 | 0054 | Model-in-the-loop CMA-ES, and which optimizer the acceptance means | 5e | — |
 | 0055 | Owner-in-the-loop preferential BO | 5f | — |

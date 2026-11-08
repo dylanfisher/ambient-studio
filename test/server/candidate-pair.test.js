@@ -68,6 +68,7 @@ async function setup() {
       requestGroup: `seeded-${seed}`,
       prompt: [],
       exampleIds: [],
+      attachmentIds: [],
       retrievalMethod: "rating-recency",
       model: "fake",
       sampling: {},

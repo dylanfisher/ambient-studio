@@ -21,9 +21,10 @@ export const EXAMPLES_PER_SIDE = 3;
 
 /**
  * Embeds a text under `producer`, the producer of the audio embeddings it is compared with.
+ * `what` names the text in an error.
  * @typedef {object} TextEmbedder
  * @property {string} producer
- * @property {(text: string) => Promise<Float32Array>} embedText
+ * @property {(text: string, what: string) => Promise<Float32Array>} embedText
  */
 
 /**
@@ -67,7 +68,7 @@ export async function retrieveExamples(store, vibeId, brief, embedder) {
       if (vectors.length > 0) audio.set(genomeId, vectors);
     }
     if (audio.size > 0) {
-      const text = await embedder.embedText(brief);
+      const text = await embedder.embedText(brief, "the vibe's brief");
       const similarity = new Map(
         [...audio].map(([genomeId, vectors]) => [genomeId, meanSimilarity(vectors, text)]),
       );

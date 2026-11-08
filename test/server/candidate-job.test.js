@@ -7,9 +7,12 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
+import { ATTACHMENT_KIND } from "../../src/domain/attachment-kind.js";
 import { featuresText } from "../../src/domain/features-text.js";
 import { estimateTokens, promptText } from "../../src/domain/prompt-tokens.js";
+import { referencesText } from "../../src/domain/references-text.js";
 import { canonicalGenome } from "../../src/engine/canonical-genome.js";
+import { addAttachment } from "../../src/server/attachment-store.js";
 import { currentExcerpt } from "../../src/server/candidate-excerpt.js";
 import { candidateJob, STREAM_SEEDS } from "../../src/server/candidate-job.js";
 import { candidatePairs } from "../../src/server/candidate-pair.js";
@@ -30,7 +33,14 @@ import {
 } from "../../src/server/generation-store.js";
 import { setLock } from "../../src/server/lock-store.js";
 import { modelFile, modelPlan } from "../../src/server/preference-model.js";
+import { PRODUCER } from "../../src/server/producer.js";
 import { addFeedback, addRatedAudio } from "../../src/server/rating-store.js";
+import { addReferenceFile, addRegion } from "../../src/server/reference-store.js";
+import {
+  findRegionAnalysis,
+  putRegionEmbedding,
+  putRegionFeatures,
+} from "../../src/server/region-analysis-store.js";
 import { getRender } from "../../src/server/render-store.js";
 import { RETRIEVAL_METHOD } from "../../src/server/retrieve-examples.js";
 import { readRanking } from "../../src/server/session-ranking.js";
@@ -780,4 +790,117 @@ test("an explore whose base can't take the locks set after the route took it fai
   );
   expect(omlx.requests).toHaveLength(0);
   expect(listSessionCandidates(app.store, session.id)).toEqual([base]);
+});
+
+// The regions attached to the vibe (decision 0052).
+/**
+ * Attaches a region to the vibe, analyzed at `target` with one window of `REGION_FEATURES`.
+ * @param {TestApp["app"]} app
+ * @param {number} vibeId
+ * @param {number} target
+ */
+function attachRegion(app, vibeId, target) {
+  const { reference } = addReferenceFile(app.store, {
+    sha256: "f".repeat(64),
+    fileName: "dawn.wav",
+    format: "wav",
+    file: `${"f".repeat(64)}.wav`,
+    durationSeconds: 60,
+    channels: 2,
+    sampleRate: 48000,
+    sizeBytes: 10,
+  });
+  const region = addRegion(app.store, {
+    referenceFileId: reference.id,
+    startSeconds: 0,
+    endSeconds: 10,
+    label: "dawn hum",
+    note: "under the birds",
+  });
+  const windows = [{ startSeconds: 0, seconds: 10, features: REGION_FEATURES, notHeard: null }];
+  putRegionFeatures(app.store, { regionId: region.id, target, producer: PRODUCER, windows });
+  const attachment = addAttachment(app.store, {
+    vibeId,
+    kind: ATTACHMENT_KIND.reference,
+    regionId: region.id,
+    details: {},
+  });
+  return { region, attachment };
+}
+const REGION_FEATURES = {
+  raw: { loudness: -30, shortTermMax: -25, loudnessRange: 3, truePeak: -6 },
+  heard: {
+    gainDb: 14,
+    centroidMean: 400,
+    centroidSpread: 60,
+    onsetRate: 0.1,
+    lowEndShare: 0.6,
+    stereoWidth: 0.05,
+    flatness: 0.02,
+  },
+};
+
+test("an attached region is in the first prompt and its revision, and each generation logs it", async () => {
+  const { app, omlx, vibe, session, run } = await sessionApp(undefined, MISSED);
+  const { attachment } = attachRegion(app, vibe.id, MISSED.constraints.loudness);
+  omlx.script(answer(GENOMES[0]), answer(REVISED));
+  await run(1);
+  const [round0, revision] = /** @type {[any, any]} */ (omlx.requests.map((r) => r.body));
+  const section = referencesText([
+    {
+      id: attachment.id,
+      label: "dawn hum",
+      note: "under the birds",
+      windows: [REGION_FEATURES],
+      words: [],
+    },
+  ]);
+  expect(round0.messages[1].content).toContain(`\n\n${section}\n\n`);
+  expect(revision.messages.slice(0, 2)).toEqual(round0.messages);
+  const generations = listSessionCandidates(app.store, session.id).map((candidate) =>
+    getGeneration(app.store, /** @type {number} */ (candidate.generationId)),
+  );
+  expect(generations.map((generation) => generation?.attachmentIds)).toEqual([
+    [attachment.id],
+    [attachment.id],
+  ]);
+});
+
+test("an attached region not analyzed at the brief's loudness fails the job before asking omlx", async () => {
+  const { app, omlx, vibe, run } = await sessionApp();
+  const { region } = attachRegion(app, vibe.id, -23);
+  omlx.script(answer(GENOMES[0]));
+  await expect(run(1)).rejects.toThrow(`region ${region.id} ("dawn hum"), attached to this brief`);
+  expect(omlx.requests).toHaveLength(0);
+});
+
+test("a vibe with nothing attached logs no attachments", async () => {
+  const { app, omlx, session, run } = await sessionApp(undefined, INSIDE);
+  omlx.script(answer(GENOMES[0]));
+  await run(1);
+  const [candidate] = listSessionCandidates(app.store, session.id);
+  const generation = getGeneration(app.store, /** @type {number} */ (candidate?.generationId));
+  expect(generation?.attachmentIds).toEqual([]);
+});
+
+test("a sidecar failure while embedding the vocabulary fails the job before asking omlx", async () => {
+  const { app, omlx, sidecar, vibe, run } = await sessionApp();
+  setCheckpointCache(app);
+  const { region } = attachRegion(app, vibe.id, VIBE.constraints.loudness);
+  const analysis = /** @type {any} */ (
+    findRegionAnalysis(app.store, { regionId: region.id, target: -16, producer: PRODUCER })
+  );
+  putRegionEmbedding(app.store, analysis.id, {
+    embeddingProducer: EMBEDDER.producer,
+    embedding: new Uint8Array(new Float32Array([1, 0]).buffer),
+  });
+  omlx.script(answer(GENOMES[0]));
+  sidecar.script(
+    { do: "answer", result: { ...EMBEDDER, ready: true } },
+    { do: "crash", stderr: "MemoryError\n", code: 3 },
+  );
+  await expect(run(1)).rejects.toThrow(
+    /^embedding the word "dark" failed: sidecar request embed_text failed: the sidecar exited with code 3: MemoryError$/,
+  );
+  expect(omlx.requests).toHaveLength(0);
 });

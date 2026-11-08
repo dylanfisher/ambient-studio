@@ -5,7 +5,9 @@
   [0024](0024-prompt-parse-repair-generation.md) (the ranges enter the first prompt),
   [0027](0027-session-api-and-ratings.md) (soft targets are checked on every save) and
   [0030](0030-seed-vibes-and-evaluation.md) (the seed vibes have ranges). Amended by
-  [0051](0051-region-analysis-and-ranges.md) (a reference region can fill the ranges form).
+  [0051](0051-region-analysis-and-ranges.md) (a reference region can fill the ranges form) and
+  [0052](0052-references-in-the-prompt.md) (attached regions, directions and axes live outside
+  `softTargets`).
 
 ## Context
 
@@ -173,3 +175,10 @@ may still edit a vibe's ranges on the brief page; 3h's report names the ranges e
   inside the bounds here, never the two raw levels. Beside each filled range the page says what
   is saved now. Nothing is saved until the owner presses Save, which makes a new revision as any
   edit does. The seed ranges stay fixed, as above.
+- 2026-11-07: from step 5c ([0052](0052-references-in-the-prompt.md)). The owner settled that a
+  brief's attached regions, and 5g's directions and 5h's axes, live in `vibe_attachments`, an
+  append-only table keyed by vibe, not in `softTargets`, so attaching or detaching makes no new
+  revision. `softTargets` keeps the ranges and any other key the owner saved; nothing in phase 5
+  writes a new key there. Attached regions are written in the first prompt right after the
+  ranges, with their medians in the range table's features, and say they were measured the same
+  way.

@@ -30,6 +30,7 @@ import {
 } from "./generate-candidates.js";
 import { JOB_STEP } from "./job-steps.js";
 import { locksInForce } from "./lock-store.js";
+import { promptReferences } from "./prompt-references.js";
 import { indexRecordings } from "./recording-index.js";
 import { renderExcerpt, renderExcerpts } from "./render-excerpt.js";
 import { isUnchanged, reviseCandidate } from "./revise-candidate.js";
@@ -250,8 +251,8 @@ export function candidateJob(app, { vibeId, sessionId, count, explore }) {
           : {
               producer: ready.producer,
               // A cache hit sends no sidecar request, so check the cancel here before omlx.
-              embedText: async (/** @type {string} */ text) => {
-                const vector = await embedText(app, ready, text, "the vibe's brief", job.signal);
+              embedText: async (/** @type {string} */ text, /** @type {string} */ what) => {
+                const vector = await embedText(app, ready, text, what, job.signal);
                 job.signal.throwIfAborted();
                 return vector;
               },
@@ -264,6 +265,7 @@ export function candidateJob(app, { vibeId, sessionId, count, explore }) {
         recordings,
         explore,
         textEmbedder,
+        references: await promptReferences(app.store, vibeId, textEmbedder),
         onStep: (step) => job.progress(done, count, generationStepText(step, 0, count, asking)),
         onCandidate: async (candidate) => {
           const index = firstTries++;

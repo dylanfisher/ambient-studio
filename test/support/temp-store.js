@@ -4,7 +4,9 @@
 /** @import { IrreplaceableTable, Store } from "../../src/server/store.js" */
 import { loadConfig } from "../../src/config/config.js";
 import { paths } from "../../src/config/paths.js";
+import { ATTACHMENT_KIND } from "../../src/domain/attachment-kind.js";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
+import { addAttachment } from "../../src/server/attachment-store.js";
 import { addEvaluation } from "../../src/server/evaluation-store.js";
 import { addCandidate, addGeneration, putGenome } from "../../src/server/generation-store.js";
 import { setHidden } from "../../src/server/hide-store.js";
@@ -87,6 +89,7 @@ export function fillStore(store) {
     requestGroup: "group-1",
     prompt: [{ role: "user", content: "a drone" }],
     exampleIds: [],
+    attachmentIds: [],
     retrievalMethod: "rating-recency",
     model: "test-model",
     sampling: { temperature: 0.8, seed: 3 },
@@ -180,6 +183,12 @@ export function fillStore(store) {
     label: "the hiss",
     note: "",
   });
+  const attachment = addAttachment(store, {
+    vibeId: vibe.id,
+    kind: ATTACHMENT_KIND.reference,
+    regionId: region.id,
+    details: {},
+  });
   return {
     vibes: vibe.id,
     vibe_revisions: vibeRevisionId,
@@ -197,5 +206,6 @@ export function fillStore(store) {
     candidate_hides: hide.id,
     reference_files: reference.id,
     reference_regions: region.id,
+    vibe_attachments: attachment.id,
   };
 }

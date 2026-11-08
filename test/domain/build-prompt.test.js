@@ -1,6 +1,8 @@
 // The generation prompt: what it states, and how it fits the context budget (decision 0024).
 /** @import { Constraints } from "../../src/domain/constraint-schema.js" */
-/** @import { PromptExample } from "../../src/domain/build-prompt.js" */
+/** @import { PromptBase, PromptExample } from "../../src/domain/build-prompt.js" */
+/** @import { Features } from "../../src/domain/extract-features.js" */
+/** @import { PromptReference } from "../../src/domain/references-text.js" */
 /** @import { FeatureRanges } from "../../src/domain/target-schema.js" */
 /** @import { ChatMessage } from "../../src/domain/prompt-tokens.js" */
 import { describe, expect, test } from "vitest";
@@ -10,6 +12,7 @@ import { constraintsText } from "../../src/domain/constraints-text.js";
 import { followUp } from "../../src/domain/follow-up.js";
 import { estimateTokens, promptText } from "../../src/domain/prompt-tokens.js";
 import { MAX_PROMPT_RECORDINGS } from "../../src/domain/recordings-text.js";
+import { referencesText } from "../../src/domain/references-text.js";
 import { revisionAsk } from "../../src/domain/revision-ask.js";
 import { TARGET_FEATURES } from "../../src/domain/target-schema.js";
 import { targetsText } from "../../src/domain/targets-text.js";
@@ -394,5 +397,142 @@ describe("buildPrompt with a base", () => {
     );
     expect(tokens(messages)).toBeLessThan(BUDGET * 0.55);
     expect(tokens(revised)).toBeLessThan(BUDGET * 0.7);
+  });
+});
+
+// The reference regions attached to the vibe (decision 0052).
+/** @type {Features} */
+const REGION_WINDOW = {
+  raw: { loudness: -30, shortTermMax: -25, loudnessRange: 3.4, truePeak: -6 },
+  heard: {
+    gainDb: 14,
+    centroidMean: 412.3,
+    centroidSpread: 61.2,
+    onsetRate: 0.12,
+    lowEndShare: 0.61,
+    stereoWidth: 0.07,
+    flatness: 0.03,
+  },
+};
+/**
+ * @param {number} id
+ * @param {{ label?: string, note?: string }} [text]
+ * @returns {PromptReference}
+ */
+const attached = (id, { label = `region ${id}`, note = `the low hum ${id}` } = {}) => ({
+  id,
+  label,
+  note,
+  windows: [REGION_WINDOW, REGION_WINDOW],
+  words: ["low", "droning", "warm", "slow", "dark"],
+});
+describe("buildPrompt with references", () => {
+  const parts = { notes, locks, examples: examples(2), budgetTokens: BUDGET, recordings: [] };
+  const references = [attached(11), attached(12)];
+  /** @param {ChatMessage[]} messages */
+  const user = (messages) => /** @type {ChatMessage} */ (messages[1]).content;
+
+  test("writes the section after the ranges and before the locks, and logs the references it holds", () => {
+    const { messages, referenceIds } = buildPrompt(revision, { ...parts, references });
+    expect(referenceIds).toEqual([11, 12]);
+    const section = referencesText(references);
+    expect(user(messages)).toContain(
+      `${targetsText(revision.ranges)}\n\n${section}\n\nLocked by the owner`,
+    );
+  });
+
+  test("no references prompt byte for byte as without the section", () => {
+    const without = buildPrompt(revision, parts);
+    expect(without.referenceIds).toEqual([]);
+    expect(buildPrompt(revision, { ...parts, references: [] }).messages).toEqual(without.messages);
+    const withReferences = promptText(buildPrompt(revision, { ...parts, references }).messages);
+    expect(withReferences.replace(`${referencesText(references)}\n\n`, "")).toBe(
+      promptText(without.messages),
+    );
+  });
+
+  test("examples are trimmed before references, and references before the base", () => {
+    const base = { genome: exampleGenome, direction: null };
+    const all = { ...parts, references, base };
+    /** @param {{ examples?: PromptExample[], references?: PromptReference[], base?: PromptBase | null }} over */
+    const size = (over) =>
+      tokens(
+        buildPrompt(revision, { ...all, ...over, budgetTokens: Number.MAX_SAFE_INTEGER }).messages,
+      );
+
+    // Room for both references and the base, not an example: the examples go first.
+    expect(buildPrompt(revision, { ...all, budgetTokens: size({ examples: [] }) })).toMatchObject({
+      exampleIds: [],
+      referenceIds: [11, 12],
+      baseTrimmed: false,
+    });
+
+    // Room for one reference and the base: the second reference goes next, from the end.
+    const oneReference = size({ examples: [], references: references.slice(0, 1) });
+    expect(buildPrompt(revision, { ...all, budgetTokens: oneReference })).toMatchObject({
+      exampleIds: [],
+      referenceIds: [11],
+      baseTrimmed: false,
+    });
+
+    // Room for the base alone: both references go before it does.
+    const baseAlone = size({ examples: [], references: [] });
+    expect(buildPrompt(revision, { ...all, budgetTokens: baseAlone })).toMatchObject({
+      exampleIds: [],
+      referenceIds: [],
+      baseTrimmed: false,
+    });
+
+    // Room for less: the base goes, and the references that fit without it come back.
+    const plainWithReferences = size({ examples: [], base: null });
+    expect(plainWithReferences).toBeLessThan(baseAlone);
+    expect(buildPrompt(revision, { ...all, budgetTokens: plainWithReferences })).toMatchObject({
+      exampleIds: [],
+      referenceIds: [11, 12],
+      baseTrimmed: true,
+    });
+  });
+
+  test("acceptance 2: a seed-sized vibe with a base, six examples and two full references fits, holding each one's numbers and words", () => {
+    const seedSized = {
+      name: "cold dorian drone and pad",
+      brief: "b".repeat(600),
+      constraints: full,
+      ranges: allRanges,
+    };
+    // The longest label and note a region takes (0050).
+    const longest = [
+      attached(21, { label: "l".repeat(200), note: "n".repeat(2000) }),
+      attached(22, { label: "m".repeat(200), note: "o".repeat(2000) }),
+    ];
+    const { messages, exampleIds, referenceIds, baseTrimmed } = buildPrompt(seedSized, {
+      notes: Array.from({ length: 12 }, () => "n".repeat(150)),
+      locks: [...locks, { path: "macros.space", value: 0.6 }],
+      examples: examples(6),
+      budgetTokens: BUDGET,
+      recordings: [],
+      base: { genome: colundiGenome, direction: "d".repeat(200) },
+      references: longest,
+    });
+    expect(exampleIds).toHaveLength(6);
+    expect(referenceIds).toEqual([21, 22]);
+    expect(baseTrimmed).toBe(false);
+    const text = user(messages);
+    expect(text.match(/spectral centroid: 412 Hz/g)).toHaveLength(2);
+    expect(text.match(/Words nearest its sound: low, droning, warm, slow, dark/g)).toHaveLength(2);
+    // About 5,800 tokens: 0038's 4,300 and about 750 a reference at its longest. Its revision
+    // replays it untrimmed with an ask that misses every range (0036), so that fits too.
+    expect(tokens(messages)).toBeLessThan(BUDGET * 0.75);
+    const misses = Object.keys(allRanges).map((name) => ({
+      path: `features.${name}`,
+      rule: "target",
+      message: `${name} is 0.9; the vibe asks for a value from 0.12 to 0.34`,
+    }));
+    const revised = followUp(
+      messages,
+      { intent: "a variation", genome: colundiGenome },
+      revisionAsk({ locks, ranges: allRanges, features: MEASURED, misses }),
+    );
+    expect(tokens(revised)).toBeLessThan(BUDGET);
   });
 });
