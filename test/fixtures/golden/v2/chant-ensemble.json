@@ -1,0 +1,57 @@
+{
+  "genome": "chant-ensemble",
+  "engineVersion": 2,
+  "hashes": {
+    "raw": {
+      "darwin-arm64": {
+        "cpu": "Apple M1 Max",
+        "node": "v26.12.1",
+        "nodeWebAudioApi": "2.2.0",
+        "renders": {
+          "start": {
+            "seed": 1,
+            "offset": 0,
+            "duration": 2,
+            "sha256": "319af6b15ae52f930dc750b9a6eddf6fad5bee60735617d734d8d678111509d3",
+            "summary": {
+              "peak": 1.97,
+              "rms": -11.04,
+              "bands": [-39.65, -35.97, -30.04, -11.73, -19.81, -38.5, -55.14, -103.37]
+            }
+          },
+          "end": {
+            "seed": 1,
+            "offset": 58,
+            "duration": 2,
+            "sha256": "5b882dfc452d9dfc476e4b078410671d49b721bf55ccf1d95b15f5f467cb97ce",
+            "summary": {
+              "peak": -39.38,
+              "rms": -52.7,
+              "bands": [-77.43, -73.17, -68.76, -53.43, -61.38, -79.38, -95.79, -144.78]
+            }
+          }
+        }
+      }
+    },
+    "normalized": {
+      "darwin-arm64": {
+        "cpu": "Apple M1 Max",
+        "node": "v26.12.1",
+        "nodeWebAudioApi": "2.2.0",
+        "renders": {
+          "start": {
+            "seed": 1,
+            "offset": 0,
+            "duration": 2,
+            "sha256": "e6bef06e3217d1c5ad2ff4aa41eafa93c33c91db39f16029947e153afafaf816",
+            "summary": {
+              "peak": -6.05,
+              "rms": -19.06,
+              "bands": [-47.67, -43.99, -38.06, -19.75, -27.83, -46.52, -63.16, -111.39]
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -3,7 +3,8 @@
 - **Date:** 2026-11-08
 - **Status:** accepted; provisional: owner to confirm. Amends
   [0013](0013-pad-and-bell-voices.md) (the drone's root snapping is shared) and
-  [0014](0014-granular-cloud-noise-bed.md) (a second JS-mixed voice).
+  [0014](0014-granular-cloud-noise-bed.md) (a second JS-mixed voice); amended by
+  [0070](0070-chant-singers-and-breath.md) (singers, breaths, cost, `detune`).
 
 ## Context
 
@@ -128,3 +129,12 @@ load, so compare speeds only within one run.
   every existing golden hash is unchanged and `chant.json` is new at v2.
 - Changing the resonances, the source's RMS, the partial count, the swell or the phase sum
   changes renders and bumps `ENGINE_VERSION` ([0009](0009-engine-version-golden-hashes.md)).
+
+## Amendments
+
+- 2026-11-08: from step CV.2 ([0070](0070-chant-singers-and-breath.md)), provisional: owner to
+  confirm. The voice has 1–12 singers. Singer 0 is the singer above, its samples unchanged; the
+  others read one shared waveform table a grid sample. The track holds the singers' detunes,
+  pans, phases and breath schedules, and `chantTrack` takes the seed. The cost adds 0.15 a
+  partial and 3 a singer past the first, so twelve at the default root cost 107.3, not 770. The
+  common `detune` still does nothing: `spread` is the ensemble's detune.

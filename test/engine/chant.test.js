@@ -8,6 +8,7 @@ import { COST_BUDGET, cost } from "../../src/engine/cost.js";
 import { effectiveParams } from "../../src/engine/effective-params.js";
 import { GLOBAL_PARAMS } from "../../src/engine/genome-schema.js";
 import chantGenome from "../../src/engine/genomes/chant.json" with { type: "json" };
+import ensembleGenome from "../../src/engine/genomes/chant-ensemble.json" with { type: "json" };
 import { requireGenome, validateGenome } from "../../src/engine/validate-genome.js";
 import { voiceTypeIds } from "../../src/engine/voice-registry.js";
 import { renderOffline } from "../../src/server/render-offline.js";
@@ -20,7 +21,9 @@ import {
 import { recordSources } from "../support/record-sources.js";
 
 const RATE = 48000;
+const SEED = 1;
 const golden = requireGenome(chantGenome, "the chant golden genome");
+const ensemble = requireGenome(ensembleGenome, "the six-singer chant golden genome");
 /** C2, the A-minor scale note nearest the 65 Hz default root. */
 const C2 = 65.40639;
 
@@ -47,10 +50,40 @@ const oneChant = (change = {}) =>
  * @param {number} frames
  */
 const mono = (genome, first, frames) => {
-  const track = chantTrack(genome, /** @type {Voice} */ (genome.voices[0]), RATE);
+  const track = chantTrack(genome, /** @type {Voice} */ (genome.voices[0]), RATE, SEED);
   const [left, right] = chantChunk(track, first, frames);
   return Float64Array.from(/** @type {Float32Array} */ (left), (v, i) => v + (right?.[i] ?? 0));
 };
+
+/**
+ * The level of each 50 ms frame of a stereo source in dB, from the power of both channels.
+ * @param {Float32Array[]} channels
+ */
+function frameLevels([left, right]) {
+  const frame = RATE / 20;
+  const l = /** @type {Float32Array} */ (left);
+  const r = /** @type {Float32Array} */ (right);
+  return Array.from({ length: Math.floor(l.length / frame) }, (_, f) => {
+    let sum = 0;
+    for (let i = f * frame; i < (f + 1) * frame; i++)
+      sum += /** @type {number} */ (l[i]) ** 2 + /** @type {number} */ (r[i]) ** 2;
+    return 10 * Math.log10(sum / frame);
+  });
+}
+
+/** @param {number[]} values */
+const median = (values) =>
+  /** @type {number} */ ([...values].sort((a, b) => a - b)[values.length >> 1]);
+
+/**
+ * A genome's chant track at seed 1, and its source for timeline frames `[0, seconds × RATE)`.
+ * @param {Genome} genome
+ * @param {number} seconds
+ */
+function source(genome, seconds) {
+  const track = chantTrack(genome, /** @type {Voice} */ (genome.voices[0]), RATE, SEED);
+  return { track, channels: chantChunk(track, 0, seconds * RATE) };
+}
 
 /**
  * The amplitude of `data` at `hz`, under a Hann window, by a single-bin DFT.
@@ -209,52 +242,156 @@ describe("the chant voice", () => {
     expect(Math.abs(cents - 100)).toBeLessThan(2);
   });
 
-  test("its source is the same whichever window computes it, and from a track started anywhere", () => {
-    const genome = golden;
-    const voice = /** @type {Voice} */ (genome.voices[0]);
-    const whole = chantChunk(chantTrack(genome, voice, RATE), 0, 5 * RATE);
-    // Splits off the control grid and off the window boundaries, as an excerpt's first window.
-    const track = chantTrack(genome, voice, RATE);
-    const parts = [
-      chantChunk(track, 0, RATE + 333),
-      chantChunk(track, RATE + 333, 2 * RATE),
-      chantChunk(track, 3 * RATE + 333, 2 * RATE - 333),
-    ];
-    for (const c of [0, 1]) {
-      const joined = new Float32Array(5 * RATE);
-      let at = 0;
-      for (const part of parts) {
-        joined.set(/** @type {Float32Array} */ (part[c]), at);
-        at += /** @type {Float32Array} */ (part[c]).length;
-      }
-      expect(joined).toEqual(whole[c]);
+  test("one singer falls at least 20 dB in every breath, and between breaths sings the samples it sings without them", () => {
+    const seconds = 60;
+    const steady = source(oneChant({ phrase: 5 }), seconds).channels;
+    const { track, channels } = source(oneChant({ phrase: 5, breath: 0.6 }), seconds);
+    const breaths = track.breaths(0, seconds);
+    const whole = breaths.filter((b) => b.end < seconds);
+    expect(whole.length).toBeGreaterThanOrEqual(6);
+    const levels = frameLevels(channels);
+    const middle = median(frameLevels(steady));
+    for (const { start, end } of whole) {
+      const frame = Math.floor(((start + end) / 2) * 20);
+      expect(/** @type {number} */ (levels[frame]), `breath at ${start} s`).toBeLessThan(
+        middle - 20,
+      );
     }
-    // A fresh track asked first for a late frame gives the samples one that ran from 0 gives.
-    const late = 40 * RATE + 777;
-    const ran = chantTrack(genome, voice, RATE);
-    chantChunk(ran, 0, late);
-    expect(chantChunk(chantTrack(genome, voice, RATE), late, RATE)).toEqual(
-      chantChunk(ran, late, RATE),
-    );
+    // Outside its breaths the singer is bit for bit the singer without breaths; inside, the
+    // difference moves no faster than the voice itself, so a breath fades and doesn't click.
+    const inBreath = (/** @type {number} */ i) =>
+      breaths.some(({ start, end }) => i >= start * RATE && i <= end * RATE);
+    for (const c of [0, 1]) {
+      const plain = /** @type {Float32Array} */ (steady[c]);
+      const breathing = /** @type {Float32Array} */ (channels[c]);
+      let voiceStep = 0;
+      let gapStep = 0;
+      let outside = 0;
+      for (let i = 1; i < plain.length; i++) {
+        const p = /** @type {number} */ (plain[i]);
+        const b = /** @type {number} */ (breathing[i]);
+        const before = /** @type {number} */ (plain[i - 1]);
+        voiceStep = Math.max(voiceStep, Math.abs(p - before));
+        gapStep = Math.max(
+          gapStep,
+          Math.abs(p - b - (before - /** @type {number} */ (breathing[i - 1]))),
+        );
+        if (!inBreath(i) && p !== b) outside++;
+      }
+      expect(outside).toBe(0);
+      expect(gapStep).toBeLessThanOrEqual(voiceStep);
+    }
   });
 
-  test("excerpts at several offsets match their window of a full render (0007's tolerance)", async () => {
-    const full = 9;
-    const whole = await renderOffline(golden, { seed: 1, duration: full });
-    for (const offset of [0.7, 3.35, 6.1]) {
-      const length = 2.5;
-      const excerpt = await renderOffline(golden, { seed: 1, duration: length, offset });
-      const from = Math.round(offset * RATE);
-      const window = {
-        ...whole,
-        channels: whole.channels.map((c) => c.slice(from, from + Math.round(length * RATE))),
-      };
-      const { peak, belowDb } = difference(excerpt, window);
-      expect(peak, `offset ${offset}`).toBeLessThan(EXCERPT_PEAK);
-      expect(belowDb, `offset ${offset}`).toBeGreaterThan(EXCERPT_BELOW_DB);
-      expect(excerpt.channels[0]?.some((v) => Math.abs(v) > 1e-3)).toBe(true);
+  test.each([6, 12])(
+    "%s singers never fall 12 dB under their median in a 60 s render",
+    (singers) => {
+      const seconds = 60;
+      const { track, channels } = source(
+        oneChant({ singers, spread: 15, phrase: 8, breath: 0.6 }),
+        seconds,
+      );
+      const breaths = Array.from({ length: singers }, (_, s) => track.breaths(s, seconds).length);
+      expect(breaths.reduce((a, b) => a + b, 0)).toBeGreaterThanOrEqual(singers * 4);
+      const levels = frameLevels(channels);
+      expect(Math.min(...levels)).toBeGreaterThan(median(levels) - 12);
+    },
+  );
+
+  test("six singers spread in pitch within `spread` cents sound wide: side/mid 0.5 or more", async () => {
+    const spread = 20;
+    const genome = requireGenome(
+      {
+        ...oneChant(),
+        width: 0,
+        voices: [{ id: "chant", type: "chant", singers: 6, spread }],
+      },
+      "six singers",
+    );
+    const { singers } = chantTrack(genome, /** @type {Voice} */ (genome.voices[0]), RATE, SEED);
+    expect(singers.length).toBe(6);
+    expect(new Set(singers.map((s) => s.cents)).size).toBe(6);
+    for (const { cents } of singers) expect(Math.abs(cents)).toBeLessThanOrEqual(spread);
+    const { channels } = await renderOffline(genome, { seed: SEED, duration: 4 });
+    const [left, right] = channels.map((c) => c.subarray(RATE));
+    let side = 0;
+    let mid = 0;
+    for (let i = 0; i < /** @type {Float32Array} */ (left).length; i++) {
+      const l = /** @type {number} */ (left?.[i]);
+      const r = /** @type {number} */ (right?.[i]);
+      side += (l - r) ** 2;
+      mid += (l + r) ** 2;
     }
+    expect(Math.sqrt(side / mid)).toBeGreaterThanOrEqual(0.5);
   });
+
+  test("adding singers keeps the first ones' pitch, place and breaths", () => {
+    const at = (/** @type {number} */ singers) =>
+      source(oneChant({ singers, breath: 0.6 }), 0).track;
+    const four = at(4);
+    const nine = at(9);
+    expect(nine.singers.slice(0, 4)).toEqual(four.singers);
+    for (let s = 0; s < 4; s++) expect(nine.breaths(s, 120)).toEqual(four.breaths(s, 120));
+  });
+
+  test.each([
+    ["one singer", golden],
+    ["six singers", ensemble],
+    ["twelve singers", oneChant({ singers: 12, spread: 30, phrase: 3, breath: 1 })],
+  ])(
+    "%s: its source is the same whichever window computes it, and from a track started anywhere",
+    (_, genome) => {
+      const voice = /** @type {Voice} */ (genome.voices[0]);
+      const whole = chantChunk(chantTrack(genome, voice, RATE, SEED), 0, 5 * RATE);
+      // Splits off the control grid and off the window boundaries, as an excerpt's first window.
+      const track = chantTrack(genome, voice, RATE, SEED);
+      const parts = [
+        chantChunk(track, 0, RATE + 333),
+        chantChunk(track, RATE + 333, 2 * RATE),
+        chantChunk(track, 3 * RATE + 333, 2 * RATE - 333),
+      ];
+      for (const c of [0, 1]) {
+        const joined = new Float32Array(5 * RATE);
+        let at = 0;
+        for (const part of parts) {
+          joined.set(/** @type {Float32Array} */ (part[c]), at);
+          at += /** @type {Float32Array} */ (part[c]).length;
+        }
+        expect(joined).toEqual(whole[c]);
+      }
+      // A fresh track asked first for a late frame gives the samples one that ran from 0 gives.
+      const late = 40 * RATE + 777;
+      const ran = chantTrack(genome, voice, RATE, SEED);
+      chantChunk(ran, 0, late);
+      expect(chantChunk(chantTrack(genome, voice, RATE, SEED), late, RATE)).toEqual(
+        chantChunk(ran, late, RATE),
+      );
+    },
+  );
+
+  test.each([
+    ["one singer", golden],
+    ["six singers", ensemble],
+  ])(
+    "%s: excerpts at several offsets match their window of a full render (0007's tolerance)",
+    async (_, genome) => {
+      const full = 9;
+      const whole = await renderOffline(genome, { seed: 1, duration: full });
+      for (const offset of [0.7, 3.35, 6.1]) {
+        const length = 2.5;
+        const excerpt = await renderOffline(genome, { seed: 1, duration: length, offset });
+        const from = Math.round(offset * RATE);
+        const window = {
+          ...whole,
+          channels: whole.channels.map((c) => c.slice(from, from + Math.round(length * RATE))),
+        };
+        const { peak, belowDb } = difference(excerpt, window);
+        expect(peak, `offset ${offset}`).toBeLessThan(EXCERPT_PEAK);
+        expect(belowDb, `offset ${offset}`).toBeGreaterThan(EXCERPT_BELOW_DB);
+        expect(excerpt.channels[0]?.some((v) => Math.abs(v) > 1e-3)).toBe(true);
+      }
+    },
+  );
 
   test("plays a buffer a window, each starting where the last ends, the same as up front", async () => {
     /** @type {import("../support/record-sources.js").StartedSource[]} */
@@ -294,9 +431,46 @@ describe("the chant voice", () => {
       );
     }
     expect(Object.keys(chant.params).sort()).toEqual(
-      ["bend", "depth", "focus", "pulse", "root", "tilt", "vowel"].sort(),
+      [
+        "bend",
+        "breath",
+        "depth",
+        "focus",
+        "pan",
+        "phrase",
+        "pulse",
+        "root",
+        "singers",
+        "spread",
+        "tilt",
+        "vowel",
+      ].sort(),
     );
-    expect(errors({ singers: 3 })).toEqual(["$.voices[0].singers"]);
+    expect(errors({ singers: 12 })).toEqual([]);
+    expect(errors({ singers: 2.5 })).toEqual(["$.voices[0].singers"]);
+  });
+
+  test("the golden ensemble has six singers who breathe, spread in pitch and place", () => {
+    const voice = /** @type {Voice} */ (ensemble.voices[0]);
+    expect(voice.singers).toBe(6);
+    expect(voice.breath).toBeGreaterThan(0);
+    expect(voice.spread).toBeGreaterThan(0);
+    expect(voice.pan).toBeGreaterThan(0);
+    // Some singer breathes inside the excerpts' 9 s.
+    const { track } = source(ensemble, 0);
+    expect(track.breaths(0, 9).length + track.breaths(1, 9).length).toBeGreaterThan(0);
+  });
+
+  test("its cost grows with its singers, and twelve at the default root fit beside a 12 s reverb", () => {
+    const at = (/** @type {number} */ singers) =>
+      chant.cost(/** @type {Voice} */ (oneChant({ singers }).voices[0]), oneChant({ singers }));
+    expect(at(2)).toBeGreaterThan(at(1));
+    expect(at(12)).toBeGreaterThan(at(6));
+    const genome = requireGenome(
+      { reverbDecay: 12, voices: [{ id: "c", type: "chant", singers: 12 }] },
+      "twelve singers with a 12 s reverb",
+    );
+    expect(cost(genome)).toBeLessThanOrEqual(COST_BUDGET);
   });
 
   // The densest chant with the longest reverb (20 s) is over the budget, as the densest cloud
