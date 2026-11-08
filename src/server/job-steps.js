@@ -45,6 +45,9 @@ export const JOB_STEP = Object.freeze({
   normalizingTrack: "Bringing the track to its loudness target",
   encodingTrack: "Writing the track's WAV and its preview",
   exportingTrack: "Writing the export's WAV, FLAC and manifest",
+  /** @param {number} n @param {number} of @param {string} voice @param {string} step */
+  renderingStem: (n, of, voice, step) =>
+    `Stem ${n} of ${of}, ${voice}: ${step.charAt(0).toLowerCase()}${step.slice(1)}`,
   /** @param {number} n @param {number} of */
   measuringWindow: (n, of) => `Measuring window ${n} of ${of} of the region`,
   /** @param {number} n @param {number} of */

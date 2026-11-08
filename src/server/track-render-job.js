@@ -7,7 +7,8 @@
 /** @import { JobContext } from "./job-runner.js" */
 /** @import { App } from "./routing.js" */
 /** @import { Store } from "./store.js" */
-/** @import { TrackManifest, TrackRecipe } from "./track-manifest.js" */
+/** @import { StemEntry, TrackManifest, TrackRecipe } from "./track-manifest.js" */
+/** @import { ExportKind } from "./track-store.js" */
 import { existsSync } from "node:fs";
 import { link, mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
@@ -18,10 +19,12 @@ import { encodePcm24 } from "./encode-pcm24.js";
 import { requireFinite } from "./export-render.js";
 import { JOB_STEP } from "./job-steps.js";
 import { mixTrack, trackLayout } from "./mix-track.js";
+import { renderStem } from "./render-stem.js";
 import { renderTrack } from "./render-track.js";
 import { sha256Hex } from "./sha256-hex.js";
+import { stemIds } from "./stem-voices.js";
 import { recipeKey, recipePlan, trackRecipe } from "./track-manifest.js";
-import { addTrackExport, getTrack, listTrackRevisions } from "./track-store.js";
+import { addTrackExport, EXPORT_KIND, getTrack, listTrackRevisions } from "./track-store.js";
 import { getVibe } from "./vibe-store.js";
 import { writeFlac } from "./write-flac.js";
 import { writeMp3 } from "./write-mp3.js";
@@ -271,14 +274,24 @@ export function exportPath(app, folder) {
 }
 
 /**
+ * A stem's file name in an export's folder. Voice ids are lowercase letters, digits and dashes
+ * (`VOICE_ID`), so the name stays inside the folder.
+ * @param {string} folder
+ * @param {string} stem
+ */
+const stemFile = (folder, stem) => `${folder}-stem-${stem}.wav`;
+
+/**
  * The job that exports a rendered revision: a new folder under exports/ holding the cached
- * WAV, linked, a FLAC made from it (0012) and the manifest naming both, then a `track_exports`
+ * WAV, linked, a FLAC made from it (0012), with `stems` one 32-bit float WAV per voice id
+ * rendered at the mix's gain (0063), and the manifest naming them all, then a `track_exports`
  * row. `mkdir` without `recursive` fails on a folder that exists, so an export never writes into
- * one; on a failure the folder it made is removed.
+ * one; on a failure or a cancel the folder it made is removed, partial stems included.
  * @param {App} app
  * @param {{ trackId: number, revisionId: number }} ids
+ * @param {ExportKind} [kind] `mix` when omitted
  */
-export function trackExportJob(app, ids) {
+export function trackExportJob(app, ids, kind = EXPORT_KIND.mix) {
   return async (/** @type {JobContext} */ job) => {
     const { track, version, key, recipe } = revisionRecipe(app.store, ids);
     const cached = await cachedRender(app, ids.trackId, key);
@@ -301,14 +314,22 @@ export function trackExportJob(app, ids) {
       await link(join(render, RENDER_FILE.wav), join(dir, files.wav));
       await writeFlac(join(dir, files.wav), join(dir, files.flac), job.signal);
       job.signal.throwIfAborted();
+      const stems =
+        kind === EXPORT_KIND.stems ? await writeStems(app, cached, folder, dir, job) : [];
       // The cache is shared by revisions that sound the same, so the track and revision named
       // are this export's own; the audio and its hash are the cached render's.
-      const text = `${JSON.stringify({ files, ...cached, track: recipe.track }, null, 2)}\n`;
+      const manifest = {
+        files,
+        ...cached,
+        track: recipe.track,
+        ...(kind === EXPORT_KIND.stems && { stems }),
+      };
+      const text = `${JSON.stringify(manifest, null, 2)}\n`;
       await writeFile(join(dir, `${folder}.json`), text, { flag: "wx" });
       job.signal.throwIfAborted();
       addTrackExport(app.store, {
         trackRevisionId: ids.revisionId,
-        kind: "mix",
+        kind,
         folder,
         manifestSha256: sha256Hex(text),
       });
@@ -319,4 +340,39 @@ export function trackExportJob(app, ids) {
     job.progress(1, 1, null);
     return { folder, path: dir };
   };
+}
+
+/**
+ * Renders each of the cached render's stems into the export's folder, through the mix's own
+ * plan and chunk length, at the gain its normalize chose.
+ * @param {App} app
+ * @param {TrackManifest} cached
+ * @param {string} folder
+ * @param {string} dir
+ * @param {JobContext} job
+ * @returns {Promise<StemEntry[]>} in `stemIds` order
+ */
+async function writeStems(app, cached, folder, dir, job) {
+  const { plan } = await recipePlan(cached, await jobRecordings(app), cached.recordings);
+  const ids = stemIds(plan.sections);
+  /** @type {StemEntry[]} */
+  const stems = [];
+  for (const [index, voice] of ids.entries()) {
+    const file = stemFile(folder, voice);
+    const { sha256 } = await renderStem(plan, voice, {
+      gainDb: cached.loudness.gainDb,
+      path: join(dir, file),
+      chunkSeconds: cached.chunkSeconds,
+      signal: job.signal,
+      // Every stem renders the same chunks, so the bar counts them across all stems.
+      progress: (done, total, step) =>
+        job.progress(
+          index * total + done,
+          ids.length * total,
+          JOB_STEP.renderingStem(index + 1, ids.length, voice, step),
+        ),
+    });
+    stems.push({ voice, file, sha256 });
+  }
+  return stems;
 }

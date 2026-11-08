@@ -61,9 +61,20 @@ import { getRevision } from "./vibe-store.js";
  */
 
 /**
- * The recipe with what its render measured: the file an export writes beside its audio.
+ * A stem an export wrote (0063): its voice id, its file in the export's folder and the SHA-256
+ * of the float WAV's data chunk.
+ * @typedef {object} StemEntry
+ * @property {string} voice
+ * @property {string} file
+ * @property {string} sha256
+ */
+
+/**
+ * The recipe with what its render measured: the file an export writes beside its audio, with
+ * `stems` when the export wrote them.
  * @typedef {TrackRecipe & {
  *   files?: { wav: string, flac: string },
+ *   stems?: StemEntry[],
  *   loudness: MeasuredLoudness,
  *   frames: number,
  *   pcmSha256: string,

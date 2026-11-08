@@ -8,6 +8,8 @@
 import { CHUNK_SECONDS, chunkWindows } from "../engine/chunk-windows.js";
 import { renderOffline } from "./render-offline.js";
 
+const CHANNELS = 2;
+
 /**
  * @typedef {object} ChunkOptions
  * @property {number} [chunkSeconds] `CHUNK_SECONDS` when omitted; tests pass seconds
@@ -39,7 +41,11 @@ export async function* renderChunks(genome, options, chunking = {}) {
     /** @type {RenderedChunk | null} */
     let rendered = {
       ...chunk,
-      channels: (await renderOffline(genome, { ...options, offset, duration })).channels,
+      // No voice leaves the master bus silent, exactly 0 (0063), so no context is built for it.
+      channels:
+        options.voices?.length === 0
+          ? Array.from({ length: CHANNELS }, () => new Float32Array(chunk.frames))
+          : (await renderOffline(genome, { ...options, offset, duration })).channels,
     };
     if (rendered.channels[0]?.length !== chunk.frames) {
       throw new Error(

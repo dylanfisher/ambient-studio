@@ -1,7 +1,7 @@
 // What the timeline's confirm says a track render costs (decision 0062).
 import { expect, test } from "vitest";
 import { BENCH_RATE } from "../../src/domain/track-cost.js";
-import { trackRenderText } from "../../src/web/track-render-text.js";
+import { stemsText, trackRenderText } from "../../src/web/track-render-text.js";
 
 const cost = { peak: 600, work: BENCH_RATE * 150, audio: 1210, length: 1200 };
 
@@ -15,4 +15,13 @@ test("after a render the confirm uses that run's speed, and a light track says n
   const text = trackRenderText({ ...cost, peak: 300 }, { rate: BENCH_RATE / 2, measured: true });
   expect(text).toContain("about 5 minutes at the speed of the last track render");
   expect(text).not.toContain("node-seconds");
+});
+
+test("the stems confirm names each voice and gives about one track render per stem", () => {
+  expect(stemsText(cost, { rate: BENCH_RATE, measured: false }, ["drone", "high", "pad"])).toBe(
+    "Export the track with 3 stems, one for each voice: drone, high, and pad? Rendering the stems takes about 8 minutes at the speed the bench measured, about one track render per stem, and nothing else renders meanwhile. Each stem is a 32-bit float WAV at the mix's gain and never limited, so it can pass full scale, and the stems add up to the mix before its limiter.",
+  );
+  expect(stemsText(cost, { rate: BENCH_RATE, measured: true }, ["drone"])).toContain(
+    "with 1 stem, one for each voice: drone? Rendering the stem takes about 3 minutes at the speed of the last track render",
+  );
 });

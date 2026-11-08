@@ -2,7 +2,8 @@
 
 - **Date:** 2026-11-07
 - **Status:** accepted; provisional: owner to confirm the track's own fades, the chunk length,
-  keeping one cached render per track, and the export folder's name. Amends
+  keeping one cached render per track, and the export folder's name; amended by
+  [0063](0063-stems-by-voice-id.md) (an export can write stems). Amends
   [0010](0010-event-windows-control-grid-memory.md) (a track renders as several contexts),
   [0015](0015-export-sidecar-json.md) (the track manifest),
   [0016](0016-render-speed-bench.md) (`--track`), [0019](0019-config-file-and-paths.md) (two
@@ -198,3 +199,10 @@ the 20-minute one's. No morph or lane yet: 6e and 6f add them to the case.
 - 6d's stems render each voice through the same `mixTrack` with `voices` limited, and scale by
   the manifest's `gainDb`; 6e's morph and 6f's lanes change `sectionGenome` and add their rules
   to the manifest.
+
+## Amendments
+
+- 2026-11-07: the export takes `kind`, `mix` or `stems`; with `stems` it also writes one 32-bit
+  float WAV per voice id into the same folder, lists each in the manifest's `stems` with its
+  hash, and is logged as `stems` (0063). `mixTrack` takes `voices`, and `renderChunks` yields
+  zeros without a context when `voices` is empty.

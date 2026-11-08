@@ -1,6 +1,7 @@
 // The routes that render and export a track (decision 0062): a revision's render state and
-// estimate, starting its render, a seam preview or an export, and playing a cached MP3. Nothing
-// renders except from the three POSTs, each an owner-started job; one track job runs at a time.
+// estimate, starting its render, a seam preview or an export, with stems or not (0063), and
+// playing a cached MP3. Nothing renders except from the three POSTs, each an owner-started job;
+// one track job runs at a time.
 /** @import { App, Route } from "./routing.js" */
 /** @import { Store } from "./store.js" */
 import { existsSync } from "node:fs";
@@ -9,9 +10,10 @@ import { JOB_KIND } from "../domain/job-kind.js";
 import { BENCH_RATE } from "../domain/track-cost.js";
 import { SAMPLE_RATE } from "../engine/render-plan.js";
 import { fileInside } from "./file-inside.js";
-import { fields, idParam, integer, rowId } from "./request-fields.js";
+import { fields, idParam, integer, oneOf, rowId } from "./request-fields.js";
 import { duplicateJob, HttpError } from "./routing.js";
 import { sendMp3 } from "./send-mp3.js";
+import { stemIds } from "./stem-voices.js";
 import {
   cachedRender,
   exportFolder,
@@ -26,7 +28,7 @@ import {
   trackRenderJob,
 } from "./track-render-job.js";
 import { checkedArrangement, requireTrack } from "./track-routes.js";
-import { listTrackExports, listTrackRevisions } from "./track-store.js";
+import { EXPORT_KIND, listTrackExports, listTrackRevisions } from "./track-store.js";
 
 /** The jobs that render or export a track, one of which runs at a time. */
 /** @type {readonly string[]} */
@@ -115,6 +117,7 @@ export const TRACK_RENDER_ROUTES = [
             from: seamSpan(recipe, transition).from / SAMPLE_RATE,
           })),
         folder: exportFolder(track, version),
+        stems: stemIds(recipe.sections),
         exports: listTrackExports(app.store, ids.revisionId),
       };
     },
@@ -147,8 +150,12 @@ export const TRACK_RENDER_ROUTES = [
     method: "POST",
     path: "/api/tracks/:trackId/export",
     handle: async ({ app, params, body }) => {
-      const given = fields(await body(), ["revisionId"]);
+      const given = fields(await body(), ["revisionId", "kind"]);
       const ids = requireRevision(app.store, params, rowId(given, "revisionId"));
+      const kind =
+        given.kind === undefined
+          ? EXPORT_KIND.mix
+          : oneOf(given, "kind", Object.values(EXPORT_KIND));
       const { key, track, version } = revisionRecipe(app.store, ids);
       if (!(await cachedRender(app, ids.trackId, key))) {
         throw new HttpError(409, "Render this version first; the export writes its render.");
@@ -158,7 +165,7 @@ export const TRACK_RENDER_ROUTES = [
         throw new HttpError(409, `${folder} already exists in exports; an export never overwrites`);
       }
       refuseDuplicate(app);
-      return app.jobs.add(JOB_KIND.trackExport, trackExportJob(app, ids));
+      return app.jobs.add(JOB_KIND.trackExport, trackExportJob(app, ids, kind));
     },
   },
   {

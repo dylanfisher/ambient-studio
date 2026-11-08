@@ -2,7 +2,8 @@
 // until a route starts it; the render job makes an MP3 preview cached by the revision's hash;
 // the export writes a WAV, a FLAC and a manifest into a new folder under the data root's
 // exports/ and refuses one that exists; the manifest alone renders the same PCM again; a seam
-// preview plays; cancel removes the temp files and keeps the revision. Sections are seconds.
+// preview plays; cancel removes the temp files and keeps the revision; an export with stems
+// (0063) writes one float WAV per voice id and lists each one's hash. Sections are seconds.
 /** @import { Studio } from "../support/studio.js" */
 import { existsSync } from "node:fs";
 import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -23,7 +24,7 @@ import { rendererVersions } from "../../src/server/renderer-versions.js";
 import { sha256Hex } from "../../src/server/sha256-hex.js";
 import { exportFolder, trackExportJob, trackRenderJob } from "../../src/server/track-render-job.js";
 import { listTrackExports, listTrackRevisions } from "../../src/server/track-store.js";
-import { headerBytes, PCM24 } from "../../src/server/wav-writer.js";
+import { FLOAT32, headerBytes, PCM24 } from "../../src/server/wav-writer.js";
 import { removeStudio, startStudio, VIBE } from "../support/studio.js";
 
 /** @type {Studio[]} */
@@ -33,13 +34,18 @@ afterEach(async () => {
 });
 
 /**
- * Three kept sketches of drone variants, written straight to the store.
+ * Kept sketches of drone variants, written straight to the store: three in keys 2, 5 and 9
+ * when `genomes` is omitted.
  * @param {Studio} studio
  * @param {any} vibe as the vibe route returns it
+ * @param {readonly object[]} [genomes]
  */
-function seedSketches({ server }, vibe) {
-  return [2, 5, 9].map((key, i) => {
-    const genome = { ...droneGenome, key };
+function seedSketches(
+  { server },
+  vibe,
+  genomes = [2, 5, 9].map((key) => ({ ...droneGenome, key })),
+) {
+  return genomes.map((genome, i) => {
     const candidate = addCandidate(server.store, {
       vibeRevisionId: vibe.revision.id,
       generationId: null,
@@ -51,7 +57,7 @@ function seedSketches({ server }, vibe) {
       locks: [],
       operator: null,
       operatorParams: null,
-      intent: `drone in key ${key}`,
+      intent: `drone variant ${i + 1}`,
       rejectReason: null,
       lint: null,
       rejectedGenome: null,
@@ -213,6 +219,90 @@ test("a track renders from its route, previews as MP3, exports, and re-renders f
     false,
   );
   expect(listTrackExports(server.store, third.id)).toEqual([]);
+});
+
+test("an export with stems writes a float WAV per voice id at the mix's gain, listed with its hash", async () => {
+  const studio = await startStudio();
+  studios.push(studio);
+  const { ok, server } = studio;
+  const vibe = await ok("POST", "/api/vibes", VIBE);
+  // The first sketch adds a second drone, so its stem plays only in the first section.
+  const high = { id: "high", type: "drone", root: 55, partials: 5, level: -14, detune: 7 };
+  const [first, second] = seedSketches(studio, vibe, [
+    { ...droneGenome, voices: [...droneGenome.voices, high] },
+    { ...droneGenome, key: 5 },
+  ]);
+  const { track } = await ok("POST", `/api/vibes/${vibe.id}/tracks`, { name: "stems" });
+  const revision = await ok("POST", `/api/tracks/${track.id}/revisions`, {
+    arrangement: {
+      ...emptyArrangement(),
+      sections: [
+        { sketchId: first?.id, offset: 0, seconds: 10 },
+        { sketchId: second?.id, offset: 30, seconds: 10 },
+      ],
+      transitions: [{ kind: "crossfade", seconds: 2 }],
+    },
+    note: "two",
+  });
+  const path = `/api/tracks/${track.id}`;
+  expect((await ok("GET", `${path}/revisions/${revision.id}/render`)).stems).toEqual([
+    "drone",
+    "high",
+  ]);
+  await runJob(studio, `${path}/render`, { revisionId: revision.id });
+  const bad = await server.api("POST", `${path}/export`, { revisionId: revision.id, kind: "x" });
+  expect(bad.status).toBe(400);
+
+  // A cancel while the second stem renders removes the folder, the first stem with it.
+  const controller = new AbortController();
+  /** @type {string[]} */
+  const steps = [];
+  const app = { store: server.store, paths: server.paths, config: { fieldRecordings: null } };
+  const cancelled = trackExportJob(
+    /** @type {any} */ (app),
+    { trackId: track.id, revisionId: revision.id },
+    "stems",
+  )({
+    signal: controller.signal,
+    progress: (_done, _total, step) => {
+      if (step) steps.push(step);
+      if (step?.startsWith("Stem 2 of 2")) controller.abort(new Error("cancelled"));
+    },
+  });
+  await expect(cancelled).rejects.toThrow("cancelled");
+  expect(steps).toContain("Stem 1 of 2, drone: rendering section 2 of 2, chunk 1 of 1");
+  const folder = `track${track.id}-v2-stems`;
+  const dir = join(server.paths.exports, folder);
+  expect(existsSync(dir)).toBe(false);
+  expect(listTrackExports(server.store, revision.id)).toEqual([]);
+
+  const exported = await runJob(studio, `${path}/export`, {
+    revisionId: revision.id,
+    kind: "stems",
+  });
+  expect(exported.result.folder).toBe(folder);
+  const files = [`${folder}-stem-drone.wav`, `${folder}-stem-high.wav`];
+  expect((await readdir(dir)).sort()).toEqual(
+    [`${folder}.flac`, `${folder}.json`, `${folder}.wav`, ...files].sort(),
+  );
+  const text = await readFile(join(dir, `${folder}.json`), "utf8");
+  const manifest = JSON.parse(text);
+  expect(manifest.stems).toEqual(
+    await Promise.all(
+      ["drone", "high"].map(async (voice, i) => ({
+        voice,
+        file: files[i],
+        sha256: sha256Hex(
+          (await readFile(join(dir, /** @type {string} */ (files[i])))).subarray(
+            headerBytes(FLOAT32),
+          ),
+        ),
+      })),
+    ),
+  );
+  expect(listTrackExports(server.store, revision.id)).toMatchObject([
+    { kind: "stems", folder, manifestSha256: sha256Hex(text) },
+  ]);
 });
 
 test("an export needs a render first, and a revision must be the track's own", async () => {
