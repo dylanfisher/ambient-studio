@@ -13,6 +13,7 @@ import { readTrainingSet } from "../../src/server/read-training-set.js";
 import { getRender, putRender } from "../../src/server/render-store.js";
 import { MAX_CHARS, MAX_TAGS } from "../../src/server/request-fields.js";
 import { abRatingBody, chosenOutcome } from "../../src/web/ab-rating.js";
+import { seedExcerpts } from "../support/seed-excerpts.js";
 import { GENOMES, removeStudio, startStudio } from "../support/studio.js";
 
 /** @type {Studio[]} */
@@ -24,13 +25,19 @@ afterEach(async () => {
 /** Draws the test sets before each call that takes one; 0.25 once they run out. */
 const draws = /** @type {number[]} */ ([]);
 
-/** A session on a vibe with two rendered candidates. */
-async function setup() {
+/**
+ * A session on a vibe with two candidates and their excerpts, written to the store. A test that
+ * rates one needs `measured`, since capturing the heard audio renders it again and compares it
+ * with the row.
+ * @param {{ measured?: boolean }} [options]
+ */
+async function setup({ measured = false } = {}) {
   draws.length = 0;
   const studio = await startStudio({ random: () => draws.shift() ?? 0.25 });
   studios.push(studio);
-  const { vibe, session } = await studio.openSession();
-  await studio.generate(session.id, GENOMES);
+  const opened = await studio.openSession();
+  const { vibe, session } = opened;
+  await seedExcerpts(studio, opened, GENOMES, { measured });
   const { candidates } = await studio.ok("GET", `/api/sessions/${session.id}/candidates`);
   const [one, two] = candidates;
   return { ...studio, vibe, session, one, two };
@@ -45,7 +52,7 @@ const seedFor = (/** @type {"a" | "b"} */ side) => {
 
 describe("ratings", () => {
   test("every kind is stored and read back after the server restarts", async () => {
-    const { server, ok, vibe, session, one, two } = await setup();
+    const { server, ok, vibe, session, one, two } = await setup({ measured: true });
     const at = `/api/sessions/${session.id}`;
     const r1 = one.excerpt.renderId;
     const r2 = two.excerpt.renderId;
@@ -114,7 +121,7 @@ describe("ratings", () => {
   });
 
   test("a ranked session lists each excerpt's place, and a rating stores the place it was shown with (0046)", async () => {
-    const { server, ok, session, one, two } = await setup();
+    const { server, ok, session, one, two } = await setup({ measured: true });
     const at = `/api/sessions/${session.id}`;
     const [r1, r2] = [one.excerpt.renderId, two.excerpt.renderId];
     const covariance = [
@@ -167,7 +174,7 @@ describe("ratings", () => {
   });
 
   test("an unranked session lists no places, and a rating stores nulls", async () => {
-    const { ok, session, one, two } = await setup();
+    const { ok, session, one, two } = await setup({ measured: true });
     const at = `/api/sessions/${session.id}`;
     const listed = await ok("GET", `${at}/candidates`);
     expect(listed.ranking).toBeNull();
@@ -191,7 +198,7 @@ describe("ratings", () => {
   });
 
   test("the A/B route stores the order abOrder gives for its logged seed", async () => {
-    const { server, ok, session, one, two } = await setup();
+    const { server, ok, session, one, two } = await setup({ measured: true });
     const at = `/api/sessions/${session.id}`;
     for (const side of /** @type {const} */ (["a", "b"])) {
       const seed = seedFor(side);
@@ -217,7 +224,7 @@ describe("ratings", () => {
   });
 
   test("a rating as Quick A/B sends it stores the session and the order shown, for the training set", async () => {
-    const { server, ok, vibe, session, one, two } = await setup();
+    const { server, ok, vibe, session, one, two } = await setup({ measured: true });
     const at = `/api/sessions/${session.id}`;
     const pair = await ok("POST", `${at}/ab-pairs`, {
       a: one.excerpt.renderId,
@@ -240,7 +247,7 @@ describe("ratings", () => {
   });
 
   test("a rating writes one rated_audio row whose file exists, reused by the next", async () => {
-    const { server, ok, session, one } = await setup();
+    const { server, ok, session, one } = await setup({ measured: true });
     const at = `/api/sessions/${session.id}`;
     const thumbs = {
       renderId: one.excerpt.renderId,
@@ -362,7 +369,7 @@ describe("undo and replace (0031)", () => {
   /** @type {Awaited<ReturnType<typeof setup>>} */
   let shared;
   beforeAll(async () => {
-    shared = await setup();
+    shared = await setup({ measured: true });
     // afterEach removes the studios in the list; this one lasts until afterAll.
     studios.splice(studios.indexOf(shared), 1);
   });
