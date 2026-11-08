@@ -46,6 +46,11 @@ export const JOB_STEP = Object.freeze({
   /** @param {number} n @param {number} of */
   searchControl: (n, of) => `Scoring the search's control nudges: batch ${n} of ${of}`,
   /** @param {number} n @param {number} of */
+  earDrawing: (n, of) => `Searching by ear: drawing and rendering pair ${n} of ${of}`,
+  /** @param {number} n @param {number} of */
+  earListening: (n, of) =>
+    `Searching by ear: waiting for your choice on pair ${n} of ${of}, and rendering what could come next`,
+  /** @param {number} n @param {number} of */
   fittingVibe: (n, of) => `Learning your taste for brief ${n} of ${of}`,
   testingCount: "Counting each brief's A/B choices",
   /** @param {number} n @param {number} of @param {number} session @param {number} sessions */

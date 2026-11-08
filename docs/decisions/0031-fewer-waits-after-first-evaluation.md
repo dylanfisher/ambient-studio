@@ -12,8 +12,8 @@
   Amended by [0036](0036-revision-pass.md) (the candidates job's revision steps, and the
   candidates route's `pair` field), [0037](0037-nudge-and-branch.md) (the nudge's conflict
   rule and progress step), [0038](0038-explore.md) (explore's conflict rule and progress
-  step) and [0054](0054-model-in-the-loop-cma-es.md) (the search's conflict rule and progress
-  steps).
+  step), [0054](0054-model-in-the-loop-cma-es.md) (the search's conflict rule and progress
+  steps) and [0055](0055-search-by-ear.md) (the search by ear's).
 
 ## Context
 
@@ -69,6 +69,7 @@ made by an older server.
 | `POST /api/sessions/:id/nudges` | the session has a nudge unfinished with the same base, step size and count |
 | `POST /api/sessions/:id/explores` | the session has an explore unfinished with the same base, direction and count |
 | `POST /api/sessions/:id/searches` | the session has a search unfinished with the same base, budget, paths and control switch |
+| `POST /api/sessions/:id/ear-searches` | the session has a search by ear unfinished, from any base |
 | `POST /api/evaluations` | any evaluation is unfinished |
 
 "Unfinished" is queued or running. Another session's job is another action and is accepted. The
@@ -89,6 +90,7 @@ when a job finishes, however it finishes, so a stopped job never shows a stale s
 | nudge | children finished / asked for | "Rendering the excerpt for nudge 3 of 8" |
 | explore | children finished (stored, rendered, measured and revised when needed) / asked for | "Asking the model for variation 2 of 4", then the candidates job's fixing, rendering, measuring, revising and waiting steps |
 | search | points asked, and the control's nudges after them / budget, twice the budget with the control | "Searching: generation 3 of 10", "Scoring the search's control nudges: batch 2 of 10", then "Ranking the candidates by your taste" |
+| search by ear | pairs answered / budget | "Searching by ear: drawing and rendering pair 3 of 20", "Searching by ear: waiting for your choice on pair 3 of 20, and rendering what could come next" |
 | evaluation | candidates stored, across every vibe / vibes × count | "Asking the model for candidate 19 of 48", fixing and waiting as above, numbered across every vibe |
 
 The waiting step comes from a per-request `onRetry` the queue now calls after its own, which
@@ -190,3 +192,8 @@ identity. No rated audio is removed when a rating is.
   JSON of `[candidateId, budget, paths, control]`; anything else queues. The route also refuses
   with a 409, before any job is added, a brief with no current taste model, giving the reason.
   The progress table gains search, reported once per generation.
+- 2026-11-07: from step 5f ([0055](0055-search-by-ear.md)). The conflict table gains the search
+  by ear's row: `POST /api/sessions/:id/ear-searches` is refused while the session has any
+  unfinished search by ear, since the Quick A/B page follows one at a time; the page's button
+  opens the running one instead. The progress table gains search by ear, pairs answered of the
+  budget.

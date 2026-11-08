@@ -8,7 +8,8 @@ and each tell, by a rename, so a sidecar started again reads the run where the l
 it. Higher scores are better.
 
 An optimizer is a class in `OPTIMIZERS`, made from the spec and the state it last saved:
-CMA-ES (decision 0054), and a scripted optimizer that answers points the spec lists, for tests.
+CMA-ES (decision 0054), preferential BO over the owner's choices (0055), and a scripted
+optimizer that answers points the spec lists, for tests.
 """
 
 import base64
@@ -28,6 +29,7 @@ with warnings.catch_warnings():
     warnings.filterwarnings("ignore", message="Could not import matplotlib")
     import cma  # pyright: ignore[reportMissingTypeStubs]
 
+from ambient_sidecar.pairwise_gp import Comparison, Posterior, expected_improvement, length_scale
 from ambient_sidecar.preference import read_json, write_json
 from ambient_sidecar.protocol import Handler
 
@@ -42,8 +44,9 @@ class Optimizer(Protocol):
         """The next `count` points, each in [0, 1]^d."""
         ...
 
-    def tell(self, points: list[Point], scores: list[float]) -> None:
-        """Takes the points `ask` gave last, in order, with a score for each."""
+    def tell(self, points: list[Point], scores: list[float | None]) -> None:
+        """Takes the points `ask` gave last, in order, with a score for each: None only for an
+        optimizer in `TAKES_NO_ANSWER`."""
         ...
 
     def state(self) -> dict[str, Any]:
@@ -132,8 +135,10 @@ class ScriptedOptimizer:
         self.next += count
         return points
 
-    def tell(self, points: list[Point], scores: list[float]) -> None:
+    def tell(self, points: list[Point], scores: list[float | None]) -> None:
         for point, score in zip(points, scores, strict=True):
+            if score is None:
+                raise ValueError("the scripted optimizer needs a score for every point")
             if self.best_score is None or score > self.best_score:
                 self.best, self.best_score = point, score
 
@@ -202,9 +207,12 @@ class CmaOptimizer:
         # The bound handling maps into [0, 1]; the clip only guards rounding at an edge.
         return [[min(1.0, max(0.0, float(u))) for u in x] for x in drawn]
 
-    def tell(self, points: list[Point], scores: list[float]) -> None:
+    def tell(self, points: list[Point], scores: list[float | None]) -> None:
+        told = [s for s in scores if s is not None]
+        if len(told) != len(scores):
+            raise ValueError("cma-es needs a score for every point")
         if len(points) == self.population:
-            self.strategy.tell([numpy.array(p) for p in points], [-s for s in scores])
+            self.strategy.tell([numpy.array(p) for p in points], [-s for s in told])
             self.updates += 1
         self.told += len(points)
 
@@ -239,7 +247,110 @@ def _read_strategy(state: dict[str, Any], dimension: int) -> Any:
     return strategy
 
 
-OPTIMIZERS: dict[str, Factory] = {"scripted": ScriptedOptimizer, CMA_ES: CmaOptimizer}
+PREFERENTIAL_BO = "preferential-bo"
+# What a preferential BO point is told: it beat the run's best, tied with it, or lost to it.
+WIN, TIE, LOSS = 1.0, 0.5, 0.0
+
+
+class PreferentialOptimizer:
+    """Preferential Bayesian optimization (decision 0055): each ask is one point to compare with
+    the run's best, and each tell says how the comparison went. A point that beat the best is
+    the new best; a tie keeps the best and is told as half a win each way; None, a skip, tells
+    nothing and the point is forgotten.
+
+    An ask fits the pairwise GP to every choice told, draws `settings.draws` points uniformly
+    in the ball around the best of radius `settings.sigma` * sqrt(d), clipped to [0, 1], and
+    answers the draw with the most expected improvement over the best. The draws come from a
+    generator seeded by the spec's seed and the count of asks before, so one seed gives one run,
+    and a state read back asks what an unbroken run would. The state is the points told, the
+    choices and the best, as JSON.
+    """
+
+    def __init__(self, spec: Spec, state: dict[str, Any] | None) -> None:
+        _settings(spec, ("sigma", "draws"))
+        sigma = spec.settings.get("sigma")
+        if not _is_position(sigma) or sigma == 0:
+            raise ValueError(f"settings.sigma must be a number above 0, at most 1, got {sigma!r}")
+        draws = spec.settings.get("draws")
+        if not isinstance(draws, int) or isinstance(draws, bool) or draws < 1:
+            raise ValueError(f"settings.draws must be a whole number from 1, got {draws!r}")
+        self.sigma = float(sigma)  # pyright: ignore[reportArgumentType]  # checked above
+        self.draws = draws
+        self.seed = spec.seed
+        self.dimension = spec.dimension
+        if state is None:
+            self.points: list[Point] = [spec.start]
+            self.comparisons: list[Comparison] = []
+            self.best = 0
+            self.asks = 0
+        else:
+            if state.get("optimizer") != PREFERENTIAL_BO:
+                raise ValueError(f"the run's state isn't {PREFERENTIAL_BO}'s")
+            self.points = _points(state["points"], spec.dimension, "the state's points")
+            self.comparisons = [
+                (int(won), int(lost), float(x)) for won, lost, x in state["comparisons"]
+            ]
+            self.best = int(state["best"])
+            self.asks = int(state["asks"])
+
+    def posterior(self) -> Posterior:
+        scale = length_scale(self.sigma, self.dimension)
+        return Posterior(numpy.array(self.points), self.comparisons, scale)
+
+    def ask(self, count: int) -> list[Point]:
+        if count != 1:
+            raise ValueError(f"{PREFERENTIAL_BO} asks one point at a time, not {count}")
+        generator = numpy.random.default_rng([self.seed, self.asks])
+        self.asks += 1
+        best = numpy.array(self.points[self.best])
+        # Uniform in the ball of radius sigma * sqrt(d), a medium nudge's typical distance. With
+        # few choices told, expected improvement favors the draw farthest from the best, which
+        # among normal draws would sit about 4.7 steps out in 6 dimensions.
+        directions = generator.standard_normal((self.draws, self.dimension))
+        directions /= numpy.linalg.norm(directions, axis=1, keepdims=True)
+        radii = generator.random(self.draws) ** (1 / self.dimension)
+        reach = self.sigma * math.sqrt(self.dimension)
+        draws = numpy.clip(best + reach * radii[:, None] * directions, 0.0, 1.0)
+        improvement = expected_improvement(self.posterior(), draws, self.best)
+        # argmax takes the first of a tie, so one state gives one point.
+        return [[float(u) for u in draws[int(numpy.argmax(improvement))]]]
+
+    def tell(self, points: list[Point], scores: list[float | None]) -> None:
+        for point, score in zip(points, scores, strict=True):
+            if score is None:
+                continue
+            if score not in (WIN, TIE, LOSS):
+                raise ValueError(
+                    f"{PREFERENTIAL_BO} is told {WIN} for a win, {TIE} for a tie or {LOSS} for a "
+                    f"loss, got {score}"
+                )
+            told = len(self.points)
+            self.points.append(point)
+            if score == WIN:
+                self.comparisons.append((told, self.best, 1.0))
+                self.best = told
+            elif score == LOSS:
+                self.comparisons.append((self.best, told, 1.0))
+            else:
+                self.comparisons += [(told, self.best, 0.5), (self.best, told, 0.5)]
+
+    def state(self) -> dict[str, Any]:
+        return {
+            "optimizer": PREFERENTIAL_BO,
+            "points": self.points,
+            "comparisons": [list(c) for c in self.comparisons],
+            "best": self.best,
+            "asks": self.asks,
+        }
+
+
+OPTIMIZERS: dict[str, Factory] = {
+    "scripted": ScriptedOptimizer,
+    CMA_ES: CmaOptimizer,
+    PREFERENTIAL_BO: PreferentialOptimizer,
+}
+# The optimizers a tell may give None for a point: an owner's skip says nothing about it.
+TAKES_NO_ANSWER = frozenset({PREFERENTIAL_BO})
 
 
 def _save_state(run: Path, state: dict[str, Any]) -> None:
@@ -296,16 +407,19 @@ def optimizer_tell(params: dict[str, Any]) -> dict[str, Any]:
     if points != pending:
         raise ValueError("the points told aren't the points the last ask gave")
     scores = read_json(Path(params["scores"])).get("scores")
+    takes_none = spec.optimizer in TAKES_NO_ANSWER
     if (
         not isinstance(scores, list)
         or len(scores) != len(points)  # pyright: ignore[reportUnknownArgumentType]
         or not all(
-            isinstance(s, int | float) and not isinstance(s, bool) and math.isfinite(s)
+            (s is None and takes_none)
+            or (isinstance(s, int | float) and not isinstance(s, bool) and math.isfinite(s))
             for s in scores  # pyright: ignore[reportUnknownVariableType]
         )
     ):
-        raise ValueError(f"scores must be a list of {len(points)} finite numbers")
-    optimizer.tell(points, [float(s) for s in scores])  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
+        what = "finite numbers or nulls" if takes_none else "finite numbers"
+        raise ValueError(f"scores must be a list of {len(points)} {what}")
+    optimizer.tell(points, [None if s is None else float(s) for s in scores])  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
     generations = int(state["generations"]) + 1
     _save_state(run, {"optimizer": optimizer.state(), "pending": None, "generations": generations})
     return {"generations": generations}

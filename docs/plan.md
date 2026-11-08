@@ -3347,3 +3347,18 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   hopped by 12.5 s plus a tail, normalized as renders are, into a derived `region_analyses`
   table (migration 0009). Two render-backed route tests hit the 30 s timeout once under load in
   the builder's run; they passed alone and in the gate. The gate passes, 1719 tests.
+- 2026-11-07: 5f merged as fdd00fc (Opus: 490k tokens, 382 calls, 68 min including a fix round;
+  reviewer Sonnet: 83k tokens, 16 calls, 10.5 min, FAIL on the search holding the one job runner
+  after the page closed, fixed with a same-origin `sendBeacon` Stop on pagehide and a 10-minute
+  idle stop on an injected clock; speculative renders no longer fail the job). A numpy
+  pairwise-probit GP with a Laplace posterior and expected improvement, behind 5d's protocol;
+  each answer is an ordinary rating first. The builder's gate failed once on a test in
+  write-flac.test.js, name and message not kept; third load-only failure, so the flakes get a
+  hunt. The gate passes, 1742 tests.
+- 2026-11-07: the load-only failures hunted (Sonnet: 78k tokens, 34 calls, 14.2 min), merged as
+  04867a5. render.test.js's suspend-race retry test failed 1 in 12 under load because the race
+  can also land on a window's suspend; it now scripts only the first two failures and waits
+  `SETTLE_MS` after (24 of 24 under load). write-flac: writing after flac exits can fail with
+  ENOTCONN on macOS (2 in 1,200 under load), a product bug, now accepted as flac closing first.
+  The 30 s timeouts in session-routes and rating-routes didn't reproduce; their setup renders two
+  25 s excerpts per test, and a seeded-candidate helper is the likely cure if they recur.

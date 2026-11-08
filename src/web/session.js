@@ -1326,7 +1326,8 @@ async function loadCandidates() {
   page.rejectedBox.hidden = rejected.length === 0;
   const draws = rejected.filter((candidate) => candidate.operator === OPERATOR.nudge).length;
   const points = rejected.filter((candidate) => candidate.operator === OPERATOR.optimize).length;
-  const answers = rejected.length - draws - points;
+  const heard = rejected.filter((candidate) => candidate.operator === OPERATOR.optimizeEar).length;
+  const answers = rejected.length - draws - points - heard;
   page.rejectedSummary.textContent = `${rejected.length} rejected candidate${rejected.length === 1 ? "" : "s"}: ${[
     answers > 0 &&
       `${answers} model answer${answers === 1 ? "" : "s"} that broke the format or the brief's rules even after one fix`,
@@ -1334,6 +1335,8 @@ async function loadCandidates() {
       `${draws} nudge draw${draws === 1 ? "" : "s"} that broke the rules or repeated a genome, each drawn again`,
     points > 0 &&
       `${points} search point${points === 1 ? "" : "s"} that broke the rules or repeated a genome, each told a low score`,
+    heard > 0 &&
+      `${heard} search-by-ear point${heard === 1 ? "" : "s"} that broke the rules or repeated a genome, each told as a loss and never played`,
   ]
     .filter(Boolean)
     .join(", and ")}`;

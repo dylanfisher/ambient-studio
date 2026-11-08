@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { encodePcm24 } from "../../src/server/encode-pcm24.js";
-import { writeFlac } from "../../src/server/write-flac.js";
+import { flacClosedFirst, writeFlac } from "../../src/server/write-flac.js";
 import { writeWav } from "../../src/server/write-wav.js";
 
 const run = promisify(execFile);
@@ -98,5 +98,16 @@ describe("writeFlac", () => {
         /ENOENT/,
       );
     });
+  });
+
+  test.each(["ERR_STREAM_PREMATURE_CLOSE", "EPIPE", "ENOTCONN"])(
+    "treats %s on flac's stdin as flac having stopped reading",
+    (code) => {
+      expect(flacClosedFirst(Object.assign(new Error("write"), { code }))).toBe(true);
+    },
+  );
+
+  test("does not treat a read error on the WAV as flac having stopped reading", () => {
+    expect(flacClosedFirst(Object.assign(new Error("read"), { code: "EIO" }))).toBe(false);
   });
 });

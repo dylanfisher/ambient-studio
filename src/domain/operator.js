@@ -13,4 +13,6 @@ export const OPERATOR = Object.freeze({
   optimize: "optimize",
   /** 5e's control arm: as many medium nudges from the search's base, never shown. */
   optimizeControl: "optimize-control",
+  /** A point of a search by ear, compared by the owner with the run's best (0055). */
+  optimizeEar: "optimize-ear",
 });

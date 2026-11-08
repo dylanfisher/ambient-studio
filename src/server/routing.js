@@ -4,7 +4,7 @@
 /** @import { Config } from "../config/config.js" */
 /** @import { Paths } from "../config/paths.js" */
 /** @import { JobRunner } from "./job-runner.js" */
-/** @import { OmlxQueue } from "./omlx-queue.js" */
+/** @import { Clock, OmlxQueue } from "./omlx-queue.js" */
 /** @import { SidecarClient } from "./sidecar-client.js" */
 /** @import { Store } from "./store.js" */
 
@@ -21,6 +21,8 @@
  * @property {SidecarClient} sidecar the one sidecar client; only jobs send to it, and the
  *   taste summary and the search route their two metadata requests (decisions 0047, 0054)
  * @property {() => number} random a draw in [0, 1), for stream and order seeds
+ * @property {Clock} clock the timers the queue and the sidecar client take, and a search by
+ *   ear's idle timeout (decision 0055)
  * @property {Map<number, number[]>} sessionJobs the ids of the jobs each session added since
  *   start-up, so stopping it can cancel them
  */

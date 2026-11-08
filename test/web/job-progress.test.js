@@ -72,6 +72,16 @@ describe("jobProgress", () => {
     }
   });
 
+  test("names a search by ear, which the session page follows", () => {
+    expect(jobProgress(job({ kind: "optimize-ear" }), 3_000).title).toBe("Searching by ear");
+  });
+
+  test("names a search, which the session page follows", () => {
+    expect(jobProgress(job({ kind: "optimize" }), 3_000).title).toBe(
+      "Searching by your taste model",
+    );
+  });
+
   test("names a nudge and an explore, which the session and lineage pages follow", () => {
     expect(jobProgress(job({ kind: "nudge" }), 3_000).title).toBe("Nudging a candidate");
     expect(jobProgress(job({ kind: "explore" }), 3_000).title).toBe(

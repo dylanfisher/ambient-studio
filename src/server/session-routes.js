@@ -5,10 +5,19 @@
 // status and cancel. Stopping a session cancels its jobs, and with them their omlx requests.
 /** @import { Candidate } from "./generation-store.js" */
 /** @import { JobStatus } from "./job-runner.js" */
-/** @import { Feedback } from "./rating-store.js" */
+/** @import { IncomingMessage } from "node:http" */
+/** @import { Playable } from "./ear-search-job.js" */
+/** @import { Feedback, Rating } from "./rating-store.js" */
 /** @import { App, Route } from "./routing.js" */
 /** @import { Session } from "./session-store.js" */
 import { applyLocks } from "../domain/apply-locks.js";
+import {
+  DEFAULT_EAR_QUERIES,
+  EAR_PHASE,
+  earScore,
+  MAX_EAR_DIMENSIONS,
+  MAX_EAR_QUERIES,
+} from "../domain/ear-settings.js";
 import { DEFAULT_EXPLORES, NOT_ONE_LINE } from "../domain/explore-direction.js";
 import { DEFAULT_NUDGES, lockRefusal, STEP_SIZE } from "../domain/nudge.js";
 import { OPERATOR } from "../domain/operator.js";
@@ -17,6 +26,7 @@ import { MAX_SEARCH_DIMENSIONS, searchSpace } from "../domain/search-space.js";
 import { currentExcerpt } from "./candidate-excerpt.js";
 import { candidateJob, DEFAULT_CANDIDATES, excerptJob, MAX_CANDIDATES } from "./candidate-job.js";
 import { candidatePairs } from "./candidate-pair.js";
+import { createEarChannel, earChannel, earSearchJob, setEarChannel } from "./ear-search-job.js";
 import { currentRevision, EXPLORE_OPERATOR } from "./generate-candidates.js";
 import { getCandidate, getGenome, listSessionCandidates } from "./generation-store.js";
 import { HIDDEN, hiddenInSession, setHidden } from "./hide-store.js";
@@ -24,9 +34,9 @@ import { CANDIDATE_ID, vibeCandidate } from "./lock-routes.js";
 import { locksInForce } from "./lock-store.js";
 import { NUDGE_OPERATOR, nudgeJob } from "./nudge-job.js";
 import { currentModel } from "./preference-summary.js";
-import { FEEDBACK_KIND, listSessionFeedback } from "./rating-store.js";
+import { FEEDBACK_KIND, getRating, listSessionFeedback } from "./rating-store.js";
 import { fields, idParam, integer, MAX_CHARS, oneOf, rowId, text } from "./request-fields.js";
-import { duplicateJob, HttpError } from "./routing.js";
+import { duplicateJob, HttpError, wrongType } from "./routing.js";
 import { readSearchResults, searchEstimate, searchJob, searchRefusal } from "./search-job.js";
 import { readRanking } from "./session-ranking.js";
 import { getSession, stopSession } from "./session-store.js";
@@ -113,6 +123,10 @@ const NUDGE = NUDGE_OPERATOR;
 const EXPLORE = EXPLORE_OPERATOR;
 /** A search job is named for the operator its points store. */
 const SEARCH = OPERATOR.optimize;
+/** A search by ear is named for the operator its points store. */
+const EAR = OPERATOR.optimizeEar;
+/** The type a browser labels a beacon's string body with. */
+const BEACON_TYPE = "text/plain";
 const STEP_SIZES = /** @type {(keyof typeof STEP_SIZE)[]} */ (Object.keys(STEP_SIZE));
 /** The most candidates one hide names; the page sends one, or the two of a revised pair. */
 const MAX_HIDES = 64;
@@ -158,7 +172,69 @@ const DUPLICATE = Object.freeze({
   /** @param {number} id */
   [SEARCH]: (id) =>
     `This session is already running this search (job ${id}). Wait for it to finish, or cancel it.`,
+  /** @param {number} id */
+  [EAR]: (id) =>
+    `This session is already searching by ear (job ${id}). Finish or stop it on the Quick A/B page first.`,
 });
+
+/**
+ * The session's latest search by ear, or a 404.
+ * @param {App} app
+ * @param {Session} session
+ */
+function requireEarChannel(app, session) {
+  const channel = earChannel(app, session.id);
+  if (!channel) {
+    throw new HttpError(
+      404,
+      `Session ${session.id} has had no search by ear since the studio started. Start one with Search by ear on a candidate on the session page.`,
+    );
+  }
+  return channel;
+}
+
+/**
+ * Whether the request is the Quick A/B page's `navigator.sendBeacon` as it closes (decision
+ * 0055): a string body, which the browser labels `text/plain`; some browsers' `sendBeacon`
+ * refuses a Blob labeled JSON. Every other route takes only JSON, which a page on another site
+ * can't send here without a preflight (0025); a text body can be sent from anywhere, so a
+ * beacon must also carry an `Origin` naming this server's own host, which the browser sets and
+ * a page can't change.
+ * Throws a 403 for a text body from anywhere else.
+ * @param {IncomingMessage} request
+ */
+function isBeacon(request) {
+  if (wrongType(request, BEACON_TYPE)) return false;
+  const { origin, host } = request.headers;
+  /** @type {string | null} */
+  let from = null;
+  try {
+    from = origin === undefined ? null : new URL(origin).host;
+  } catch {
+    // An Origin that isn't a URL names no host, and is refused below.
+  }
+  if (from === null || from !== host) {
+    throw new HttpError(403, "a text body is taken only from this studio's own pages");
+  }
+  return true;
+}
+
+/**
+ * Which of the rating's sides holds `challenger` when its other side holds `best`, matched by
+ * genome and seed as a rating names what was heard; null when the rating is of another pair.
+ * @param {Rating} rating
+ * @param {Playable} challenger
+ * @param {Playable} best
+ * @returns {"a" | "b" | null}
+ */
+function sideOf({ a, b }, challenger, best) {
+  /** @param {{ genomeId: number, seed: number }} side @param {Playable} candidate */
+  const is = (side, candidate) =>
+    side.genomeId === candidate.genomeId && side.seed === candidate.seed;
+  if (is(a, challenger) && is(b, best)) return "a";
+  if (is(b, challenger) && is(a, best)) return "b";
+  return null;
+}
 
 /**
  * A search's raw paths from the body: none when it gives none, or a list of strings.
@@ -184,7 +260,8 @@ function rawPaths(given) {
 /**
  * Each search point's place in the table (decision 0054), by candidate id, read from its run's
  * summary: whether it is shown, and otherwise the shown point it folds under. A point the run
- * hasn't scored yet folds under the run's best, or under its base before any is scored.
+ * hasn't scored yet folds under the run's best, or under its base before any is scored. A
+ * search by ear's summary shows its best and folds every other point under it (0055).
  * @param {App} app
  * @param {readonly Candidate[]} candidates
  */
@@ -194,7 +271,7 @@ async function searchPlaces(app, candidates) {
   /** @type {Map<number, { shown: boolean, foldedUnder: number | null, score: number | null }>} */
   const places = new Map();
   for (const candidate of candidates) {
-    if (candidate.operator !== SEARCH) continue;
+    if (candidate.operator !== SEARCH && candidate.operator !== EAR) continue;
     const run = String(/** @type {{ run?: unknown }} */ (candidate.operatorParams)?.run);
     if (!runs.has(run)) runs.set(run, await readSearchResults(app.paths.search, run));
     const results = runs.get(run) ?? null;
@@ -438,6 +515,115 @@ export const SESSION_ROUTES = [
     method: "GET",
     path: "/api/search-estimate",
     handle: ({ app }) => searchEstimate(app.paths.search),
+  },
+  {
+    method: "POST",
+    path: "/api/sessions/:sessionId/ear-searches",
+    handle: async ({ app, params, body }) => {
+      const session = requireOpenSession(app, params);
+      const given = fields(await body(), [CANDIDATE_ID, "queries", "paths"]);
+      const candidateId = rowId(given, CANDIDATE_ID);
+      const budget =
+        given.queries === undefined
+          ? DEFAULT_EAR_QUERIES
+          : integer(given, "queries", { min: 1, max: MAX_EAR_QUERIES });
+      const raw = rawPaths(given);
+      const { candidate, genome } = baseCandidate(app, session, candidateId);
+      const locks = locksInForce(app.store, session.vibeId);
+      const { constraints } = currentRevision(app.store, session.vibeId);
+      /** @type {string[]} */
+      let space;
+      try {
+        space = searchSpace(applyLocks(genome, locks).genome, locks, constraints, raw);
+      } catch (error) {
+        throw new HttpError(400, /** @type {Error} */ (error).message);
+      }
+      if (space.length === 0) {
+        throw new HttpError(
+          409,
+          "Every macro is locked or fixed by the brief, so there is nothing to search. Unlock a macro, or choose paths to search.",
+        );
+      }
+      if (space.length > MAX_EAR_DIMENSIONS) {
+        throw new HttpError(
+          400,
+          `A search by ear takes at most ${MAX_EAR_DIMENSIONS} dimensions, and these paths make ${space.length}.`,
+        );
+      }
+      const channel = createEarChannel(budget, app.clock);
+      const run = earSearchJob(
+        app,
+        {
+          vibeId: session.vibeId,
+          sessionId: session.id,
+          base: candidate,
+          genome,
+          budget,
+          raw,
+        },
+        channel,
+      );
+      const status = addSessionJob(app, session, EAR, run);
+      channel.publish({ jobId: status.id });
+      setEarChannel(app, session.id, channel);
+      return status;
+    },
+  },
+  {
+    method: "GET",
+    path: "/api/sessions/:sessionId/ear-search",
+    handle: ({ app, params }) => requireEarChannel(app, requireSession(app, params)).view(),
+  },
+  {
+    method: "POST",
+    path: "/api/sessions/:sessionId/ear-search/answers",
+    handle: async ({ app, params, body }) => {
+      const session = requireOpenSession(app, params);
+      const given = fields(await body(), ["query", "ratingId"]);
+      const channel = requireEarChannel(app, session);
+      const view = channel.view();
+      const query = integer(given, "query", { min: 0, max: view.budget - 1 });
+      const ratingId = rowId(given, "ratingId");
+      const rating = getRating(app.store, ratingId);
+      if (rating?.sessionId !== session.id || rating.removedAt !== null) {
+        throw new HttpError(400, `session ${session.id} has no live A/B rating ${ratingId}`);
+      }
+      if (
+        view.phase !== EAR_PHASE.listening ||
+        view.query !== query ||
+        !view.best ||
+        !view.challenger
+      ) {
+        throw new HttpError(
+          409,
+          `The search by ear is not waiting for an answer to pair ${query + 1}.`,
+        );
+      }
+      const side = sideOf(rating, view.challenger, view.best);
+      if (side === null) {
+        throw new HttpError(
+          400,
+          `A/B rating ${ratingId} is not of pair ${query + 1}'s two excerpts`,
+        );
+      }
+      // A second post of one choice, racing the first, is refused here with a 409.
+      channel.answer(query, earScore(rating.outcome, side));
+      // The next pair is rendered ahead, so the reply waits only for the tell and its ask.
+      return channel.after(query);
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/sessions/:sessionId/ear-search/stop",
+    handle: async ({ app, params, request, body }) => {
+      // Stopping is not a rating, so a stopped session takes it too.
+      const session = requireSession(app, params);
+      if (isBeacon(request)) request.resume();
+      else fields(await body(), []);
+      const channel = requireEarChannel(app, session);
+      channel.stop();
+      return channel.view();
+    },
   },
   {
     method: "POST",
