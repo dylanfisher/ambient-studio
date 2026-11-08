@@ -2566,7 +2566,14 @@ Order: CV.1, then CV.2 ‖ CV.3, then CV.4. The owner can try a single sung voic
 - Listen for breaths in a six-singer candidate: the group should never go silent.
 - Say whether the cymbal and drum hits sit in the room or sound pasted on.
 
-**Result:**
+**Result:** done 2026-11-08 (55268c9 through e7cce6b). `chant` sings with 1–12 detuned, panned
+singers who breathe on staggered schedules, with vowel resonances, a weak fundamental, `focus`,
+`bend` and a pulse swell (0069, 0070). `cymbal` and `drum` are struck voices sharing the bell's
+hit finder, with `cymbalHits` and `drumHits` ceilings (0071). The prompt shows genomes without
+their defaults, which left room for the new schema lines (0072), and a "low chant" starting
+point is on the dashboard. Acceptance 1–7 are tests. The 20-minute bench with twelve singers, a
+cymbal and a drum renders at a median of 27.2x, peak 634 MiB. Every existing golden is
+unchanged and the engine version stays 2. The owner's listening checks above are still open.
 
 ## Phase 7 — Album builder
 
@@ -3668,3 +3675,13 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   - A reviewer called the planned CV.4 hand-off a blocker and misplaced a test file. Reviewer
     briefs should say which failures are expected and where they live.
   - Wall time: CV.1 31 min, CV.2 49 min and CV.3 58 min in parallel, reviews 5–8 min each.
+- 2026-11-08: CV.4 merged as 1cf70a9, 4342a28, 1160d0a and e7cce6b (Opus: 258k tokens, 141
+  calls, 35 min; the orchestrator read the diff). The prompt writes examples, an explore's base
+  and breeding's parents with `conciseGenome`, leaving out values at their defaults, which the
+  schema text gives; hashing still uses `canonicalGenome`. The three seed-sized checks went to
+  3,230 and 3,441 of 4,096 tokens and 3,507 of 4,506; the schema text is 3,900 characters,
+  under a limit moved to 4,000 in 0072. Acceptance 7 runs against the fake omlx with one repair.
+  "Low chant" allows chant, noise, bell, cymbal and drum, with no beat and 3 hits a minute at
+  most for each struck voice. `./scripts/bench --chant` renders 20 minutes (two 605 s sections
+  of one genome) at 27.2x, spread 27.2–27.4x, 634 MiB. `./scripts/check` clean: 2,327 tests.
+  Phase CV is done; its listening checks wait for the owner.
