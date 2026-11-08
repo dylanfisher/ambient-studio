@@ -59,6 +59,24 @@
         <div id="jobBox" class="stack"></div>
       </section>
 
+      <section class="card stack" aria-labelledby="fit-heading">
+        <h2 id="fit-heading">Fit your taste model</h2>
+        <p class="small muted">
+          Your taste model learns from your A/B choices and thumbs. First analyze the sound of
+          every rated excerpt and candidate excerpt that isn't analyzed yet, then fit the model for
+          every brief. Fit again after rating more: the model is out of date as soon as a new
+          rating lands. A brief's page then says what you like, and its next candidates are
+          listed by the model's score. Both run on this computer's processor, so they never hold
+          the model the website shares; the first analysis downloads the sound-analysis model,
+          about 0.8 GB.
+        </p>
+        <div class="row">
+          <button id="embedButton" class="button outline" type="button" title="Starts analyzing the sound of every rated excerpt and candidate excerpt that isn't analyzed yet. It takes about a fifth of a second an excerpt, and doesn't use the shared model.">Analyze the sound</button>
+          <button id="fitButton" class="button primary" type="button" title="Starts fitting the taste model for every brief from your ratings. It takes seconds, and doesn't use the shared model. Analyze the sound first.">Fit the taste model</button>
+        </div>
+        <div id="fitJobBox" class="stack"></div>
+      </section>
+
       <section class="card stack" aria-labelledby="taste-heading">
         <h2 id="taste-heading">Test your taste model</h2>
         <p class="small muted">
@@ -145,6 +163,7 @@
         <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" data-part="bar"><div class="progress-fill" data-part="fill"></div></div>
         <p class="small" data-part="step"></p>
         <p class="small muted" data-part="notEmbedded" hidden></p>
+        <p class="small muted" data-part="notRanked" hidden></p>
         <p class="small errors" data-part="error" hidden></p>
       </div>
     </template>

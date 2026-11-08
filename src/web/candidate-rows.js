@@ -1,7 +1,10 @@
 // The order and nesting of the session table's rows (decision 0049): each candidate under the
 // one it was made from, so lineage shows at a glance, and the hidden ones apart. A revised pair
 // (0036) is one place in the table, since the page shows one of the two: its members sit side
-// by side and a child of either nests under both. No DOM, so the layout is tested on its own.
+// by side and a child of either nests under both. In a ranked session (0046) the roots follow
+// their places in the ranking, a pair by its better member's, and the unranked come after in
+// the order given; children stay under their parent in the order given, so lineage still reads.
+// No DOM, so the layout is tested on its own.
 import { lineageTree } from "./lineage-tree.js";
 
 /**
@@ -10,6 +13,7 @@ import { lineageTree } from "./lineage-tree.js";
  * @property {readonly unknown[]} parentIds
  * @property {{ firstTryId: number, revisionId: number } | null} pair
  * @property {boolean} hidden
+ * @property {{ slot: number } | null} [ranking] its excerpt's place in the shown order
  */
 
 /**
@@ -63,7 +67,12 @@ export function candidateRows(candidates) {
       walk(children, depth + 1);
     }
   };
-  walk(lineageTree(nodes), 0);
+  /** @param {number} place the best slot of its members; unranked places sort last */
+  const slotOf = (place) =>
+    Math.min(...(members.get(place) ?? []).map((c) => c.ranking?.slot ?? Number.POSITIVE_INFINITY));
+  // `sort` is stable, so unranked roots, and roots of an unranked session, keep their order.
+  const roots = lineageTree(nodes).sort((x, y) => slotOf(x.node.id) - slotOf(y.node.id) || 0);
+  walk(roots, 0);
   const hidden = candidates.filter((c) => hiddenPlaces.has(placeOf(c))).map((c) => c.id);
   return { shown, hidden };
 }

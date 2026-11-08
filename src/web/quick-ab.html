@@ -26,8 +26,11 @@
         <p class="help muted">
           This session's candidates, two at a time: listen, then choose the better one, and the
           next pair comes at once. The one you choose stays to meet the next candidate, until
-          every candidate has had a turn; turn on Random pairs to hear pairs in any order
-          instead, never the same pair twice. The keys are on the buttons: ← and → play the left
+          every candidate has had a turn; choose Random pairs to hear pairs in any order
+          instead, or Best questions to hear first the pairs your taste model is least sure how
+          to order, which teaches it the most. No order plays the same pair twice. Best
+          questions needs the session ranked by a taste model fitted on the Model test page. The
+          keys are on the buttons: ← and → play the left
           and right excerpt from the same point, A or D chooses left or right, S says they are
           about the same, W skips, Space pauses or plays, and Z undoes the last choice. Keys do
           nothing while you are typing in a field.
@@ -39,10 +42,20 @@
         <div class="row">
           <h2 id="quick-heading">Which is better?</h2>
           <span class="spacer"></span>
-          <label class="small"
-            ><input id="randomSwitch" type="checkbox" title="Draws pairs in a random order instead of keeping the one you chose, never the same pair twice. Changing it starts from the next pair." />
-            Random pairs</label
-          >
+          <div class="row small" role="radiogroup" aria-label="Order of the pairs">
+            <label class="check"
+              ><input id="modeChampion" type="radio" name="orderMode" value="champion" checked title="Keeps the one you chose to meet the next candidate, until every candidate has had a turn. Changing it starts from the next pair." />
+              The one chosen stays</label
+            >
+            <label class="check"
+              ><input id="modeRandom" type="radio" name="orderMode" value="random" title="Draws pairs in a random order, never the same pair twice. Changing it starts from the next pair." />
+              Random pairs</label
+            >
+            <label class="check"
+              ><input id="modeBest" type="radio" name="orderMode" value="best" title="Draws first the pair your taste model is least sure how to order, never the same pair twice. Changing it starts from the next pair." />
+              Best questions</label
+            >
+          </div>
         </div>
         <p id="progressLine" class="small muted"></p>
         <div class="row">

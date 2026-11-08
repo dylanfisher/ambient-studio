@@ -94,3 +94,31 @@ test("a revised pair is hidden whole when either member is", () => {
   expect(flat(shown)).toEqual([[3, 0, 1]]);
   expect(hidden).toEqual([1, 2]);
 });
+
+// The ranked order (decision 0046): roots by their place in the ranking, children kept under
+// their parent in the order given.
+test("ranked roots follow their slots, children stay under their parent, and unranked roots come last", () => {
+  /** @param {number} id @param {number | null} slot @param {Parameters<typeof candidate>[1]} [options] */
+  const ranked = (id, slot, options) => ({
+    ...candidate(id, options),
+    ranking: slot === null ? null : { slot },
+  });
+  const { shown } = candidateRows([
+    ranked(1, 4),
+    ranked(2, null),
+    ranked(3, 1, { parent: 1 }),
+    ranked(4, 3),
+    ranked(5, 2, { pair: [5, 6] }),
+    ranked(6, 5, { parent: 5, pair: [5, 6] }),
+    ranked(7, 6, { parent: 4 }),
+  ]);
+  expect(flat(shown)).toEqual([
+    [5, 0],
+    [6, 0],
+    [4, 0],
+    [7, 1],
+    [1, 0],
+    [3, 1],
+    [2, 0],
+  ]);
+});

@@ -24,5 +24,6 @@ test("names the folders the store and job runner use", () => {
     ratedAudio: join(root, "rated_audio"),
     backups: join(root, "backups"),
     models: join(root, "models"),
+    rankings: join(root, "rankings"),
   });
 });

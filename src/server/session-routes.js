@@ -1,8 +1,8 @@
 // The session and job routes (decision 0027): a session's state and stop, asking for
 // candidates, nudging (0037) and exploring (0038) from one, re-rendering missing excerpts, the
-// candidates with their excerpts and revised pairs (0036), hiding and showing them again (0049),
-// and job status and cancel. Stopping a session cancels its jobs, and with them their omlx
-// requests.
+// candidates with their excerpts, revised pairs (0036) and places in the ranking (0046), hiding
+// and showing them again (0049), and job status and cancel. Stopping a session cancels its jobs,
+// and with them their omlx requests.
 /** @import { JobStatus } from "./job-runner.js" */
 /** @import { Feedback } from "./rating-store.js" */
 /** @import { App, Route } from "./routing.js" */
@@ -22,6 +22,7 @@ import { NUDGE_OPERATOR, nudgeJob } from "./nudge-job.js";
 import { FEEDBACK_KIND, listSessionFeedback } from "./rating-store.js";
 import { fields, idParam, integer, MAX_CHARS, oneOf, rowId, text } from "./request-fields.js";
 import { duplicateJob, HttpError } from "./routing.js";
+import { readRanking } from "./session-ranking.js";
 import { getSession, stopSession } from "./session-store.js";
 
 /**
@@ -366,8 +367,12 @@ export const SESSION_ROUTES = [
   {
     method: "GET",
     path: "/api/sessions/:sessionId/candidates",
-    handle: ({ app, params }) => {
+    handle: async ({ app, params }) => {
       const session = requireSession(app, params);
+      const ranking = await readRanking(app.paths, session.id);
+      const places = new Map(
+        (ranking?.excerpts ?? []).map(({ renderId, ...place }) => [renderId, place]),
+      );
       const live = listSessionFeedback(app.store, session.id);
       const hidden = hiddenInSession(app.store, session.id);
       const listed = listSessionCandidates(app.store, session.id).map((candidate) => ({
@@ -412,9 +417,18 @@ export const SESSION_ROUTES = [
             hidden: [id, pair?.firstTryId, pair?.revisionId].some(
               (member) => member !== undefined && hidden.has(member),
             ),
+            // Where the excerpt sits in the ranking (decision 0046).
+            ranking: (render && places.get(render.id)) ?? null,
           };
         });
-      return { candidates };
+      return {
+        candidates,
+        ranking: ranking && {
+          modelKey: ranking.modelKey,
+          renderIds: ranking.excerpts.map(({ renderId }) => renderId),
+          covariance: ranking.covariance,
+        },
+      };
     },
   },
   {

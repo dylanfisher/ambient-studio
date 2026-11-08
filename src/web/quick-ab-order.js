@@ -1,16 +1,21 @@
 // The order Quick A/B draws its pairs in (decision 0048). In champion mode the chosen side
 // stays as the champion and meets the next challenger until every candidate has had a turn; a
 // tie keeps the champion, and a skip uses up the challenger. In random mode each pair is drawn
-// from those not yet rated, on this page or (`prior`) earlier in the session. Neither mode
-// draws a pair rated on the page. No DOM, and the draws come from the `random` it is given, so
-// a test fixes the order.
+// from those not yet rated, on this page or (`prior`) earlier in the session. In best-questions
+// mode (0046) the pair is the one `question` picks from the same pairs: the taste model's
+// widest difference variance. No mode draws a pair rated on the page. No DOM, and the draws
+// come from the `random` and `question` it is given, so a test fixes the order.
 import { OUTCOMES } from "../domain/rating-values.js";
 
 const [A, B] = OUTCOMES;
 
-/** The two orders, as the page's switch names them. */
-export const ORDER_MODES = /** @type {const} */ (["champion", "random"]);
-const [CHAMPION, RANDOM] = ORDER_MODES;
+/** The three orders, as the page's switch names them. */
+export const ORDER_MODES = /** @type {const} */ (["champion", "random", "best"]);
+const [CHAMPION, RANDOM, BEST] = ORDER_MODES;
+
+/** Why best questions can't be drawn, when the session has no ranking to draw them from. */
+const NO_QUESTIONS =
+  "Best questions needs the session ranked by your taste model, and this one isn't.";
 
 /** @typedef {(typeof ORDER_MODES)[number]} OrderMode */
 /** @typedef {[number, number]} Pair two candidate ids; in champion mode the champion first */
@@ -47,21 +52,50 @@ const [CHAMPION, RANDOM] = ORDER_MODES;
  * One key for a pair, whichever way round.
  * @param {readonly number[]} pair
  */
-export const pairKey = ([x = 0, y = 0]) => (x < y ? `${x}-${y}` : `${y}-${x}`);
+const pairKey = ([x = 0, y = 0]) => (x < y ? `${x}-${y}` : `${y}-${x}`);
+
+/**
+ * The keys of the pairs among `pool` that the session already has live A/B ratings for. A
+ * rating names what was heard, never a candidate, so it is matched by genome and seed.
+ * @param {readonly any[]} ratings the brief's ratings, as `GET …/ratings` lists them
+ * @param {number} sessionId
+ * @param {readonly { id: number, genomeId: number | null, seed: number }[]} pool
+ * @returns {string[]}
+ */
+export function ratedPairKeys(ratings, sessionId, pool) {
+  /** @type {Map<string, number>} */
+  const byWindow = new Map(pool.map((c) => [`${c.genomeId}:${c.seed}`, c.id]));
+  /** @type {string[]} */
+  const keys = [];
+  for (const rating of ratings) {
+    if (rating.sessionId !== sessionId || rating.removedAt !== null) continue;
+    const a = byWindow.get(`${rating.a.genomeId}:${rating.a.seed}`);
+    const b = byWindow.get(`${rating.b.genomeId}:${rating.b.seed}`);
+    if (a !== undefined && b !== undefined && a !== b) keys.push(pairKey([a, b]));
+  }
+  return keys;
+}
+
+/**
+ * Of the pairs offered, the one to ask, or null when none is worth asking.
+ * @typedef {(pairs: readonly Pair[]) => Pair | null} Question
+ */
 
 /**
  * @param {readonly number[]} ids the candidates in the pool
- * @param {{ mode: OrderMode, random: () => number, prior?: Iterable<string> }} options
- *   `random` draws in [0, 1); `prior` is the keys of pairs the session already rated, which
- *   random mode leaves out
+ * @param {{ mode: OrderMode, random: () => number, prior?: Iterable<string>,
+ *   question?: Question | null }} options `random` draws in [0, 1); `prior` is the keys of
+ *   pairs the session already rated, which random and best-questions mode leave out;
+ *   `question` is the pair picker, and without it best-questions mode can't be chosen
  * @returns {QuickAbOrder}
  */
-export function createQuickAbOrder(ids, { mode: startMode, random, prior = [] }) {
+export function createQuickAbOrder(ids, { mode: startMode, random, prior = [], question = null }) {
   const before = new Set(prior);
   /** Pairs whose rating failed to save since they were rated, which undo must not bring back. */
   const forgotten = new Set();
   /** Pairs with a failed save waiting for Retry or Discard, which no draw offers. */
   const held = new Set();
+  if (startMode === BEST && !question) throw new Error(NO_QUESTIONS);
   let mode = startMode;
 
   /** @param {readonly number[]} list */
@@ -92,6 +126,10 @@ export function createQuickAbOrder(ids, { mode: startMode, random, prior = [] })
    * @param {State} at
    */
   const draw = (at) => {
+    if (mode === BEST) {
+      at.current = /** @type {Question} */ (question)(unratedPairs(at));
+      return;
+    }
     if (mode === RANDOM) {
       const pairs = unratedPairs(at);
       at.current = pairs[Math.floor(random() * pairs.length)] ?? null;
@@ -160,6 +198,7 @@ export function createQuickAbOrder(ids, { mode: startMode, random, prior = [] })
     },
     setMode(next) {
       if (next === mode) return;
+      if (next === BEST && !question) throw new Error(NO_QUESTIONS);
       mode = next;
       if (mode === CHAMPION) newRound(state);
       if (!state.current) draw(state);
@@ -169,6 +208,11 @@ export function createQuickAbOrder(ids, { mode: startMode, random, prior = [] })
     remaining() {
       if (!state.current) return 0;
       if (mode === RANDOM) return unratedPairs(state).length;
+      if (mode === BEST) {
+        // The pairs the picker would ask on their own, which leaves out those it can't order.
+        const ask = /** @type {Question} */ (question);
+        return unratedPairs(state).filter((pair) => ask([pair]) !== null).length;
+      }
       return 1 + state.challengers.length;
     },
     undo() {

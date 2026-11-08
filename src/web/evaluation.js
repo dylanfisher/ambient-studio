@@ -2,13 +2,17 @@
 // or without the revision test, follow its job, and read the stored results in plain words. The briefs added from starting points start
 // ticked. A test holds the shared model for a long while, so starting one asks to confirm, and
 // its button stays off until the test finishes. A model test is an evaluation in the API. The
-// taste model test (0045) has its own section, from taste-test-view.js.
+// taste model test (0045) has its own section, from taste-test-view.js, and the embed and fit
+// jobs that make the taste model have theirs (0046).
 /** @import { JobStatus } from "./job-progress.js" */
 import { EVALUATION_COUNT } from "../domain/evaluation-size.js";
 import {
+  EMBEDDINGS_PATH,
   EVALUATIONS_PATH,
   getJson,
+  JOBS_PATH,
   jobPath,
+  PREFERENCE_MODELS_PATH,
   postJson,
   SEED_VIBES_PATH,
   startJob,
@@ -23,6 +27,7 @@ import { jobControl } from "./job-control.js";
 import { JOB_STATE } from "./job-progress.js";
 import { jobBox } from "./job-view.js";
 import { oneAtATime } from "./one-at-a-time.js";
+import { ownerJob } from "./owner-job.js";
 import {
   meaningText,
   rangeText,
@@ -63,6 +68,9 @@ const page = elementsById({
   firstTokenTreatment: HTMLElement,
   firstTokenControl: HTMLElement,
   responseFormat: HTMLElement,
+  embedButton: HTMLButtonElement,
+  fitButton: HTMLButtonElement,
+  fitJobBox: HTMLElement,
 });
 page.countInput.value = String(EVALUATION_COUNT.default);
 page.countInput.max = String(EVALUATION_COUNT.max);
@@ -277,6 +285,39 @@ const startTest = oneAtATime(async () => {
 
 page.startButton.onclick = () => status.run(startTest);
 
+/** The embed and fit jobs' buttons, by the kind of job each starts (decisions 0042, 0044). */
+const ownerJobs = new Map([
+  [
+    "embed",
+    ownerJob(status, {
+      button: page.embedButton,
+      boxes: page.fitJobBox,
+      path: EMBEDDINGS_PATH,
+      started: "The sound analysis started.",
+      done: "The sound analysis is done. Fit the taste model next.",
+    }),
+  ],
+  [
+    "fit",
+    ownerJob(status, {
+      button: page.fitButton,
+      boxes: page.fitJobBox,
+      path: PREFERENCE_MODELS_PATH,
+      started: "Fitting the taste model started.",
+      done: "The taste model is fitted. Each brief's page says what it learned, and its next candidates are ranked by it.",
+    }),
+  ],
+]);
+
+/** Follows an embed or fit job already queued or running, so a reload shows it. */
+async function followOwnerJobs() {
+  const { jobs } = await getJson(JOBS_PATH);
+  for (const job of jobs) {
+    const view = ownerJobs.get(job.kind);
+    if (view && job.finishedAt === null) status.run(() => view.follow(job));
+  }
+}
+
 status.run(async () => {
   const [{ vibes }, { seeds }] = await Promise.all([getJson(VIBES_PATH), getJson(SEED_VIBES_PATH)]);
   const fromSeeds = new Set(seeds.map((/** @type {any} */ seed) => seed.vibeId));
@@ -292,6 +333,7 @@ status.run(async () => {
   );
   await loadReports();
   await tasteTestView(status);
+  await followOwnerJobs();
   if (following === null) {
     status.say(
       vibes.length === 0

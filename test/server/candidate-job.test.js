@@ -4,6 +4,7 @@
 /** @import { Candidate } from "../../src/server/generation-store.js" */
 /** @import { Render } from "../../src/server/render-store.js" */
 /** @import { TestApp } from "../support/test-app.js" */
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { featuresText } from "../../src/domain/features-text.js";
@@ -28,7 +29,9 @@ import {
   putGenome,
 } from "../../src/server/generation-store.js";
 import { setLock } from "../../src/server/lock-store.js";
+import { modelFile, modelPlan } from "../../src/server/preference-model.js";
 import { getRender } from "../../src/server/render-store.js";
+import { readRanking } from "../../src/server/session-ranking.js";
 import { startSession } from "../../src/server/session-store.js";
 import { createVibe } from "../../src/server/vibe-store.js";
 import { driveGaps } from "../support/fake-clock.js";
@@ -250,6 +253,79 @@ test("with the checkpoint not downloaded, the job skips embedding and says why",
     `the CLAP checkpoint isn't in ${checkpointCache} yet, so excerpts aren't embedded; start the embed job to download it`,
   );
   expect((await sidecar.received()).map(({ request }) => request.method)).toEqual(["embedder"]);
+});
+
+// Ranking by the taste model (decision 0046): only with a model file under the brief's key.
+
+/** Writes a model file under the only vibe's current key; the fake never reads it. */
+async function writeModel(/** @type {TestApp["app"]} */ app) {
+  const plan = modelPlan(app.store, EMBEDDER.producer, { modelCode: "preference-aa" });
+  await mkdir(app.paths.models, { recursive: true });
+  await writeFile(modelFile(app.paths, /** @type {any} */ (plan.vibes[0]).key), "{}");
+}
+
+const RANK_LOOKUP = [
+  { do: /** @type {const} */ ("answer"), result: { ...EMBEDDER, ready: true } },
+  { do: /** @type {const} */ ("answer"), result: { code: "preference-aa" } },
+];
+
+test("with no model file, the job ranks nothing and says nothing of it", async () => {
+  const { app, omlx, sidecar, run } = await sessionApp(undefined, INSIDE);
+  setCheckpointCache(app);
+  omlx.script(answer(GENOMES[0]));
+  sidecar.script(
+    { do: "answer", result: { ...EMBEDDER, ready: true } },
+    { do: "answer", result: { windows: 3 }, floats: [0.6, 0.8] },
+  );
+  const result = await run(1);
+  expect(result).toMatchObject({ ranked: 0, notRanked: null });
+  expect((await sidecar.received()).map(({ request }) => request.method)).toEqual([
+    "embedder",
+    "embed_audio",
+  ]);
+});
+
+test("with a current model, the job ranks the session once its candidates are made", async () => {
+  const { app, omlx, sidecar, session, reports, run } = await sessionApp(undefined, INSIDE);
+  setCheckpointCache(app);
+  await writeModel(app);
+  omlx.script(answer(GENOMES[0]));
+  sidecar.script(
+    { do: "answer", result: { ...EMBEDDER, ready: true } },
+    { do: "answer", result: { windows: 3 }, floats: [0.6, 0.8] },
+    ...RANK_LOOKUP,
+    { do: "answer", result: { count: 1 }, scores: { feature: 0, variance: 1 } },
+  );
+  const result = await run(1);
+  expect(result).toMatchObject({ ranked: 1, notRanked: null });
+  expect(reports.at(-1)).toMatchObject({ done: 1, step: "Ranking the candidates by your taste" });
+  const ranking = await readRanking(app.paths, session.id);
+  expect(ranking?.excerpts.map(({ renderId }) => renderId)).toEqual(
+    result.excerpts.map(({ renderId }) => renderId),
+  );
+  expect((await sidecar.received()).map(({ request }) => request.method)).toEqual([
+    "embedder",
+    "embed_audio",
+    "embedder",
+    "preference_code",
+    "predict",
+  ]);
+});
+
+test("a sidecar failure while ranking fails the job loudly", async () => {
+  const { app, omlx, sidecar, run } = await sessionApp(undefined, INSIDE);
+  setCheckpointCache(app);
+  await writeModel(app);
+  omlx.script(answer(GENOMES[0]));
+  sidecar.script(
+    { do: "answer", result: { ...EMBEDDER, ready: true } },
+    { do: "answer", result: { windows: 3 }, floats: [0.6, 0.8] },
+    ...RANK_LOOKUP,
+    { do: "error", error: "the items don't match the model" },
+  );
+  await expect(run(1)).rejects.toThrow(
+    /^ranking the candidates failed: .*the items don't match the model$/,
+  );
 });
 
 test("one outside a range is revised once, replaying its round-0 prompt with the measurements and the locks in force", async () => {

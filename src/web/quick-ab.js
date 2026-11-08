@@ -21,7 +21,7 @@ import { createQuickAbSession, nameOf, PHASE, unloadGuard } from "./quick-ab-ses
 import { statusLine } from "./status-line.js";
 
 const [, , TIE, SKIP] = OUTCOMES;
-const [CHAMPION, RANDOM] = ORDER_MODES;
+const [CHAMPION, RANDOM, BEST] = ORDER_MODES;
 const [LEFT, RIGHT] = SCREEN_SIDES;
 /** @typedef {(typeof SCREEN_SIDES)[number]} ScreenSide */
 
@@ -29,7 +29,9 @@ const status = statusLine();
 const page = elementsById({
   briefLink: HTMLAnchorElement,
   sessionLink: HTMLAnchorElement,
-  randomSwitch: HTMLInputElement,
+  modeChampion: HTMLInputElement,
+  modeRandom: HTMLInputElement,
+  modeBest: HTMLInputElement,
   progressLine: HTMLElement,
   saveLine: HTMLElement,
   retry: HTMLButtonElement,
@@ -45,6 +47,16 @@ const page = elementsById({
   rightPlayed: HTMLElement,
   doneLine: HTMLElement,
 });
+/** @type {[HTMLInputElement, (typeof ORDER_MODES)[number]][]} each order's switch */
+const modeInputs = [
+  [page.modeChampion, CHAMPION],
+  [page.modeRandom, RANDOM],
+  [page.modeBest, BEST],
+];
+/** Best questions' title as quick-ab.html has it, and why it is off in an unranked session. */
+const BEST_TITLE = page.modeBest.title;
+const NO_BEST_TITLE =
+  "Turned off because this session isn't ranked by your taste model. Fit it on the Model test page, then ask for candidates on the session page.";
 const idText = new URLSearchParams(location.search).get("id");
 if (idText === null) throw new Error("quick-ab.html needs ?id=<session id>");
 const sessionId = Number(idText);
@@ -169,13 +181,15 @@ function render() {
     for (const side of Object.values(sides)) side.audio.pause();
   }
   page.pairView.hidden = !view.shown;
-  page.randomSwitch.checked = view.mode === RANDOM;
+  for (const [input, mode] of modeInputs) input.checked = view.mode === mode;
+  page.modeBest.disabled = !view.bestAvailable;
+  page.modeBest.title = view.bestAvailable ? BEST_TITLE : NO_BEST_TITLE;
 
   const left = view.remaining;
   page.progressLine.textContent =
     view.phase === PHASE.done
       ? ""
-      : view.mode === RANDOM
+      : view.mode === RANDOM || view.mode === BEST
         ? `${left} pair${left === 1 ? "" : "s"} not yet rated, this one included.`
         : `${left} challenger${left === 1 ? "" : "s"} still to come, this one included.` +
           (view.champion === null ? "" : ` The one that stays: ${nameOf(view.champion)}.`);
@@ -187,7 +201,9 @@ function render() {
       ? "This session has fewer than two candidates with an excerpt, so there is nothing to compare. Ask for candidates on the session page first."
       : view.mode === RANDOM
         ? `Every pair has been rated.${best} Undo takes the last choice back.`
-        : `Every candidate has had a turn.${best} Turn on Random pairs to keep comparing.`;
+        : view.mode === BEST
+          ? `Every pair the taste model can order has been rated.${best} Choose Random pairs to keep comparing.`
+          : `Every candidate has had a turn.${best} Choose Random pairs to keep comparing.`;
 
   const problems = [view.pairError, view.undoError].filter(Boolean);
   const saving =
@@ -257,8 +273,11 @@ for (const [name, button] of Object.entries(buttons)) {
   button.onclick = actions[/** @type {QuickAbAction} */ (name)];
 }
 page.retry.onclick = () => status.run(session.retry);
-page.randomSwitch.onchange = () =>
-  status.run(() => session.setMode(page.randomSwitch.checked ? RANDOM : CHAMPION));
+for (const [input, mode] of modeInputs) {
+  input.onchange = () => {
+    if (input.checked) status.run(() => session.setMode(mode));
+  };
+}
 window.addEventListener("beforeunload", unloadGuard(session));
 
 status.run(async () => {

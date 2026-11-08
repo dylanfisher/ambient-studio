@@ -3,6 +3,7 @@
 // logged seed.
 /** @import { Studio } from "../support/studio.js" */
 import { existsSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "vitest";
 import { AB_ORDER_SEEDS, abOrder } from "../../src/domain/ab-order.js";
@@ -110,6 +111,83 @@ describe("ratings", () => {
     expect(after.ratings).toEqual(ratings);
     expect(after.sketches).toEqual([sketch]);
     expect((await ok("GET", `/api/vibes/${vibe.id}`)).notes).toEqual([note]);
+  });
+
+  test("a ranked session lists each excerpt's place, and a rating stores the place it was shown with (0046)", async () => {
+    const { server, ok, session, one, two } = await setup();
+    const at = `/api/sessions/${session.id}`;
+    const [r1, r2] = [one.excerpt.renderId, two.excerpt.renderId];
+    const covariance = [
+      [1, 0.25],
+      [0.25, 2],
+    ];
+    // The ranking file as a candidates job writes it under a current model.
+    await mkdir(server.paths.rankings, { recursive: true });
+    await writeFile(
+      join(server.paths.rankings, `${session.id}.json`),
+      JSON.stringify({
+        sessionId: session.id,
+        modelKey: "key-aa",
+        excerpts: [
+          { renderId: r1, score: -0.5, rank: 2, wildcard: true, slot: 1 },
+          { renderId: r2, score: 0.75, rank: 1, wildcard: false, slot: 2 },
+        ],
+        covariance,
+      }),
+    );
+    const listed = await ok("GET", `${at}/candidates`);
+    expect(listed.ranking).toEqual({ modelKey: "key-aa", renderIds: [r1, r2], covariance });
+    expect(listed.candidates.map((/** @type {any} */ c) => c.ranking)).toEqual([
+      { score: -0.5, rank: 2, wildcard: true, slot: 1 },
+      { score: 0.75, rank: 1, wildcard: false, slot: 2 },
+    ]);
+
+    const pair = await ok("POST", `${at}/ab-pairs`, { a: r2, b: r1 });
+    const rating = await ok("POST", `${at}/ab-ratings`, {
+      a: pair.a,
+      b: pair.b,
+      orderSeed: pair.orderSeed,
+      outcome: "a",
+      aPlayedFraction: 1,
+      bPlayedFraction: 1,
+      timeTakenMs: 3000,
+    });
+    expect(rating.a).toMatchObject({
+      rank: 1,
+      score: 0.75,
+      modelVersion: "key-aa",
+      wildcard: false,
+    });
+    expect(rating.b).toMatchObject({
+      rank: 2,
+      score: -0.5,
+      modelVersion: "key-aa",
+      wildcard: true,
+    });
+  });
+
+  test("an unranked session lists no places, and a rating stores nulls", async () => {
+    const { ok, session, one, two } = await setup();
+    const at = `/api/sessions/${session.id}`;
+    const listed = await ok("GET", `${at}/candidates`);
+    expect(listed.ranking).toBeNull();
+    expect(listed.candidates.map((/** @type {any} */ c) => c.ranking)).toEqual([null, null]);
+    const pair = await ok("POST", `${at}/ab-pairs`, {
+      a: one.excerpt.renderId,
+      b: two.excerpt.renderId,
+    });
+    const rating = await ok("POST", `${at}/ab-ratings`, {
+      a: pair.a,
+      b: pair.b,
+      orderSeed: pair.orderSeed,
+      outcome: "tie",
+      aPlayedFraction: 1,
+      bPlayedFraction: 1,
+      timeTakenMs: 3000,
+    });
+    const unranked = { rank: null, score: null, modelVersion: null, wildcard: null };
+    expect(rating.a).toMatchObject(unranked);
+    expect(rating.b).toMatchObject(unranked);
   });
 
   test("the A/B route stores the order abOrder gives for its logged seed", async () => {

@@ -28,6 +28,7 @@ describe("jobProgress", () => {
       elapsed: "Running for 1 min 05 s.",
       error: null,
       notEmbedded: null,
+      notRanked: null,
       finished: false,
     });
   });
@@ -96,6 +97,22 @@ describe("jobProgress", () => {
       null,
     );
     expect(jobProgress(job({}), 9_000).notEmbedded).toBe(null);
+  });
+
+  test("a finished candidates job says why the session wasn't ranked (0046)", () => {
+    const finished = { state: "done", finishedAt: 9_000 };
+    const reason = "the taste model has nothing to tell the candidates apart by yet";
+    expect(jobProgress(job({ ...finished, result: { notRanked: reason } }), 9_000).notRanked).toBe(
+      "The taste model has nothing to tell the candidates apart by yet.",
+    );
+    expect(jobProgress(job({ ...finished, result: { notRanked: null } }), 9_000).notRanked).toBe(
+      null,
+    );
+  });
+
+  test("the embed and fit jobs have titles (0046)", () => {
+    expect(jobProgress(job({ kind: "embed" }), 3_000).title).toBe("Analyzing the sound");
+    expect(jobProgress(job({ kind: "fit" }), 3_000).title).toBe("Fitting the taste model");
   });
 
   test("a kind the page doesn't know is an error, not a blank title", () => {

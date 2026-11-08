@@ -145,3 +145,64 @@ test("fewer than two candidates make no pair", () => {
   expect(createQuickAbOrder([7], { mode: "champion", random: draws(0) }).pair()).toBeNull();
   expect(createQuickAbOrder([], { mode: "random", random: draws(0) }).pair()).toBeNull();
 });
+
+// Best questions (decision 0046): the pair the taste model is least sure of, by the variance of
+// the score difference, never a pair twice and never one held out.
+
+/**
+ * A picker over IDS whose difference variance is the two ids' sum, so 14–15 comes first, then
+ * 13–15; 11 is unranked, so it is never asked.
+ * @param {readonly (readonly [number, number])[]} pairs
+ * @returns {[number, number] | null}
+ */
+const widestBySum = (pairs) => {
+  const asked = pairs.filter(([x, y]) => x !== 11 && y !== 11);
+  const sum = (/** @type {readonly number[]} */ [x = 0, y = 0]) => x + y;
+  const best = [...asked].sort((p, q) => sum(q) - sum(p))[0];
+  return best ? [best[0], best[1]] : null;
+};
+
+test("best questions draws the widest pair, never repeats one, and runs out after every ranked pair", () => {
+  const order = createQuickAbOrder(IDS, {
+    mode: "best",
+    random: draws(0.5),
+    question: widestBySum,
+  });
+  expect(key(order.pair())).toBe("14-15");
+  // Every pair of 12 to 15, but none with the unranked 11.
+  expect(order.remaining()).toBe(6);
+  order.rate("a");
+  expect(key(order.pair())).toBe("13-15");
+  const seen = new Set(["14-15", "13-15"]);
+  order.rate("tie");
+  while (order.pair()) {
+    expect(seen.has(key(order.pair()))).toBe(false);
+    seen.add(key(order.pair()));
+    order.rate("skip");
+  }
+  expect(seen.size).toBe(6);
+  expect([...seen].some((k) => k.includes("11"))).toBe(false);
+});
+
+test("best questions holds out a failed save until it is released", () => {
+  const order = createQuickAbOrder(IDS, {
+    mode: "best",
+    random: draws(0.5),
+    question: widestBySum,
+  });
+  const first = /** @type {[number, number]} */ (order.pair());
+  order.rate("a");
+  order.forget(first);
+  expect(key(order.pair())).toBe("13-15");
+  order.rate("a");
+  expect(key(order.pair())).not.toBe(key(first));
+  order.release(first);
+  order.undo();
+  expect(key(order.pair())).toBe("13-15");
+});
+
+test("best questions without a picker throws", () => {
+  expect(() => createQuickAbOrder(IDS, { mode: "best", random: draws(0.5) })).toThrow(/rank/);
+  const order = createQuickAbOrder(IDS, { mode: "random", random: draws(0.5) });
+  expect(() => order.setMode("best")).toThrow(/rank/);
+});

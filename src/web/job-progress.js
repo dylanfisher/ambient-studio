@@ -10,6 +10,8 @@ const TITLE = Object.freeze({
   agreement: "Taste model test",
   nudge: "Nudging a candidate",
   explore: "The model's variations of a candidate",
+  embed: "Analyzing the sound",
+  fit: "Fitting the taste model",
 });
 
 /** A job's states, as the server's job runner names them (decision 0026). */
@@ -56,6 +58,8 @@ const STATE = Object.freeze({
  * @property {string | null} error
  * @property {string | null} notEmbedded why a candidates job's excerpts weren't embedded
  *   (decision 0042), as a sentence; null when they were, or the job says nothing of it
+ * @property {string | null} notRanked why a candidates job left the session unranked
+ *   (decision 0046), as a sentence; null when it ranked it, or the job says nothing of it
  * @property {boolean} finished
  */
 
@@ -104,13 +108,14 @@ function elapsedText({ addedAt, startedAt, finishedAt }, now) {
 }
 
 /**
- * The reason a candidates job returns for not embedding its excerpts, or null.
+ * The reason a candidates job returns under `key`, as a sentence, or null.
  * @param {JobStatus} job
+ * @param {"notEmbedded" | "notRanked"} key
  */
-function notEmbeddedText({ result }) {
+function reasonText({ result }, key) {
   if (!isObject(result)) return null;
-  const { notEmbedded } = result;
-  return typeof notEmbedded === "string" ? sentence(notEmbedded) : null;
+  const reason = result[key];
+  return typeof reason === "string" ? sentence(reason) : null;
 }
 
 /**
@@ -133,7 +138,8 @@ export function jobProgress(job, now) {
     fraction: progress && progress.total > 0 ? progress.done / progress.total : null,
     elapsed: elapsedText(job, now),
     error: job.error,
-    notEmbedded: notEmbeddedText(job),
+    notEmbedded: reasonText(job, "notEmbedded"),
+    notRanked: reasonText(job, "notRanked"),
     finished: job.finishedAt !== null,
   };
 }

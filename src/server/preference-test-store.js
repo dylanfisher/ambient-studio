@@ -7,9 +7,17 @@ import { join } from "node:path";
 
 /** Model files are named by a hex key, so this name can't be one of theirs. */
 const FILE = "preference-test.json";
+/** What the report is written to first. */
+const PARTIAL = `${FILE}.partial`;
 
 /** @param {Paths} paths */
 const reportFile = (paths) => join(paths.models, FILE);
+
+/**
+ * Whether a file in the models folder is the report, or its copy being written, and not a model.
+ * @param {string} name
+ */
+export const isReportFile = (name) => name === FILE || name === PARTIAL;
 
 /**
  * Writes the report through a temp file, so a reader never sees half of one.
@@ -18,7 +26,7 @@ const reportFile = (paths) => join(paths.models, FILE);
  */
 export async function writePreferenceTest(paths, report) {
   await mkdir(paths.models, { recursive: true });
-  const temp = `${reportFile(paths)}.partial`;
+  const temp = join(paths.models, PARTIAL);
   await writeFile(temp, JSON.stringify(report));
   await rename(temp, reportFile(paths));
 }

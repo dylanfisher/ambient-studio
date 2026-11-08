@@ -7,6 +7,7 @@
 /** @import { FeedbackKindFields, HeardExcerpt, RatingSide } from "./rating-store.js" */
 /** @import { Render } from "./render-store.js" */
 /** @import { App, Route } from "./routing.js" */
+/** @import { SessionRanking } from "./session-ranking.js" */
 /** @import { Session } from "./session-store.js" */
 import { AB_ORDER_SEEDS, abOrder } from "../domain/ab-order.js";
 import { macroWindow } from "../domain/macro-window.js";
@@ -43,6 +44,7 @@ import {
   text,
 } from "./request-fields.js";
 import { HttpError } from "./routing.js";
+import { readRanking } from "./session-ranking.js";
 import { requireOpenSession } from "./session-routes.js";
 import { getVibe } from "./vibe-store.js";
 
@@ -108,18 +110,25 @@ function currentRevisionId(app, session) {
 }
 
 /**
+ * A rating side, with the place its excerpt has in the session's ranking (decision 0046), or
+ * nulls when the session isn't ranked or the excerpt has no place in it.
  * @param {HeardExcerpt & { ratedAudioId: number }} heard
  * @param {number} fraction
+ * @param {SessionRanking | null} ranking
+ * @param {number} renderId
  * @returns {RatingSide}
  */
-const side = (heard, fraction) => ({
-  ...heard,
-  playedFraction: fraction,
-  rank: null,
-  score: null,
-  modelVersion: null,
-  wildcard: null,
-});
+function side(heard, fraction, ranking, renderId) {
+  const place = ranking?.excerpts.find((excerpt) => excerpt.renderId === renderId);
+  return {
+    ...heard,
+    playedFraction: fraction,
+    rank: place?.rank ?? null,
+    score: place?.score ?? null,
+    modelVersion: place ? /** @type {SessionRanking} */ (ranking).modelKey : null,
+    wildcard: place?.wildcard ?? null,
+  };
+}
 
 /** What every feedback body holds, beside its kind's own fields. */
 const FEEDBACK_FIELDS = Object.freeze(["renderId", "direction", "playedFraction", "timeTakenMs"]);
@@ -214,11 +223,12 @@ export const RATING_ROUTES = [
       const timeTakenMs = timeTaken(given);
       const a = heardRender(app, session, given, "a").render;
       const b = heardRender(app, session, given, "b").render;
+      const ranking = await readRanking(app.paths, session.id);
       return addRating(app.store, {
         sessionId: session.id,
         vibeRevisionId: currentRevisionId(app, session),
-        a: side(await keepHeard(app, a.id), aFraction),
-        b: side(await keepHeard(app, b.id), bFraction),
+        a: side(await keepHeard(app, a.id), aFraction, ranking, a.id),
+        b: side(await keepHeard(app, b.id), bFraction, ranking, b.id),
         leftSide: abOrder(orderSeed),
         orderSeed,
         outcome,

@@ -24,6 +24,7 @@ export function jobBox(onCancel) {
     fill: HTMLElement,
     step: HTMLElement,
     notEmbedded: HTMLElement,
+    notRanked: HTMLElement,
     error: HTMLElement,
   });
   /** @type {JobStatus | null} */
@@ -47,6 +48,8 @@ export function jobBox(onCancel) {
       parts.step.textContent = progress.step;
       parts.notEmbedded.hidden = progress.notEmbedded === null;
       parts.notEmbedded.textContent = progress.notEmbedded ?? "";
+      parts.notRanked.hidden = progress.notRanked === null;
+      parts.notRanked.textContent = progress.notRanked ?? "";
       parts.error.hidden = progress.error === null;
       parts.error.textContent = progress.error ?? "";
       parts.cancel.hidden = progress.finished;

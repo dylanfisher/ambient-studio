@@ -33,6 +33,7 @@ import { locksInForce } from "./lock-store.js";
 import { indexRecordings } from "./recording-index.js";
 import { renderExcerpt, renderExcerpts } from "./render-excerpt.js";
 import { isUnchanged, reviseCandidate } from "./revise-candidate.js";
+import { rankSession } from "./session-ranking.js";
 import { getRevision } from "./vibe-store.js";
 
 /** How many candidates one request asks for when it doesn't say. */
@@ -71,6 +72,9 @@ export async function jobRecordings(app) {
  * @property {CandidateRender[]} excerpts one per valid candidate
  * @property {string | null} notEmbedded why the excerpts weren't embedded, or null when they
  *   were or none was rendered (decision 0042)
+ * @property {number} ranked the session's excerpts ranked by the taste model (decision 0046)
+ * @property {string | null} notRanked why the session isn't ranked, or null when it is or no
+ *   taste model was ever fitted
  */
 
 /**
@@ -128,7 +132,8 @@ export function generationStepText({ index, kind }, offset, total, asking = JOB_
  * job at a time, and a cancel during a render stops the job before its next request. With
  * `explore`, the candidates are explore children of its base (decision 0038), revised like any
  * first try. Each excerpt is embedded after its features when the sidecar is set up (0042), and
- * the result says why not when it isn't.
+ * the result says why not when it isn't. Once every candidate is made, the session is ranked
+ * by the brief's taste model when it has a current one (0046).
  * @param {App} app
  * @param {{ vibeId: number, sessionId: number, count: number,
  *   explore?: ExploreFrom | undefined }} request
@@ -250,7 +255,13 @@ export function candidateJob(app, { vibeId, sessionId, count, explore }) {
           job.signal.throwIfAborted();
         },
       });
-      return { requestGroup, candidateIds, excerpts, notEmbedded };
+      const { ranked, notRanked } = await rankSession(
+        app,
+        { id: sessionId, vibeId },
+        job.signal,
+        () => job.progress(done, count, JOB_STEP.ranking),
+      );
+      return { requestGroup, candidateIds, excerpts, notEmbedded, ranked, notRanked };
     } finally {
       job.signal.removeEventListener("abort", cancelRequests);
     }

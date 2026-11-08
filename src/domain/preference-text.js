@@ -15,7 +15,7 @@ const SHOWN_PHRASES = 4;
 export const PREFERENCE_STATE = Object.freeze({ none: "none", stale: "stale", fitted: "fitted" });
 
 const HOW_TO_FIT =
-  "To fit one, run the embed job and then the fit job (POST /api/embeddings, then POST /api/preference-models).";
+  "To fit one, press Analyze the sound and then Fit the taste model on the Model test page.";
 
 /**
  * The fields of a model file (decision 0044) the text reads.
@@ -86,7 +86,7 @@ function termWords(model, term) {
 export function preferenceText(found) {
   if (found.state === PREFERENCE_STATE.stale) {
     return {
-      text: "The taste model is out of date: ratings or the sound analysis have changed since it was fitted, so it isn't shown. Run the fit job (POST /api/preference-models) to update it.",
+      text: "The taste model is out of date: ratings or the sound analysis have changed since it was fitted, so it isn't shown. Press Fit the taste model on the Model test page to update it.",
     };
   }
   if (found.state === PREFERENCE_STATE.none) {

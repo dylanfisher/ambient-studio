@@ -24,7 +24,7 @@ import { fileURLToPath } from "node:url";
  * request's `out` param as little-endian float32 before the step's answer, as the sidecar
  * writes a vector. `scores` answers a `predict`: it writes to `out` a mean for each item in the
  * request's `items` file, that item's feature at index `feature` (0 for null), and `variance`
- * for each.
+ * for each, or the `covariance` given and its diagonal.
  * @typedef {object} Step
  * @property {"answer" | "error" | "hold" | "hang" | "crash" | "garbage"} do
  * @property {unknown} [result]
@@ -36,7 +36,7 @@ import { fileURLToPath } from "node:url";
  * @property {number} [code]
  * @property {string} [line]
  * @property {number[]} [floats]
- * @property {{ feature: number, variance: number }} [scores]
+ * @property {{ feature: number, variance: number, covariance?: number[][] }} [scores]
  */
 
 /**
@@ -117,13 +117,21 @@ export async function fakeSidecar({ underParent = false } = {}) {
 }
 
 /**
- * A `predict` answer that scores each item by one of its features.
+ * A `predict` answer that scores each item by one of its features. With `covariance`, which
+ * must have a row per item, the variances are its diagonal.
  * @param {{ params: { items: string } }} request
- * @param {{ feature: number, variance: number }} by
+ * @param {{ feature: number, variance: number, covariance?: number[][] }} by
  */
-function scores({ params }, { feature, variance }) {
+function scores({ params }, { feature, variance, covariance }) {
   /** @type {{ items: { features: (number | null)[] }[] }} */
   const { items } = JSON.parse(readFileSync(params.items, "utf8"));
+  if (covariance) {
+    return {
+      mean: items.map((item) => item.features[feature] ?? 0),
+      variance: covariance.map((row, i) => row[i]),
+      covariance,
+    };
+  }
   return {
     mean: items.map((item) => item.features[feature] ?? 0),
     variance: items.map(() => variance),

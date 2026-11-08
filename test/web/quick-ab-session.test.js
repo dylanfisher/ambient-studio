@@ -70,14 +70,20 @@ const fail = (/** @type {string} */ error) => ({ status: 500, body: { error } })
 
 /**
  * The routes a load reads, the pair route, and whatever else `more` answers.
- * @param {{ ids?: number[], hidden?: number[], ratings?: unknown[], more?: (call: Call) => Reply | Promise<Reply> | undefined }} [options]
+ * @param {{ ids?: number[], hidden?: number[], ratings?: unknown[], ranking?: unknown, more?: (call: Call) => Reply | Promise<Reply> | undefined }} [options]
  */
-function server({ ids = [1, 2, 3], hidden = [], ratings = [], more = () => undefined } = {}) {
+function server({
+  ids = [1, 2, 3],
+  hidden = [],
+  ratings = [],
+  ranking = null,
+  more = () => undefined,
+} = {}) {
   let seeds = 0;
   return stubServer((call) => {
     if (call.path === SESSION) return ok({ id: 5, vibeId: 9 });
     if (call.path === `${SESSION}/candidates`)
-      return ok({ candidates: ids.map((id) => candidate(id, hidden.includes(id))) });
+      return ok({ candidates: ids.map((id) => candidate(id, hidden.includes(id))), ranking });
     if (call.path === "/api/vibes/9/ratings") return ok({ ratings });
     const custom = more(call);
     if (custom) return custom;
@@ -371,4 +377,39 @@ test("hidden candidates are left out of the pool, and no pair names one", async 
   expect(session.view()).toMatchObject({ phase: "pair", poolSize: 2 });
   expect(session.view().shown?.ids.slice().sort()).toEqual([1, 3]);
   expect(posts(calls, "/ab-pairs").map((c) => [c.body.a, c.body.b].sort())).toEqual([[201, 203]]);
+});
+
+// Best questions (decision 0046). Candidate n's excerpt is render 200 + n.
+const RANKING = {
+  modelKey: "key-aa",
+  renderIds: [201, 202, 203],
+  // 1 and 2 move together; 3 is apart from both, and 2 is the most uncertain.
+  covariance: [
+    [4, 3.9, 0],
+    [3.9, 5, 0],
+    [0, 0, 1],
+  ],
+};
+
+test("in a ranked session, best questions draws the pair the model is least sure of", async () => {
+  const calls = server({ ranking: RANKING });
+  const session = await started();
+  expect(session.view().bestAvailable).toBe(true);
+  await session.setMode("best");
+  // The champion draw shows 2 and 3, the widest pair, and it stays; the next is the widest
+  // pair not yet rated.
+  expect([.../** @type {any} */ (session.view().shown).ids].sort()).toEqual([2, 3]);
+  await session.choose("a", PLAYED);
+  await flush();
+  const shown = /** @type {any} */ (session.view().shown);
+  expect([...shown.ids].sort()).toEqual([1, 3]);
+  expect(posts(calls, "/ab-pairs").at(-1)?.body).toEqual({ a: 201, b: 203 });
+});
+
+test("an unranked session can't choose best questions, and says why", async () => {
+  server();
+  const session = await started();
+  expect(session.view().bestAvailable).toBe(false);
+  await expect(session.setMode("best")).rejects.toThrow(/ranked by your taste model/);
+  expect(session.view().mode).toBe("champion");
 });
