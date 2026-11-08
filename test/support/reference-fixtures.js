@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 const run = promisify(execFile);
 
 /** The sample rate the fixtures are written at; 44.1 kHz, so every decode resamples. */
-export const FIXTURE_RATE = 44100;
+const FIXTURE_RATE = 44100;
 
 /**
  * Each accepted format's fixture: its file name and the encoder arguments. The native Vorbis

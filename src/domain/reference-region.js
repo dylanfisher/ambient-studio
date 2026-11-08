@@ -37,7 +37,7 @@ export function regionProblem(startSeconds, endSeconds, durationSeconds) {
     return `A region can be at most ${REGION_SECONDS.max / 60} minutes long.`;
   }
   if (endSeconds > durationSeconds) {
-    return `The end is past the end of the file, which is ${durationSeconds} seconds long.`;
+    return `The end is past the end of the file, which is ${Math.round(durationSeconds * 100) / 100} seconds long.`;
   }
   return null;
 }

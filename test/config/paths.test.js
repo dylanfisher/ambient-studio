@@ -26,5 +26,7 @@ test("names the folders the store and job runner use", () => {
     models: join(root, "models"),
     rankings: join(root, "rankings"),
     textEmbeddings: join(root, "text-embeddings"),
+    references: join(root, "references"),
+    referenceCache: join(root, "reference-cache"),
   });
 });

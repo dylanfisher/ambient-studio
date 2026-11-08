@@ -5,17 +5,12 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { SAMPLE_RATE } from "../engine/render-plan.js";
+import { DEMUXERS } from "./reference-formats.js";
 
 const run = promisify(execFile);
 
 /** The ffmpeg CLI, found on PATH like flac (0012). */
 export const FFMPEG = "ffmpeg";
-
-/**
- * The demuxers ffmpeg may use on a reference, given to every call as `-format_whitelist`, so a
- * file that is really a playlist or a concat list can't make ffmpeg open other files.
- */
-export const DEMUXERS = Object.freeze(["wav", "aiff", "flac", "mp3", "mov", "ogg"]);
 
 /** The rate a region decodes at: the render's and the meter's (0008). */
 export const DECODE_RATE = SAMPLE_RATE;
@@ -26,12 +21,33 @@ const F32_BYTES = 4;
 const CHANNELS = 2;
 
 /**
- * The arguments that open a reference for reading, before any output options.
+ * The options ffmpeg and ffprobe both take before a reference's path: errors only, and only the
+ * accepted formats' demuxers, so a file that is really a playlist or a concat list can't make
+ * either open other files.
+ */
+export const READ_OPTIONS = Object.freeze([
+  ...["-hide_banner", "-v", "error"],
+  ...["-format_whitelist", DEMUXERS.join(",")],
+]);
+
+/**
+ * The arguments that open a reference for ffmpeg to decode, before any output options.
  * @param {string} path
  */
-export const inputArgs = (path) => [
-  ...["-nostdin", "-hide_banner", "-v", "error"],
-  ...["-format_whitelist", DEMUXERS.join(","), "-i", path],
+export const inputArgs = (path) => ["-nostdin", ...READ_OPTIONS, "-i", path];
+
+/**
+ * The output options that write raw stereo floats to stdout at `rate`.
+ * @param {number} rate
+ */
+export const rawStereoArgs = (rate) => [
+  "-f",
+  "f32le",
+  "-ac",
+  String(CHANNELS),
+  "-ar",
+  String(rate),
+  "-",
 ];
 
 /**
@@ -55,11 +71,14 @@ export async function decodeWithFfmpeg(path, start, end) {
     throw new Error(`a region needs 0 <= start < end, got start ${start} and end ${end}`);
   }
   const output = ["-ss", String(start), "-t", String(end - start)];
-  const format = ["-f", "f32le", "-ac", String(CHANNELS), "-ar", String(DECODE_RATE), "-"];
-  const { stdout } = await run(FFMPEG, [...inputArgs(path), ...output, ...format], {
-    encoding: "buffer",
-    maxBuffer: Number.POSITIVE_INFINITY,
-  });
+  const { stdout } = await run(
+    FFMPEG,
+    [...inputArgs(path), ...output, ...rawStereoArgs(DECODE_RATE)],
+    {
+      encoding: "buffer",
+      maxBuffer: Number.POSITIVE_INFINITY,
+    },
+  );
   const frames = stdout.length / (F32_BYTES * CHANNELS);
   const expected = Math.round((end - start) * DECODE_RATE);
   if (frames !== expected) {
