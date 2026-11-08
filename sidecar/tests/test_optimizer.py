@@ -1,9 +1,12 @@
 import json
+import math
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import numpy
 import pytest
 
 from ambient_sidecar.optimizer import STATE, optimizer_handlers
@@ -151,4 +154,108 @@ def test_an_unknown_optimizer_is_refused(tmp_path: Path) -> None:
     spec: dict[str, Any] = {"optimizer": "cma", "start": [0.5], "seed": 1, "settings": {}}
     (run / "spec.json").write_text(json.dumps(spec), encoding="utf-8")
     with pytest.raises(ValueError, match="optimizer must be one of"):
+        METHODS["optimizer_start"]({"spec": str(run / "spec.json")})
+
+
+def cma_run(root: Path, name: str, seed: int, start: list[float]) -> Path:
+    run = root / "search" / name
+    run.mkdir(parents=True)
+    settings = {"sigma": 0.12, "population": 4 + math.floor(3 * math.log(len(start)))}
+    spec = {"optimizer": "cma-es", "start": start, "seed": seed, "settings": settings}
+    (run / "spec.json").write_text(json.dumps(spec), encoding="utf-8")
+    assert METHODS["optimizer_start"]({"spec": str(run / "spec.json")}) == {"dimension": len(start)}
+    return run
+
+
+def search(
+    run: Path,
+    score: Callable[[list[float]], float],
+    evaluations: int,
+    generation: int = 0,
+) -> list[list[float]]:
+    """Asks and tells whole populations, and a short last one, until `evaluations` points."""
+    spec = json.loads((run / "spec.json").read_text(encoding="utf-8"))
+    population: int = spec["settings"]["population"]
+    asked: list[list[float]] = []
+    while len(asked) < evaluations:
+        points = ask(run, generation, min(population, evaluations - len(asked)))
+        tell(run, generation, [score(p) for p in points])
+        asked.extend(points)
+        generation += 1
+    return asked
+
+
+# 0.44 from the start at 0.5 in every position.
+OPTIMUM = [0.3, 0.65, 0.4, 0.7, 0.25, 0.55, 0.45, 0.6]
+
+
+def quadratic(point: list[float]) -> float:
+    """Higher is better, so the bowl is upside down; its peak, 0, is at `OPTIMUM`."""
+    return -sum((u - o) ** 2 for u, o in zip(point, OPTIMUM, strict=False))
+
+
+def test_cma_es_lands_within_0_05_of_a_quadratic_s_optimum_in_200_evaluations(
+    tmp_path: Path,
+) -> None:
+    run = cma_run(tmp_path, "run-1", 7, [0.5] * 8)
+    asked = search(run, quadratic, 200)
+    assert len(asked) == 200
+    assert all(0 <= u <= 1 for point in asked for u in point)
+    # Within 0.05 of the optimum's score. The best point itself sits about 0.05 from the
+    # optimum at the median over seeds: a sample drawn at the last step size, not the mean.
+    best = max(asked, key=quadratic)
+    assert quadratic(best) > -0.05
+    assert math.dist(best, OPTIMUM) < 0.1
+
+
+def test_one_seed_gives_one_cma_es_run_and_another_seed_another(tmp_path: Path) -> None:
+    one = search(cma_run(tmp_path, "one", 7, [0.5] * 8), quadratic, 40)
+    again = search(cma_run(tmp_path, "again", 7, [0.5] * 8), quadratic, 40)
+    other = search(cma_run(tmp_path, "other", 8, [0.5] * 8), quadratic, 40)
+    assert one == again
+    assert one != other
+
+
+def test_a_cma_es_run_reads_its_state_back_whatever_numpy_s_generator_holds(
+    tmp_path: Path,
+) -> None:
+    # Every request reads the run from its files. Draws from numpy's global generator between
+    # requests, as another method may make, change nothing.
+    straight = search(cma_run(tmp_path, "straight", 3, [0.5] * 4), quadratic, 30)
+    run = cma_run(tmp_path, "interrupted", 3, [0.5] * 4)
+    # Populations of 8: two whole generations, then two more and a short one.
+    first = search(run, quadratic, 16)
+    numpy.random.seed(0)
+    numpy.random.rand(100)
+    rest = search(run, quadratic, 14, generation=2)
+    assert first + rest == straight
+
+
+def test_a_short_last_generation_is_told_without_moving_the_distribution(tmp_path: Path) -> None:
+    run = cma_run(tmp_path, "run-1", 5, [0.5] * 8)
+    search(run, quadratic, 13)
+    state = json.loads((run / STATE).read_text(encoding="utf-8"))
+    assert state["generations"] == 2
+    # A population of 10: one whole generation updates the distribution, three points don't.
+    assert state["optimizer"]["told"] == 13
+    assert state["optimizer"]["updates"] == 1
+
+
+@pytest.mark.parametrize(
+    ("settings", "message"),
+    [
+        ({"sigma": 0.12}, "population"),
+        ({"sigma": 0, "population": 6}, "sigma"),
+        ({"sigma": 0.12, "population": 1}, "population"),
+        ({"sigma": 0.12, "population": 6, "other": 1}, "other"),
+    ],
+)
+def test_cma_es_refuses_settings_it_cant_run(
+    tmp_path: Path, settings: dict[str, Any], message: str
+) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    spec = {"optimizer": "cma-es", "start": [0.5, 0.5], "seed": 1, "settings": settings}
+    (run / "spec.json").write_text(json.dumps(spec), encoding="utf-8")
+    with pytest.raises(ValueError, match=message):
         METHODS["optimizer_start"]({"spec": str(run / "spec.json")})
