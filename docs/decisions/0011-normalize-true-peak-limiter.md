@@ -1,7 +1,9 @@
 # 0011. Normalization runs gain, a look-ahead true-peak limiter and a re-measure loop
 
 - **Date:** 2026-11-06
-- **Status:** accepted; provisional: owner to confirm
+- **Status:** accepted; provisional: owner to confirm; amended by
+  [0060](0060-streaming-meters-limiter-writers.md) (the limiter takes chunks, and normalize runs
+  over a source)
 
 ## Context
 
@@ -78,3 +80,11 @@ every caller passes one (step 1l); `ceiling` defaults to −1.0 dBTP.
 - 2026-11-06: from step 2b. The target range tops out at −10 LUFS
   ([0018](0018-default-loudness-target.md)); the −9 figures above are the measurements that led
   there.
+- 2026-11-07: from step 6a ([0060](0060-streaming-meters-limiter-writers.md), provisional: owner
+  to confirm). The limiter is `createLimiter(gain, threshold, sampleRate)`, which takes chunks
+  and returns each output frame once its 250-frame look-ahead has arrived; `limitTruePeak` is a
+  one-chunk call of it with the same bits. The pass loop is `normalizePasses`, which `normalize`
+  and the new `normalizeStream` both drive: the latter reads a re-readable source once to
+  measure and once a pass, holds no output, and returns the gain, loudness, true peak and
+  threshold. The parameters and decisions above are unchanged. The limiter's whole-array time
+  rose about 10%.

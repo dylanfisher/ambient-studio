@@ -1,7 +1,8 @@
 # 0012. Export writes WAV here and FLAC through the flac CLI
 
 - **Date:** 2026-11-05
-- **Status:** accepted
+- **Status:** accepted; amended by [0060](0060-streaming-meters-limiter-writers.md) (the WAV is
+  written header first, and a 32-bit float WAV for stems)
 
 ## Context
 
@@ -60,3 +61,9 @@ bit for bit.
   throws, and a non-zero exit still throws with flac's stderr.
   The test puts a `flac` stub on PATH that reads one byte and exits 0 against an 8 MB WAV, so
   the write is always still pending; it failed with EPIPE before the change.
+- 2026-11-07: from step 6a ([0060](0060-streaming-meters-limiter-writers.md), provisional: owner
+  to confirm). `createWavWriter` writes the header for a stated frame count first and takes the
+  samples in chunks, refusing a total that differs and removing the file when it does;
+  `writeWav` is one chunk of it, with the same bytes. It also writes 32-bit float WAV for stems
+  (format tag 3, an 18-byte fmt chunk and a fact chunk), from `encodeFloat32`, which keeps
+  values past full scale and throws on NaN or infinity.

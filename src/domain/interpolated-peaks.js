@@ -1,20 +1,27 @@
+/** The filter's value at n is a weighted sum of x[n - 11] to x[n]. */
+export const INTERPOLATION_SPAN = 11;
+
+const NO_HISTORY = new Float32Array(0);
+
 /**
  * BS.1770-4's 4x interpolation filter. For each n from `start` to `end - 1`, the largest
  * absolute output of the four phases with x[n] as the newest input sample, which covers the
- * waveform between x[n - 6] and x[n - 5]. Samples outside `x` read as zero, so `end` may run
- * 11 samples past the end of the input and a peak in the final samples is still measured. The
- * 12.04 dB attenuation in the standard is headroom for integer arithmetic and is left out,
- * since this runs in float64.
+ * waveform between x[n - 6] and x[n - 5]. Samples after `x` read as zero, so `end` may run
+ * 11 samples past the end of the input and a peak in the final samples is still measured.
+ * Samples before `x` come from `before`, so a stream read in chunks gives the bits one array
+ * would, and read as zero past it. The 12.04 dB attenuation in the standard is headroom for
+ * integer arithmetic and is left out, since this runs in float64.
  * @param {Float32Array} x
  * @param {number} start
  * @param {number} end
  * @param {Float64Array} out receives the value for n at out[n - start]
+ * @param {Float32Array} [before] the samples just before x[0], newest last
  * @returns {number} the largest of them
  */
-export function interpolatedPeaks(x, start, end, out) {
+export function interpolatedPeaks(x, start, end, out, before = NO_HISTORY) {
   const length = x.length;
   /** @param {number} n */
-  const at = (n) => (n >= 0 && n < length ? (x[n] ?? 0) : 0);
+  const at = (n) => (n >= 0 ? (n < length ? (x[n] ?? 0) : 0) : (before[before.length + n] ?? 0));
   // The last 12 input samples in locals, s0 newest. Unrolled because normalize runs this over
   // a whole render on every pass: this runs about 3x faster than a loop over a tap array.
   let s0 = at(start - 1);
@@ -102,4 +109,20 @@ export function interpolatedPeaks(x, start, end, out) {
     peak = Math.max(peak, value);
   }
   return peak;
+}
+
+/**
+ * Moves `history` on past `chunk`, so it holds the last `history.length` samples of the stream
+ * so far, newest last: the `before` for the next chunk.
+ * @param {Float32Array} history
+ * @param {Float32Array} chunk
+ */
+export function carryHistory(history, chunk) {
+  const span = history.length;
+  if (chunk.length >= span) {
+    history.set(chunk.subarray(chunk.length - span));
+  } else {
+    history.copyWithin(0, chunk.length);
+    history.set(chunk, span - chunk.length);
+  }
 }

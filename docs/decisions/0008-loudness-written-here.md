@@ -1,7 +1,8 @@
 # 0008. Loudness and true peak are measured by code written here
 
 - **Date:** 2026-11-05
-- **Status:** accepted
+- **Status:** accepted; amended by [0060](0060-streaming-meters-limiter-writers.md) (the meters
+  take a stream in chunks)
 
 ## Context
 
@@ -67,3 +68,9 @@ but nothing in the gate or tests needs it.
     13 and 14 +0.006 in every segment. True peak: cases 15 to 19 −0.217, +0.024, −0.313, −0.026,
     +0.029 dB; 20 to 23 −0.168, −0.119, −0.232, −0.119 dB. On a 300 s stereo signal, integrated
     loudness takes about 95 ms and true peak about 270 ms on mbp2021.
+- 2026-11-07: from step 6a ([0060](0060-streaming-meters-limiter-writers.md), provisional: owner
+  to confirm). The meters also run over a stream: `createLoudnessMeter` and
+  `createTruePeakMeter` take chunks of any length and give the bits `integratedLoudness` and
+  `truePeak` give for the whole input, and those two are now one-chunk calls of them. The
+  K-weighting, the window sums and the interpolation filter carry their state between chunks;
+  the loudness meter keeps one power per gating block, since the relative gate needs them all.

@@ -1,3 +1,5 @@
+import { channelFrames } from "./channel-frames.js";
+
 // 0012: +1.0 maps to 2^23, which is one step past the largest 24-bit value, so it clips to
 // 8388607 while -1.0 lands exactly on -8388608.
 /** The 24-bit value of a float sample of 1.0. */
@@ -16,14 +18,7 @@ export const PCM24_BYTES = 3;
  * @returns {Uint8Array}
  */
 export function encodePcm24(channels) {
-  const first = channels[0];
-  if (!first) throw new Error("encodePcm24 needs at least one channel");
-  const frames = first.length;
-  for (const [c, channel] of channels.entries()) {
-    if (channel.length !== frames) {
-      throw new Error(`channel ${c} has length ${channel.length}, channel 0 has ${frames}`);
-    }
-  }
+  const frames = channelFrames(channels, "encodePcm24");
   const stride = channels.length * PCM24_BYTES;
   const out = new Uint8Array(frames * stride);
   for (const [c, channel] of channels.entries()) {
