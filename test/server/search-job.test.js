@@ -249,7 +249,7 @@ test("the shown points follow score and distance, and the rest fold under the ne
   expect(result.shown).toEqual(expected.shown);
   const saved = await resultsOf(app, result.run);
   expect(saved.shown).toEqual(expected.shown);
-  expect(saved.distance).toBe(MIN_SHOWN_DISTANCE);
+  expect(saved.minDistance).toBe(MIN_SHOWN_DISTANCE);
   expect(saved.foldedUnder).toEqual(Object.fromEntries(expected.foldedUnder));
   expect(result.best).toEqual({
     candidateId: expected.shown[0],

@@ -259,3 +259,26 @@ def test_cma_es_refuses_settings_it_cant_run(
     (run / "spec.json").write_text(json.dumps(spec), encoding="utf-8")
     with pytest.raises(ValueError, match=message):
         METHODS["optimizer_start"]({"spec": str(run / "spec.json")})
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ({"strategy": None}, "has no strategy"),
+        ({"optimizer": "scripted"}, "not cma-es's"),
+        ({"dimension": 3}, "in 3 dimensions"),
+    ],
+)
+def test_a_cma_es_state_for_another_run_is_refused_with_a_reason(
+    tmp_path: Path, change: dict[str, Any], message: str
+) -> None:
+    run = cma_run(tmp_path, "run-1", 7, [0.5] * 2)
+    state = json.loads((run / STATE).read_text(encoding="utf-8"))
+    for key, value in change.items():
+        if value is None:
+            del state["optimizer"][key]
+        else:
+            state["optimizer"][key] = value
+    (run / STATE).write_text(json.dumps(state), encoding="utf-8")
+    with pytest.raises(ValueError, match=message):
+        ask(run, 0, 2)

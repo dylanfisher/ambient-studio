@@ -36,7 +36,8 @@ space), and is told the negated scores, since `cma` minimizes.
   gives one run whatever else the sidecar draws between requests. The seed is drawn from
   `app.random` when the job starts and stored in each point's `operatorParams`.
 - **State: pickled.** The strategy, its generator inside it, is pickled and stored as base64 in
-  the run's `state.json`, under `strategy`, beside `told` and `updates`. One file keeps 5d's
+  the run's `state.json`, under `strategy`, beside `told`, `updates`, the optimizer's name and
+  the dimension, which a read checks before it trusts the pickle. One file keeps 5d's
   single rename, so a sidecar killed mid-write still leaves a whole state; a side file would need
   a second atomic write. The pickle is about 18 KB for d = 8. It is read back only from a run
   folder the server made and the sidecar wrote. pytest checks that a run whose state is read
@@ -74,7 +75,7 @@ checks the model again when it starts and fails with the same reason if it went 
 `<dataRoot>/search/`, still joined in `search-run.js` until it moves into `paths()` after 5a).
 After each generation the job writes `results.json` through a temp file: the space's paths, the
 base, each scored point's candidate and score, the shown points, what each other point folds
-under, the shown distance, each evaluation's timings and the control's scores. It is derived
+under, the least distance the shown points were kept apart by, each evaluation's timings and the control's scores. It is derived
 data, like the rest of the folder.
 
 **What the session shows.** Every point is a session candidate: operator `optimize`, source

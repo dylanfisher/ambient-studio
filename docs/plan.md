@@ -1931,8 +1931,9 @@ moved chain) is on main before 5e starts, and 5e builds on 5d's merge.
   - A vibe with no fitted model is refused with the reason. An identical search queued or running
     is a 409.
 - **Tiers:** server, sidecar, web.
-- **Tests first:** pytest: on a quadratic in [0, 1]^8 the best after 200 evaluations is within 0.05
-  of the optimum, and one seed gives one run. Node, scripted scorer: the job stops at budget; the
+- **Tests first:** pytest: on a quadratic in [0, 1]^8 the best score after 200 evaluations is
+  within 0.05 of the optimum's, and the best point within 0.1 of it (0054), and one seed gives
+  one run. Node, scripted scorer: the job stops at budget; the
   shown 4 follow score and distance; the control runs as many nudges; cancel keeps rows; the
   estimate is the formula on scripted timings; no model is a 409; locks hold.
 - **Records:** writes 0054: settings, budget and estimate, what is shown, the control arm, and

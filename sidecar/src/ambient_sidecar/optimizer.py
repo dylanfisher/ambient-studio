@@ -141,6 +141,9 @@ class ScriptedOptimizer:
         return {"next": self.next, "best": self.best, "bestScore": self.best_score}
 
 
+CMA_ES = "cma-es"
+
+
 def _settings(spec: Spec, keys: tuple[str, ...]) -> None:
     for key in spec.settings:
         if key not in keys:
@@ -186,8 +189,7 @@ class CmaOptimizer:
             self.told = 0
             self.updates = 0
         else:
-            # The pickle is the sidecar's own, written to the run folder by `state` below.
-            self.strategy = pickle.loads(base64.b64decode(state["strategy"]))
+            self.strategy = _read_strategy(state, spec.dimension)
             self.told = int(state["told"])
             self.updates = int(state["updates"])
 
@@ -208,10 +210,36 @@ class CmaOptimizer:
 
     def state(self) -> dict[str, Any]:
         strategy = base64.b64encode(pickle.dumps(self.strategy)).decode("ascii")
-        return {"strategy": strategy, "told": self.told, "updates": self.updates}
+        return {
+            "optimizer": CMA_ES,
+            "dimension": self.strategy.N,
+            "strategy": strategy,
+            "told": self.told,
+            "updates": self.updates,
+        }
 
 
-OPTIMIZERS: dict[str, Factory] = {"scripted": ScriptedOptimizer, "cma-es": CmaOptimizer}
+def _read_strategy(state: dict[str, Any], dimension: int) -> Any:
+    """The strategy a CMA-ES state holds, checked to be one for this run. The pickle is the
+    sidecar's own, written to the run folder by `CmaOptimizer.state`."""
+    missing = [
+        k for k in ("optimizer", "dimension", "strategy", "told", "updates") if k not in state
+    ]
+    if missing:
+        raise ValueError(f"the run's CMA-ES state has no {', '.join(missing)}")
+    if state["optimizer"] != CMA_ES:
+        raise ValueError(f"the run's state is {state['optimizer']!r}'s, not {CMA_ES}'s")
+    if state["dimension"] != dimension:
+        raise ValueError(
+            f"the run's CMA-ES state is in {state['dimension']} dimensions, its spec in {dimension}"
+        )
+    strategy: Any = pickle.loads(base64.b64decode(state["strategy"]))
+    if not isinstance(strategy, cma.CMAEvolutionStrategy) or dimension != strategy.N:
+        raise ValueError(f"the run's CMA-ES state doesn't hold a {dimension}-dimensional strategy")
+    return strategy
+
+
+OPTIMIZERS: dict[str, Factory] = {"scripted": ScriptedOptimizer, CMA_ES: CmaOptimizer}
 
 
 def _save_state(run: Path, state: dict[str, Any]) -> None:

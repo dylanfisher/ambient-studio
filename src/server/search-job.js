@@ -106,7 +106,8 @@ const RESULTS = "results.json";
  * @property {number[]} shown the points the session shows, best first
  * @property {Record<string, number>} foldedUnder each other scored point's id, with the shown
  *   point it folds under
- * @property {number} distance the least CLAP cosine distance between two shown points
+ * @property {number} minDistance the least CLAP cosine distance two shown points were kept
+ *   apart by, `MIN_SHOWN_DISTANCE` when the run was made
  * @property {StepSeconds[]} timings one per scored point, search and control alike
  * @property {{ evaluated: ScoredCandidate[] } | null} control the control arm's, or null when
  *   it didn't run
@@ -287,7 +288,7 @@ export function searchJob(app, request, { makeScorer = modelScorer } = {}) {
       evaluated: [],
       shown: [],
       foldedUnder: {},
-      distance: MIN_SHOWN_DISTANCE,
+      minDistance: MIN_SHOWN_DISTANCE,
       timings: [],
       control: null,
     };
