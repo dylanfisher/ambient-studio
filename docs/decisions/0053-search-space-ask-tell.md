@@ -4,7 +4,8 @@
 - **Status:** accepted; provisional: owner to confirm. Amends
   [0037](0037-nudge-and-branch.md) (the nudge's chain and free-path rule move out of `nudge`)
   and [0041](0041-sidecar-process.md) (the optimizer methods and run folders). Amended by
-  [0055](0055-search-by-ear.md) (a null score, and copies of a run)
+  [0055](0055-search-by-ear.md) (a null score, and copies of a run) and
+  [0056](0056-directions-sliders-reference-target.md) (`searchScore` takes a steer's terms)
 
 ## Context
 
@@ -143,3 +144,9 @@ nothing reads one after its job ends.
   `TAKES_NO_ANSWER` (preferential BO, for a skip); the others still refuse one. `forkSearch`
   copies a run's spec, state and last ask into a run folder inside it, and `searchGeneration`'s
   ask and tell are `askPoints` and `tellScores`, which the search by ear shares.
+- 2026-11-07 (5g, [0056](0056-directions-sliders-reference-target.md)): `searchScore(mean,
+  variance, terms)` adds weighted terms to the lower bound, and with none it is the bound
+  exactly, so a search scores as before. `termsScore` is the terms alone, a steer's score when the
+  brief has no current taste model. A steer's terms are each chosen direction's distance from its
+  slider's setting and each chosen region's nearness, both on the vibe's scale, at weight 10
+  against the model's 1.
