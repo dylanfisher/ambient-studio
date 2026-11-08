@@ -17,9 +17,8 @@ import { penalizedScores } from "../domain/penalized-scores.js";
 import { proposeGenome } from "../domain/propose-genome.js";
 import { NO_SEARCH_SPACE, searchSpace } from "../domain/search-space.js";
 import { canonicalGenome } from "../engine/canonical-genome.js";
-import { currentRevision, keep } from "./generate-candidates.js";
+import { currentRevision, keep, verdictOf } from "./generate-candidates.js";
 import { locksInForce } from "./lock-store.js";
-import { verdictOf } from "./nudge-job.js";
 
 const SPEC = "spec.json";
 // The sidecar's state (0053), which a fork copies whole and never reads.

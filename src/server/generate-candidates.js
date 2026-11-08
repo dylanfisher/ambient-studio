@@ -12,6 +12,7 @@
 /** @import { FeatureRanges } from "../domain/target-schema.js" */
 /** @import { Finding, LintResult } from "../domain/lint-result.js" */
 /** @import { ChatMessage } from "../domain/prompt-tokens.js" */
+/** @import { Proposal } from "../domain/propose-genome.js" */
 /** @import { RejectReason } from "../domain/reject-reason.js" */
 /** @import { Genome } from "../engine/genome-schema.js" */
 /** @import { Candidate, Generation } from "./generation-store.js" */
@@ -505,6 +506,21 @@ export function keep(batch, generation, verdict, origin) {
     rejectedGenome: verdict.reason === null ? null : verdict.written,
   });
 }
+
+/**
+ * A draw, or any proposal, as the verdict `keep` stores.
+ * @param {Proposal} draw
+ * @returns {Verdict}
+ */
+export const verdictOf = ({ reason, lint, genome, written, lockChanges }) => ({
+  reason,
+  lint,
+  intent: null,
+  genome,
+  answer: null,
+  written,
+  lockChanges,
+});
 
 /**
  * The verdict for a candidate whose last request failed, keeping what an earlier try found.
