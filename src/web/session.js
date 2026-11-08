@@ -119,6 +119,7 @@ const CARD_PARTS = Object.freeze({
   lint: HTMLElement,
   findings: HTMLUListElement,
   pairLink: HTMLButtonElement,
+  foldToggle: HTMLButtonElement,
   steer: HTMLElement,
   lockSummary: HTMLElement,
   lockPath: HTMLSelectElement,
@@ -156,6 +157,8 @@ const CARD_PARTS = Object.freeze({
  * @property {boolean} hidden whether the owner hid it (decision 0049)
  * @property {{ rank: number, score: number, wildcard: boolean, slot: number } | null} ranking
  *   where its excerpt sits in the ranking, null when it has none (decision 0046)
+ * @property {{ shown: boolean, foldedUnder: number | null, score: number | null } | null} search
+ *   a search point's place in the table, null for any other candidate (decision 0054)
  */
 
 /**
@@ -203,6 +206,8 @@ const ask = jobControl(page.askButton);
 const excerpts = jobControl(page.excerptsButton);
 /** Whether a job's POST is in flight, so the controls stay off until its job id is known. */
 let posting = false;
+/** The shown search points whose folds the owner opened, by candidate id (decision 0054). */
+const openFolds = new Set();
 
 /** @param {number} fraction */
 const percent = (fraction) => `${Math.round(fraction * 100)}%`;
@@ -1017,6 +1022,11 @@ function makeCard(candidate, number, revised) {
     parts.expand.textContent = open ? "Fewer controls" : "More controls";
   };
   parts.pairLink.onclick = () => showOther(card);
+  parts.foldToggle.onclick = () => {
+    const { id } = card.candidate;
+    if (!openFolds.delete(id)) openFolds.add(id);
+    showPairs();
+  };
   // A swap held by the card runs again once it is free: a turn after the focus leaves, so the
   // focus has landed, and after a press ends (below), so the click lands first.
   parts.root.addEventListener("focusin", () => card.hold.focusIn());
@@ -1226,6 +1236,24 @@ function layoutRows() {
     page.candidateTable,
     shown.map(({ id, depth }) => indent(id, depth)),
   );
+  // A search's other points stay out of sight under the shown point they fold under, until
+  // its fold is opened; `showPairs` shows every row again before this runs.
+  /** @type {Map<number, number>} rows each fold holds, by its shown point */
+  const held = new Map();
+  for (const { id, foldedUnder } of shown) {
+    if (foldedUnder === null) continue;
+    held.set(foldedUnder, (held.get(foldedUnder) ?? 0) + 1);
+    if (!openFolds.has(foldedUnder)) cardOf(id).parts.root.hidden = true;
+  }
+  for (const card of cards) {
+    const count = held.get(card.candidate.id) ?? 0;
+    const open = openFolds.has(card.candidate.id);
+    card.parts.foldToggle.hidden = count === 0;
+    card.parts.foldToggle.setAttribute("aria-expanded", String(open));
+    card.parts.foldToggle.textContent = open
+      ? `Hide the ${count} nearby points`
+      : `Show ${count} nearby point${count === 1 ? "" : "s"}`;
+  }
   placeRows(
     page.hiddenTable,
     hidden.map((id) => indent(id, 0)),
@@ -1289,12 +1317,15 @@ async function loadCandidates() {
 
   page.rejectedBox.hidden = rejected.length === 0;
   const draws = rejected.filter((candidate) => candidate.operator === OPERATOR.nudge).length;
-  const answers = rejected.length - draws;
+  const points = rejected.filter((candidate) => candidate.operator === OPERATOR.optimize).length;
+  const answers = rejected.length - draws - points;
   page.rejectedSummary.textContent = `${rejected.length} rejected candidate${rejected.length === 1 ? "" : "s"}: ${[
     answers > 0 &&
       `${answers} model answer${answers === 1 ? "" : "s"} that broke the format or the brief's rules even after one fix`,
     draws > 0 &&
       `${draws} nudge draw${draws === 1 ? "" : "s"} that broke the rules or repeated a genome, each drawn again`,
+    points > 0 &&
+      `${points} search point${points === 1 ? "" : "s"} that broke the rules or repeated a genome, each told a low score`,
   ]
     .filter(Boolean)
     .join(", and ")}`;

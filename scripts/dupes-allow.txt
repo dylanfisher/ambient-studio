@@ -126,3 +126,4 @@ literal "medium" | files src/domain/search-settings.js src/web/format-time.js | 
 literal "control" | files src/server/evaluation-job.js src/server/session-routes.js | the revision evaluation's arm name, and the search request's control-arm switch
 literal "paths" | files src/server/export-render.js src/server/session-routes.js | a key of the Export type in export-render, and the search request's raw paths
 literal "optimizer" | files sidecar/src/ambient_sidecar/optimizer.py src/server/search-job.js | the spec key naming the optimizer in optimizer.py, and the source a search point stores in search-job
+literal "/api/search-estimate" | files src/server/session-routes.js src/web/api.js | the search estimate route, declared by the server and requested by the pages, which talk to it only over HTTP and can't import it (map.md)

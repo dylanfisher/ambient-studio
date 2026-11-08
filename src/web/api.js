@@ -66,6 +66,9 @@ export const PREFERENCE_MODELS_PATH = "/api/preference-models";
 /** Every job since the server started, with its kind. */
 export const JOBS_PATH = "/api/jobs";
 
+/** What a search's confirm reads its cost from (decision 0054). */
+export const SEARCH_ESTIMATE_PATH = "/api/search-estimate";
+
 /**
  * A session's route; its candidates, jobs and ratings are under it.
  * @param {number} sessionId

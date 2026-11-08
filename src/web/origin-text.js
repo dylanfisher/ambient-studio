@@ -1,7 +1,8 @@
 // How a candidate was made, in words, for its card and its lineage node (decision 0039): its
-// operator and parent, an explore's direction, and why a rejected one was rejected. A nudge
-// child has no intent and its rejected draws are no model answer, so neither reads as one. No
-// DOM: the page sets these with `textContent`, so a direction is never read as HTML.
+// operator and parent, an explore's direction, a search point's place in its run (0054), and why
+// a rejected one was rejected. A nudge child or search point has no intent, and its rejected
+// draws are no model answer, so neither reads as one. No DOM: the page sets these with
+// `textContent`, so a direction is never read as HTML.
 import { OPERATOR } from "../domain/operator.js";
 import { REJECT_REASON } from "../domain/reject-reason.js";
 
@@ -13,6 +14,8 @@ import { REJECT_REASON } from "../domain/reject-reason.js";
  * @property {readonly unknown[]} parentIds
  * @property {string | null} intent
  * @property {string | null} rejectReason
+ * @property {{ shown: boolean, score: number | null } | null} [search] a search point's place,
+ *   as the candidates route gives it
  */
 
 /** What each reject reason says about the answer or draw it names. */
@@ -32,7 +35,7 @@ const REJECTED = Object.freeze({
  * @param {(id: number) => string} nameOf how the page names another candidate, as `candidate 3`
  * @returns {string}
  */
-export function originText({ operator, operatorParams, parentIds }, nameOf) {
+export function originText({ operator, operatorParams, parentIds, search }, nameOf) {
   if (operator === null) return "A first try from the model.";
   const parent = nameOf(/** @type {number} */ (parentIds[0]));
   if (operator === OPERATOR.revise) {
@@ -49,6 +52,14 @@ export function originText({ operator, operatorParams, parentIds }, nameOf) {
       : "";
     return `The model's variation of ${parent}${toward}.${trimmed}`;
   }
+  if (operator === OPERATOR.optimize) {
+    const { generation, point } = operatorParams;
+    const shown =
+      search?.shown && search.score !== null
+        ? ` Shown as one of the search's best: search score ${search.score.toFixed(2)}.`
+        : "";
+    return `Point ${point + 1} of generation ${generation + 1} of a search from ${parent}, scored by your taste model with no model request.${shown}`;
+  }
   throw new Error(`the page doesn't know the operator ${operator}`);
 }
 
@@ -57,6 +68,7 @@ const OPERATOR_WORDS = Object.freeze({
   [OPERATOR.revise]: "revised",
   [OPERATOR.nudge]: "nudged",
   [OPERATOR.explore]: "variation",
+  [OPERATOR.optimize]: "searched",
 });
 
 /**
@@ -75,11 +87,16 @@ export function operatorLabel(operator) {
  * @param {Origin} candidate
  * @returns {string}
  */
-export const intentText = ({ intent, operator }) =>
-  intent ??
-  (operator === OPERATOR.nudge
-    ? "A nudge has no intent of its own: it is its base with some numbers moved."
-    : "The model gave no intent.");
+export function intentText({ intent, operator }) {
+  if (intent !== null) return intent;
+  if (operator === OPERATOR.nudge) {
+    return "A nudge has no intent of its own: it is its base with some numbers moved.";
+  }
+  if (operator === OPERATOR.optimize) {
+    return "A search point has no intent of its own: it is its base with some numbers moved.";
+  }
+  return "The model gave no intent.";
+}
 
 /**
  * Why a rejected candidate was rejected, as a phrase: a nudge's draw or a model's answer.
@@ -89,7 +106,7 @@ export const intentText = ({ intent, operator }) =>
 export function rejectText({ operator, rejectReason }) {
   const why = REJECTED[/** @type {keyof typeof REJECTED} */ (rejectReason)];
   if (why === undefined) throw new Error(`the page doesn't know the reject reason ${rejectReason}`);
-  return operator === OPERATOR.nudge
-    ? `a nudge draw ${why}, so it was drawn again`
-    : `a model answer ${why}`;
+  if (operator === OPERATOR.nudge) return `a nudge draw ${why}, so it was drawn again`;
+  if (operator === OPERATOR.optimize) return `a search point ${why}, so it was told a low score`;
+  return `a model answer ${why}`;
 }
