@@ -3,8 +3,9 @@
 - **Date:** 2026-11-06
 - **Status:** accepted; provisional: owner to confirm. Amended by
   [0039](0039-lineage-and-steering-controls.md) (the lineage page, and each session card's
-  ranges, locks, explore and nudge) and [0048](0048-quick-ab-player-mp3.md) (keys on the Quick
-  A/B page, and the excerpt player)
+  ranges, locks, explore and nudge), [0048](0048-quick-ab-player-mp3.md) (keys on the Quick
+  A/B page, and the excerpt player) and [0057](0057-map-elites-archive-and-map.md) (the map
+  page and its arrow keys)
 
 ## Context
 
@@ -152,3 +153,10 @@ structure follows shadcn/ui; no code is taken from it. Still no nesting, `:has()
   the key, and no key fires while a field you type in has the focus. Every other page still has
   no keys. Every page plays excerpts through one player with a full-width seek bar in place of
   the native `<audio>` controls; its button and seek bar have titles from `PLAYER_TITLES`.
+- 2026-11-07 (step 5h, [0057](0057-map-elites-archive-and-map.md)): another page,
+  `map.html`, opened as Map from the brief and session pages, shows a brief's candidates as a
+  table of cell buttons on the axes the brief page's "Axes for the map" card chooses. The arrow
+  keys move one cell at a time between its buttons, the only keys on the page; Enter and a click
+  open a cell, which plays its best candidate through the excerpt player. Every cell button's
+  title says what it holds and what a click does (`cellText`). The page follows 0032's one job
+  per action for Fill the map and the open cell's controls.

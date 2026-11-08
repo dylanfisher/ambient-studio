@@ -1,7 +1,7 @@
-// A brief's attachments (decision 0052): list the regions and directions (0056) attached to it,
-// attach an analyzed region or a direction, and detach one; and the steering the session page
-// reads, each excerpt's position on each direction and region. None of them makes a new
-// revision; each generation logs the attachments its prompt held.
+// A brief's attachments (decision 0052): list the regions, directions (0056) and map axes
+// (0057) attached to it, attach an analyzed region or a direction, and detach one; and the
+// steering the session page reads, each excerpt's position on each direction and region. None
+// of them makes a new revision; each generation logs the attachments its prompt held.
 /** @import { Constraints } from "../domain/constraint-schema.js" */
 /** @import { Route } from "./routing.js" */
 /** @import { Store } from "./store.js" */
@@ -124,7 +124,11 @@ export const ATTACHMENT_ROUTES = [
       const directions = listAttachments(app.store, vibe.id, DIRECTION).map(
         ({ id, details, createdAt }) => ({ id, ...details, createdAt }),
       );
-      return { target, references, directions };
+      // The map's axes (decision 0057), oldest first, which the brief page's form shows.
+      const axes = listAttachments(app.store, vibe.id, ATTACHMENT_KIND.axis).map(
+        ({ id, regionId, details, createdAt }) => ({ id, regionId, ...details, createdAt }),
+      );
+      return { target, references, directions, axes };
     },
   },
   {

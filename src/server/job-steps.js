@@ -48,6 +48,10 @@ export const JOB_STEP = Object.freeze({
   /** @param {number} n @param {number} of */
   searchControl: (n, of) => `Scoring the search's control nudges: batch ${n} of ${of}`,
   /** @param {number} n @param {number} of */
+  filling: (n, of) => `Filling the map: step ${n} of ${of}`,
+  /** @param {number} n @param {number} of */
+  fillControl: (n, of) => `Filling the map's control: nudge ${n} of ${of}`,
+  /** @param {number} n @param {number} of */
   earDrawing: (n, of) => `Searching by ear: drawing and rendering pair ${n} of ${of}`,
   /** @param {number} n @param {number} of */
   earListening: (n, of) =>

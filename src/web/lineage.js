@@ -2,16 +2,14 @@
 // under the one it was made from, playable, with explore and nudge controls on each. The
 // new candidates go to one open session of the brief: the one the page was opened from, or the
 // newest. Rejected candidates show only behind the switch.
-/** @import { JobStatus } from "./job-progress.js" */
 /** @import { Branch } from "./lineage-tree.js" */
-/** @import { StartJob, SteerControls } from "./steer-controls.js" */
-import { getJson, jobPath, postJson, sessionPath, startJob, VIBES_PATH } from "./api.js";
+/** @import { SteerControls } from "./steer-controls.js" */
+import { getJson, VIBES_PATH } from "./api.js";
+import { briefJobs, briefQuery, NO_OPEN_SESSION, targetSession } from "./brief-jobs.js";
 import { cloneTemplate } from "./clone-template.js";
 import { elementsById } from "./element-by-id.js";
 import { mountPlayer } from "./excerpt-player.js";
-import { followJob } from "./follow-job.js";
-import { endedText, JOB_STATE } from "./job-progress.js";
-import { jobBox, TONE } from "./job-view.js";
+import { TONE } from "./job-view.js";
 import { lineageTree } from "./lineage-tree.js";
 import { intentText, operatorLabel, originText, rejectText } from "./origin-text.js";
 import { statusLine } from "./status-line.js";
@@ -28,25 +26,7 @@ const page = elementsById({
   noNodes: HTMLElement,
   tree: HTMLUListElement,
 });
-const query = new URLSearchParams(location.search);
-
-/**
- * A row id from the query, shown on the status line and thrown when it isn't one.
- * @param {string} name
- * @param {string} what what the id names, for the message
- */
-function queryId(name, what) {
-  const text = query.get(name);
-  if (text !== null && /^[1-9]\d{0,15}$/.test(text)) return Number(text);
-  const error = new Error(
-    `This page's address needs ?${name}= and ${what} id, got ${JSON.stringify(text)}.`,
-  );
-  status.fail(error);
-  throw error;
-}
-const vibeId = queryId("id", "a brief");
-/** The session the page was opened from, which new candidates go to while it is open. */
-const fromSession = query.has("session") ? queryId("session", "a session") : null;
+const { vibeId, fromSession } = briefQuery(status, location.search);
 
 /**
  * A node as `GET /api/vibes/:id/lineage` gives it.
@@ -92,10 +72,6 @@ const NODE_PARTS = Object.freeze({
 let shown = new Map();
 /** @type {number | null} the open session new candidates go to */
 let target = null;
-/** @type {Map<number, ReturnType<typeof jobBox>>} */
-const boxes = new Map();
-/** @type {Set<number>} the jobs being followed */
-const following = new Set();
 
 /** @param {number} id */
 const nameOf = (id) => `candidate #${id}`;
@@ -136,73 +112,18 @@ function showNode(entry) {
 
 /** Turns the explore and nudge buttons off when there is no open session to send to. */
 function showSteer() {
-  const why =
-    target === null
-      ? "Turned off: every session of this brief is stopped. Start a session from the brief page first."
-      : null;
+  const why = target === null ? NO_OPEN_SESSION : null;
   for (const entry of shown.values()) entry.steer?.off(why);
 }
 
-/**
- * Follows a job to its end, showing its progress and reloading the tree whenever its count or
- * step moves.
- * @param {JobStatus} job
- */
-async function follow(job) {
-  if (following.has(job.id)) return;
-  following.add(job.id);
-  const box = jobBox((current) =>
-    status.run(async () => box.show(await postJson(`${jobPath(current.id)}/cancel`, {}))),
-  );
-  boxes.get(job.id)?.root.remove();
-  boxes.set(job.id, box);
-  page.jobBox.append(box.root);
-  let seen = "";
-  try {
-    const finished = await followJob(job, async (current) => {
-      box.show(current);
-      const now = `${current.progress?.done}/${current.progress?.step}`;
-      if (now !== seen) {
-        seen = now;
-        await loadTree();
-      }
-    });
-    await loadTree();
-    status.say(
-      finished.state === JOB_STATE.done
-        ? "The job is done. Its candidates are in the tree; rate them on the session page."
-        : endedText(finished),
-    );
-  } finally {
-    following.delete(job.id);
-  }
-}
-
-/** @type {StartJob} */
-async function start(control, path, body) {
-  control.wait();
-  try {
-    const { job, refused } = await startJob(path, body);
-    control.hold(job);
-    status.say(
-      refused
-        ? `${refused} Showing that job's progress.`
-        : `Started in session ${target}. The new candidates appear here as they are ready.`,
-    );
-    status.run(async () => {
-      try {
-        await follow(job);
-      } finally {
-        control.release();
-        showSteer();
-      }
-    });
-  } catch (error) {
-    control.release();
-    showSteer();
-    throw error;
-  }
-}
+const { start, resume } = briefJobs({
+  status,
+  boxes: page.jobBox,
+  reload: () => loadTree(),
+  done: "The job is done. Its candidates are in the tree; rate them on the session page.",
+  started: () => `Started in session ${target}. The new candidates appear here as they are ready.`,
+  settle: () => showSteer(),
+});
 
 /**
  * @param {LineageNode} node
@@ -283,12 +204,7 @@ status.run(async () => {
   page.briefLink.textContent = vibe.revision.name;
   page.pageTitle.textContent = `Lineage of ${vibe.revision.name}`;
   document.title = `Lineage, ${vibe.revision.name} · Ambient Studio`;
-  /** @type {{ id: number, stoppedAt: number | null }[]} */
-  const open = vibe.sessions.filter((/** @type {any} */ s) => s.stoppedAt === null);
-  target =
-    open.find((s) => s.id === fromSession)?.id ??
-    open.reduce((newest, s) => Math.max(newest, s.id), -1);
-  if (target === -1) target = null;
+  target = targetSession(vibe.sessions, fromSession);
   page.sessionLink.hidden = target === null;
   if (target !== null) page.sessionLink.href = `./session.html?id=${target}`;
   page.sessionLine.textContent =
@@ -296,12 +212,7 @@ status.run(async () => {
       ? "Every session of this brief is stopped, so explore and nudge are off. Start a session from the brief page."
       : `Explores and nudges from here go to session ${target}${fromSession !== null && fromSession !== target ? `, since session ${fromSession} is stopped` : ""}.`;
   await loadTree();
-  if (target !== null) {
-    const { jobs } = await getJson(sessionPath(target));
-    for (const job of jobs.filter((/** @type {JobStatus} */ j) => j.finishedAt === null)) {
-      status.run(() => follow(job));
-    }
-  }
+  await resume(target);
   status.say(
     shown.size === 0
       ? "No candidates yet."
