@@ -2416,7 +2416,28 @@ exported crossfade track after 6c.
 - Ask for a 10-minute proposal with an arc, then reorder, resize and retime it, and say how much
   editing it needed.
 
-**Result:**
+**Result:** built on 2026-11-08 at `a0dad88`; acceptance 4's memory spread is open and
+acceptance 8's share waits on the owner's run.
+
+1. Every step, 6a–6h, is merged, and the gate passes (2,236 tests, the sidecar's pytest 95 passed
+   and 1 skipped). Acceptances 1, 2, 3, 5, 6 and 7 are met by tests: a hand-made track renders,
+   exports WAV and FLAC with a manifest and re-renders to the same hash; seams at the real 120 s
+   chunk with a 20 s reverb are 121 dB under; the streaming meters and limiter match the old
+   code's recorded outputs bit for bit; stems sum to the pre-limiter mix 132 dB under; morphs move
+   every shared parameter by the curve, with one named exception (a sketch's own curve segment
+   kept whole, 0064); lanes add their offset at every breakpoint.
+2. Acceptance 4, `./scripts/bench --track`, single runs on mbp2021: a 20-minute track with five
+   sections, four transitions including a morph and two lanes renders at 27.1x real time, 17.3x
+   with export, peak RSS 548 MiB (573 MiB with export), under the 1 GiB ceiling. The 10-minute
+   track's peak against the 20-minute one's measured 13.0%, 14.2%, 6.6% and 11.5% over four runs,
+   the last under load, against 10%: open. JS-held buffers stay flat at about 176 MiB at both
+   lengths, so the spread is the audio library's native memory freed late, not growth with length;
+   a run on a quiet machine would settle it.
+3. Acceptance 8: proposals validate after at most one repair and land within 5% in tests against
+   the fake omlx; the share of valid proposals is shown under Propose and waits on the owner's
+   five requests.
+4. Defaults taken for the owner to overrule (0061, 0063): one brief per track, sections extended up
+   to 900 s, a 1,200 s track, stems as 32-bit float WAV, the 1 GiB ceiling.
 
 ## Phase 7 — Album builder
 
@@ -3461,3 +3482,10 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   track with no lane points keeps its cache key. The lane keys moved J to H after 6g; one test
   checks timeline, lane and material keys against each other. Bench with two lanes and a morph,
   one run under load: 20 min at 27.1x and 548 MiB, a spread of 11.5% (open). 2,211 tests.
+- 2026-11-08 — 6h merged (a0dad88): "Propose" on the brief page sends one `arrange` request
+  through the queue with the brief, the arc, the reference arc's numbers and up to 24 material
+  lines without genomes (worst case 3,544 tokens against 4,096). The answer is checked by
+  `validateArrangement` and a 5% length rule, with one repair, and stored as the track's first
+  revision. Elites the model picks become sketches in the same transaction as the track, so a
+  failure leaves no rows. The share of valid proposals per brief is shown under Propose. The review
+  failed on orphan sketches; fixed. Phase 6's Result written. 2,236 tests.
