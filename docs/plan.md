@@ -3324,3 +3324,10 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   `searchPaths`; the optimizer protocol keeps run state in `<dataRoot>/search/<run>/`, built in
   `search-run.js` until 5a's `paths()` lands. Making preference.py's JSON helpers public changed
   `model_code()`, so any fitted model refits; none were fitted. The gate passes, 1604 tests.
+- 2026-11-07: 5a merged as c369e8d (Opus: 334k tokens, 186 calls, 39.8 min including a fix round
+  of 5 min; reviewer Sonnet: 70k tokens, 11 calls, 7.2 min, PASS with a security pass finding no
+  path or argument injection, and three medium findings taken: bounds rounded to the millisecond,
+  a lossy file's end padded by at most 0.1 s, and timeouts plus one shared decode per span).
+  Uploads stream to a hashed name under `references/`, ffmpeg and ffprobe read only whitelisted
+  demuxers and the file protocol, and backups copy the folder. Migration 0008. The gate passes,
+  1661 tests.
