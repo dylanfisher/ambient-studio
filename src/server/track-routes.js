@@ -183,24 +183,6 @@ function sectionWindow(store, vibe, given) {
   };
 }
 
-/**
- * The sections a measures read names: a JSON list in the query, or a 400.
- * @param {string | null} text
- * @returns {unknown[]}
- */
-function sectionsQuery(text) {
-  const refused = new HttpError(400, "sections must be a list of sections, as JSON");
-  /** @type {unknown} */
-  let parsed;
-  try {
-    parsed = JSON.parse(text ?? "");
-  } catch {
-    throw refused;
-  }
-  if (!Array.isArray(parsed)) throw refused;
-  return parsed;
-}
-
 /** @type {Route[]} */
 export const TRACK_ROUTES = [
   {
@@ -281,11 +263,16 @@ export const TRACK_ROUTES = [
     },
   },
   {
-    method: "GET",
+    // A read sent as a POST, so a long track's sections go in the body rather than a URL that
+    // could pass Node's header limit. It writes nothing and starts no job.
+    method: "POST",
     path: "/api/tracks/:trackId/measures",
-    handle: ({ app, params, query }) => {
+    handle: async ({ app, params, body }) => {
       const { vibe } = requireTrack(app.store, params);
-      const sections = sectionsQuery(query.get(ARRANGEMENT_KEY.sections));
+      const { sections } = fields(await body(), [ARRANGEMENT_KEY.sections]);
+      if (!Array.isArray(sections)) {
+        throw new HttpError(400, "sections must be a list of sections");
+      }
       return {
         measures: sections.map((given) => {
           const { candidateId, ...window } = sectionWindow(app.store, vibe, given);

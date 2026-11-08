@@ -142,6 +142,8 @@ let draft = null;
 let kept = "";
 /** The version the timeline was opened from, counted from 1. */
 let openedVersion = 0;
+/** How many times a version was opened by hand from the list, which a steer's swap reads. */
+let openedByHand = 0;
 /** @type {number | null} the section the keys and buttons act on */
 let selected = null;
 /** Each section window's audio once rendered, by the section as JSON. */
@@ -778,6 +780,7 @@ const material = materialCard({
   draft: () => draft,
   selected: () => selected,
   unsaved,
+  opened: () => openedByHand,
   place: ({ arrangement, index }) => edit(arrangement, index),
   readSketches: async () => {
     /** @type {TrackView} */
@@ -815,6 +818,7 @@ function showRevisions() {
               return;
             }
             openRevision(index);
+            openedByHand += 1;
             page.noteInput.value = index === newest ? "" : `From version ${index + 1}`;
             draw();
             void status.run(readRender);

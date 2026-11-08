@@ -50,9 +50,18 @@ aims at the end itself. When the job is done, its best point (`result.best`, the
 is kept as a sketch by its excerpt, as placing does, and swapped into the section with its
 offset and seconds unchanged, since a steer moves only macros and keeps the duration. The swap
 is saved as a new version noted "Section N steered along …". The steer buttons are off while the
-timeline has unsaved changes, so the saved version is the one steered; if the owner edits during
-the run, the swap is put on the timeline unsaved instead. A section that moved is found by its
-window; one that changed is left, and the sketch is listed to add by hand.
+timeline has unsaved changes, so the saved version is the one steered. What happens at the end
+is `steerSwap`'s choice: if the owner opened another version from the list during the run, the
+swap is skipped, even when that version holds an identical section, since it isn't the timeline
+that was steered; saving during the run keeps the same line of versions. The section is found at
+its place or, if it moved, by its window; if it changed or was removed, the swap is skipped. A
+skipped swap keeps the sketch, says why, and leaves it to add by hand. If the owner edited the
+timeline during the run and hasn't saved, the swap is put on the timeline unsaved instead.
+
+**Leaving mid-steer.** The page keeps the best point and swaps it in. If the page is closed or
+reloaded before the steer ends, the job still finishes in the session, but its best point isn't
+kept or swapped in; the owner keeps it from the session page by hand. The confirm and the status
+line while it runs say so.
 
 **The arc target** is an attached region the owner chooses (Next region, J), drawn under the
 timeline: its analysis windows at the brief's loudness, each `startSeconds` and length scaled by
@@ -64,12 +73,15 @@ levels are left out, since every window and section is normalized to the brief's
 share one height scale, the least value at the bottom and the most at the top. When no section
 has been measured the line says so and says to play one.
 
-**Section measures** are a read: `GET /api/tracks/:id/measures?sections=<JSON list>` gives each
+**Section measures** are a read sent as a POST: `POST /api/tracks/:id/measures` with
+`{sections}` writes nothing and starts no job, and gives each
 section's cached window render's features, at the vibe's current loudness under this server's
 producer, or null. The window is the section player's, cut at the sketch's end (`sectionWindow`,
 shared with `section-audio`), so playing a section is what measures it. Each section is checked
 as an arrangement of one, as the player's body is, and a malformed one is a 400 with its path. It
-renders nothing and asks the sidecar nothing.
+renders nothing and asks the sidecar nothing. It is a POST, not a GET with the sections in its
+query, because a long track's list could pass Node's header limit; the body has the server's own
+limit.
 
 **The arc is a page choice**, not part of the arrangement: the region and measure drawn are not
 saved, and the arrangement's `arc` stays the owner's words for 6h.
@@ -117,6 +129,6 @@ finishes.
   owner listens.
 - A region's windows read 25 s each and hop 12.5 s, so the arc of a short region over a long
   track has few, wide marks.
-- A steer followed on the timeline isn't picked up again after a reload; its candidates are
-  still in the session.
+- A steer followed on the timeline isn't picked up again after a reload (Leaving mid-steer);
+  its candidates are still in the session.
 - The step, the saved swap and the drawn measures are guesses until the owner has used them.

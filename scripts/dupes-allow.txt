@@ -189,3 +189,5 @@ literal "upper" | files src/web/target-fields.js src/web/timeline-view.js | the 
 literal "beforeunload" | files src/web/quick-ab.js src/web/track.js | the window event each page with unsaved work adds unloadGuard to: Quick A/B's pending rating and the timeline's unsaved edit
 literal "smooth" | files src/domain/arrangement-schema.js src/domain/reference-words.js | the trajectory curve a new morph takes in arrangement-schema, a word describing a reference recording's texture in reference-words
 literal "small muted" | files src/web/brief.js src/web/material-card.js | the stylesheet's classes for a quiet line, set on what each page builds: a track's line on the brief page, a sketch's positions in the material panel
+literal "skip" | files src/domain/rating-values.js src/web/material-actions.js | an A/B rating's skipped outcome in rating-values, and a finished steer's sketch left unswapped in material-actions (0066)
+literal "save" | files src/web/material-actions.js src/web/track.js | the timeline's Save action in track.js, and a finished steer's sketch saved as a new version in material-actions (0066)

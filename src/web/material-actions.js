@@ -2,7 +2,7 @@
 // A section names a sketch (0061), so an elite of the map is kept as a sketch through the
 // session's sketch route before it is placed, and a steer's best point is kept the same way
 // before it is swapped into the section it was steered from.
-/** @import { Arrangement } from "../domain/arrangement-schema.js" */
+/** @import { Arrangement, Section } from "../domain/arrangement-schema.js" */
 /** @import { EliteRow } from "./material-panel.js" */
 import { sessionPath } from "./api.js";
 import { NO_OPEN_SESSION } from "./brief-jobs.js";
@@ -10,6 +10,10 @@ import { addSection } from "./timeline-edits.js";
 
 /** How far along a direction's scale one steer of a section aims, from where it sits. */
 export const STEER_STEP = 0.25;
+
+/** What a steer's confirm and status line say about leaving the page while it runs. */
+export const STEER_LEAVE =
+  "If this page is closed or reloaded before the steer ends, the job still finishes, but its best point isn't kept or swapped in: keep it from the session page by hand.";
 
 /** The two ways along a direction: toward its far end, or back toward its near end. */
 export const TOWARD = Object.freeze({ far: 1, near: -1 });
@@ -130,3 +134,36 @@ export const swapSketch = (arrangement, index, sketchId) => ({
     i === index ? { ...section, sketchId } : section,
   ),
 });
+
+/** What `steerSwap` does with a steer's sketch. */
+export const SWAP = Object.freeze(
+  /** @type {const} */ ({ save: "save", edit: "edit", skip: "skip" }),
+);
+
+/**
+ * What to do with a finished steer's sketch: save it in its section's place, put it on the
+ * unsaved timeline, or leave it kept and say why. The section is the one steered from, found at
+ * its place or by its window. Saving the timeline during the run keeps the same line of
+ * versions; opening another version by hand doesn't, so a section there that happens to match
+ * is left alone.
+ * @param {object} state
+ * @param {Arrangement} state.arrangement the timeline now
+ * @param {Section} state.from the section as it was when the steer started
+ * @param {number} state.at its place then
+ * @param {number} state.openedThen the page's count of versions opened by hand, at the start
+ * @param {number} state.openedNow that count now
+ * @param {boolean} state.unsaved whether the timeline has changes not saved
+ * @returns {{ kind: typeof SWAP.save | typeof SWAP.edit, index: number } | { kind: typeof SWAP.skip, reason: string }}
+ */
+export function steerSwap({ arrangement, from, at, openedThen, openedNow, unsaved }) {
+  if (openedNow !== openedThen) {
+    return { kind: SWAP.skip, reason: "another version was opened while it ran" };
+  }
+  const same = (/** @type {Section | undefined} */ section) =>
+    JSON.stringify(section) === JSON.stringify(from);
+  const index = same(arrangement.sections[at]) ? at : arrangement.sections.findIndex(same);
+  if (index === -1) {
+    return { kind: SWAP.skip, reason: "its section has changed or been removed since" };
+  }
+  return { kind: unsaved ? SWAP.edit : SWAP.save, index };
+}

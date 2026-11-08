@@ -33,7 +33,16 @@ import { elementsById } from "./element-by-id.js";
 import { jobControl } from "./job-control.js";
 import { keyButtons } from "./key-buttons.js";
 import { latestOnly } from "./latest-only.js";
-import { keepSteered, placeElite, steerBody, swapSketch, TOWARD } from "./material-actions.js";
+import {
+  keepSteered,
+  placeElite,
+  STEER_LEAVE,
+  SWAP,
+  steerBody,
+  steerSwap,
+  swapSketch,
+  TOWARD,
+} from "./material-actions.js";
 import { bindMaterialKeys, MATERIAL_KEYS } from "./material-keys.js";
 import { materialPanel } from "./material-panel.js";
 import { NOT_STARTED } from "./owner-job.js";
@@ -55,6 +64,7 @@ const ARC_FEATURES = Object.values(TARGET_FEATURES).map(({ feature }) => feature
  * @property {() => Arrangement | null} draft the timeline as the owner has it now
  * @property {() => number | null} selected the chosen section
  * @property {() => boolean} unsaved whether the timeline differs from the opened version
+ * @property {() => number} opened how many times a version was opened by hand from the list
  * @property {(made: { arrangement: Arrangement, index: number }) => void} place puts a new
  *   arrangement on the timeline with the given section chosen
  * @property {() => Promise<PanelSketch[]>} readSketches reads the brief's sketches again,
@@ -160,9 +170,8 @@ export function materialCard(host) {
     const sections = host.draft()?.sections ?? [];
     const key = JSON.stringify(sections);
     if (!valid || key === measured.key) return;
-    const query = encodeURIComponent(key);
     /** @type {{ measures: (Features | null)[] }} */
-    const read = await getJson(`${trackPath(trackId)}/measures?sections=${query}`);
+    const read = await postJson(`${trackPath(trackId)}/measures`, { sections });
     measured = { key, values: read.measures };
     redraw();
   });
@@ -363,19 +372,20 @@ export function materialCard(host) {
     };
     /** @type {{ seconds: StepSeconds, measured: boolean }} */
     const { seconds, measured: timed } = await getJson(SEARCH_ESTIMATE_PATH);
-    const asked = `${steerCostText(DEFAULT_STEER_BUDGET, seconds, { measured: timed })} The best point is kept as a sketch and saved in section ${at + 1}'s place as a new version of this track.`;
+    const asked = `${steerCostText(DEFAULT_STEER_BUDGET, seconds, { measured: timed })} The best point is kept as a sketch and saved in section ${at + 1}'s place as a new version of this track. ${STEER_LEAVE}`;
     if (!confirm(asked)) {
       status.say(NOT_STARTED);
       return;
     }
     const session = sessionId;
+    const openedThen = host.opened();
     try {
       const finished = await runJob(status, {
         path: `${sessionPath(session)}/steers`,
         body: steerBody(row.sketch.candidateId, placed, toward),
         controls: steerControls,
         boxes: page.steerJobBox,
-        started: `Steering section ${at + 1} in session ${session}.`,
+        started: `Steering section ${at + 1} in session ${session}. ${STEER_LEAVE}`,
       });
       if (finished === null) return;
       if (finished.refused) {
@@ -391,7 +401,7 @@ export function materialCard(host) {
         keep: postJson,
       });
       await host.readSketches();
-      await swapIn(from, at, kept, direction.text);
+      await swapIn({ from, at, openedThen }, kept, direction.text);
       void status.run(load);
     } finally {
       for (const control of steerControls) control.release();
@@ -402,25 +412,31 @@ export function materialCard(host) {
   /**
    * Puts the steered sketch in the place of the section it was steered from, and saves it as a
    * new version unless the timeline has changes the owner hasn't saved.
-   * @param {Section} from
-   * @param {number} at where it was when the steer started
+   * @param {{ from: Section, at: number, openedThen: number }} started the section, its place
+   *   and the count of versions opened by hand when the steer started
    * @param {ActionSketch} kept
    * @param {string} along the direction's words
    */
-  async function swapIn(from, at, kept, along) {
+  async function swapIn({ from, at, openedThen }, kept, along) {
     const draft = host.draft();
     if (draft === null) return;
-    const same = (/** @type {Section | undefined} */ s) =>
-      JSON.stringify(s) === JSON.stringify(from);
-    const index = same(draft.sections[at]) ? at : draft.sections.findIndex(same);
-    if (index === -1) {
+    const swap = steerSwap({
+      arrangement: draft,
+      from,
+      at,
+      openedThen,
+      openedNow: host.opened(),
+      unsaved: host.unsaved(),
+    });
+    if (swap.kind === SWAP.skip) {
       status.say(
-        `Kept the steered sound as sketch ${kept.id}. Its section has changed since, so add it from the list.`,
+        `Kept the steered sound as sketch ${kept.id} but didn't swap it in: ${swap.reason}. Add it from the list.`,
       );
       return;
     }
+    const { index } = swap;
     const swapped = swapSketch(draft, index, kept.id);
-    if (host.unsaved()) {
+    if (swap.kind === SWAP.edit) {
       host.place({ arrangement: swapped, index });
       status.say(`Put sketch ${kept.id} in section ${index + 1}. Save to keep it.`);
       return;

@@ -16,8 +16,10 @@ import {
   keepSteered,
   placeElite,
   STEER_STEP,
+  SWAP,
   steerBody,
   steerSetting,
+  steerSwap,
   swapSketch,
   TOWARD,
 } from "../../src/web/material-actions.js";
@@ -183,4 +185,36 @@ test("a swap names the steered sketch and keeps the section's window", () => {
   ]);
   expect(swapped.transitions).toBe(arrangement.transitions);
   expect(arrangement.sections[1]?.sketchId).toBe(2);
+});
+
+test("a finished steer swaps in only on the line of versions it started on, and only into its own section", () => {
+  const from = { sketchId: 2, offset: 0, seconds: 90 };
+  const arrangement = {
+    ...emptyArrangement(),
+    sections: [{ sketchId: 1, offset: 30, seconds: 120 }, from],
+    transitions: [{ kind: "crossfade", seconds: 8 }],
+  };
+  const started = { from, at: 1, openedThen: 3 };
+  // Edited since but not saved: put on the timeline for the owner to save.
+  expect(steerSwap({ ...started, arrangement, openedNow: 3, unsaved: true })).toEqual({
+    kind: SWAP.edit,
+    index: 1,
+  });
+  // Saved since, with the section moved first: saved in its new place.
+  const moved = { ...arrangement, sections: [from, { sketchId: 1, offset: 30, seconds: 120 }] };
+  expect(steerSwap({ ...started, arrangement: moved, openedNow: 3, unsaved: false })).toEqual({
+    kind: SWAP.save,
+    index: 0,
+  });
+  // Another version opened by hand, even one holding the same section: left alone.
+  expect(steerSwap({ ...started, arrangement, openedNow: 4, unsaved: false })).toEqual({
+    kind: SWAP.skip,
+    reason: "another version was opened while it ran",
+  });
+  // The section removed since.
+  const removed = { ...arrangement, sections: [{ sketchId: 1, offset: 30, seconds: 120 }] };
+  expect(steerSwap({ ...started, arrangement: removed, openedNow: 3, unsaved: true })).toEqual({
+    kind: SWAP.skip,
+    reason: "its section has changed or been removed since",
+  });
 });

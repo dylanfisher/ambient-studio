@@ -12,6 +12,7 @@ import { addCandidate, getCandidate, putGenome } from "../../src/server/generati
 import { PRODUCER } from "../../src/server/producer.js";
 import { addSketch } from "../../src/server/rating-store.js";
 import { putRender } from "../../src/server/render-store.js";
+import { markRemoved, TABLE } from "../../src/server/store.js";
 import { listTrackRevisions } from "../../src/server/track-store.js";
 import { seedMapRender } from "../support/map-fixtures.js";
 import { removeStudio, startStudio, VIBE } from "../support/studio.js";
@@ -194,7 +195,8 @@ test("a second section job while one is unfinished is a 409 naming it", async ()
 });
 
 test("each section's measures are its cached window's features, null until its player renders it", async () => {
-  const { server, ok, vibe, sketch } = await setup();
+  const studio = await setup();
+  const { server, ok, vibe, sketch } = studio;
   const { track } = await ok("POST", `/api/vibes/${vibe.id}/tracks`, { name: "t" });
   const candidate = /** @type {NonNullable<ReturnType<typeof getCandidate>>} */ (
     getCandidate(server.store, sketch.candidateId)
@@ -217,19 +219,29 @@ test("each section's measures are its cached window's features, null until its p
     { sketchId: sketch.id, offset: 0, seconds: 30 },
   ];
   const path = `/api/tracks/${track.id}/measures`;
-  const query = (/** @type {unknown} */ value) =>
-    `${path}?sections=${encodeURIComponent(JSON.stringify(value))}`;
-  expect(await ok("GET", query(sections))).toEqual({ measures: [features, null] });
-  expect(await ok("GET", query([]))).toEqual({ measures: [] });
+  expect(await ok("POST", path, { sections })).toEqual({ measures: [features, null] });
+  expect(await ok("POST", path, { sections: [] })).toEqual({ measures: [] });
 
-  for (const [given, error] of /** @type {[string, string][]} */ ([
-    [path, "sections must be a list of sections, as JSON"],
-    [`${path}?sections=nope`, "sections must be a list of sections, as JSON"],
-    [query([{ sketchId: 999, offset: 0, seconds: 30 }]), "$.sections[0].sketchId"],
+  const other = await ok("POST", "/api/vibes", { ...VIBE, name: "other" });
+  const elsewhere = seedSketch(studio, other);
+  const removed = seedSketch(studio, vibe);
+  markRemoved(server.store, TABLE.sketches, removed.id, "removed");
+  /** @param {unknown} section */
+  const one = (section) => ({ sections: [section] });
+  for (const [given, error] of /** @type {[unknown, string | RegExp][]} */ ([
+    [{}, "sections must be a list of sections"],
+    [{ sections: "nope" }, "sections must be a list of sections"],
+    [{ sections: [5] }, "$.sections[0]"],
+    [{ sections: [null] }, "$.sections[0]"],
+    [one({ sketchId: sketch.id, offset: "a", seconds: 30 }), "$.sections[0].offset"],
+    [one({ sketchId: 999, offset: 0, seconds: 30 }), "$.sections[0].sketchId"],
+    [one({ sketchId: elsewhere.id, offset: 0, seconds: 30 }), /sketch \d+ is of another vibe/],
+    [one({ sketchId: removed.id, offset: 0, seconds: 30 }), "$.sections[0].sketchId"],
   ])) {
-    const reply = await server.api("GET", given);
-    expect(reply.status, given).toBe(400);
-    expect(reply.json().error).toContain(error);
+    const reply = await server.api("POST", path, given);
+    expect(reply.status, JSON.stringify(given)).toBe(400);
+    // A string matches as a substring.
+    expect(reply.json().error, JSON.stringify(given)).toMatch(error);
   }
 });
 
