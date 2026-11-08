@@ -1,9 +1,10 @@
 // How a candidate was made, in words, for its card and its lineage node (decision 0039): its
 // operator and parent, an explore's direction, a search or steer point's place in its run (0054,
-// 0056), and why
+// 0056), a breed's two parents (0058), and why
 // a rejected one was rejected. A nudge child or search point has no intent, and its rejected
 // draws are no model answer, so neither reads as one. No DOM: the page sets these with
 // `textContent`, so a direction is never read as HTML.
+import { BREED_STAGE } from "../domain/breed-settings.js";
 import { OPERATOR } from "../domain/operator.js";
 import { REJECT_REASON } from "../domain/reject-reason.js";
 
@@ -30,6 +31,31 @@ const REJECTED = Object.freeze({
   [REJECT_REASON.requestFailed]: "that never came, since the request to the model failed",
   [REJECT_REASON.repeated]: "that landed on a genome already made",
 });
+
+/** @param {string} text */
+const capitalized = (text) => `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
+
+/**
+ * A breed's mutation: one nudge of its crossover child, drawn as a nudge's children are.
+ * @param {Origin} candidate
+ */
+const isMutation = ({ operator, operatorParams }) =>
+  operator === OPERATOR.breed && operatorParams?.stage === BREED_STAGE.mutation;
+
+/**
+ * A crossover child: both parents, and which of them the model never read.
+ * @param {string} parent parent A, named
+ * @param {string} other parent B, named
+ * @param {readonly string[]} trimmed the parents left out of the prompt, B first
+ */
+function crossoverText(parent, other, trimmed) {
+  const both = `The model's child of ${parent} and ${other}, taking parts of both.`;
+  if (trimmed.length === 0) return both;
+  if (trimmed.length === 1) {
+    return `${both} ${capitalized(other)} didn't fit in the model's context, so the model read only ${parent}: this is a variation of it.`;
+  }
+  return `${both} Neither parent fit in the model's context, so the model never read them: this is a plain first try.`;
+}
 
 /**
  * @param {Origin} candidate
@@ -69,6 +95,13 @@ export function originText({ operator, operatorParams, parentIds, search }, name
         : "";
     return `Point ${point + 1} of generation ${generation + 1} of a steer from ${parent}, scored by where it sits on the sliders and regions chosen, with no model request.${shown}`;
   }
+  if (operator === OPERATOR.breed) {
+    if (operatorParams.stage === BREED_STAGE.mutation) {
+      return `A ${operatorParams.stepSize} nudge of the bred child ${parent}: its numbers moved, with no model request.`;
+    }
+    const other = nameOf(/** @type {number} */ (parentIds[1]));
+    return crossoverText(parent, other, operatorParams.parentsTrimmed);
+  }
   if (operator === OPERATOR.optimizeEar) {
     const best = search?.shown ? " Shown as the search's best: the one you chose last." : "";
     return `Pair ${operatorParams.query + 1} of a search by ear from ${parent}: you compared it with the best so far.${best}`;
@@ -84,6 +117,7 @@ const OPERATOR_WORDS = Object.freeze({
   [OPERATOR.optimize]: "searched",
   [OPERATOR.optimizeEar]: "searched by ear",
   [OPERATOR.steer]: "steered",
+  [OPERATOR.breed]: "bred",
 });
 
 /**
@@ -102,9 +136,10 @@ export function operatorLabel(operator) {
  * @param {Origin} candidate
  * @returns {string}
  */
-export function intentText({ intent, operator }) {
+export function intentText(candidate) {
+  const { intent, operator } = candidate;
   if (intent !== null) return intent;
-  if (operator === OPERATOR.nudge) {
+  if (operator === OPERATOR.nudge || isMutation(candidate)) {
     return "A nudge has no intent of its own: it is its base with some numbers moved.";
   }
   if (
@@ -122,10 +157,12 @@ export function intentText({ intent, operator }) {
  * @param {Origin} candidate
  * @returns {string}
  */
-export function rejectText({ operator, rejectReason }) {
+export function rejectText(candidate) {
+  const { operator, rejectReason } = candidate;
   const why = REJECTED[/** @type {keyof typeof REJECTED} */ (rejectReason)];
   if (why === undefined) throw new Error(`the page doesn't know the reject reason ${rejectReason}`);
-  if (operator === OPERATOR.nudge) return `a nudge draw ${why}, so it was drawn again`;
+  if (operator === OPERATOR.nudge || isMutation(candidate))
+    return `a nudge draw ${why}, so it was drawn again`;
   if (operator === OPERATOR.optimize || operator === OPERATOR.steer) {
     return `a search point ${why}, so it was told a low score`;
   }

@@ -147,6 +147,27 @@
             </div>
           </section>
 
+          <section class="card stack" aria-labelledby="breed-heading">
+            <h2 id="breed-heading">Breed two sketches</h2>
+            <p class="small muted">
+              Choose two sketches you kept. The model writes a few children that take parts of
+              both, and each child is then nudged once. The children appear on your newest open
+              session, or on a new one when every session is stopped.
+            </p>
+            <div class="row">
+              <label class="field"
+                >Parent A
+                <select id="parentA" title="Chooses the first sketch to breed. If the two don't both fit in the model's context, the model keeps this one and leaves out parent B."></select>
+              </label>
+              <label class="field"
+                >Parent B
+                <select id="parentB" title="Chooses the second sketch to breed, which must keep a different candidate from parent A."></select>
+              </label>
+              <button id="breedButton" class="button outline" type="button" title="Asks the model for children of the two sketches, after a confirm that says how many and how long the requests take, then opens the session page they appear on.">Breed</button>
+            </div>
+            <p id="breedHelp" class="small muted"></p>
+          </section>
+
           <section class="card stack" aria-labelledby="ratings-heading">
             <h2 id="ratings-heading">Ratings and sketches, newest first</h2>
             <ul id="ratingList" class="list"></ul>

@@ -155,3 +155,54 @@ describe("rejectText", () => {
     }
   });
 });
+
+// Breeding (decision 0058): a crossover child names both parents; its mutation is a nudge.
+describe("a breed's candidates", () => {
+  const crossover = candidate({
+    operator: "breed",
+    parentIds: [3, 4],
+    operatorParams: { stage: "crossover", sketchIds: [1, 2], parentsTrimmed: [] },
+  });
+  const mutation = candidate({
+    operator: "breed",
+    parentIds: [9],
+    operatorParams: { stage: "mutation", stepSize: "small", seed: 1 },
+  });
+
+  test("a crossover child names both parents, and says when one didn't fit", () => {
+    expect(originText(crossover, nameOf)).toBe(
+      "The model's child of candidate 3 and candidate 4, taking parts of both.",
+    );
+    const oneLeft = { ...crossover, operatorParams: { stage: "crossover", parentsTrimmed: ["B"] } };
+    expect(originText(oneLeft, nameOf)).toBe(
+      "The model's child of candidate 3 and candidate 4, taking parts of both. Candidate 4 didn't fit in the model's context, so the model read only candidate 3: this is a variation of it.",
+    );
+    const none = {
+      ...crossover,
+      operatorParams: { stage: "crossover", parentsTrimmed: ["B", "A"] },
+    };
+    expect(originText(none, nameOf)).toBe(
+      "The model's child of candidate 3 and candidate 4, taking parts of both. Neither parent fit in the model's context, so the model never read them: this is a plain first try.",
+    );
+  });
+
+  test("a mutation is a small nudge of its crossover child, with no intent of its own", () => {
+    expect(originText(mutation, nameOf)).toBe(
+      "A small nudge of the bred child candidate 9: its numbers moved, with no model request.",
+    );
+    expect(intentText(mutation)).toBe(
+      "A nudge has no intent of its own: it is its base with some numbers moved.",
+    );
+    expect(intentText(crossover)).toBe("The model gave no intent.");
+    expect(rejectText({ ...mutation, rejectReason: REJECT_REASON.repeated })).toBe(
+      "a nudge draw that landed on a genome already made, so it was drawn again",
+    );
+    expect(rejectText({ ...crossover, rejectReason: REJECT_REASON.noJson })).toBe(
+      "a model answer with no JSON in it",
+    );
+  });
+
+  test("its badge reads bred", () => {
+    expect(operatorLabel("breed")).toBe("bred");
+  });
+});
