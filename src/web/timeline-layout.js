@@ -20,12 +20,13 @@ import { clockTime } from "./excerpt-player.js";
 const PLACES = 1e6;
 
 /**
+ * The span from `start` to `end` on a track `length` seconds long.
  * @param {number} start
  * @param {number} end
  * @param {number} length
  * @returns {Span}
  */
-function span(start, end, length) {
+export function span(start, end, length) {
   const percent = (/** @type {number} */ seconds) =>
     Math.round((seconds / length) * 100 * PLACES) / PLACES;
   return { start, end, left: percent(start), width: percent(end - start) };

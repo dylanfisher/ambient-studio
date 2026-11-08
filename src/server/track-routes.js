@@ -1,24 +1,29 @@
 // The track routes (decision 0061): a vibe's tracks, making one, reading one with its revisions
 // and the vibe's sketches to place, saving an arrangement as a new revision, removing a track,
-// and rendering one section's window for its player on the timeline. An edit never changes a
+// rendering one section's window for its player on the timeline, and reading the features that
+// render measured, which the material panel's arc draws (0066). An edit never changes a
 // row: it appends a revision (0021). Rendering a whole track is 6c's.
 /** @import { ArrangementContext, ArrangementSketch } from "../domain/validate-arrangement.js" */
 /** @import { Constraints } from "../domain/constraint-schema.js" */
+/** @import { Candidate } from "./generation-store.js" */
 /** @import { JobContext } from "./job-runner.js" */
+/** @import { ExcerptRequest } from "./render-excerpt.js" */
 /** @import { Sketch } from "./rating-store.js" */
 /** @import { App, Route } from "./routing.js" */
 /** @import { Store } from "./store.js" */
 /** @import { TrackRevision } from "./track-store.js" */
 import { arrangementLength } from "../domain/arrangement-length.js";
-import { emptyArrangement, SECTION_KEYS } from "../domain/arrangement-schema.js";
+import { ARRANGEMENT_KEY, emptyArrangement, SECTION_KEYS } from "../domain/arrangement-schema.js";
 import { JOB_KIND } from "../domain/job-kind.js";
 import { validateArrangement } from "../domain/validate-arrangement.js";
 import { currentExcerpt, excerptRequest } from "./candidate-excerpt.js";
 import { jobRecordings } from "./candidate-job.js";
 import { getCandidate } from "./generation-store.js";
 import { JOB_STEP } from "./job-steps.js";
+import { PRODUCER } from "./producer.js";
 import { getSketch, listSketches } from "./rating-store.js";
 import { renderExcerpt, vibeLoudness } from "./render-excerpt.js";
+import { findRender } from "./render-store.js";
 import { fields, idParam, MAX_CHARS, text } from "./request-fields.js";
 import { duplicateJob, HttpError } from "./routing.js";
 import { sketchParts } from "./track-manifest.js";
@@ -117,6 +122,7 @@ function trackMaterial(app, vibeId) {
       duration,
       genome,
       excerpt: excerpt && {
+        renderId: excerpt.id,
         url: `/audio/${excerpt.id}`,
         offset: excerpt.offset,
         duration: excerpt.duration,
@@ -149,6 +155,31 @@ function sectionAudioJob(app, { candidateId, target, offset, duration }) {
     );
     job.progress(1, 1, null);
     return { renderId: render.id, url: `/audio/${render.id}`, offset, duration, cached };
+  };
+}
+
+/**
+ * The window a section's player renders and its measures are read from: the section checked as
+ * an arrangement of one, so it is held to the same rules as a saved one, at the vibe's current
+ * loudness, cut at the sketch's end. A malformed section is a 400 naming its path.
+ * @param {Store} store
+ * @param {{ id: number, revision: { constraints: unknown } }} vibe
+ * @param {unknown} given
+ */
+function sectionWindow(store, vibe, given) {
+  const [checked] = checkedArrangement(store, vibe.id, {
+    ...emptyArrangement(),
+    sections: [given],
+  }).sections;
+  if (!checked) throw new Error("an arrangement of one section came back with none");
+  const sketch = /** @type {Sketch} */ (getSketch(store, checked.sketchId));
+  const { duration } = sketchParts(store, sketch);
+  return {
+    candidateId: sketch.candidateId,
+    // A stored revision passed validateConstraints, so the cast holds.
+    target: vibeLoudness(/** @type {Constraints} */ (vibe.revision.constraints)),
+    offset: checked.offset,
+    duration: Math.min(checked.seconds, duration - checked.offset),
   };
 }
 
@@ -217,17 +248,8 @@ export const TRACK_ROUTES = [
     method: "POST",
     path: "/api/tracks/:trackId/section-audio",
     handle: async ({ app, params, body }) => {
-      const { track, vibe } = requireTrack(app.store, params);
-      // The body is one section, checked as an arrangement of one, so it is held to the same
-      // rules as a saved one.
-      const section = fields(await body(), SECTION_KEYS);
-      const [checked] = checkedArrangement(app.store, track.vibeId, {
-        ...emptyArrangement(),
-        sections: [section],
-      }).sections;
-      if (!checked) throw new Error("an arrangement of one section came back with none");
-      const sketch = /** @type {Sketch} */ (getSketch(app.store, checked.sketchId));
-      const { duration } = sketchParts(app.store, sketch);
+      const { vibe } = requireTrack(app.store, params);
+      const window = sectionWindow(app.store, vibe, fields(await body(), SECTION_KEYS));
       const unfinished = app.jobs
         .list()
         .find((job) => job.kind === SECTION_AUDIO_JOB && job.finishedAt === null);
@@ -237,17 +259,31 @@ export const TRACK_ROUTES = [
           unfinished.id,
         );
       }
-      // A stored revision passed validateConstraints, so the cast holds.
-      const target = vibeLoudness(/** @type {Constraints} */ (vibe.revision.constraints));
-      return app.jobs.add(
-        SECTION_AUDIO_JOB,
-        sectionAudioJob(app, {
-          candidateId: sketch.candidateId,
-          target,
-          offset: checked.offset,
-          duration: Math.min(checked.seconds, duration - checked.offset),
+      return app.jobs.add(SECTION_AUDIO_JOB, sectionAudioJob(app, window));
+    },
+  },
+  {
+    // A read sent as a POST, so a long track's sections go in the body rather than a URL that
+    // could pass Node's header limit. It writes nothing and starts no job.
+    method: "POST",
+    path: "/api/tracks/:trackId/measures",
+    handle: async ({ app, params, body }) => {
+      const { vibe } = requireTrack(app.store, params);
+      const { sections } = fields(await body(), [ARRANGEMENT_KEY.sections]);
+      if (!Array.isArray(sections)) {
+        throw new HttpError(400, "sections must be a list of sections");
+      }
+      return {
+        measures: sections.map((given) => {
+          const { candidateId, ...window } = sectionWindow(app.store, vibe, given);
+          const candidate = /** @type {Candidate} */ (getCandidate(app.store, candidateId));
+          const { genomeId, seed } = /** @type {ExcerptRequest} */ (
+            excerptRequest(app.store, candidate)
+          );
+          const render = findRender(app.store, { genomeId, seed, ...window, producer: PRODUCER });
+          return render?.features ?? null;
         }),
-      );
+      };
     },
   },
 ];

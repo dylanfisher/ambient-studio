@@ -168,7 +168,7 @@ literal "sections" | files src/domain/arrangement-schema.js src/web/timeline-lay
 literal "offset" | files src/domain/arrangement-schema.js src/server/render-cli.js | a section's start on its sketch's timeline in an arrangement and the timeline's edits (0061), and the render CLI's option
 literal "kind" | files src/domain/arrangement-schema.js src/server/attachment-routes.js src/server/track-render-routes.js | a transition's key in an arrangement (0061), the attachment body's field in attachment-routes, and the export body's field naming mix or stems in track-render-routes (0063)
 literal "removed" | files src/server/reference-store.js src/server/track-store.js | each table's own removal reason for a row the owner removed: a track in track-store, a reference in reference-store
-literal "item" | files sidecar/src/ambient_sidecar/preference.py src/web/brief.js | the list item class on the brief page's track list, and a key of the fit's items file in preference.py
+literal "item" | files sidecar/src/ambient_sidecar/preference.py src/web/brief.js src/web/material-card.js | the list item class on the brief page's track list and on the material panel's sketch list, and a key of the fit's items file in preference.py
 literal "revision-item" | files src/web/brief.js src/web/track.js | each page's own template of one version's line: the brief page's and the timeline's
 literal "ArrowLeft" | files src/web/quick-ab-keys.js src/web/timeline-keys.js | the key Quick A/B and the timeline each chose for an action, and the label table both read
 literal "ArrowRight" | files src/web/quick-ab-keys.js src/web/timeline-keys.js | the key Quick A/B and the timeline each chose for an action, and the label table both read
@@ -193,3 +193,6 @@ literal "ArrowDown" | files src/web/lane-keys.js src/web/quick-ab-keys.js | the 
 literal "KeyW" | files src/web/lane-keys.js src/web/quick-ab-keys.js | the key Quick A/B chose for skip and the lanes for a higher offset (0048, 0065)
 literal "KeyD" | files src/web/lane-keys.js src/web/quick-ab-keys.js | the key Quick A/B chose for choose-right and the lanes for removing a point (0048, 0065)
 literal "aria-hidden" | files src/web/lane-panel.js src/web/timeline-view.js | the attribute that hides a timeline block's drag handle from screen readers in timeline-view, and a lane's drawing in lane-panel
+literal "small muted" | files src/web/brief.js src/web/material-card.js | the stylesheet's classes for a quiet line, set on what each page builds: a track's line on the brief page, a sketch's positions in the material panel
+literal "skip" | files src/domain/rating-values.js src/web/material-actions.js | an A/B rating's skipped outcome in rating-values, and a finished steer's sketch left unswapped in material-actions (0066)
+literal "save" | files src/web/material-actions.js src/web/track.js | the timeline's Save action in track.js, and a finished steer's sketch saved as a new version in material-actions (0066)

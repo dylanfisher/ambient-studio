@@ -980,3 +980,32 @@ audio[hidden] + .player {
   background: var(--primary);
   pointer-events: none;
 }
+
+/* The arc target under the timeline (0066): the region's windows as thin marks and each
+   measured section as a thick one, on the same track scale as the blocks above, higher for
+   more of the measure drawn. Each mark's title says what it holds. */
+.arc {
+  position: relative;
+  height: 4rem;
+  margin: 0.4rem 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--muted);
+}
+
+.arc-mark {
+  position: absolute;
+  min-width: 2px;
+  margin-top: -1px;
+}
+
+.arc-mark.arc-window {
+  height: 2px;
+  background: var(--muted-foreground);
+}
+
+.arc-mark.arc-measure {
+  height: 4px;
+  margin-top: -2px;
+  background: var(--primary);
+}

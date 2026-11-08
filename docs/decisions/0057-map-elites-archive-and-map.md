@@ -4,7 +4,9 @@
 - **Status:** accepted; provisional: owner to confirm the axes, the bins, the elite rule and the
   control's starts. Amends [0031](0031-fewer-waits-after-first-evaluation.md) (the fill's
   conflict rule and progress steps), [0032](0032-plain-language-pages.md) (the map page, with
-  arrow keys) and [0052](0052-references-in-the-prompt.md) (the `axis` kind's details)
+  arrow keys) and [0052](0052-references-in-the-prompt.md) (the `axis` kind's details);
+  amended by [0066](0066-material-panel-and-arc-target.md) (the timeline lists the elites and
+  places them as sketches)
 
 ## Context
 
@@ -132,3 +134,10 @@ says so, apart from the reason for too few or alike excerpts.
 - A cancelled fill keeps its rows but writes no `fill.json`.
 - The bins, the elite rule and the control's starts are guesses until the owner has filled a map:
   if neighboring cells don't differ the way their axes say, widen the ends or lower the bins.
+
+## Amendments
+
+- 2026-11-08: phase 6 reads the archive on the timeline page (0066): each filled cell's elite is
+  listed with its place on each axis in words, from the route's `low`, `high` and `bins`, and
+  placing one keeps it as a sketch through the session sketch route before it becomes a section,
+  as the map's Keep as sketch does. The archive route is unchanged.

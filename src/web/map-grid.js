@@ -139,7 +139,7 @@ export function coverageText({ filled, total, placed, unplaced }) {
 }
 
 /** @param {number} value an end, written to about four figures */
-const endText = (value) => String(Number(value.toPrecision(4)));
+export const endText = (value) => String(Number(value.toPrecision(4)));
 
 /**
  * An axis's caption: its name and ends, or why it can't be read.
