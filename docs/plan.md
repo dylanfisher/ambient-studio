@@ -3347,3 +3347,11 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   hopped by 12.5 s plus a tail, normalized as renders are, into a derived `region_analyses`
   table (migration 0009). Two render-backed route tests hit the 30 s timeout once under load in
   the builder's run; they passed alone and in the gate. The gate passes, 1719 tests.
+- 2026-11-07: 5f merged as fdd00fc (Opus: 490k tokens, 382 calls, 68 min including a fix round;
+  reviewer Sonnet: 83k tokens, 16 calls, 10.5 min, FAIL on the search holding the one job runner
+  after the page closed, fixed with a same-origin `sendBeacon` Stop on pagehide and a 10-minute
+  idle stop on an injected clock; speculative renders no longer fail the job). A numpy
+  pairwise-probit GP with a Laplace posterior and expected improvement, behind 5d's protocol;
+  each answer is an ordinary rating first. The builder's gate failed once on a test in
+  write-flac.test.js, name and message not kept; third load-only failure, so the flakes get a
+  hunt. The gate passes, 1742 tests.
