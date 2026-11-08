@@ -3446,3 +3446,11 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   Crossfade-only tracks keep their render and cache key; the engine version is unchanged. Bench:
   20 min at 27.2x and 523 MiB, 10 min at 489 MiB, a spread of 6.6% in one run. Review passed;
   fixes pinned every curve in tests and named the kept-whole exception to acceptance 6. 2,161 tests.
+- 2026-11-08 — 6g merged (6dfa536): the timeline's material panel lists sketches, the archive's
+  elites by cell with axis words, and positions on the brief's directions. Placing an elite keeps
+  it as a sketch first. A section steers along a direction through 5g's job and is swapped in as
+  a new revision (`steerSwap` skips the swap if another version was opened or the section
+  changed). An attached region is the arc target, stretched under the timeline beside each
+  section's measured features (`POST /api/tracks/:id/measures`, reads only). The arc target is
+  not saved in the arrangement. Review passed; fixes made the swap a tested pure function, the
+  measures read a POST, and added more 400 cases. 2,177 tests.
