@@ -84,6 +84,13 @@ export const REGIONS_PATH = "/api/reference-regions";
  */
 export const regionPath = (regionId) => `${REGIONS_PATH}/${regionId}`;
 
+/**
+ * An attachment's route; a POST to `/detach` under it detaches it (decision 0052). A brief's
+ * attachments are listed and added at `/api/vibes/:id/attachments`.
+ * @param {number} attachmentId
+ */
+export const attachmentPath = (attachmentId) => `/api/vibe-attachments/${attachmentId}`;
+
 /** Every job since the server started, with its kind. */
 export const JOBS_PATH = "/api/jobs";
 

@@ -106,6 +106,24 @@
             </form>
           </section>
 
+          <section class="card stack" aria-labelledby="attached-heading">
+            <h2 id="attached-heading">Regions for the model to aim at</h2>
+            <p class="small muted">
+              Attach a region you marked on the References page. Every request for candidates
+              tells the model the region's measurements and a few words for its sound, and asks
+              it to aim at them, not to copy the recording.
+            </p>
+            <ul id="attachedList" class="list"></ul>
+            <p id="attachedHelp" class="small muted"></p>
+            <div class="row">
+              <label class="field"
+                >Region to attach
+                <select id="attachSelect" title="Chooses a region you marked on the References page, to attach to this brief."></select>
+              </label>
+              <button id="attachButton" class="button outline" type="button" title="Measures the chosen region at this brief's saved loudness, if it hasn't been measured yet, and attaches it. No new version of the brief is saved.">Attach</button>
+            </div>
+          </section>
+
           <section class="card stack" aria-labelledby="ratings-heading">
             <h2 id="ratings-heading">Ratings and sketches, newest first</h2>
             <ul id="ratingList" class="list"></ul>
@@ -154,6 +172,16 @@
       <li class="item small">
         <span data-part="line"></span>
         <span class="muted" data-part="time"></span>
+      </li>
+    </template>
+    <template id="attached-item">
+      <li class="item small stack">
+        <span data-part="line"></span>
+        <span class="muted" data-part="status"></span>
+        <div class="row">
+          <button data-part="measure" class="button outline" type="button" title="Measures this region at this brief's saved loudness, so the model can be told its measurements.">Measure</button>
+          <button data-part="detach" class="button outline" type="button" title="Detaches this region from the brief. Later requests for candidates leave it out; no new version of the brief is saved.">Detach</button>
+        </div>
       </li>
     </template>
     <template id="session-item">

@@ -1,6 +1,7 @@
-// The brief page (decisions 0028, 0032, 0034 and 0051): the name, the description, a rules form
-// built from 2b's table and a ranges form built from 3b's, which a reference region can fill,
-// saved as a new revision; the brief's sessions, notes, ratings and revisions. With no `id` in
+// The brief page (decisions 0028, 0032, 0034, 0051 and 0052): the name, the description, a rules
+// form built from 2b's table and a ranges form built from 3b's, which a reference region can
+// fill, saved as a new revision; the brief's sessions, notes, attached regions, ratings and
+// revisions. With no `id` in
 // the query it makes a new brief. A brief is a vibe in the API and the store, and its
 // description is the vibe's `brief` field.
 /** @import { Constraints } from "../domain/constraint-schema.js" */
@@ -8,6 +9,7 @@
 /** @import { ValidationError } from "../engine/validation-error.js" */
 /** @import { ConstraintField } from "./constraint-fields.js" */
 /** @import { TargetField } from "./target-fields.js" */
+import { ATTACHMENT_KIND } from "../domain/attachment-kind.js";
 import { FORM } from "../domain/constraint-schema.js";
 import { constraintsText } from "../domain/constraints-text.js";
 import { rangesFromRegion } from "../domain/ranges-from-region.js";
@@ -16,7 +18,8 @@ import { RANGE_ENDS } from "../domain/target-schema.js";
 import { targetsText } from "../domain/targets-text.js";
 import { validateConstraints } from "../domain/validate-constraints.js";
 import { validateTargets } from "../domain/validate-targets.js";
-import { getJson, postJson, REGIONS_PATH, regionPath, VIBES_PATH } from "./api.js";
+import { attachmentPath, getJson, postJson, REGIONS_PATH, regionPath, VIBES_PATH } from "./api.js";
+import { attachable, attachedStatus, attachHelp } from "./attached-regions.js";
 import { cloneTemplate } from "./clone-template.js";
 import {
   constraintFields,
@@ -70,6 +73,10 @@ const page = elementsById({
   noteList: HTMLUListElement,
   noteForm: HTMLFormElement,
   noteText: HTMLTextAreaElement,
+  attachedList: HTMLUListElement,
+  attachedHelp: HTMLElement,
+  attachSelect: HTMLSelectElement,
+  attachButton: HTMLButtonElement,
   ratingList: HTMLUListElement,
   noRatings: HTMLElement,
   revisionList: HTMLUListElement,
@@ -374,7 +381,7 @@ async function load(id) {
       return item.root;
     }),
   );
-  await showRegions();
+  await showRegions(id);
   // Last, so a throw over invalid saved ranges leaves the rest of the page filled.
   try {
     fillTargets(revision.softTargets);
@@ -383,8 +390,12 @@ async function load(id) {
   }
 }
 
-/** Lists every live region in the region chooser, or says there is none. */
-async function showRegions() {
+/**
+ * Lists every live region in the region chooser, or says there is none, and the regions
+ * attached to the brief.
+ * @param {number} id the saved brief's
+ */
+async function showRegions(id) {
   const { references, regions } = await getJson(REGIONS_PATH);
   const chosen = page.regionSelect.value;
   const names = new Map(
@@ -405,6 +416,57 @@ async function showRegions() {
   page.regionSelect.disabled = regions.length === 0;
   page.regionRangesButton.disabled = regions.length === 0;
   page.regionBox.hidden = false;
+  await showAttached(id, regions, names);
+}
+
+/**
+ * The regions attached to the brief, each with Measure and Detach, and the chooser of the ones
+ * it can still attach.
+ * @param {number} id the saved brief's
+ * @param {any[]} regions every live region
+ * @param {Map<unknown, any>} names each recording's file name, by id
+ */
+async function showAttached(id, regions, names) {
+  const { target, references: attached } = await getJson(`${VIBES_PATH}/${id}/attachments`);
+  page.attachedList.replaceChildren(
+    ...attached.map((/** @type {any} */ row) => {
+      const item = cloneTemplate("attached-item", {
+        line: HTMLElement,
+        status: HTMLElement,
+        measure: HTMLButtonElement,
+        detach: HTMLButtonElement,
+      });
+      const text = regionChoiceText(row, row.fileName);
+      item.line.textContent = text;
+      item.status.textContent = attachedStatus(row, target);
+      item.measure.hidden = row.analyzed;
+      // One at a time per row, so a double press measures or detaches once.
+      const measure = oneAtATime(() => measureAttached(row.regionId, text));
+      const detachThis = oneAtATime(() => detach(row.id, text));
+      item.measure.onclick = () => status.run(measure);
+      item.detach.onclick = () => status.run(detachThis);
+      return item.root;
+    }),
+  );
+  page.attachedHelp.textContent = attachHelp(attached.length);
+  const choices = attachable(regions, attached);
+  const chosen = page.attachSelect.value;
+  page.attachSelect.replaceChildren(
+    ...choices.map(
+      (region) =>
+        new Option(regionChoiceText(region, names.get(region.referenceFileId)), String(region.id)),
+    ),
+  );
+  if (choices.length === 0) {
+    const none =
+      regions.length === 0
+        ? "No regions yet: mark one on the References page"
+        : "No region to attach now";
+    page.attachSelect.add(new Option(none, ""));
+  }
+  if (choices.some((region) => String(region.id) === chosen)) page.attachSelect.value = chosen;
+  page.attachSelect.disabled = choices.length === 0;
+  page.attachButton.disabled = choices.length === 0;
 }
 
 /**
@@ -482,6 +544,44 @@ const setRangesFromRegion = oneAtATime(async () => {
   );
 });
 
+// Attaching measures the region first when it hasn't been, as the route takes only a region
+// measured at the brief's loudness.
+const attach = oneAtATime(async () => {
+  const id = savedId();
+  const regionId = Number(page.attachSelect.value);
+  if (!(regionId > 0)) throw new Error("Choose a region first.");
+  const chosen = page.attachSelect.selectedOptions[0]?.textContent ?? "the region";
+  await regionWindows(id, regionId);
+  await postJson(`${VIBES_PATH}/${id}/attachments`, {
+    kind: ATTACHMENT_KIND.reference,
+    regionId,
+  });
+  await showRegions(id);
+  status.say(`Attached ${chosen}. The next request for candidates tells the model about it.`);
+});
+
+/**
+ * @param {number} regionId
+ * @param {string} text the region as its row names it
+ */
+async function measureAttached(regionId, text) {
+  const id = savedId();
+  await regionWindows(id, regionId);
+  await showRegions(id);
+  status.say(`Measured ${text} at this brief's loudness.`);
+}
+
+/**
+ * @param {number} attachmentId
+ * @param {string} text the region as its row names it
+ */
+async function detach(attachmentId, text) {
+  const id = savedId();
+  await postJson(`${attachmentPath(attachmentId)}/detach`, {});
+  await showRegions(id);
+  status.say(`Detached ${text}. Later requests for candidates leave it out.`);
+}
+
 const startSession = oneAtATime(async () => {
   const session = await postJson(`${VIBES_PATH}/${savedId()}/sessions`, {});
   location.assign(`./session.html?id=${session.id}`);
@@ -502,6 +602,7 @@ page.noteForm.onsubmit = (event) => {
 
 page.startButton.onclick = () => status.run(startSession);
 page.regionRangesButton.onclick = () => status.run(setRangesFromRegion);
+page.attachButton.onclick = () => status.run(attach);
 
 if (vibeId === null) {
   page.pageTitle.textContent = "New brief";
