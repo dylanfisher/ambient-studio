@@ -94,8 +94,7 @@ fits with an 18.6 s reverb, and `randomGenome` redraws over-budget genomes, as f
 - **Copying the bell's finder into each voice** — rejected: three copies of the cap logic,
   and the dupes check flags them.
 - **The bell's 0.25 s grid with a whole step of jitter** — rejected for these two: hits could
-  fall a few milliseconds apart, which a sparse cymbal shouldn't do and the measured target
-  (3 s apart at the least) never does.
+  fall a few milliseconds apart, which a sparse cymbal shouldn't do.
 - **A minimum gap enforced from the previous hit** — rejected: a hit would depend on every hit
   before it, so an excerpt couldn't find its hits locally (0003, 0007).
 - **Cymbal resonances as `BiquadFilter` nodes on a noise source** — rejected: a filter chain per
@@ -110,10 +109,10 @@ fits with an 18.6 s reverb, and `randomGenome` redraws over-budget genomes, as f
 - Registering two voices moves `randomGenome` draws (0003's amendment accepts this). No
   existing genome renders differently, so `ENGINE_VERSION` stays 2; `cymbal.json` and
   `drum.json` are new goldens at v2.
-- The schema text grows by 376 characters to 3,717, past `schema-text.test.js`'s 3,000, and two
-  `build-prompt.test.js` budget checks fail: every voice locked whole (4,297 tokens of 4,096)
-  and a base with six examples (4,512 of 4,506). Both wait for CV.4, which owns the prompt's
-  budget.
+- The schema text grows by 376 characters to 3,717, past `test/engine/schema-text.test.js`'s 3,000.
+  With CV.2's chant parameters also merged, three `build-prompt.test.js` budget checks fail:
+  six examples (4,145 tokens of 4,096), every voice locked whole (4,356 of 4,096) and a base
+  with six examples (4,571 of 4,506). All wait for CV.4, which owns the prompt's budget.
 - Lone sparse cymbals and drums often play nothing in a genome's first 2 s, so the render test
   of 20 random genomes now asks that at least 15 sound, not more than 15.
 - Changing a grid, a cap, a draw slot, the resonance ratios, the membrane model or `shapeHit`
