@@ -6,6 +6,7 @@ import {
   medianTimings,
   searchCostText,
   searchSeconds,
+  steerCostText,
 } from "../../src/domain/search-cost.js";
 
 test("the estimate is evaluations times the render and embed seconds", () => {
@@ -36,5 +37,11 @@ test("the confirm says the cost, where its figures come from, and that it uses n
   const bench = searchCostText(40, BENCH_SECONDS, { measured: false, control: true });
   expect(bench).toBe(
     "Search from this candidate with 40 evaluations, then 40 medium nudges of it as a control that isn't shown? Each renders an excerpt, analyzes its sound and scores it by your taste model; nothing is sent to the language model. That is about 3 minutes, at 2 s to render and 0.17 s to analyze each, from the bench, since no search has run yet.",
+  );
+});
+
+test("a steer's confirm says it scores by the sliders and regions, the taste model only a little", () => {
+  expect(steerCostText(32, { render: 2.5, embed: 0.5 }, { measured: true })).toBe(
+    "Steer from this candidate with 32 evaluations? Each renders an excerpt, analyzes its sound and scores it by where it sits on the sliders you moved and how near it is to the regions you chose, and a little by your taste model when the brief has one; nothing is sent to the language model. That is about 2 minutes, at 2.5 s to render and 0.5 s to analyze each, the medians of the last search.",
   );
 });

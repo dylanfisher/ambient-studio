@@ -1,5 +1,6 @@
 // The session and job routes (decision 0027): a session's state and stop, asking for
-// candidates, nudging (0037), exploring (0038) and searching (0054) from one, re-rendering
+// candidates, nudging (0037), exploring (0038), searching (0054) and steering (0056) from one,
+// re-rendering
 // missing excerpts, the candidates with their excerpts, revised pairs (0036), places in the
 // ranking (0046) and a search's shown points, hiding and showing them again (0049), and job
 // status and cancel. Stopping a session cancels its jobs, and with them their omlx requests.
@@ -11,6 +12,7 @@
 /** @import { App, Route } from "./routing.js" */
 /** @import { Session } from "./session-store.js" */
 import { applyLocks } from "../domain/apply-locks.js";
+import { ATTACHMENT_KIND, MAX_DIRECTIONS, MAX_REFERENCES } from "../domain/attachment-kind.js";
 import {
   DEFAULT_EAR_QUERIES,
   EAR_PHASE,
@@ -21,8 +23,14 @@ import {
 import { DEFAULT_EXPLORES, NOT_ONE_LINE } from "../domain/explore-direction.js";
 import { DEFAULT_NUDGES, lockRefusal, STEP_SIZE } from "../domain/nudge.js";
 import { OPERATOR } from "../domain/operator.js";
-import { DEFAULT_SEARCH_BUDGET, MAX_SEARCH_BUDGET } from "../domain/search-settings.js";
+import {
+  DEFAULT_SEARCH_BUDGET,
+  DEFAULT_STEER_BUDGET,
+  MAX_SEARCH_BUDGET,
+} from "../domain/search-settings.js";
 import { MAX_SEARCH_DIMENSIONS, searchSpace } from "../domain/search-space.js";
+import { isObject } from "../engine/is-object.js";
+import { getAttachment } from "./attachment-store.js";
 import { currentExcerpt } from "./candidate-excerpt.js";
 import { candidateJob, DEFAULT_CANDIDATES, excerptJob, MAX_CANDIDATES } from "./candidate-job.js";
 import { candidatePairs } from "./candidate-pair.js";
@@ -40,6 +48,7 @@ import { duplicateJob, HttpError, wrongType } from "./routing.js";
 import { readSearchResults, searchEstimate, searchJob, searchRefusal } from "./search-job.js";
 import { readRanking } from "./session-ranking.js";
 import { getSession, stopSession } from "./session-store.js";
+import { readChosenSteering, steerJob } from "./steer-job.js";
 
 /**
  * A candidate's live feedback, with the ids a remove names (decision 0031): its thumbs, and each
@@ -125,6 +134,8 @@ const EXPLORE = EXPLORE_OPERATOR;
 const SEARCH = OPERATOR.optimize;
 /** A search by ear is named for the operator its points store. */
 const EAR = OPERATOR.optimizeEar;
+/** A steer is named for the operator its points store. */
+const STEER = OPERATOR.steer;
 /** The type a browser labels a beacon's string body with. */
 const BEACON_TYPE = "text/plain";
 const STEP_SIZES = /** @type {(keyof typeof STEP_SIZE)[]} */ (Object.keys(STEP_SIZE));
@@ -172,6 +183,9 @@ const DUPLICATE = Object.freeze({
   /** @param {number} id */
   [SEARCH]: (id) =>
     `This session is already running this search (job ${id}). Wait for it to finish, or cancel it.`,
+  /** @param {number} id */
+  [STEER]: (id) =>
+    `This session is already running this steer (job ${id}). Wait for it to finish, or cancel it.`,
   /** @param {number} id */
   [EAR]: (id) =>
     `This session is already searching by ear (job ${id}). Finish or stop it on the Quick A/B page first.`,
@@ -261,7 +275,7 @@ function rawPaths(given) {
  * Each search point's place in the table (decision 0054), by candidate id, read from its run's
  * summary: whether it is shown, and otherwise the shown point it folds under. A point the run
  * hasn't scored yet folds under the run's best, or under its base before any is scored. A
- * search by ear's summary shows its best and folds every other point under it (0055).
+ * steer's points (0056) are a search's. A search by ear's summary shows its best and folds every other point under it (0055).
  * @param {App} app
  * @param {readonly Candidate[]} candidates
  */
@@ -271,7 +285,9 @@ async function searchPlaces(app, candidates) {
   /** @type {Map<number, { shown: boolean, foldedUnder: number | null, score: number | null }>} */
   const places = new Map();
   for (const candidate of candidates) {
-    if (candidate.operator !== SEARCH && candidate.operator !== EAR) continue;
+    if (!(/** @type {(string | null)[]} */ ([SEARCH, STEER, EAR]).includes(candidate.operator))) {
+      continue;
+    }
     const run = String(/** @type {{ run?: unknown }} */ (candidate.operatorParams)?.run);
     if (!runs.has(run)) runs.set(run, await readSearchResults(app.paths.search, run));
     const results = runs.get(run) ?? null;
@@ -314,6 +330,92 @@ function baseCandidate(app, session, candidateId) {
   const refused = lockRefusal(applyLocks(found.genome, locksInForce(app.store, session.vibeId)));
   if (refused !== null) throw new HttpError(409, `candidate ${candidateId} ${refused}`);
   return found;
+}
+
+/**
+ * The attachment of `kind` live on the vibe that the body names at `key`, or a 400.
+ * @param {App} app
+ * @param {number} vibeId
+ * @param {Record<string, unknown>} given
+ * @param {string} key
+ * @param {string} kind
+ * @param {(id: number) => string} refusal the 400's message
+ */
+function liveAttachment(app, vibeId, given, key, kind, refusal) {
+  const id = rowId(given, key);
+  const attachment = getAttachment(app.store, id);
+  if (attachment?.vibeId !== vibeId || attachment.kind !== kind || attachment.removedAt !== null) {
+    throw new HttpError(400, refusal(id));
+  }
+  return id;
+}
+
+/**
+ * A steer's choices from the body (decision 0056): each direction with its slider's setting,
+ * from 0 to 1, and the regions to steer toward, each a live attachment of the vibe named once.
+ * At least one of either; none is a 400.
+ * @param {App} app
+ * @param {number} vibeId
+ * @param {Record<string, unknown>} given
+ * @returns {import("./vibe-steering.js").SteerChoices}
+ */
+function steerChoices(app, vibeId, given) {
+  /**
+   * @param {string} key
+   * @param {number} most
+   * @returns {unknown[]}
+   */
+  const list = (key, most) => {
+    const value = given[key] ?? [];
+    if (!Array.isArray(value) || value.length > most) {
+      throw new HttpError(
+        400,
+        `${key} must be a list of at most ${most}, got ${JSON.stringify(value)}`,
+      );
+    }
+    return value;
+  };
+  const directions = list("directions", MAX_DIRECTIONS).map((entry, i) => {
+    const key = `directions[${i}]`;
+    if (!isObject(entry)) {
+      throw new HttpError(400, `${key} must be {id, setting}, got ${JSON.stringify(entry)}`);
+    }
+    const one = fields(entry, ["id", "setting"]);
+    const id = liveAttachment(
+      app,
+      vibeId,
+      one,
+      "id",
+      ATTACHMENT_KIND.direction,
+      (n) => `direction ${n} isn't attached to this brief`,
+    );
+    const { setting } = one;
+    if (typeof setting !== "number" || !(setting >= 0 && setting <= 1)) {
+      throw new HttpError(
+        400,
+        `${key}.setting must be a number from 0 to 1, got ${JSON.stringify(setting)}`,
+      );
+    }
+    return { id, setting };
+  });
+  const regions = list("regions", MAX_REFERENCES).map((_, i) =>
+    liveAttachment(
+      app,
+      vibeId,
+      { [`regions[${i}]`]: /** @type {unknown[]} */ (given.regions)[i] },
+      `regions[${i}]`,
+      ATTACHMENT_KIND.reference,
+      (n) => `attachment ${n} isn't a region attached to this brief`,
+    ),
+  );
+  const ids = [...directions.map(({ id }) => id), ...regions];
+  if (new Set(ids).size !== ids.length) {
+    throw new HttpError(400, "a steer names each direction and region at most once");
+  }
+  if (ids.length === 0) {
+    throw new HttpError(400, "Move a slider or choose a region to steer toward first.");
+  }
+  return { directions, regions };
 }
 
 /**
@@ -509,6 +611,47 @@ export const SESSION_ROUTES = [
       });
       const action = JSON.stringify([candidateId, budget, raw, control]);
       return addSessionJob(app, requireOpenSession(app, params), SEARCH, run, action);
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/sessions/:sessionId/steers",
+    handle: async ({ app, params, body }) => {
+      const session = requireOpenSession(app, params);
+      const given = fields(await body(), [CANDIDATE_ID, "budget", "directions", "regions"]);
+      const candidateId = rowId(given, CANDIDATE_ID);
+      const budget =
+        given.budget === undefined
+          ? DEFAULT_STEER_BUDGET
+          : integer(given, "budget", { min: 1, max: MAX_SEARCH_BUDGET });
+      const choices = steerChoices(app, session.vibeId, given);
+      const { candidate, genome } = baseCandidate(app, session, candidateId);
+      const locks = locksInForce(app.store, session.vibeId);
+      const { constraints } = currentRevision(app.store, session.vibeId);
+      if (searchSpace(applyLocks(genome, locks).genome, locks, constraints, []).length === 0) {
+        throw new HttpError(
+          409,
+          "Every macro is locked or fixed by the brief, so there is nothing to steer. Unlock a macro first.",
+        );
+      }
+      // No taste model is needed: a steer scores by the sliders and regions (decision 0056).
+      const why = await readChosenSteering(
+        app,
+        session.vibeId,
+        choices,
+        new AbortController().signal,
+      );
+      if (typeof why === "string") throw new HttpError(409, why);
+      const run = steerJob(app, {
+        vibeId: session.vibeId,
+        sessionId: session.id,
+        base: candidate,
+        genome,
+        budget,
+        choices,
+      });
+      const action = JSON.stringify([candidateId, budget, choices]);
+      return addSessionJob(app, requireOpenSession(app, params), STEER, run, action);
     },
   },
   {

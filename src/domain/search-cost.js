@@ -47,12 +47,39 @@ export function searchCostText(evaluations, seconds, { measured, control }) {
   const then = control
     ? `, then ${evaluations} medium nudges of it as a control that isn't shown`
     : "";
-  const source = measured
-    ? "the medians of the last search"
-    : "from the bench, since no search has run yet";
   return (
     `Search from this candidate with ${counted(evaluations, "evaluation")}${then}? ` +
     "Each renders an excerpt, analyzes its sound and scores it by your taste model; nothing is sent to the language model. " +
-    `That is about ${counted(minutes, "minute")}, at ${seconds.render} s to render and ${seconds.embed} s to analyze each, ${source}.`
+    costLine(minutes, seconds, measured)
+  );
+}
+
+/**
+ * The confirm's last sentence: the time, and where its figures come from.
+ * @param {number} minutes
+ * @param {StepSeconds} seconds
+ * @param {boolean} measured
+ */
+function costLine(minutes, seconds, measured) {
+  const source = measured
+    ? "the medians of the last search"
+    : "from the bench, since no search has run yet";
+  return `That is about ${counted(minutes, "minute")}, at ${seconds.render} s to render and ${seconds.embed} s to analyze each, ${source}.`;
+}
+
+/**
+ * A steer's confirm (decision 0056): a search with no control, scored by the sliders and
+ * regions.
+ * @param {number} evaluations
+ * @param {StepSeconds} seconds per evaluation
+ * @param {{ measured: boolean }} options as `searchCostText`'s
+ * @returns {string}
+ */
+export function steerCostText(evaluations, seconds, { measured }) {
+  const minutes = Math.max(1, Math.round(searchSeconds(evaluations, seconds) / 60));
+  return (
+    `Steer from this candidate with ${counted(evaluations, "evaluation")}? ` +
+    "Each renders an excerpt, analyzes its sound and scores it by where it sits on the sliders you moved and how near it is to the regions you chose, and a little by your taste model when the brief has one; nothing is sent to the language model. " +
+    costLine(minutes, seconds, measured)
   );
 }

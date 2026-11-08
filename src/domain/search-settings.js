@@ -13,6 +13,8 @@ export const SEARCH_SIGMA = STEP_SIZE[SEARCH_STEP_SIZE];
 export const DEFAULT_SEARCH_BUDGET = 96;
 /** At about 2 s a point, 400 is a quarter of an hour of renders. */
 export const MAX_SEARCH_BUDGET = 400;
+/** Points a steer asks for when the owner doesn't say (decision 0056): a slider is a small move. */
+export const DEFAULT_STEER_BUDGET = 32;
 
 /**
  * Points per generation in `dimensions` dimensions.
