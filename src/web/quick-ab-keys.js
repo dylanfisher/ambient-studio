@@ -1,6 +1,7 @@
-// Quick A/B's keys (decision 0048), the one page with keys since 0032 removed them elsewhere,
-// because the owner asked for them here. This table is the one place they are written: the
-// listener reads it and the page shows each key on its button. Keys are read by
+// Quick A/B's keys (decision 0048), the first page with keys since 0032 removed them elsewhere,
+// because the owner asked for them here; the timeline binds its own table the same way (0061).
+// This table is the one place they are written: the listener reads it and the page shows each
+// key on its button. Keys are read by
 // `KeyboardEvent.code`, the physical key, so Shift, Caps Lock and the keyboard layout don't
 // change them; Cmd, Ctrl and Alt leave a key to the browser, and so does a key typed while an
 // input method is composing. A held key acts once, so holding D
@@ -22,6 +23,14 @@ export const QUICK_AB_KEYS = Object.freeze({
 const SHOWN = new Map([
   ["ArrowLeft", "←"],
   ["ArrowRight", "→"],
+  ["Comma", ","],
+  ["Period", "."],
+  ["Minus", "−"],
+  ["Equal", "="],
+  ["BracketLeft", "["],
+  ["BracketRight", "]"],
+  ["Semicolon", ";"],
+  ["Quote", "'"],
 ]);
 
 /**
@@ -49,24 +58,27 @@ function takesTyping(element) {
 }
 
 /**
- * Runs each action on its key. Listens in the capture phase and takes the key's default, so
- * Space on a focused button or switch, or an arrow on the seek bar, does the action and not
- * the control's own.
+ * Runs each action on its key in `table`. Listens in the capture phase and takes the key's
+ * default, so Space on a focused button or switch, or an arrow on the seek bar, does the action
+ * and not the control's own.
+ * @template {string} A
  * @param {EventTarget} target the document
- * @param {Record<QuickAbAction, () => void>} actions
+ * @param {Readonly<Record<A, string>>} table each action's `KeyboardEvent.code`
+ * @param {Record<A, () => void>} actions
  * @param {() => Element | null} focused the element with the focus
+ * @param {string} tableName the table's name, for the error when it and `actions` disagree
  */
-export function bindQuickAbKeys(target, actions, focused) {
-  const names = /** @type {QuickAbAction[]} */ (Object.keys(QUICK_AB_KEYS));
+export function bindKeyTable(target, table, actions, focused, tableName) {
+  const names = /** @type {A[]} */ (Object.keys(table));
   const missing = names.filter((name) => !Object.hasOwn(actions, name));
-  const extra = Object.keys(actions).filter((name) => !Object.hasOwn(QUICK_AB_KEYS, name));
+  const extra = Object.keys(actions).filter((name) => !Object.hasOwn(table, name));
   if (missing.length > 0 || extra.length > 0) {
     throw new Error(
-      `The page's key handlers and QUICK_AB_KEYS disagree: missing ${missing.join(", ") || "none"}, extra ${extra.join(", ") || "none"}.`,
+      `The page's key handlers and ${tableName} disagree: missing ${missing.join(", ") || "none"}, extra ${extra.join(", ") || "none"}.`,
     );
   }
-  /** @type {Map<string, QuickAbAction>} */
-  const byKey = new Map(names.map((name) => [QUICK_AB_KEYS[name], name]));
+  /** @type {Map<string, A>} */
+  const byKey = new Map(names.map((name) => [table[name], name]));
   target.addEventListener(
     "keydown",
     (event) => {
@@ -80,3 +92,12 @@ export function bindQuickAbKeys(target, actions, focused) {
     { capture: true },
   );
 }
+
+/**
+ * Runs each Quick A/B action on its key.
+ * @param {EventTarget} target the document
+ * @param {Record<QuickAbAction, () => void>} actions
+ * @param {() => Element | null} focused the element with the focus
+ */
+export const bindQuickAbKeys = (target, actions, focused) =>
+  bindKeyTable(target, QUICK_AB_KEYS, actions, focused, "QUICK_AB_KEYS");

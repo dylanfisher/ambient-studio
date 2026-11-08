@@ -50,6 +50,7 @@ import {
 } from "./constraint-fields.js";
 import { directionHelp, directionText } from "./direction-text.js";
 import { elementsById } from "./element-by-id.js";
+import { clockTime } from "./excerpt-player.js";
 import { formatTime } from "./format-time.js";
 import { oneAtATime } from "./one-at-a-time.js";
 import { outcomeText } from "./outcome-text.js";
@@ -64,6 +65,7 @@ import {
   targetTitle,
   targetValues,
 } from "./target-fields.js";
+import { sectionCount } from "./timeline-layout.js";
 
 const [MORE] = MACRO_DIRECTIONS;
 /** The form controls the constraint fields are made of. */
@@ -117,6 +119,9 @@ const page = elementsById({
   noRatings: HTMLElement,
   revisionList: HTMLUListElement,
   likedText: HTMLElement,
+  trackList: HTMLUListElement,
+  trackForm: HTMLFormElement,
+  trackName: HTMLInputElement,
 });
 const idText = new URLSearchParams(location.search).get("id");
 const vibeId = idText === null ? null : Number(idText);
@@ -391,13 +396,47 @@ async function showLiked(id) {
   }
 }
 
+/**
+ * Lists the brief's tracks, each a link to its timeline (decision 0061).
+ * @param {{ id: number, name: string, revision: { length: number, arrangement: { sections: unknown[] } } }[]} tracks
+ */
+function showTracks(tracks) {
+  page.trackList.replaceChildren(
+    ...tracks.map((track) => {
+      const item = document.createElement("li");
+      item.className = "item";
+      const link = document.createElement("a");
+      link.href = `./track.html?id=${track.id}`;
+      link.textContent = track.name;
+      link.title = `Opens the track ${track.name} on its timeline, to arrange its sections.`;
+      const facts = document.createElement("span");
+      facts.className = "small muted";
+      facts.textContent = ` ${clockTime(track.revision.length)}, ${sectionCount(track.revision.arrangement.sections.length)}`;
+      item.append(link, facts);
+      return item;
+    }),
+  );
+}
+
+/** Makes an empty track of the brief and opens it. */
+async function makeTrack() {
+  const name = page.trackName.value.trim();
+  if (name === "") {
+    throw new Error("Name the track first.");
+  }
+  const { track } = await postJson(`${VIBES_PATH}/${vibeId}/tracks`, { name });
+  location.assign(`./track.html?id=${track.id}`);
+}
+
 /** @param {number} id */
 async function load(id) {
-  const [vibe, { revisions }, ratings] = await Promise.all([
+  const [vibe, { revisions }, ratings, { tracks }] = await Promise.all([
     getJson(`${VIBES_PATH}/${id}`),
     getJson(`${VIBES_PATH}/${id}/revisions`),
     getJson(`${VIBES_PATH}/${id}/ratings`),
+    getJson(`${VIBES_PATH}/${id}/tracks`),
   ]);
+  showTracks(tracks);
   const { revision } = vibe;
   page.lineageLink.href = `./lineage.html?id=${id}`;
   page.mapLink.href = `./map.html?id=${id}`;
@@ -805,6 +844,10 @@ page.attachButton.onclick = () => status.run(attach);
 page.directionButton.onclick = () => status.run(addDirection);
 page.breedButton.onclick = () => status.run(breed);
 page.axesButton.onclick = () => status.run(saveAxes);
+page.trackForm.onsubmit = (event) => {
+  event.preventDefault();
+  status.run(makeTrack);
+};
 
 if (vibeId === null) {
   page.pageTitle.textContent = "New brief";

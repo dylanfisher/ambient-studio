@@ -4,6 +4,7 @@
 - **Status:** accepted; provisional: owner to confirm; amended by [0035](0035-locks.md) (the
   `locks` table), [0037](0037-nudge-and-branch.md) (`candidates.sessionId`) and
   [0050](0050-reference-uploads.md) (the reference tables, and `references/` in the backup)
+  and [0061](0061-tracks-and-the-timeline.md) (the track tables)
 
 ## Context
 
@@ -176,3 +177,10 @@ refused. The read-only connection neither migrates the source nor waits on its w
   copies the `references` folder beside `rated_audio`, an empty folder when nothing has been
   uploaded. A test in `reference-store.test.js` runs 0008 over a database built with 0001 to
   0007.
+- 2026-11-07: from step 6b ([0061](0061-tracks-and-the-timeline.md)). `0011-tracks.sql` adds
+  `tracks`, `track_revisions` and `track_exports`, all irreplaceable. A track is its vibe and
+  name; each save of its arrangement appends a revision, the newest current, as `vibe_revisions`
+  does; an export row logs a folder written from one revision, `mix` or `stems` (a CHECK), with
+  its manifest's SHA-256. Removing a track marks it `removed` and keeps its revisions and
+  exports. `track-store.js` holds their functions. A test in `track-store.test.js` runs 0011
+  over a database built with 0001 to 0010.

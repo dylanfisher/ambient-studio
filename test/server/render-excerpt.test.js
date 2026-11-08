@@ -168,6 +168,48 @@ describe("renderExcerpt", () => {
     expect(await filesIn(cache)).toEqual([again.render.file]);
   });
 
+  test("a row cached under the name from before it held the offset still resolves", async () => {
+    const { store, cache, drone } = await setup();
+    const excerpt = { genomeId: drone, seed: SEED, target: TARGET };
+    const { render } = await renderExcerpt(store, cache, excerpt);
+    const old = render.file.replace(/-at[^-]+s-/, "-");
+    expect(old).not.toBe(render.file);
+    await rename(join(cache, render.file), join(cache, old));
+    const { render: stored } = putRender(store, { ...render, file: old });
+    expect(await renderExcerpt(store, cache, excerpt)).toEqual({ render: stored, cached: true });
+  });
+
+  test("with a window, renders that window and names its file by the offset (0061)", async () => {
+    const { store, cache, drone } = await setup();
+    const excerpt = { genomeId: drone, seed: SEED, target: TARGET };
+    const { render } = await renderExcerpt(store, cache, excerpt, undefined, {
+      offset: 12.5,
+      duration: 3,
+    });
+    expect(render).toMatchObject({ offset: 12.5, duration: 3 });
+    expect(render.file).toContain(`${drone}-seed${SEED}-at12.5s-3s-${TARGET}LUFS-`);
+    const other = await renderExcerpt(store, cache, excerpt, undefined, {
+      offset: 20,
+      duration: 3,
+    });
+    expect(other.render.file).not.toBe(render.file);
+    expect((await filesIn(cache)).sort()).toEqual([render.file, other.render.file].sort());
+  });
+
+  test("a window that isn't inside the genome's duration throws, rendering nothing", async () => {
+    const { store, cache, drone } = await setup();
+    const excerpt = { genomeId: drone, seed: SEED, target: TARGET };
+    for (const window of [
+      { offset: 58, duration: 3 },
+      { offset: -1, duration: 3 },
+    ]) {
+      await expect(renderExcerpt(store, cache, excerpt, undefined, window)).rejects.toThrow(
+        `isn't inside genome ${drone}'s 60 s`,
+      );
+    }
+    expect(existsSync(cache) ? await filesIn(cache) : []).toEqual([]);
+  });
+
   test("is identical rendered twice in one process with forced collection between", async () => {
     const one = await setup();
     const two = await setup();

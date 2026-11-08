@@ -814,3 +814,82 @@ audio[hidden] + .player {
   outline: 2px solid var(--ring);
   outline-offset: 1px;
 }
+
+/* The timeline (0061): each section a block placed by its time on the track, on two alternating
+   rows so a crossfade shows as the overlap of two blocks, shaded behind them. The edge handles
+   take the pointer, so the browser mustn't scroll under a drag. */
+.timeline {
+  position: relative;
+  height: 5.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--muted);
+  overflow: hidden;
+}
+
+.timeline-fade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--secondary-hover);
+}
+
+.timeline-block {
+  position: absolute;
+  height: calc(50% - 4px);
+  min-width: 4px;
+  padding: 0 0.6rem;
+  overflow: hidden;
+  border: 1px solid var(--input);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.timeline-block.upper {
+  top: 2px;
+}
+
+.timeline-block.lower {
+  bottom: 2px;
+}
+
+.timeline-block[aria-pressed="true"] {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.timeline-block:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.timeline-label {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.timeline-edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0.5rem;
+  cursor: ew-resize;
+  touch-action: none;
+  background: var(--secondary);
+}
+
+.timeline-edge.start {
+  left: 0;
+}
+
+.timeline-edge.end {
+  right: 0;
+}

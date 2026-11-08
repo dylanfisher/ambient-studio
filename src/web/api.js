@@ -98,6 +98,13 @@ export const regionPath = (regionId) => `${REGIONS_PATH}/${regionId}`;
  */
 export const attachmentPath = (attachmentId) => `/api/vibe-attachments/${attachmentId}`;
 
+/**
+ * A track's route; its revisions, removal and section audio are under it (decision 0061). A
+ * brief's tracks are listed and made at `/api/vibes/:id/tracks`.
+ * @param {number} trackId
+ */
+export const trackPath = (trackId) => `/api/tracks/${trackId}`;
+
 /** Every job since the server started, with its kind. */
 export const JOBS_PATH = "/api/jobs";
 
