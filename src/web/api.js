@@ -1,6 +1,8 @@
 // The studio's JSON API, as the pages call it (decision 0027). Every POST sends a JSON body,
 // `{}` when the route takes no fields, because the server answers only JSON bodies (0025). A
-// reply that isn't a 2xx throws with the server's message, for the page to show.
+// reply that isn't a 2xx throws with the server's message, for the page to show. An upload is
+// the one body that isn't JSON (0050).
+import { FILE_NAME_HEADER, UPLOAD_TYPE } from "../domain/reference-upload.js";
 
 /**
  * @param {string} method
@@ -63,6 +65,21 @@ export const EMBEDDINGS_PATH = "/api/embeddings";
 /** The fit job's route: a POST starts it (decision 0044). */
 export const PREFERENCE_MODELS_PATH = "/api/preference-models";
 
+/** The reference recordings route: a GET lists them, a POST uploads one (decision 0050). */
+export const REFERENCES_PATH = "/api/references";
+
+/**
+ * A reference's route; its peaks, audio, regions and removal are under it.
+ * @param {number} referenceId
+ */
+export const referencePath = (referenceId) => `${REFERENCES_PATH}/${referenceId}`;
+
+/**
+ * A region's route; `/replace` and `/remove` under it change it.
+ * @param {number} regionId
+ */
+export const regionPath = (regionId) => `/api/reference-regions/${regionId}`;
+
 /** Every job since the server started, with its kind. */
 export const JOBS_PATH = "/api/jobs";
 
@@ -93,6 +110,18 @@ export const postJson = (path, body) =>
   send("POST", path, {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
+  });
+
+/**
+ * Uploads a file as the raw bytes of the body, its name in a header.
+ * @param {string} path
+ * @param {File} file
+ * @returns {Promise<any>} the parsed reply
+ */
+export const uploadFile = (path, file) =>
+  send("POST", path, {
+    headers: { "content-type": UPLOAD_TYPE, [FILE_NAME_HEADER]: encodeURIComponent(file.name) },
+    body: file,
   });
 
 /**

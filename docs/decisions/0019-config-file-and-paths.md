@@ -3,8 +3,9 @@
 - **Date:** 2026-11-06
 - **Status:** accepted; amended by [0041](0041-sidecar-process.md) and
   [0042](0042-clap-embeddings.md) (the sidecar keys), and by [0044](0044-bayesian-bradley-terry.md)
-  (the `models` folder) and [0024](0024-prompt-parse-repair-generation.md) (the
-  `textEmbeddings` folder)
+  (the `models` folder), [0024](0024-prompt-parse-repair-generation.md) (the
+  `textEmbeddings` folder) and [0050](0050-reference-uploads.md) (the `references` and
+  `referenceCache` folders)
 
 ## Context
 
@@ -129,3 +130,7 @@ only: `scripts/` and `test/` are tools, and a test stubs variables with `vi.stub
 - 2026-11-07: from step 4h ([0024](0024-prompt-parse-repair-generation.md)). `paths(dataRoot)`
   adds `textEmbeddings` (`text-embeddings/`), derived, where each vibe brief's CLAP embedding is
   a file named by the SHA-256 of its producer and text.
+- 2026-11-07: from step 5a ([0050](0050-reference-uploads.md)). `paths(dataRoot)` adds
+  `references` (`references/`), the owner's uploaded recordings, irreplaceable and backed up,
+  each named by its SHA-256; and `referenceCache` (`reference-cache/`), derived: peak strips,
+  playback MP3s of spans, and uploads still being checked.

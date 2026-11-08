@@ -18,6 +18,7 @@ const PAGES = [
   "index.html",
   "lineage.html",
   "quick-ab.html",
+  "references.html",
   "session.html",
 ];
 

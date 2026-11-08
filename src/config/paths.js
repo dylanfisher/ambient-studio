@@ -11,6 +11,10 @@ import { join } from "node:path";
  * @property {string} rankings each session's ranking under its taste model, derived, by session id
  * @property {string} textEmbeddings CLAP embeddings of vibe briefs, derived, each named by the
  *   hash of its producer and text
+ * @property {string} references the owner's uploaded reference recordings, irreplaceable, each
+ *   named by its SHA-256
+ * @property {string} referenceCache derived from references: peaks, playback MP3s, and uploads
+ *   still being checked
  */
 
 /**
@@ -26,5 +30,7 @@ export function paths(dataRoot) {
     models: join(dataRoot, "models"),
     rankings: join(dataRoot, "rankings"),
     textEmbeddings: join(dataRoot, "text-embeddings"),
+    references: join(dataRoot, "references"),
+    referenceCache: join(dataRoot, "reference-cache"),
   };
 }

@@ -2,7 +2,8 @@
 
 - **Date:** 2026-11-06
 - **Status:** accepted; provisional: owner to confirm; amended by [0035](0035-locks.md) (the
-  `locks` table) and [0037](0037-nudge-and-branch.md) (`candidates.sessionId`)
+  `locks` table), [0037](0037-nudge-and-branch.md) (`candidates.sessionId`) and
+  [0050](0050-reference-uploads.md) (the reference tables, and `references/` in the backup)
 
 ## Context
 
@@ -167,3 +168,11 @@ refused. The read-only connection neither migrates the source nor waits on its w
   (a CHECK holds exactly one), its `producer`, and the vector as a BLOB of little-endian
   float32. A render's row is deleted with its render (`ON DELETE CASCADE`), since `putRender`
   deletes the replaced row. `embedding-store.js` holds its functions.
+- 2026-11-07: from step 5a ([0050](0050-reference-uploads.md)). `0008-references.sql` adds
+  `reference_files` and `reference_regions`, both irreplaceable. A partial unique index on
+  `reference_files (sha256) WHERE removedAt IS NULL` keeps one live row per file's bytes. A
+  region is removed as `removed`, `replaced` by a successor naming it in `replacesId`, or
+  `file removed` when its file is. `reference-store.js` holds their functions. The backup also
+  copies the `references` folder beside `rated_audio`, an empty folder when nothing has been
+  uploaded. A test in `reference-store.test.js` runs 0008 over a database built with 0001 to
+  0007.

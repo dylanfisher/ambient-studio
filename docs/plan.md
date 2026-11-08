@@ -72,7 +72,7 @@ unneeded stays unused rather than being given to another step.
 | 0047 | The "what you like" summary | 4g | [written](decisions/0047-what-you-like.md) |
 | 0048 | Quick A/B, the excerpt player and MP3 playback audio | 4i | [written](decisions/0048-quick-ab-player-mp3.md) |
 | 0049 | The session table, hiding and rating marks | 4j | [written](decisions/0049-session-table-hiding-marks.md) |
-| 0050 | Reference uploads: formats, files, regions, ffmpeg decoding | 5a | — |
+| 0050 | Reference uploads: formats, files, regions, ffmpeg decoding | 5a | [written](decisions/0050-reference-uploads.md), provisional |
 | 0051 | Region analysis and ranges from a region | 5b | — |
 | 0052 | References in the prompt | 5c | — |
 | 0053 | Search space, proposals, ask/tell and the objective | 5d | [written](decisions/0053-search-space-ask-tell.md), provisional |

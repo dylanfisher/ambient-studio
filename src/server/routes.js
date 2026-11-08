@@ -7,6 +7,7 @@ import { LINEAGE_ROUTES } from "./lineage-routes.js";
 import { LOCK_ROUTES } from "./lock-routes.js";
 import { PREFERENCE_ROUTES } from "./preference-routes.js";
 import { RATING_ROUTES } from "./rating-routes.js";
+import { REFERENCE_ROUTES } from "./reference-routes.js";
 import { serveAudio } from "./serve-audio.js";
 import { SESSION_ROUTES } from "./session-routes.js";
 import { VIBE_ROUTES } from "./vibe-routes.js";
@@ -22,4 +23,5 @@ export const ROUTES = [
   ...EVALUATION_ROUTES,
   ...EMBEDDING_ROUTES,
   ...PREFERENCE_ROUTES,
+  ...REFERENCE_ROUTES,
 ];
