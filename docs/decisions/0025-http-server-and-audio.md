@@ -1,7 +1,8 @@
 # 0025. A node:http server with a route table, static tiers and ranged WAVs
 
 - **Date:** 2026-11-06
-- **Status:** accepted; amended by [0048](0048-quick-ab-player-mp3.md) (audio is MP3)
+- **Status:** accepted; amended by [0048](0048-quick-ab-player-mp3.md) (audio is MP3) and
+  [0050](0050-reference-uploads.md) (the upload body, and `sendMp3`)
 
 ## Context
 
@@ -142,3 +143,11 @@ to `allowed-host.js` first.
 - 2026-11-07: from step 4i ([0048](0048-quick-ab-player-mp3.md)). `/audio/:renderId` serves
   render-cache MP3s as `audio/mpeg`, with the same byte ranges; a row whose file is not an MP3
   is a 404 saying to render the excerpt again.
+- 2026-11-07: from step 5a ([0050](0050-reference-uploads.md)). `POST /api/references` is
+  the one route whose body isn't JSON: `application/octet-stream` up to 1 GiB, streamed to a
+  file, with the file's name in an `X-File-Name` header. Neither is a type or header a
+  cross-site page can send without a CORS preflight, which the server still never answers, so
+  the JSON-only rule above now reads "no route may accept a body a cross-site page can send
+  without a preflight". The byte-range code moved into `sendMp3` (`send-mp3.js`), which the
+  audio route and the reference audio route both call; `wrongType` is the one content-type
+  check.
