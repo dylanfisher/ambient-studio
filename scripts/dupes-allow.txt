@@ -137,13 +137,16 @@ literal "generations" | files sidecar/src/ambient_sidecar/optimizer.py src/serve
 literal "dimension" | files sidecar/src/ambient_sidecar/clap.py sidecar/src/ambient_sidecar/optimizer.py | a result field sidecar-protocol.json defines: embedder's in clap.py, optimizer_start's in optimizer.py
 literal "best" | files sidecar/src/ambient_sidecar/optimizer.py src/web/quick-ab-order.js | quick A/B's best-question order mode; in optimizer.py, a state key for the best point told so far
 literal "evaluation" | files src/domain/search-cost.js src/server/evaluation-routes.js | a counted word in the search confirm, and the evaluation job's kind in evaluation-routes
-literal "minute" | files src/domain/search-cost.js src/web/test-cost.js | a counted word in each confirm's own text
+literal "minute" | files src/domain/breed-cost.js src/domain/search-cost.js src/web/test-cost.js | a counted word in each confirm's own text
 literal "cma-es" | files sidecar/src/ambient_sidecar/optimizer.py src/domain/search-settings.js | the optimizer's name in a run's spec, written by search-settings.js and looked up in optimizer.py's OPTIMIZERS, which can't share a constant across languages (0054)
 literal "medium" | files src/domain/search-settings.js src/web/format-time.js | the nudge step size a search starts at, and a date format length in format-time
 literal "control" | files src/server/evaluation-job.js src/server/session-routes.js | the revision evaluation's arm name, and the search request's control-arm switch
 literal "paths" | files src/server/export-render.js src/server/session-routes.js | a key of the Export type in export-render, and the search request's raw paths
 literal "optimizer" | files sidecar/src/ambient_sidecar/optimizer.py src/server/search-job.js | the spec key naming the optimizer in optimizer.py, and the source a search point stores in search-job
 literal "/api/search-estimate" | files src/server/session-routes.js src/web/api.js | the search estimate route, declared by the server and requested by the pages, which talk to it only over HTTP and can't import it (map.md)
+literal "/api/breed-estimate" | files src/server/session-routes.js src/web/api.js | the breed estimate route, declared by the server and requested by the pages, which talk to it only over HTTP and can't import it (map.md)
+literal "mutation" | files src/domain/breed-settings.js src/server/nudge-job.js | a breed candidate's stage in breed-settings; a nudge child's source in nudge-job
+literal "the base" | files src/domain/nudge.js src/server/generate-candidates.js | what a repeated draw repeats in nudge's seen map; what a refused explore base is called in generate-candidates
 literal "regionId" | files src/domain/attachment-kind.js src/server/attachment-routes.js src/server/reference-routes.js | a body field of the attach route in attachment-routes, a path parameter in reference-routes; the axes route's body field naming an axis's region in attachment-kind
 literal "reference" | files src/domain/attachment-kind.js src/engine/tuning.js | an attachment kind stored in vibe_attachments, and a key of a tuning file read by tuning.js
 literal "high" | files src/domain/reference-words.js src/domain/target-schema.js | a word of the reference vocabulary in reference-words (0052), and a range end in target-schema

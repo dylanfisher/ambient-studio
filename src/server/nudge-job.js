@@ -5,7 +5,6 @@
 /** @import { NudgeDraw, StepSize } from "../domain/nudge.js" */
 /** @import { Genome } from "../engine/genome-schema.js" */
 /** @import { CandidateRender } from "./candidate-job.js" */
-/** @import { Verdict } from "./generate-candidates.js" */
 /** @import { Candidate } from "./generation-store.js" */
 /** @import { JobContext } from "./job-runner.js" */
 /** @import { ExcerptRequest } from "./render-excerpt.js" */
@@ -14,7 +13,7 @@ import { nudge } from "../domain/nudge.js";
 import { OPERATOR } from "../domain/operator.js";
 import { excerptRequest } from "./candidate-excerpt.js";
 import { jobRecordings, STREAM_SEEDS } from "./candidate-job.js";
-import { currentRevision, keep } from "./generate-candidates.js";
+import { currentRevision, keep, verdictOf } from "./generate-candidates.js";
 import { JOB_STEP } from "./job-steps.js";
 import { locksInForce } from "./lock-store.js";
 import { renderExcerpt } from "./render-excerpt.js";
@@ -47,21 +46,6 @@ export const NUDGE_SOURCE = "mutation";
  * breaks a value the vibe fixes fails every draw on it, since nudges hold fixed values.
  * @typedef {{ child: number, findings: Finding[] }} FailedChild
  */
-
-/**
- * A draw, or any proposal, as the verdict `keep` stores.
- * @param {NudgeDraw} draw
- * @returns {Verdict}
- */
-export const verdictOf = ({ reason, lint, genome, written, lockChanges }) => ({
-  reason,
-  lint,
-  intent: null,
-  genome,
-  answer: null,
-  written,
-  lockChanges,
-});
 
 /**
  * The job that nudges `base` into `count` children under the vibe's current revision and live

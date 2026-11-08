@@ -5,7 +5,8 @@
   [0024](0024-prompt-parse-repair-generation.md) (the base section, its place in the trimming
   order, and the explore request group) and
   [0031](0031-fewer-waits-after-first-evaluation.md) (explore's row in the conflict table and
-  its progress steps).
+  its progress steps). Amended by [0058](0058-breeding.md) (the candidates job's breed, and
+  parent A alone written as a base).
 
 ## Context
 
@@ -127,3 +128,12 @@ steps keep "candidate", the word every card goes by.
   revision skipped over budget (`revisionOverBudget`, 0036): the follow-up replays the prompt
   untrimmed and adds the answer and the ask. The seed-sized case above leaves about 3,000
   tokens.
+
+## Amendments
+
+- 2026-11-07: from step 5i ([0058](0058-breeding.md)). The candidates job takes `breed` beside
+  `explore`, never both: its children are fresh first prompts holding two parents, revised like
+  any first try, and each valid child, or its revision when that changed it, is then nudged once
+  at the small step and the nudge rendered. A breed prompt trimmed to parent A alone writes A
+  with this record's base section and no direction, so the model reads a plain variation of it.
+  `promptBase` names what it refuses ("parent A, candidate 12, can't take the vibe's locks").

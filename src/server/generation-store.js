@@ -108,6 +108,22 @@ export function listRequestGroup(store, requestGroup) {
 }
 
 /**
+ * How long each of the last `limit` requests the model answered took, newest first, in ms. A
+ * failed request is left out: its time is a timeout or an error, not an answer.
+ * @param {Store} store
+ * @param {number} limit
+ * @returns {number[]}
+ */
+export function recentLatencies(store, limit) {
+  const rows = store.db
+    .prepare(
+      `SELECT latencyMs FROM ${TABLE.generations} WHERE error IS NULL ORDER BY id DESC LIMIT ?`,
+    )
+    .all(limit);
+  return rows.map((row) => Number(row.latencyMs));
+}
+
+/**
  * The vibe's row for `genome`, written when the vibe hasn't reached it before. Throws on an
  * invalid genome.
  * @param {Store} store

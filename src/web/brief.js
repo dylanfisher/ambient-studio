@@ -1,7 +1,7 @@
-// The brief page (decisions 0028, 0032, 0034, 0051 and 0052): the name, the description, a rules
-// form built from 2b's table and a ranges form built from 3b's, which a reference region can
-// fill, saved as a new revision; the brief's sessions, notes, attached regions, ratings and
-// revisions. With no `id` in
+// The brief page (decisions 0028, 0032, 0034, 0051, 0052 and 0058): the name, the description, a
+// rules form built from 2b's table and a ranges form built from 3b's, which a reference region
+// can fill, saved as a new revision; the brief's sessions, notes, attached regions, breeding of
+// two sketches, ratings and revisions. With no `id` in
 // the query it makes a new brief. A brief is a vibe in the API and the store, and its
 // description is the vibe's `brief` field.
 /** @import { Constraints } from "../domain/constraint-schema.js" */
@@ -10,6 +10,8 @@
 /** @import { ConstraintField } from "./constraint-fields.js" */
 /** @import { TargetField } from "./target-fields.js" */
 import { ATTACHMENT_KIND, MAX_DIRECTIONS } from "../domain/attachment-kind.js";
+import { breedCostText } from "../domain/breed-cost.js";
+import { DEFAULT_BREEDS } from "../domain/breed-settings.js";
 import { FORM } from "../domain/constraint-schema.js";
 import { constraintsText } from "../domain/constraints-text.js";
 import { rangesFromRegion } from "../domain/ranges-from-region.js";
@@ -18,7 +20,17 @@ import { RANGE_ENDS } from "../domain/target-schema.js";
 import { targetsText } from "../domain/targets-text.js";
 import { validateConstraints } from "../domain/validate-constraints.js";
 import { validateTargets } from "../domain/validate-targets.js";
-import { attachmentPath, getJson, postJson, REGIONS_PATH, regionPath, VIBES_PATH } from "./api.js";
+import {
+  ApiError,
+  attachmentPath,
+  BREED_ESTIMATE_PATH,
+  getJson,
+  postJson,
+  REGIONS_PATH,
+  regionPath,
+  sessionPath,
+  VIBES_PATH,
+} from "./api.js";
 import { attachable, attachedStatus, attachHelp } from "./attached-regions.js";
 import {
   axesLine,
@@ -92,6 +104,10 @@ const page = elementsById({
   nearInput: HTMLInputElement,
   farInput: HTMLInputElement,
   directionButton: HTMLButtonElement,
+  parentA: HTMLSelectElement,
+  parentB: HTMLSelectElement,
+  breedButton: HTMLButtonElement,
+  breedHelp: HTMLElement,
   axesLine: HTMLElement,
   axisSelect0: HTMLSelectElement,
   axisSelect1: HTMLSelectElement,
@@ -299,6 +315,40 @@ const percent = (fraction) => `${Math.round(fraction * 100)}%`;
 /** @param {any} side */
 const heard = (side) => `genome ${side.genomeId} seed ${side.seed}`;
 
+/**
+ * A sketch's notes and tags as its line reads them, or nothing when it has neither.
+ * @param {{ notes: string, tags: string[] }} sketch
+ */
+function sketchWords({ notes, tags }) {
+  return `${notes ? `: “${notes}”` : ""}${tags.length > 0 ? ` [${tags.join(", ")}]` : ""}`;
+}
+
+/**
+ * Fills the two parent choosers with the live sketches, newest first, parent A on the newest
+ * and parent B on the one before it. A removed sketch isn't listed, so it can't be picked.
+ * @param {any[]} sketches oldest first, as the ratings route lists them
+ */
+function showSketches(sketches) {
+  const newest = [...sketches].reverse();
+  for (const [select, chosen] of [
+    [page.parentA, newest[0]],
+    [page.parentB, newest[1]],
+  ]) {
+    select.replaceChildren(
+      ...newest.map(
+        (row) =>
+          new Option(`Sketch ${row.id}: candidate ${row.candidateId}${sketchWords(row)}`, row.id),
+      ),
+    );
+    if (chosen) select.value = String(chosen.id);
+  }
+  const enough = sketches.length >= 2;
+  page.breedButton.disabled = !enough;
+  page.breedHelp.textContent = enough
+    ? ""
+    : `Keep ${sketches.length === 0 ? "two sketches" : "one more sketch"} on a session page first: press Keep as sketch on a candidate's row.`;
+}
+
 /** @param {{ ratings: any[], feedback: any[], sketches: any[] }} rows */
 function showRatings({ ratings, feedback, sketches }) {
   const items = [
@@ -317,11 +367,10 @@ function showRatings({ ratings, feedback, sketches }) {
         text: `Compared ${heard(left)} (left) with ${heard(right)} (right): ${outcomeText(row)}`,
       };
     }),
-    ...sketches.map((row) => {
-      const notes = row.notes ? `: “${row.notes}”` : "";
-      const tags = row.tags.length > 0 ? ` [${row.tags.join(", ")}]` : "";
-      return { at: row.createdAt, text: `Sketch of candidate ${row.candidateId}${notes}${tags}` };
-    }),
+    ...sketches.map((row) => ({
+      at: row.createdAt,
+      text: `Sketch of candidate ${row.candidateId}${sketchWords(row)}`,
+    })),
   ].sort((x, y) => y.at - x.at);
   page.ratingList.replaceChildren(...items.map(({ at, text }) => lineItem(text, at)));
   page.noRatings.hidden = items.length > 0;
@@ -382,6 +431,7 @@ async function load(id) {
     ...vibe.notes.map((/** @type {any} */ note) => lineItem(note.text, note.createdAt)),
   );
   showRatings(ratings);
+  showSketches(ratings.sketches);
   void showLiked(id);
   page.revisionList.replaceChildren(
     ...[...revisions].reverse().map((/** @type {any} */ row, i) => {
@@ -708,6 +758,29 @@ const addDirection = oneAtATime(async () => {
   );
 });
 
+// The children are made in the newest open session, so they appear on a page the owner knows;
+// a brief whose sessions are all stopped gets a new one.
+const breed = oneAtATime(async () => {
+  const id = savedId();
+  const sketchIds = [Number(page.parentA.value), Number(page.parentB.value)];
+  if (!sketchIds.every((sketchId) => sketchId > 0)) throw new Error("Choose two sketches first.");
+  if (sketchIds[0] === sketchIds[1]) throw new Error("Choose two different sketches.");
+  const estimate = await getJson(BREED_ESTIMATE_PATH);
+  if (!confirm(breedCostText(DEFAULT_BREEDS, estimate))) return;
+  const vibe = await getJson(`${VIBES_PATH}/${id}`);
+  const session =
+    [...vibe.sessions].reverse().find((/** @type {any} */ row) => row.stoppedAt === null) ??
+    (await postJson(`${VIBES_PATH}/${id}/sessions`, {}));
+  try {
+    await postJson(`${sessionPath(session.id)}/breeds`, { sketchIds, count: DEFAULT_BREEDS });
+  } catch (error) {
+    // The same breed already running: its session page follows it.
+    if (!(error instanceof ApiError && error.status === 409 && error.body?.jobId)) throw error;
+  }
+  location.assign(`./session.html?id=${session.id}`);
+  return leaving();
+});
+
 const startSession = oneAtATime(async () => {
   const session = await postJson(`${VIBES_PATH}/${savedId()}/sessions`, {});
   location.assign(`./session.html?id=${session.id}`);
@@ -730,6 +803,7 @@ page.startButton.onclick = () => status.run(startSession);
 page.regionRangesButton.onclick = () => status.run(setRangesFromRegion);
 page.attachButton.onclick = () => status.run(attach);
 page.directionButton.onclick = () => status.run(addDirection);
+page.breedButton.onclick = () => status.run(breed);
 page.axesButton.onclick = () => status.run(saveAxes);
 
 if (vibeId === null) {

@@ -8,7 +8,8 @@
   and [0038](0038-explore.md) (the base section, its trimming, and explore children);
   amended by step 4h (examples by CLAP similarity, below); amended by
   [0052](0052-references-in-the-prompt.md) (the references section, its trimming, and
-  `attachmentIds`)
+  `attachmentIds`); amended by [0058](0058-breeding.md) (the parents sections and their
+  trimming)
 
 ## Context
 
@@ -242,3 +243,15 @@ which 2l settles.
   `vibe_attachments` rows its prompt held (migration 0010), which a revision copies from its
   first try. `TextEmbedder.embedText` takes the text and what to call it in an error, since the
   vocabulary's words go through it too.
+- 2026-11-07: from step 5i ([0058](0058-breeding.md)). `buildPrompt` takes optional `parents`
+  (`{a, b}`, each a genome with the locks applied), written after the rated examples as
+  "Parent A:" and "Parent B:" sections with an ask for one child taking parts of both, in place
+  of "Write one new genome for this vibe."; a prompt holds a base or parents, never both. Over
+  the budget the examples go first, then the references, then parent B, then parent A; with B
+  gone, A is written as explore's base with no direction. The result's `parentsTrimmed` names
+  the parents left out, B first, and the error says "with no examples and no parents".
+  `generateCandidates` takes an optional `breed` (`{a, b, sketchIds}`): its candidates store
+  in `parentIds` the parents the prompt held after trimming, operator `breed`, source `breeding` and `{stage: "crossover",
+  sketchIds, parentsTrimmed}`, in the request group `vibe-<vibeId>-breed-<seed>`.
+  `mutationSeed` draws slot 5 of the stream, and `verdictOf`, a proposal as the verdict `keep`
+  stores, moved here from the nudge job.

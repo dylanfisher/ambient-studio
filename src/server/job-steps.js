@@ -7,6 +7,8 @@ export const JOB_STEP = Object.freeze({
   asking: (n, of) => `Asking the model for candidate ${n} of ${of}`,
   /** @param {number} n @param {number} of */
   exploring: (n, of) => `Asking the model for variation ${n} of ${of}`,
+  /** @param {number} n @param {number} of */
+  breeding: (n, of) => `Asking the model for child ${n} of ${of}`,
   /** @param {number} n */
   repairing: (n) => `Asking the model to fix candidate ${n}`,
   busy: "Waiting for the model: it is busy with another request",
@@ -25,6 +27,8 @@ export const JOB_STEP = Object.freeze({
   renderingControl: (n, of) => `Rendering the control revision of candidate ${n} of ${of}`,
   /** @param {number} n @param {number} of */
   renderingNudge: (n, of) => `Rendering the excerpt for nudge ${n} of ${of}`,
+  /** @param {number} n @param {number} of */
+  renderingMutation: (n, of) => `Rendering the mutation of child ${n} of ${of}`,
   /** @param {number} n @param {number} of */
   renderingExcerpt: (n, of) => `Rendering excerpt ${n} of ${of}`,
   /** @param {number} n @param {number} of */
