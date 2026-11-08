@@ -5,7 +5,8 @@
   [0024](0024-prompt-parse-repair-generation.md) (the parents sections and their place in the
   trimming order), [0038](0038-explore.md) (the candidates job's breed, and parent A alone as a
   base) and [0031](0031-fewer-waits-after-first-evaluation.md) (the breed's conflict rule and
-  progress steps)
+  progress steps); amended by [0072](0072-prompt-room-and-low-chant.md) (the parents written
+  without their defaults)
 
 ## Context
 
@@ -39,10 +40,10 @@ place of the ask:
 
 ```
 Parent A:
-<A's canonical genome, with the locks in force applied>
+<A's concise genome, with the locks in force applied>
 
 Parent B:
-<B's canonical genome, with the locks in force applied>
+<B's concise genome, with the locks in force applied>
 
 Write one child of parents A and B for this vibe, taking parts from each, such as voices from one and settings from the other: keep the locked values exactly.
 ```
@@ -124,3 +125,8 @@ follows the running job.
 - The lineage page draws a crossover child under parent A, its first parent; the card's origin
   line names both parents, or says which sketch the model never read.
 - 5j's statistics can tell crossover children from mutations by `operatorParams.stage`.
+
+## Amendments
+
+- 2026-11-08: from step CV.4 ([0072](0072-prompt-room-and-low-chant.md)). Each parent's section
+  holds its `conciseGenome`, with the locks applied, as the examples now do.

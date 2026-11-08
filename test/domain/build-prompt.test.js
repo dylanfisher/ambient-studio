@@ -17,7 +17,7 @@ import { revisionAsk } from "../../src/domain/revision-ask.js";
 import { TARGET_FEATURES } from "../../src/domain/target-schema.js";
 import { targetsText } from "../../src/domain/targets-text.js";
 import { validateConstraints } from "../../src/domain/validate-constraints.js";
-import { canonicalGenome } from "../../src/engine/canonical-genome.js";
+import { conciseGenome } from "../../src/engine/canonical-genome.js";
 import colundiGenome from "../../src/engine/genomes/colundi.json" with { type: "json" };
 import exampleGenome from "../../src/engine/genomes/example.json" with { type: "json" };
 import { recordingVoiceText, schemaText } from "../../src/engine/schema-text.js";
@@ -106,7 +106,7 @@ describe("buildPrompt", () => {
     expect(text).toContain('{"intent":');
   });
 
-  test("quotes each example's canonical genome, marked liked or disliked", () => {
+  test("quotes each example's genome without its defaults, marked liked or disliked", () => {
     const { messages, exampleIds } = buildPrompt(revision, {
       notes,
       locks,
@@ -116,8 +116,10 @@ describe("buildPrompt", () => {
     });
     const text = promptText(messages);
     expect(exampleIds).toEqual([1, 2]);
-    expect(text).toContain(`Liked: ${canonicalGenome(exampleGenome)}`);
-    expect(text).toContain(`Disliked: ${canonicalGenome(colundiGenome)}`);
+    expect(text).toContain(`Liked: ${conciseGenome(exampleGenome)}`);
+    expect(text).toContain(`Disliked: ${conciseGenome(colundiGenome)}`);
+    // The schema text gives each default once (decision 0072).
+    expect(text).not.toContain('"ceiling":-1');
   });
 
   test("leaves out the sections a vibe doesn't have", () => {
@@ -190,7 +192,7 @@ describe("buildPrompt", () => {
   });
 
   test("trims examples from the end until the prompt fits the budget", () => {
-    const many = examples(40);
+    const many = examples(80);
     const { messages, exampleIds } = buildPrompt(revision, {
       notes,
       locks,
@@ -296,7 +298,7 @@ describe("buildPrompt with a base", () => {
     const text = user(messages);
     const section = [
       "The base genome to vary:",
-      canonicalGenome(exampleGenome),
+      conciseGenome(exampleGenome),
       `The owner's direction for this variation, as a JSON string: "slower, less bell"`,
     ].join("\n");
     expect(text).toContain(section);
@@ -319,7 +321,7 @@ describe("buildPrompt with a base", () => {
       base: { ...base, direction: null },
     });
     const text = user(messages);
-    expect(text).toContain(`The base genome to vary:\n${canonicalGenome(exampleGenome)}\n\n`);
+    expect(text).toContain(`The base genome to vary:\n${conciseGenome(exampleGenome)}\n\n`);
     expect(text).not.toContain("direction");
     expect(text).toMatch(/Write one variation of the base genome for this vibe\.$/);
   });
@@ -452,7 +454,15 @@ describe("buildPrompt with references", () => {
   });
 
   test("examples are trimmed before references, and references before the base", () => {
-    const base = { genome: exampleGenome, direction: null };
+    // A base larger than both references, so trimming it makes room for them.
+    const wide = {
+      ...exampleGenome,
+      voices: [
+        ...exampleGenome.voices,
+        ...colundiGenome.voices.map((voice) => ({ ...voice, id: `${voice.id}-b` })),
+      ],
+    };
+    const base = { genome: wide, direction: null };
     const all = { ...parts, references, base };
     /** @param {{ examples?: PromptExample[], references?: PromptReference[], base?: PromptBase | null }} over */
     const size = (over) =>
@@ -544,8 +554,8 @@ describe("buildPrompt with two parents", () => {
   const references = [attached(11), attached(12)];
   /** @param {ChatMessage[]} messages */
   const user = (messages) => /** @type {ChatMessage} */ (messages[1]).content;
-  const sectionA = `Parent A:\n${canonicalGenome(colundiGenome)}`;
-  const sectionB = `Parent B:\n${canonicalGenome(exampleGenome)}`;
+  const sectionA = `Parent A:\n${conciseGenome(colundiGenome)}`;
+  const sectionB = `Parent B:\n${conciseGenome(exampleGenome)}`;
 
   test("holds parent A then parent B after the examples, and asks for one child of both", () => {
     const { messages, exampleIds, parentsTrimmed } = buildPrompt(revision, {
@@ -609,8 +619,8 @@ describe("buildPrompt with two parents", () => {
     const withoutB = buildPrompt(revision, { ...all, budgetTokens: both - 1 });
     expect(withoutB.parentsTrimmed).toEqual(["B"]);
     const text = user(withoutB.messages);
-    expect(text).toContain(`The base genome to vary:\n${canonicalGenome(colundiGenome)}`);
-    expect(text).not.toContain(canonicalGenome(exampleGenome));
+    expect(text).toContain(`The base genome to vary:\n${conciseGenome(colundiGenome)}`);
+    expect(text).not.toContain(conciseGenome(exampleGenome));
     expect(text).not.toContain("Parent B");
 
     // Room for neither: A goes too, and the prompt is the plain first prompt.

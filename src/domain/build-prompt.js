@@ -10,7 +10,7 @@
 /** @import { PromptReference } from "./references-text.js" */
 /** @import { FeatureRanges } from "./target-schema.js" */
 /** @import { Lock } from "./validate-lock.js" */
-import { canonicalGenome } from "../engine/canonical-genome.js";
+import { conciseGenome } from "../engine/canonical-genome.js";
 import { schemaText } from "../engine/schema-text.js";
 import { constraintsText } from "./constraints-text.js";
 import { ANSWER_KEY } from "./extract-genome.js";
@@ -133,7 +133,7 @@ function baseAndAsk(base, locks) {
   const keep = locks.length === 0 ? "" : ": keep the locked values exactly and change the rest";
   const follow = direction === null ? "" : " Follow the owner's direction.";
   return [
-    ["The base genome to vary:", canonicalGenome(genome), ...heard].join("\n"),
+    ["The base genome to vary:", conciseGenome(genome), ...heard].join("\n"),
     `Write one variation of the base genome for this vibe${keep}.${follow}`,
   ];
 }
@@ -148,7 +148,7 @@ function baseAndAsk(base, locks) {
 function parentsAndAsk(parents, locks) {
   const keep = locks.length === 0 ? "" : ": keep the locked values exactly";
   return [
-    ...parents.map((genome, i) => `Parent ${PARENT_LETTERS[i]}:\n${canonicalGenome(genome)}`),
+    ...parents.map((genome, i) => `Parent ${PARENT_LETTERS[i]}:\n${conciseGenome(genome)}`),
     `Write one child of parents A and B for this vibe, taking parts from each, such as voices from one and settings from the other${keep}.`,
   ];
 }
@@ -208,7 +208,7 @@ function messages(revision, { notes, locks, examples, recordings, base, referenc
     ...section(
       "Genomes the owner rated in this vibe:",
       examples.map(
-        ({ liked, genome }) => `${liked ? "Liked" : "Disliked"}: ${canonicalGenome(genome)}`,
+        ({ liked, genome }) => `${liked ? "Liked" : "Disliked"}: ${conciseGenome(genome)}`,
       ),
     ),
     ...ending(base, parents, locks),

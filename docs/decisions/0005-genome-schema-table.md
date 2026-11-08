@@ -3,6 +3,7 @@
 - **Date:** 2026-11-05
 - **Status:** accepted; amended by [0029](0029-sample-layer.md) (a `recording` kind) and
   [0035](0035-locks.md) (lock paths beyond the vector view) and [0037](0037-nudge-and-branch.md) (`fromVectorUnchecked`)
+  and [0072](0072-prompt-room-and-low-chant.md) (the schema text's limit, 4,000 characters)
 
 ## Context
 
@@ -192,3 +193,7 @@ If `tsc` can't express that, the builder of step 1c records what it did instead.
   `fromVector` without the validation, returning the moved copy, so a nudge can store why a
   moved genome is invalid instead of catching a throw. `fromVector` is it plus `requireGenome`,
   unchanged.
+- 2026-11-08: from step CV.4 ([0072](0072-prompt-room-and-low-chant.md)). The schema text's test
+  holds it under 4,000 characters, not 3,000: nine voices need about 2,900 with no descriptions
+  at all, and the prompt's token checks guard its room. It names each tuning once, on the lines
+  that give its keys and scales.

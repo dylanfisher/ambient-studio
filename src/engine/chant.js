@@ -91,7 +91,7 @@ const PARAMS = Object.freeze({
     default: 12,
     unit: "cents",
     safe: [4, 25],
-    description: "singers detuned within ±this",
+    description: "singers detuned ±this",
   }),
   pan: number({
     min: 0,
@@ -99,7 +99,7 @@ const PARAMS = Object.freeze({
     default: 1,
     unit: "",
     safe: [0.5, 1],
-    description: "singers panned within ±this",
+    description: "singers panned ±this",
   }),
   phrase: number({
     min: 3,
@@ -622,7 +622,7 @@ function build({ ctx, output, genome, voice, seed, from, startFrame, at }) {
 
 export const chant = {
   type: "chant",
-  description: "low sung voice: harmonics, vowel formants, swell",
+  description: "a chant's low sung drone: harmonics, vowel formants, swell, breaths",
   params: PARAMS,
   macros: /** @type {MacroRow[]} */ ([
     { macro: MACRO.brightness, param: "vowel", depth: 0.25 },

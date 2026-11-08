@@ -8,23 +8,30 @@ import { loadConfig } from "../../src/config/config.js";
 import { buildPrompt } from "../../src/domain/build-prompt.js";
 import { estimateTokens, promptText } from "../../src/domain/prompt-tokens.js";
 import { REJECT_REASON } from "../../src/domain/reject-reason.js";
+import { TARGET_FEATURES } from "../../src/domain/target-schema.js";
 import { targetsText } from "../../src/domain/targets-text.js";
 import { canonicalGenome } from "../../src/engine/canonical-genome.js";
+import chantGenome from "../../src/engine/genomes/chant-ensemble.json" with { type: "json" };
+import cymbalGenome from "../../src/engine/genomes/cymbal.json" with { type: "json" };
+import drumGenome from "../../src/engine/genomes/drum.json" with { type: "json" };
 import exampleGenome from "../../src/engine/genomes/example.json" with { type: "json" };
 import {
   getCandidate,
   getGeneration,
   listGenomes,
   listRequestGroup,
+  putGenome,
 } from "../../src/server/generation-store.js";
 import { createOmlxQueue } from "../../src/server/omlx-queue.js";
+import { addFeedback, addRatedAudio } from "../../src/server/rating-store.js";
 import { RETRIEVAL_METHOD } from "../../src/server/retrieve-examples.js";
+import { startSession } from "../../src/server/session-store.js";
 import { TABLE } from "../../src/server/store.js";
 import { addNote, createVibe, reviseVibe } from "../../src/server/vibe-store.js";
 import { driveGaps, fakeClock } from "../support/fake-clock.js";
 import { fakeOmlx } from "../support/fake-omlx.js";
 import { tempRoot } from "../support/temp-root.js";
-import { tempStore } from "../support/temp-store.js";
+import { heardExcerpt, tempStore } from "../support/temp-store.js";
 
 /** @type {(() => Promise<void>)[]} */
 const cleanups = [];
@@ -565,6 +572,107 @@ describe("generateCandidates", () => {
       }),
     );
     expect(omlx.requests).toHaveLength(1);
+  });
+});
+
+// Phase CV's acceptance 7: the model can use the chant, cymbal and drum on their own.
+describe("generateCandidates with the chant voices", () => {
+  const FOUR = ["chant", "cymbal", "drum", "noise"];
+  /** A genome of the four voices, from the goldens, with its own chant level. */
+  const fourVoices = (/** @type {number} */ level) => ({
+    ...chantGenome,
+    duration: 300,
+    voices: [
+      { ...chantGenome.voices[0], level, singers: 12 },
+      cymbalGenome.voices[0],
+      drumGenome.voices[0],
+      exampleGenome.voices.find((voice) => voice.type === "noise"),
+    ],
+  });
+  const bell = exampleGenome.voices.find((voice) => voice.type === "bell");
+
+  test("a brief that allows only chant, cymbal, drum and noise, at a seed vibe's size with six rated examples, gets valid candidates after at most one repair", async () => {
+    const { omlx, config, queue, store, drive } = await setup();
+    const { generateCandidates } = await load();
+    const vibe = createVibe(store, {
+      name: "low chant",
+      brief: "b".repeat(600),
+      constraints: { loudness: -16, pulse: "none", allowedVoices: FOUR },
+      // A range on every feature, as build-prompt.test.js's seed-sized vibe has.
+      softTargets: {
+        features: Object.fromEntries(
+          Object.keys(TARGET_FEATURES).map((name) => [name, [0.12, 0.34]]),
+        ),
+      },
+    });
+    // The genomes' own values, so no answer changes a lock.
+    const held = [
+      { path: "reverbDecay", value: chantGenome.reverbDecay },
+      { path: "macros.motion", value: chantGenome.macros.motion },
+    ];
+    for (let i = 0; i < 12; i++) addNote(store, { vibeId: vibe.id, text: "n".repeat(150) });
+    // Six rated genomes, three liked and three disliked, as a seed vibe has after a session.
+    const session = startSession(store, vibe.id);
+    for (let i = 0; i < 6; i++) {
+      const genome = putGenome(store, vibe.id, fourVoices(-6 - i));
+      const heard = heardExcerpt(genome.id);
+      const audio = addRatedAudio(store, {
+        ...heard,
+        target: -16,
+        file: `${genome.id}.flac`,
+        pcmSha256: "0".repeat(64),
+        gainDb: 0,
+      });
+      addFeedback(store, {
+        ...heard,
+        sessionId: session.id,
+        vibeRevisionId: vibe.revision.id,
+        ratedAudioId: audio.id,
+        playedFraction: 1,
+        timeTakenMs: 1,
+        kind: "thumbs",
+        direction: i % 2 === 0 ? "up" : "down",
+        note: null,
+        macro: null,
+        macroValue: null,
+      });
+    }
+    // The second candidate's first answer adds a bell, which the brief doesn't allow.
+    const withBell = { ...fourVoices(-9), voices: [...fourVoices(-9).voices, bell] };
+    omlx.script(
+      says(answer(fourVoices(-8), "a low chant")),
+      says(answer(withBell, "a low chant with a bell")),
+      says(answer(fourVoices(-9), "a low chant without the bell")),
+    );
+    const { requestGroup, candidates } = await drive(
+      generateCandidates(vibe.id, 2, store, queue, {
+        config,
+        seed: 31,
+        sessionId: null,
+        locks: held,
+        recordings: [],
+      }),
+    );
+
+    const generations = listRequestGroup(store, requestGroup);
+    expect(generations.map((g) => g.repairRound)).toEqual([0, 0, 1]);
+    expect(generations.map((g) => g.exampleIds.length)).toEqual([6, 6, 6]);
+    expect(candidates.map((c) => c.rejectReason)).toEqual([null, null]);
+    const stored = listGenomes(store, vibe.id).slice(-2);
+    for (const { genome } of stored) {
+      const types = genome.voices.map((/** @type {{ type: string }} */ v) => v.type);
+      expect(types.sort()).toEqual(FOUR);
+    }
+
+    const [first, , repair] = omlx.requests.map((r) => r.body.messages);
+    const system = first?.[0].content;
+    for (const type of FOUR) expect(system).toMatch(new RegExp(`^ type "${type}": `, "m"));
+    expect(first?.[1].content).toContain(`voice types only ${FOUR.join("|")}`);
+    expect(repair?.[3].content).toMatch(/bell/);
+    // A repair adds the answer and its errors; half the budget leaves that room, as the
+    // seed-sized checks in build-prompt.test.js measure.
+    const budget = config.queue.contextBudgetTokens;
+    expect(estimateTokens(promptText(first))).toBeLessThan(budget / 2);
   });
 });
 

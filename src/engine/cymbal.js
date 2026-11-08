@@ -170,7 +170,7 @@ const RING_WEIGHT = 15;
 
 export const cymbal = {
   type: "cymbal",
-  description: "bright struck metal, long ring",
+  description: "sparse bright accents: struck metal, long ring",
   params: PARAMS,
   macros: /** @type {MacroRow[]} */ ([
     DENSITY_ROW,

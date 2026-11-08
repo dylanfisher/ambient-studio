@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import { canonicalGenome } from "../../src/engine/canonical-genome.js";
+import { canonicalGenome, conciseGenome } from "../../src/engine/canonical-genome.js";
+import exampleGenome from "../../src/engine/genomes/example.json" with { type: "json" };
+import { requireGenome } from "../../src/engine/validate-genome.js";
 import { registerVoice, unregisterVoice } from "../../src/engine/voice-registry.js";
 import { fixtureVoice } from "../support/fixture-voice.js";
 
@@ -46,5 +48,46 @@ describe("canonicalGenome", () => {
 
   test("throws on an invalid genome, listing its errors", () => {
     expect(() => canonicalGenome({ duration: 5 })).toThrow(/\$\.duration/);
+  });
+});
+
+// The prompt's form of a genome (decision 0072): the schema text gives every default, so a
+// value at its default says nothing the model hasn't read.
+describe("conciseGenome", () => {
+  test("leaves out every value at its default and keeps the rest", () => {
+    const text = conciseGenome({
+      duration: 300,
+      width: -6,
+      macros: { warmth: 0.5 },
+      voices: [b, a],
+    });
+    expect(text).toBe(
+      '{"schemaVersion":1,"voices":[{"cutoff":250.5,"id":"a","type":"fixture"},{"id":"b","level":-20,"type":"fixture"}],"width":-6}',
+    );
+  });
+
+  test("validates to the same genome as the canonical form", () => {
+    const concise = JSON.parse(conciseGenome(exampleGenome));
+    expect(canonicalGenome(concise)).toBe(canonicalGenome(exampleGenome));
+    expect(conciseGenome(exampleGenome).length).toBeLessThan(
+      canonicalGenome(exampleGenome).length * 0.6,
+    );
+  });
+
+  test("keeps a trajectory, even one that starts at the default", () => {
+    const reverbLevel = {
+      points: [
+        [0, -12],
+        [60, -12],
+      ],
+    };
+    const text = conciseGenome({ reverbLevel });
+    expect(JSON.parse(text).reverbLevel).toEqual(
+      requireGenome({ reverbLevel }, "test").reverbLevel,
+    );
+  });
+
+  test("throws on an invalid genome, listing its errors", () => {
+    expect(() => conciseGenome({ duration: 5 })).toThrow(/\$\.duration/);
   });
 });

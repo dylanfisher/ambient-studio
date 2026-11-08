@@ -6,7 +6,8 @@
   order, and the explore request group) and
   [0031](0031-fewer-waits-after-first-evaluation.md) (explore's row in the conflict table and
   its progress steps). Amended by [0058](0058-breeding.md) (the candidates job's breed, and
-  parent A alone written as a base).
+  parent A alone written as a base) and [0072](0072-prompt-room-and-low-chant.md) (the base
+  written without its defaults).
 
 ## Context
 
@@ -30,7 +31,7 @@ and a brief, note or lock changed since the base was made is the one the model r
 
 ```
 The base genome to vary:
-<the base's canonical genome, with the locks in force applied>
+<the base's concise genome, with the locks in force applied>
 The owner's direction for this variation, as a JSON string: "slower"
 
 Write one variation of the base genome for this vibe: keep the locked values exactly and change the rest. Follow the owner's direction.
@@ -38,7 +39,7 @@ Write one variation of the base genome for this vibe: keep the locked values exa
 
 The direction line and "Follow the owner's direction." are left out when there is no direction,
 and the clause after the colon when no lock is in force. The base's genome is written by
-`canonicalGenome`, as the examples are. The locks go into it first, since the base may predate a
+`conciseGenome` (0072), as the examples are. The locks go into it first, since the base may predate a
 lock, so the base the model reads agrees with the locks section above it. A base that can't take
 the locks (a lock on a voice it lacks) is refused, as a nudge's is: a 409 at the route, and a
 failed job if the locks changed after the request.
@@ -137,3 +138,5 @@ steps keep "candidate", the word every card goes by.
   at the small step and the nudge rendered. A breed prompt trimmed to parent A alone writes A
   with this record's base section and no direction, so the model reads a plain variation of it.
   `promptBase` names what it refuses ("parent A, candidate 12, can't take the vibe's locks").
+- 2026-11-08: from step CV.4 ([0072](0072-prompt-room-and-low-chant.md)). The base section
+  holds the base's `conciseGenome`, with the locks applied, as the examples now do.

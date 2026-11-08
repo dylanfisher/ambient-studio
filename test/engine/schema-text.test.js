@@ -5,10 +5,19 @@ import { recordingVoiceText, schemaText } from "../../src/engine/schema-text.js"
 import { selfContainedVoiceTypeIds, voiceTypeIds } from "../../src/engine/voice-registry.js";
 
 describe("schemaText", () => {
-  test("stays under 3,000 characters for the full schema", () => {
+  // The token checks in build-prompt.test.js guard the prompt's room; this limit makes the next
+  // voice that grows the text say why (decision 0072).
+  test("stays under 4,000 characters for the full schema", () => {
     // Another test file's fixture voice would make this measure more than production holds.
     expect(voiceTypeIds()).not.toContain("fixture");
-    expect(schemaText().length).toBeLessThan(3000);
+    expect(schemaText().length).toBeLessThan(4000);
+  });
+
+  test("says what the chant, cymbal and drum are for", () => {
+    const text = schemaText();
+    expect(text).toMatch(/^ type "chant": a chant's low sung drone: /m);
+    expect(text).toMatch(/^ type "cymbal": sparse bright accents: /m);
+    expect(text).toMatch(/^ type "drum": sparse low accents: /m);
   });
 
   test("names every global parameter, macro, voice parameter and voice type", () => {
@@ -40,8 +49,10 @@ describe("schemaText", () => {
     expect(text).toMatch(/^\(T\) .*never a bare array/m);
   });
 
-  test("gives each tuning's key range and scales", () => {
+  test("gives each tuning's key range and scales, naming each tuning once", () => {
     const text = schemaText();
+    expect(text).toMatch(/^tuning =12-tet, one of:$/m);
+    expect(text.match(/bohlen-pierce/g)).toHaveLength(1);
     expect(text).toMatch(/^ +12-tet,just-5-limit: key 0\.\.11; scale all\|ionian\|/m);
     expect(text).toMatch(/^ +19-edo: key 0\.\.18; scale all$/m);
     expect(text).toMatch(/^ +colundi: no key; scale all\|/m);
@@ -70,7 +81,7 @@ describe("schemaText", () => {
     expect(text).toMatch(/^ type "recording": /);
     expect(text).toMatch(/^ {2}recording sha256 required /m);
     expect(text).toMatch(/^ {2}cutoff 100\.\.20000 Hz =20000 \(T\) /m);
-    // The prompt adds these lines and the list to the base text's 3,000.
+    // The prompt adds these lines and the list to the base text's 4,000.
     expect(text.length).toBeLessThan(600);
   });
 });

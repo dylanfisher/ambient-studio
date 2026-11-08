@@ -1,5 +1,5 @@
 // The genome schema as compact text for the LLM's prompt. omlx contexts are short, so a test
-// holds the full text under 3,000 characters (decision 0005).
+// holds the full text under 4,000 characters (decisions 0005 and 0072).
 /** @import { Descriptor, DescriptorTable } from "./descriptor.js" */
 import { allowsTrajectory, isRecording, valueText } from "./descriptor.js";
 import {
@@ -72,14 +72,13 @@ function pitchLines() {
 
 /** @returns {string} every voice type but those that play a field recording */
 export function schemaText() {
-  // A scale's values and a key's range depend on the tuning, so they're listed per tuning.
-  const { scale, key } = GLOBAL_PARAMS;
+  // A scale's values and a key's range depend on the tuning, so they're listed per tuning, and
+  // the tunings' names there are the tuning's values.
+  const { tuning, scale, key } = GLOBAL_PARAMS;
   const globalLines = Object.entries(GLOBAL_PARAMS).flatMap(([name, d]) => {
-    if (d === scale) return [`${name} =${d.default}, per tuning below`];
-    if (d === key) {
-      const when = `; only ${key.when.text}`;
-      return [`${name} int =${d.default} ${d.description}${when}, per tuning:`, ...pitchLines()];
-    }
+    if (d === tuning) return [`${name} =${d.default}, one of:`, ...pitchLines()];
+    if (d === scale) return [`${name} =${d.default}, per tuning above`];
+    if (d === key) return [`${name} int =${d.default} ${d.description}; only ${key.when.text}`];
     return [line(name, d)];
   });
   return [

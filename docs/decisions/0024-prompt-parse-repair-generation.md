@@ -10,7 +10,8 @@
   [0052](0052-references-in-the-prompt.md) (the references section, its trimming, and
   `attachmentIds`); amended by [0058](0058-breeding.md) (the parents sections and their
   trimming); amended by [0067](0067-proposed-track.md) (`sendRequest` and `extractObject`
-  shared with the proposal, `ANSWER_RULE` in the domain, `RETRIEVAL_METHOD.none`)
+  shared with the proposal, `ANSWER_RULE` in the domain, `RETRIEVAL_METHOD.none`); amended by [0072](0072-prompt-room-and-low-chant.md) (examples
+  written without their defaults)
 
 ## Context
 
@@ -33,7 +34,7 @@ has no description field ([0005](0005-genome-schema-table.md)): adding one would
   vibe.
 - *user*: `Vibe: <name>` and the brief; `constraintsText()`; the locks, one `path = value` line
   each under "Locked by the owner; keep these values exactly"; the owner's notes, oldest first;
-  the rated examples, one `Liked: ` or `Disliked: ` line each with the genome's canonical JSON;
+  the rated examples, one `Liked: ` or `Disliked: ` line each with the genome's `conciseGenome` (0072);
   and the ask. A section with nothing in it is left out. The vibe's feature ranges follow the
   constraints (amended 2026-11-07, [0034](0034-feature-ranges-as-soft-targets.md)).
 
@@ -266,3 +267,6 @@ which 2l settles.
   exported. `RETRIEVAL_METHOD` gains `none`, logged by a prompt with no rated examples. The
   proposal's request group, `vibe-<vibeId>-arrange-<seed>`, names operator `arrange` in place
   of `stream`.
+- 2026-11-08: from step CV.4 ([0072](0072-prompt-room-and-low-chant.md)). Each example's line
+  holds `conciseGenome`, the canonical JSON with every value at its default left out, in place
+  of the canonical genome; the schema text gives every default. Examples are about half as long.

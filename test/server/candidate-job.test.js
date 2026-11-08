@@ -11,7 +11,7 @@ import { ATTACHMENT_KIND } from "../../src/domain/attachment-kind.js";
 import { featuresText } from "../../src/domain/features-text.js";
 import { estimateTokens, promptText } from "../../src/domain/prompt-tokens.js";
 import { referencesText } from "../../src/domain/references-text.js";
-import { canonicalGenome } from "../../src/engine/canonical-genome.js";
+import { conciseGenome } from "../../src/engine/canonical-genome.js";
 import { addAttachment } from "../../src/server/attachment-store.js";
 import { currentExcerpt } from "../../src/server/candidate-excerpt.js";
 import { candidateJob, STREAM_SEEDS } from "../../src/server/candidate-job.js";
@@ -692,7 +692,7 @@ test("explore sends a fresh first prompt per child holding the base and the dire
 
   const result = await run(2, { base, genome: genomeOf(app, base), direction: "slower" });
   expect(omlx.requests).toHaveLength(2);
-  const locked = canonicalGenome({ ...genomeOf(app, base), reverbDecay: 3 });
+  const locked = conciseGenome({ ...genomeOf(app, base), reverbDecay: 3 });
   for (const { body } of omlx.requests) {
     expect(body.messages.map((/** @type {any} */ m) => m.role)).toEqual(["system", "user"]);
     const text = body.messages[1].content;
@@ -751,7 +751,7 @@ test("exploring from a revision or a nudge child sends a first prompt with no ea
     const sent = /** @type {any} */ (omlx.requests[before]).body.messages;
     expect(sent.map((/** @type {any} */ m) => m.role)).toEqual(["system", "user"]);
     expect(sent[1].content).toContain(
-      `The base genome to vary:\n${canonicalGenome(genomeOf(app, base))}`,
+      `The base genome to vary:\n${conciseGenome(genomeOf(app, base))}`,
     );
     expect(sent[1].content).not.toContain("direction");
   }
@@ -946,8 +946,8 @@ test("breed sends each child a first prompt holding both parents with the live l
   const result = await run(1, undefined, breed);
   expect(omlx.requests).toHaveLength(1);
   const text = /** @type {any} */ (omlx.requests[0]).body.messages[1].content;
-  expect(text).toContain(`Parent A:\n${canonicalGenome({ ...GENOMES[0], reverbDecay: 3 })}`);
-  expect(text).toContain(`Parent B:\n${canonicalGenome({ ...GENOMES[1], reverbDecay: 3 })}`);
+  expect(text).toContain(`Parent A:\n${conciseGenome({ ...GENOMES[0], reverbDecay: 3 })}`);
+  expect(text).toContain(`Parent B:\n${conciseGenome({ ...GENOMES[1], reverbDecay: 3 })}`);
   expect(text).toContain("reverbDecay = 3");
 
   const [child, ...mutations] = listSessionCandidates(app.store, session.id).slice(2);
@@ -1047,8 +1047,8 @@ test("a crossover child stores as parents only the ones its prompt held: A when 
     operatorParams: expect.objectContaining({ sketchIds: [21, 22], parentsTrimmed: ["B"] }),
   });
 
-  // Each drone parent is about 150 tokens, so the plain prompt fits where parent A alone does not.
-  const withoutBoth = await bredUnder((sent) => sent - 250);
+  // Each drone parent is about 85 tokens, so the plain prompt fits where parent A alone does not.
+  const withoutBoth = await bredUnder((sent) => sent - 150);
   expect(withoutBoth.text).toContain("Write one new genome for this vibe.");
   expect(withoutBoth.child).toMatchObject({
     parentIds: [],

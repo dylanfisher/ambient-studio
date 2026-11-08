@@ -145,7 +145,7 @@ const RING_WEIGHT = 24;
 
 export const drum = {
   type: "drum",
-  description: "low struck membrane, falling pitch",
+  description: "sparse low accents: struck membrane, falling pitch",
   params: PARAMS,
   macros: /** @type {MacroRow[]} */ ([
     DENSITY_ROW,
