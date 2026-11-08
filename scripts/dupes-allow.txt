@@ -168,7 +168,7 @@ literal "sections" | files src/domain/arrangement-schema.js src/web/timeline-lay
 literal "offset" | files src/domain/arrangement-schema.js src/server/render-cli.js | a section's start on its sketch's timeline in an arrangement and the timeline's edits (0061), and the render CLI's option
 literal "kind" | files src/domain/arrangement-schema.js src/server/attachment-routes.js src/server/track-render-routes.js | a transition's key in an arrangement (0061), the attachment body's field in attachment-routes, and the export body's field naming mix or stems in track-render-routes (0063)
 literal "removed" | files src/server/reference-store.js src/server/track-store.js | each table's own removal reason for a row the owner removed: a track in track-store, a reference in reference-store
-literal "item" | files sidecar/src/ambient_sidecar/preference.py src/web/brief.js | the list item class on the brief page's track list, and a key of the fit's items file in preference.py
+literal "item" | files sidecar/src/ambient_sidecar/preference.py src/web/brief.js src/web/material-card.js | the list item class on the brief page's track list and on the material panel's sketch list, and a key of the fit's items file in preference.py
 literal "revision-item" | files src/web/brief.js src/web/track.js | each page's own template of one version's line: the brief page's and the timeline's
 literal "ArrowLeft" | files src/web/quick-ab-keys.js src/web/timeline-keys.js | the key Quick A/B and the timeline each chose for an action, and the label table both read
 literal "ArrowRight" | files src/web/quick-ab-keys.js src/web/timeline-keys.js | the key Quick A/B and the timeline each chose for an action, and the label table both read
@@ -188,3 +188,4 @@ literal "lower" | files src/web/target-fields.js src/web/timeline-view.js | the 
 literal "upper" | files src/web/target-fields.js src/web/timeline-view.js | the upper bound of a feature range in target-fields, and the upper row of timeline blocks
 literal "beforeunload" | files src/web/quick-ab.js src/web/track.js | the window event each page with unsaved work adds unloadGuard to: Quick A/B's pending rating and the timeline's unsaved edit
 literal "smooth" | files src/domain/arrangement-schema.js src/domain/reference-words.js | the trajectory curve a new morph takes in arrangement-schema, a word describing a reference recording's texture in reference-words
+literal "small muted" | files src/web/brief.js src/web/material-card.js | the stylesheet's classes for a quiet line, set on what each page builds: a track's line on the brief page, a sketch's positions in the material panel

@@ -8,9 +8,12 @@ import { afterEach, expect, test } from "vitest";
 import { emptyArrangement } from "../../src/domain/arrangement-schema.js";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
 import { requireGenome } from "../../src/engine/validate-genome.js";
-import { addCandidate, putGenome } from "../../src/server/generation-store.js";
+import { addCandidate, getCandidate, putGenome } from "../../src/server/generation-store.js";
+import { PRODUCER } from "../../src/server/producer.js";
 import { addSketch } from "../../src/server/rating-store.js";
+import { putRender } from "../../src/server/render-store.js";
 import { listTrackRevisions } from "../../src/server/track-store.js";
+import { seedMapRender } from "../support/map-fixtures.js";
 import { removeStudio, startStudio, VIBE } from "../support/studio.js";
 
 /** @type {Studio[]} */
@@ -188,4 +191,61 @@ test("a second section job while one is unfinished is a 409 naming it", async ()
   server.jobs.cancel(first.id);
   release();
   await server.jobs.settled(held.id);
+});
+
+test("each section's measures are its cached window's features, null until its player renders it", async () => {
+  const { server, ok, vibe, sketch } = await setup();
+  const { track } = await ok("POST", `/api/vibes/${vibe.id}/tracks`, { name: "t" });
+  const candidate = /** @type {NonNullable<ReturnType<typeof getCandidate>>} */ (
+    getCandidate(server.store, sketch.candidateId)
+  );
+  const features = { raw: { loudness: -16 }, heard: { centroidMean: 512 } };
+  // The window the section's player renders: cut at the sketch's 60 s end.
+  putRender(server.store, {
+    genomeId: /** @type {number} */ (candidate.genomeId),
+    seed: candidate.seed,
+    offset: 48,
+    duration: 12,
+    target: VIBE.constraints.loudness,
+    producer: PRODUCER,
+    file: "section.mp3",
+    features,
+    checks: {},
+  });
+  const sections = [
+    { sketchId: sketch.id, offset: 48, seconds: 30 },
+    { sketchId: sketch.id, offset: 0, seconds: 30 },
+  ];
+  const path = `/api/tracks/${track.id}/measures`;
+  const query = (/** @type {unknown} */ value) =>
+    `${path}?sections=${encodeURIComponent(JSON.stringify(value))}`;
+  expect(await ok("GET", query(sections))).toEqual({ measures: [features, null] });
+  expect(await ok("GET", query([]))).toEqual({ measures: [] });
+
+  for (const [given, error] of /** @type {[string, string][]} */ ([
+    [path, "sections must be a list of sections, as JSON"],
+    [`${path}?sections=nope`, "sections must be a list of sections, as JSON"],
+    [query([{ sketchId: 999, offset: 0, seconds: 30 }]), "$.sections[0].sketchId"],
+  ])) {
+    const reply = await server.api("GET", given);
+    expect(reply.status, given).toBe(400);
+    expect(reply.json().error).toContain(error);
+  }
+});
+
+test("the material lists each sketch's excerpt with its render, which its positions are read by", async () => {
+  const { server, ok, vibe, sketch } = await setup();
+  const { track } = await ok("POST", `/api/vibes/${vibe.id}/tracks`, { name: "t" });
+  const render = await seedMapRender(server.store, server.paths, {
+    genomeId: /** @type {number} */ (getCandidate(server.store, sketch.candidateId)?.genomeId),
+    target: VIBE.constraints.loudness,
+    heard: {},
+  });
+  const [listed] = (await ok("GET", `/api/tracks/${track.id}`)).sketches;
+  expect(listed.excerpt).toEqual({
+    renderId: render.id,
+    url: `/audio/${render.id}`,
+    offset: render.offset,
+    duration: render.duration,
+  });
 });

@@ -31,7 +31,9 @@
           Play a section to hear its part of the sketch. Save keeps a new version and leaves the
           earlier ones as they were. Render a saved version to play the whole track, hear one
           crossfade on its own, and export it as WAV and FLAC, with a stem for each voice if you
-          want them.
+          want them. Under the timeline, a region attached to the brief can be drawn stretched to
+          the track's length, beside each section you have played; Material places the best
+          candidates of the brief's map and steers a section along one of its directions.
         </p>
         <p id="status" class="status" role="status" aria-live="polite">Loading…</p>
       </div>
@@ -42,6 +44,23 @@
         <div id="timeline" class="timeline"></div>
         <p id="noSections" class="muted small" hidden>No sections yet. Choose a sketch below and add it.</p>
         <ul id="arrangementErrors" class="errors small" hidden></ul>
+        <div class="stack">
+          <div class="row">
+            <label class="field small"
+              >Arc: a region of this brief
+              <select id="arcRegionSelect" title="Chooses which of the regions attached to this brief is drawn under the timeline, stretched to the track's length, as the arc to aim the track at."></select>
+            </label>
+            <button id="arcRegion" class="button outline small" type="button" title="Draws the next region attached to this brief as the arc.">Next region</button>
+            <label class="field small"
+              >Measure drawn
+              <select id="arcFeatureSelect" title="Chooses which measure of the sound the arc draws, for the region's windows and for each section."></select>
+            </label>
+            <button id="arcFeature" class="button outline small" type="button" title="Draws the next measure of the sound in the arc.">Next measure</button>
+          </div>
+          <div id="arc" class="arc" hidden></div>
+          <p id="arcLine" class="small muted"></p>
+          <p class="small muted">Thin marks are the region, read in 25 s windows and stretched to the track's length; thick marks are each section as its player measured it. Higher is more.</p>
+        </div>
         <div class="row">
           <button id="selectPrevious" class="button outline small" type="button" title="Selects the section before the chosen one, which the other buttons and keys act on.">Previous</button>
           <button id="selectNext" class="button outline small" type="button" title="Selects the section after the chosen one, which the other buttons and keys act on.">Next</button>
@@ -118,6 +137,28 @@
           <button id="add" class="button outline" type="button" title="Adds the chosen sketch as a new section after the chosen one, with a crossfade between them.">Add after the chosen section</button>
         </div>
         <p id="noSketches" class="muted small" hidden>This brief has no sketches yet. Keep some from a session's candidates with Keep as sketch.</p>
+      </section>
+
+      <section class="card stack" aria-labelledby="material-heading">
+        <h2 id="material-heading">Material</h2>
+        <p class="small muted">The brief's sketches and where each sits on its directions, the best candidate of each filled cell of the brief's map, and steering a section along a direction.</p>
+        <h3>Sketches</h3>
+        <ul id="materialSketches" class="list small"></ul>
+        <h3>From the map</h3>
+        <p id="eliteLine" class="small muted"></p>
+        <div class="row">
+          <select id="eliteSelect" title="Chooses a filled cell of the brief's map, by where it sits on each axis; its best candidate is the one placed."></select>
+          <button id="placeElite" class="button outline" type="button" title="Keeps the chosen cell's best candidate as a sketch of this brief, if it isn't one yet, and adds it as a new section after the chosen one. Save to keep the section.">Place after the chosen section</button>
+        </div>
+        <p id="eliteAbout" class="small muted"></p>
+        <h3>Steer a section</h3>
+        <div class="row">
+          <select id="directionSelect" title="Chooses which of the brief's directions the chosen section is steered along."></select>
+          <button id="steerFar" class="button outline" type="button" title="Steers the chosen section's sketch toward the direction's far end, after a confirm that says how long it takes; the best result is kept as a sketch and saved in the section's place as a new version.">Steer toward the far end</button>
+          <button id="steerNear" class="button outline" type="button" title="Steers the chosen section's sketch back from the direction's far end, toward its near end, after a confirm that says how long it takes; the best result is kept as a sketch and saved in the section's place as a new version.">Steer back from the far end</button>
+        </div>
+        <p id="steerLine" class="small muted"></p>
+        <div id="steerJobBox" class="stack"></div>
       </section>
 
       <section class="card stack" aria-labelledby="revisions-heading">

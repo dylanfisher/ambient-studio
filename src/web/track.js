@@ -9,6 +9,7 @@
 /** @import { ArrangementSketch } from "../domain/validate-arrangement.js" */
 /** @import { TimelineAction } from "./timeline-keys.js" */
 /** @import { TrackCost } from "../domain/track-cost.js" */
+/** @import { BlockSketch } from "./timeline-layout.js" */
 /** @import { Curve } from "../engine/trajectory.js" */
 import { arrangementLength } from "../domain/arrangement-length.js";
 import {
@@ -26,6 +27,7 @@ import { clockTime, mountPlayer, playAudio } from "./excerpt-player.js";
 import { formatTime } from "./format-time.js";
 import { jobControl } from "./job-control.js";
 import { keyButtons } from "./key-buttons.js";
+import { materialCard } from "./material-card.js";
 import { NOT_STARTED } from "./owner-job.js";
 import { unloadGuard } from "./quick-ab-session.js";
 import { runJob } from "./run-job.js";
@@ -129,7 +131,7 @@ const trackId = Number(idText);
  * @property {{ id: number, name: string }} vibe
  * @property {{ id: number, arrangement: Arrangement, note: string, length: number, createdAt: number }[]} revisions
  *   oldest first
- * @property {{ id: number, candidateId: number, intent: string | null, notes: string, tags: string[], duration: number, genome: unknown }[]} sketches
+ * @property {{ id: number, candidateId: number, intent: string | null, notes: string, tags: string[], duration: number, genome: unknown, excerpt: { renderId: number, url: string, offset: number, duration: number } | null }[]} sketches
  */
 
 /** @type {TrackView | null} */
@@ -260,6 +262,7 @@ function draw() {
     },
   );
   page.noSections.hidden = sections.length > 0;
+  material.draw(errors.length === 0);
 
   page.sectionBox.hidden = selected === null;
   page.timeline.append(playhead);
@@ -458,6 +461,7 @@ async function playSection() {
     }
     const { url, duration } = finished.result;
     windowAudio.set(key, url);
+    material.remeasure();
     play(url);
     if (duration < section.seconds) {
       status.say(
@@ -739,8 +743,21 @@ async function load() {
   page.briefLink.textContent = read.vibe.name;
   page.pageTitle.textContent = read.track.name;
   document.title = `${read.track.name}, ${read.vibe.name} · Ambient Studio`;
+  listSketches(read.sketches);
+  openRevision(read.revisions.length - 1);
+  showRevisions();
+  draw();
+  await readRender();
+}
+
+/**
+ * Lists the brief's sketches to add.
+ * @param {readonly BlockSketch[]} sketches
+ */
+function listSketches(sketches) {
+  const chosen = page.sketchSelect.value;
   page.sketchSelect.replaceChildren(
-    ...read.sketches.map(
+    ...sketches.map(
       (sketch) =>
         new Option(
           `Sketch ${sketch.id}${sketch.intent ? `: ${sketch.intent}` : ""}, ${clockTime(sketch.duration)}`,
@@ -748,13 +765,34 @@ async function load() {
         ),
     ),
   );
-  page.noSketches.hidden = read.sketches.length > 0;
-  buttons.add.disabled = read.sketches.length === 0;
-  openRevision(read.revisions.length - 1);
-  showRevisions();
-  draw();
-  await readRender();
+  if (sketches.some(({ id }) => String(id) === chosen)) page.sketchSelect.value = chosen;
+  page.noSketches.hidden = sketches.length > 0;
+  buttons.add.disabled = sketches.length === 0;
 }
+
+// The material panel and the arc (decision 0066) keep to their own module and keys.
+const material = materialCard({
+  status,
+  trackId,
+  view: () => view,
+  draft: () => draft,
+  selected: () => selected,
+  unsaved,
+  place: ({ arrangement, index }) => edit(arrangement, index),
+  readSketches: async () => {
+    /** @type {TrackView} */
+    const read = await getJson(trackPath(trackId));
+    if (view === null) throw new Error("the sketches were read again before the track");
+    view = { ...view, sketches: read.sketches };
+    listSketches(read.sketches);
+    return read.sketches;
+  },
+  save: async (arrangement, note) => {
+    draft = arrangement;
+    page.noteInput.value = note;
+    await save();
+  },
+});
 
 /** Lists the revisions, newest first, each with Open. */
 function showRevisions() {
@@ -799,4 +837,5 @@ status.run(async () => {
       ? "This brief has no sketches to place yet."
       : "Choose a sketch and add it, or choose a section to change it.",
   );
+  await material.load();
 });
