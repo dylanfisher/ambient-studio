@@ -31,8 +31,10 @@ async function wordVectors(embedder) {
 
 /**
  * The vibe's live reference attachments, oldest first. Throws, naming the region, when one has
- * no analysis at the current revision's loudness under this server's producer: the prompt would
- * otherwise go without measurements the owner attached.
+ * no analysis at the current revision's loudness under this server's producer, or, with an
+ * embedder, no embedding under its producer: the prompt would otherwise go without measurements
+ * or words the owner attached. With no embedder (no checkpoint), the regions go without words,
+ * as excerpts go unembedded.
  * @param {Store} store
  * @param {number} vibeId
  * @param {TextEmbedder | null} embedder null when the sidecar has no checkpoint; the regions
@@ -50,26 +52,31 @@ export async function promptReferences(store, vibeId, embedder) {
   for (const { id, regionId } of attachments) {
     const region = getRegion(store, /** @type {number} */ (regionId));
     if (!region) throw new Error(`attachment ${id} names region ${regionId}, which has no row`);
+    const named = `region ${region.id} (${JSON.stringify(region.label)}), attached to this brief,`;
     const analysis = findRegionAnalysis(store, { regionId: region.id, target, producer: PRODUCER });
     if (!analysis) {
       throw new Error(
-        `region ${region.id} (${JSON.stringify(region.label)}), attached to this brief, isn't analyzed at its loudness, ${target} LUFS; analyze it again from the brief page, or detach it`,
+        `${named} isn't analyzed at its loudness, ${target} LUFS; press Measure on the brief page, or detach it`,
       );
     }
-    const embedded =
+    const embedding = analysis.embedding;
+    if (
       embedder !== null &&
-      analysis.embedding !== null &&
-      analysis.embeddingProducer === embedder.producer;
-    if (embedded) words ??= await wordVectors(embedder);
+      (embedding === null || analysis.embeddingProducer !== embedder.producer)
+    ) {
+      const was = analysis.embeddingProducer ?? "no checkpoint";
+      throw new Error(
+        `${named} has its sound analyzed under ${was}, not the sidecar's ${embedder.producer}; press Measure on the brief page, or detach it`,
+      );
+    }
+    if (embedder !== null) words ??= await wordVectors(embedder);
     references.push({
       id,
       label: region.label,
       note: region.note,
       windows: analysis.windows.map((window) => window.features),
       words:
-        embedded && words !== null
-          ? nearestWords(vectorFloats(/** @type {Uint8Array} */ (analysis.embedding)), words)
-          : [],
+        words !== null && embedding !== null ? nearestWords(vectorFloats(embedding), words) : [],
     });
   }
   return references;

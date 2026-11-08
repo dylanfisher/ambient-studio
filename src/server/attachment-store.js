@@ -3,6 +3,7 @@
 // is changed or removed is detached from every vibe in the same transaction, so a live
 // attachment always names a live region.
 /** @import { Removable, Store } from "./store.js" */
+import { ATTACHMENT_KIND } from "../domain/attachment-kind.js";
 import { insertRow, markRemoved, selectRow, selectRows, TABLE } from "./store.js";
 
 /**
@@ -18,6 +19,16 @@ import { insertRow, markRemoved, selectRow, selectRows, TABLE } from "./store.js
 
 const ATTACHMENTS = { json: ["details"] };
 
+/**
+ * What each kind's `details` may hold: a check returning the problem, or null when they are
+ * right. 5g and 5h add their kinds' checks here.
+ * @type {Readonly<Record<string, (details: Record<string, unknown>) => string | null>>}
+ */
+const DETAILS_CHECKS = Object.freeze({
+  [ATTACHMENT_KIND.reference]: (details) =>
+    Object.keys(details).length === 0 ? null : "a reference takes no details, {}",
+});
+
 /** Why an attachment was marked removed. */
 export const DETACHED = Object.freeze({
   /** the owner detached it */
@@ -31,12 +42,20 @@ export const DETACHED = Object.freeze({
 });
 
 /**
+ * Stores an attachment. Throws on a kind with no details check, and on details its check
+ * refuses.
  * @param {Store} store
  * @param {AttachmentDraft} draft
  * @returns {Attachment}
  */
-export const addAttachment = (store, draft) =>
-  insertRow(store, TABLE.vibeAttachments, ATTACHMENTS, { ...draft });
+export function addAttachment(store, draft) {
+  const check = DETAILS_CHECKS[draft.kind];
+  if (!check) throw new Error(`there is no attachment kind ${JSON.stringify(draft.kind)}`);
+  const problem = check(draft.details);
+  if (problem !== null)
+    throw new Error(`the ${draft.kind} attachment's details are wrong: ${problem}`);
+  return insertRow(store, TABLE.vibeAttachments, ATTACHMENTS, { ...draft });
+}
 
 /**
  * The row with `id`, removed or not.

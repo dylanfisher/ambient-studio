@@ -36,7 +36,11 @@ import { modelFile, modelPlan } from "../../src/server/preference-model.js";
 import { PRODUCER } from "../../src/server/producer.js";
 import { addFeedback, addRatedAudio } from "../../src/server/rating-store.js";
 import { addReferenceFile, addRegion } from "../../src/server/reference-store.js";
-import { putRegionFeatures } from "../../src/server/region-analysis-store.js";
+import {
+  findRegionAnalysis,
+  putRegionEmbedding,
+  putRegionFeatures,
+} from "../../src/server/region-analysis-store.js";
 import { getRender } from "../../src/server/render-store.js";
 import { RETRIEVAL_METHOD } from "../../src/server/retrieve-examples.js";
 import { readRanking } from "../../src/server/session-ranking.js";
@@ -877,4 +881,26 @@ test("a vibe with nothing attached logs no attachments", async () => {
   const [candidate] = listSessionCandidates(app.store, session.id);
   const generation = getGeneration(app.store, /** @type {number} */ (candidate?.generationId));
   expect(generation?.attachmentIds).toEqual([]);
+});
+
+test("a sidecar failure while embedding the vocabulary fails the job before asking omlx", async () => {
+  const { app, omlx, sidecar, vibe, run } = await sessionApp();
+  setCheckpointCache(app);
+  const { region } = attachRegion(app, vibe.id, VIBE.constraints.loudness);
+  const analysis = /** @type {any} */ (
+    findRegionAnalysis(app.store, { regionId: region.id, target: -16, producer: PRODUCER })
+  );
+  putRegionEmbedding(app.store, analysis.id, {
+    embeddingProducer: EMBEDDER.producer,
+    embedding: new Uint8Array(new Float32Array([1, 0]).buffer),
+  });
+  omlx.script(answer(GENOMES[0]));
+  sidecar.script(
+    { do: "answer", result: { ...EMBEDDER, ready: true } },
+    { do: "crash", stderr: "MemoryError\n", code: 3 },
+  );
+  await expect(run(1)).rejects.toThrow(
+    /^embedding the word "dark" failed: sidecar request embed_text failed: the sidecar exited with code 3: MemoryError$/,
+  );
+  expect(omlx.requests).toHaveLength(0);
 });

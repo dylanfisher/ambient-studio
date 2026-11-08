@@ -190,3 +190,18 @@ test("migration 0010 over a database built with 0001 to 0009 keeps its rows and 
   });
   expect(later.attachmentIds).toEqual([row.id]);
 });
+
+test("each kind's details are checked: a reference takes none, and an unknown kind is refused", async () => {
+  const made = await tempStore();
+  cleanups.push(made.remove);
+  const { store } = made;
+  const { vibe, regions } = seeded(store);
+  const regionId = regions[0]?.id ?? 0;
+  expect(() =>
+    addAttachment(store, { vibeId: vibe.id, kind: REFERENCE, regionId, details: { weight: 1 } }),
+  ).toThrow("the reference attachment's details are wrong: a reference takes no details, {}");
+  expect(() =>
+    addAttachment(store, { vibeId: vibe.id, kind: "direction", regionId: null, details: {} }),
+  ).toThrow('there is no attachment kind "direction"');
+  expect(listAttachments(store, vibe.id, REFERENCE)).toEqual([]);
+});

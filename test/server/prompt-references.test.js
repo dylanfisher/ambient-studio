@@ -121,13 +121,21 @@ test("reads the label, note and windows, and the five words nearest the sound in
   expect(asked).toEqual([...REFERENCE_WORDS]);
 });
 
-test("with no embedder, or a sound embedded under another checkpoint, the region has no words", async () => {
+test("with no embedder the region has no words; a sound embedded under another checkpoint, or none, stops generation", async () => {
   const made = await tempStore();
   cleanups.push(made.remove);
-  const { vibe } = attachedVibe(made.store, { embeddingProducer: "an older clap" });
+  const { vibe, region } = attachedVibe(made.store, { embeddingProducer: "an older clap" });
   const { embedder, asked } = scriptedEmbedder();
-  expect((await promptReferences(made.store, vibe.id, embedder))[0]?.words).toEqual([]);
   expect((await promptReferences(made.store, vibe.id, null))[0]?.words).toEqual([]);
+  await expect(promptReferences(made.store, vibe.id, embedder)).rejects.toThrow(
+    `region ${region.id} ("dawn hum"), attached to this brief, has its sound analyzed under an older clap, not the sidecar's ${CLAP}; press Measure on the brief page, or detach it`,
+  );
+  const other = await tempStore();
+  cleanups.push(other.remove);
+  const unembedded = attachedVibe(other.store, { embeddingProducer: null });
+  await expect(promptReferences(other.store, unembedded.vibe.id, embedder)).rejects.toThrow(
+    "has its sound analyzed under no checkpoint",
+  );
   expect(asked).toEqual([]);
 });
 
@@ -136,7 +144,7 @@ test("a region with no analysis at the brief's loudness stops generation, naming
   cleanups.push(made.remove);
   const { vibe, region } = attachedVibe(made.store, { target: -16 });
   await expect(promptReferences(made.store, vibe.id, null)).rejects.toThrow(
-    `region ${region.id} ("dawn hum"), attached to this brief, isn't analyzed at its loudness, -14 LUFS; analyze it again from the brief page, or detach it`,
+    `region ${region.id} ("dawn hum"), attached to this brief, isn't analyzed at its loudness, -14 LUFS; press Measure on the brief page, or detach it`,
   );
 });
 

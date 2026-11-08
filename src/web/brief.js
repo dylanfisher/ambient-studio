@@ -439,7 +439,6 @@ async function showAttached(id, regions, names) {
       const text = regionChoiceText(row, row.fileName);
       item.line.textContent = text;
       item.status.textContent = attachedStatus(row, target);
-      item.measure.hidden = row.analyzed;
       // One at a time per row, so a double press measures or detaches once.
       const measure = oneAtATime(() => measureAttached(row.regionId, text));
       const detachThis = oneAtATime(() => detach(row.id, text));
@@ -566,7 +565,8 @@ const attach = oneAtATime(async () => {
  */
 async function measureAttached(regionId, text) {
   const id = savedId();
-  await regionWindows(id, regionId);
+  // The job measures only what is missing or stale, and embeds again under a new checkpoint.
+  await runAnalysis(regionId, id, (step) => status.say(step));
   await showRegions(id);
   status.say(`Measured ${text} at this brief's loudness.`);
 }

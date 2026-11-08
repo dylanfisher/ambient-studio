@@ -67,8 +67,10 @@ Words nearest its sound: low, droning, warm, slow, dark
   numbers read as an excerpt's do. Only the range table's features are given: the two raw levels
   of a mastered recording say nothing a genome can match (0051). A feature no window heard is
   "none measurable".
-- The words line is left out when the region has no embedding under the sidecar's checkpoint, or
-  the sidecar has none.
+- The words line is left out when the sidecar has no checkpoint, as excerpts then go unembedded.
+  With a checkpoint, a region whose sound was analyzed under another one, or under none, stops
+  the job naming the region and saying to press Measure, which reruns 0051's Analyze job: it
+  embeds again under the new checkpoint without measuring again.
 
 **Generation reads it** (`promptReferences`, `src/server/prompt-references.js`). The candidates
 job, which explore reuses, reads the vibe's live reference attachments and each region's
@@ -99,7 +101,7 @@ six examples goes from 4,306 tokens to 4,555 with two typical regions and 5,801 
 longest, under the 8,192.
 
 **The brief page** has a card, "Regions for the model to aim at": each attached region with
-what the model is told, Measure when it isn't measured at the brief's loudness, and Detach; a
+what the model is told, Measure, which runs the Analyze job at the brief's loudness, and Detach; a
 chooser of the regions it can still attach, and Attach, which measures the region first when it
 needs it. The texts are `src/web/attached-regions.js`, with no DOM.
 
