@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { setImmediate as tick } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import { drawer } from "../../src/engine/prng.js";
 
 /**
  * What the fake does with one request. `answer` writes `{ id, result }`; `error` writes
@@ -24,7 +25,10 @@ import { fileURLToPath } from "node:url";
  * request's `out` param as little-endian float32 before the step's answer, as the sidecar
  * writes a vector. `scores` answers a `predict`: it writes to `out` a mean for each item in the
  * request's `items` file, that item's feature at index `feature` (0 for null), and `variance`
- * for each, or the `covariance` given and its diagonal.
+ * for each, or the `covariance` given and its diagonal. `points` answers an `optimizer_ask`: it
+ * writes `{points}` to `out`, either the points given or, for `{seed, spread}`, the request's
+ * `count` points drawn near the run's `spec.json` start by a normal step of that spread, clipped
+ * to [0, 1].
  * @typedef {object} Step
  * @property {"answer" | "error" | "hold" | "hang" | "crash" | "garbage"} do
  * @property {unknown} [result]
@@ -37,6 +41,7 @@ import { fileURLToPath } from "node:url";
  * @property {string} [line]
  * @property {number[]} [floats]
  * @property {{ feature: number, variance: number, covariance?: number[][] }} [scores]
+ * @property {number[][] | { seed: number, spread: number }} [points]
  */
 
 /**
@@ -140,6 +145,27 @@ function scores({ params }, { feature, variance, covariance }) {
 }
 
 /**
+ * An `optimizer_ask` answer's points: as given, or drawn near the run's start.
+ * @param {{ params: { run: string, count: number } }} request
+ * @param {number[][] | { seed: number, spread: number }} given
+ * @returns {number[][]}
+ */
+function points({ params }, given) {
+  if (Array.isArray(given)) return given;
+  /** @type {{ start: number[] }} */
+  const { start } = JSON.parse(readFileSync(join(params.run, "spec.json"), "utf8"));
+  const draw = drawer(given.seed, ":fake-ask");
+  return Array.from({ length: params.count }, (_, p) =>
+    start.map((u, i) => {
+      // Box–Muller, as the nudge steps; `1 - draw` is in (0, 1], so the log is finite.
+      const z =
+        Math.sqrt(-2 * Math.log(1 - draw(p, 2 * i))) * Math.cos(2 * Math.PI * draw(p, 2 * i + 1));
+      return Math.min(1, Math.max(0, u + given.spread * z));
+    }),
+  );
+}
+
+/**
  * The fake's own loop, run by `launch`. The client runs one process at a time, so the step a
  * request takes is the count of requests every process received before it.
  * @param {string} dir
@@ -188,6 +214,8 @@ function serve(dir) {
     if (step.floats) writeFileSync(request.params.out, new Float32Array(step.floats));
     if (step.scores)
       writeFileSync(request.params.out, JSON.stringify(scores(request, step.scores)));
+    if (step.points)
+      writeFileSync(request.params.out, JSON.stringify({ points: points(request, step.points) }));
     const own = step.do === "answer" ? { id, result: step.result } : undefined;
     if (own && !(step.release && step.together)) void write(own, step.split);
     else if (step.do === "error") void write({ id, error: step.error });

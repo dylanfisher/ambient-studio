@@ -6,7 +6,8 @@
   [0021](0021-store-tables-and-append-only.md) (`candidates.sessionId`, migration 0005),
   [0027](0027-session-api-and-ratings.md) (the nudge route, and how a session's candidates are
   found) and [0031](0031-fewer-waits-after-first-evaluation.md) (the nudge's row in the
-  conflict table and its progress step).
+  conflict table and its progress step). Amended by [0053](0053-search-space-ask-tell.md)
+  (the draw's chain and the free-path rule moved out of `nudge`).
 
 ## Context
 
@@ -150,6 +151,14 @@ drawing takes milliseconds and has no step.
   its session through `sessionId` and folded as an unchanged revision.
 - Children of one base share its render seed, so two children can be compared by A/B as
   genomes alone; a child and a different first try cannot.
-- Phase 5's optimizers can take the step and the free-path rule from `nudge.js`.
+- Phase 5's optimizers take the free-path rule from `searchPaths` and the draw's chain from
+  `proposeGenome` (0053), and the step sizes from `nudge.js`.
 - A recording a base names that has since left the recordings folder fails the child's render,
   and with it the job, as for any candidate.
+
+## Amendments
+
+- 2026-11-07: from step 5d ([0053](0053-search-space-ask-tell.md)). The free-path rule (step 2)
+  is `searchPaths` in `src/domain/search-paths.js`, and the chain a draw runs (decode, validate,
+  lock, repeat check, lint) is `proposeGenome` in `src/domain/propose-genome.js`. `nudge` calls
+  both; its draws, seeds and stored rows are unchanged.
