@@ -2,7 +2,8 @@
 
 - **Date:** 2026-11-07
 - **Status:** accepted; provisional: owner to confirm the GP's settings, the budget and the wait
-  after each choice. Amends [0031](0031-fewer-waits-after-first-evaluation.md) (the search by
+  after each choice, and the idle stop. Amends [0025](0025-http-server-and-audio.md) (a
+  same-origin beacon on one route), [0031](0031-fewer-waits-after-first-evaluation.md) (the search by
   ear's conflict rule and progress steps), [0048](0048-quick-ab-player-mp3.md) (a search-by-ear
   mode of the Quick A/B page) and [0053](0053-search-space-ask-tell.md) (a null score, and
   copies of a run)
@@ -72,12 +73,31 @@ dimensions. No taste model is needed. The job:
 2. while the owner listens, copies the run for each answer in turn (loss, win, tie, skip), tells
    the copy that answer, draws the point it asks next and renders it, so whichever answer comes,
    the next excerpt is in the render cache. The real run, told the same answer, asks the same
-   point (the probe against the real sidecar found all five checked pairs ready), and its render
-   is a cache hit. The copies stop between steps, never mid-request: aborting a sidecar request
-   kills the process. A copy's genome is stored as a genome row with no candidate, which nothing
-   lists, so its excerpt can be cached; the copies' folders are removed once the answer is
-   told. The last query renders nothing ahead;
-3. waits for the answer, tells it, and makes a winner the best.
+   point (pytest checks it for each answer), and its render is a cache hit. The copies stop
+   between steps, never mid-request: aborting a sidecar request kills the process. A copy's
+   genome is stored as a genome row with no candidate, which nothing lists, so its excerpt can
+   be cached. Rendering ahead is only a saving: a failure in it (a copy's tell or ask, a
+   render) is logged and ends the rendering ahead for that pair, never the job, and the run then
+   draws and renders the next point itself. The last query renders nothing ahead;
+3. waits for the answer, tells it without waiting for the copies' step in flight, and makes a
+   winner the best. Each pair's copies are removed once their last step ends, and the job ends
+   only after that, a cancel included.
+
+**Leaving the page and walking away.** A run holds the one job runner while it waits, so two
+things end one the owner has left:
+
+- **Closing the page.** On `pagehide` the page sends `navigator.sendBeacon` to `POST
+  …/ear-search/stop` with the string `{}`, which the browser labels `text/plain`. The route
+  takes that body only with an `Origin` naming the server's own host, since a page on another
+  site can send a text body with no preflight; any other is a 403. Every other route still
+  takes JSON only (0025). A reload stops the run too.
+- **No choice for 10 minutes** (`EAR_IDLE_MS`). The pair's wait ends as Stop does: the job
+  finishes as done, the best kept and shown, and the page's done line says why. Ten minutes is
+  well past hearing two 25 s excerpts several times over, and frees the runner soon after a
+  tab is left open. The timer uses the app's clock, which tests move by hand.
+
+A second post of one choice, racing the first, is a 409: the pair stops being asked the moment
+the first is taken.
 
 A rejected point is stored as a rejected candidate, told as a loss and drawn again, never
 rendered or shown; **8** in a row fail the job with the reason (`EAR_REJECTS`), since a base near
@@ -108,6 +128,12 @@ locked voice keep their values in every point the job stored or rendered, the co
 
 ## Alternatives considered
 
+- **A beacon with a JSON Blob** — rejected: some browsers' `sendBeacon` refuses a Blob whose
+  type isn't one a plain form could send. **Stopping on `beforeunload`** — rejected: Safari
+  doesn't fire it reliably on closing a tab; `pagehide` it does.
+- **A shorter idle stop, such as 2 minutes** — rejected: the owner may hear a pair three or
+  four times, or step away for a minute, and a stop throws away the run's place.
+
 - **botorch's `PairwiseGP` with EUBO** — rejected by the owner: it brings `gpytorch`,
   `linear_operator`, `scipy` and `pyro-ppl`.
 - **Rendering the next point after the answer** — rejected: the owner would wait a render, 1.5
@@ -136,7 +162,11 @@ locked voice keep their values in every point the job stored or rendered, the co
 ## Consequences
 
 - While a run waits for the owner, the job runner is busy: another job, in any session, queues
-  until Stop or the budget. The job's step says it is waiting for a choice.
+  until Stop, the budget, the page closing, or 10 minutes with no choice. The job's step says
+  it is waiting for a choice.
+- A tab left open on a pair stops its run after 10 minutes; the owner starts another from the
+  best to go on. A reload of the page stops the run too.
+- A beacon the browser drops (one lost as the machine sleeps) leaves the run to the idle stop.
 - Each choice waits for its capture, about one render of the new point (0048), before the next
   pair shows; the best is captured once. If that wait is too long, the owner can say so.
 - Up to three unused excerpts a pair stay in the render cache, and their genomes as rows.

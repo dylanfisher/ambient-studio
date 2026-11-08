@@ -2,7 +2,8 @@
 
 - **Date:** 2026-11-06
 - **Status:** accepted; amended by [0048](0048-quick-ab-player-mp3.md) (audio is MP3) and
-  [0050](0050-reference-uploads.md) (the upload body, and `sendMp3`)
+  [0050](0050-reference-uploads.md) (the upload body, and `sendMp3`) and
+  [0055](0055-search-by-ear.md) (a same-origin beacon may stop a search by ear)
 
 ## Context
 
@@ -151,3 +152,7 @@ to `allowed-host.js` first.
   without a preflight". The byte-range code moved into `sendMp3` (`send-mp3.js`), which the
   audio route and the reference audio route both call; `wrongType` is the one content-type
   check.
+- 2026-11-07 (5f, [0055](0055-search-by-ear.md)): one route takes a body that isn't JSON:
+  `POST /api/sessions/:id/ear-search/stop` takes the Quick A/B page's closing beacon, a
+  `text/plain` string, only with an `Origin` naming the server's own host, since a page on
+  another site can send a text body without a preflight; any other text body is a 403.
