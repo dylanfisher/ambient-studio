@@ -110,7 +110,11 @@ export async function renderTrack(plan, options) {
     }
     if (wav !== undefined && mp3 !== undefined) {
       const pcm = createReadStream(wav, { start: headerBytes(PCM24) });
-      await writeMp3(mp3, pcm, { channelCount: CHANNELS, sampleRate: SAMPLE_RATE });
+      await writeMp3(mp3, pcm, {
+        channelCount: CHANNELS,
+        sampleRate: SAMPLE_RATE,
+        ...(signal && { signal }),
+      });
     }
     return {
       pcmSha256: hash.digest("hex"),

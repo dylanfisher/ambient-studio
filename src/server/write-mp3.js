@@ -3,6 +3,7 @@
 // and FLAC (0012).
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { rm } from "node:fs/promises";
 import { finished, pipeline } from "node:stream/promises";
 import { PCM24_BYTES } from "./encode-pcm24.js";
 
@@ -34,9 +35,10 @@ const MODES = new Map([
  * @param {string} path
  * @param {Uint8Array | AsyncIterable<Uint8Array>} pcm interleaved 24-bit PCM from `encodePcm24`,
  *   whole or in chunks of whole frames
- * @param {{ channelCount: number, sampleRate: number }} format
+ * @param {{ channelCount: number, sampleRate: number, signal?: AbortSignal }} format `signal`
+ *   kills lame and removes the partial file when it aborts, rejecting with its reason
  */
-export async function writeMp3(path, pcm, { channelCount, sampleRate }) {
+export async function writeMp3(path, pcm, { channelCount, sampleRate, signal: cancel }) {
   const mode = MODES.get(channelCount);
   if (!mode) throw new Error(`an MP3 takes 1 or 2 channels, not ${channelCount}`);
   const bits = String(PCM24_BYTES * 8);
@@ -45,6 +47,7 @@ export async function writeMp3(path, pcm, { channelCount, sampleRate }) {
   const child = spawn(LAME, [...args, "-b", String(MP3_KBPS), "--cbr", "--silent", "-", path], {
     stdio: ["pipe", "ignore", "pipe"],
     timeout: LAME_TIMEOUT_MS,
+    ...(cancel && { signal: cancel }),
   });
   let stderr = "";
   child.stderr.setEncoding("utf8");
@@ -60,6 +63,7 @@ export async function writeMp3(path, pcm, { channelCount, sampleRate }) {
     written = pipeline(pcm, child.stdin);
   }
   const [input, exit] = await Promise.allSettled([written, once(child, "close")]);
+  if (cancel?.aborted) await removeCancelled(path, cancel);
   if (exit.status === "rejected") throw exit.reason;
   const [code, signal] = exit.value;
   // Checked before the input: when lame fails early, writing its stdin fails with EPIPE, and
@@ -68,4 +72,15 @@ export async function writeMp3(path, pcm, { channelCount, sampleRate }) {
     throw new Error(`lame exited with code ${code ?? signal} writing ${path}:\n${stderr}`);
   }
   if (input.status === "rejected") throw input.reason;
+}
+
+/**
+ * Removes what a killed encoder left at `path` and throws the cancel's reason.
+ * @param {string} path
+ * @param {AbortSignal} signal aborted
+ * @returns {Promise<never>}
+ */
+export async function removeCancelled(path, signal) {
+  await rm(path, { force: true });
+  throw signal.reason;
 }

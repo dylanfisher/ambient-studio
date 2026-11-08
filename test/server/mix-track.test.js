@@ -30,7 +30,8 @@ const plan = {
 async function joined(blocks) {
   /** @type {Float32Array[][]} */
   const parts = [];
-  for await (const block of blocks) parts.push(block);
+  // Copied: each block is a view the next one overwrites.
+  for await (const block of blocks) parts.push(block.map((channel) => channel.slice()));
   return [0, 1].map((c) => {
     const length = parts.reduce((sum, block) => sum + (block[c]?.length ?? 0), 0);
     const out = new Float32Array(length);

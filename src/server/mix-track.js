@@ -5,6 +5,7 @@
 // the chunks a span needs, as the seam preview does.
 /** @import { Genome } from "../engine/genome-schema.js" */
 /** @import { Samples } from "../engine/render.js" */
+/** @import { RenderedChunk } from "./render-chunks.js" */
 import { trackFadeGain } from "../domain/track-fades.js";
 import { CHUNK_SECONDS } from "../engine/chunk-windows.js";
 import { crossfadeGains } from "../engine/crossfade.js";
@@ -68,7 +69,9 @@ export const trackFrames = (plan) => trackLayout(plan).frames;
 
 /**
  * The mix from `from` to `to`, as consecutive blocks of every channel; together they hold
- * exactly that span. Throws on a plan whose transitions don't match its sections.
+ * exactly that span. Each block is a view of one buffer the next block overwrites, so a caller
+ * that keeps one copies it before asking for the next. Throws on a plan whose transitions don't
+ * match its sections.
  * @param {TrackPlan} plan
  * @param {MixOptions} [options]
  * @returns {AsyncGenerator<Float32Array[]>}
@@ -94,6 +97,8 @@ export async function* mixTrack(plan, options = {}) {
   let emitted = from;
   /** @type {Float32Array[]} */
   let pending = Array.from({ length: CHANNELS }, () => new Float32Array(0));
+  /** The buffer every yielded block is a view of, grown to the largest. */
+  let blocks = Array.from({ length: CHANNELS }, () => new Float32Array(0));
 
   /**
    * The pending frames before `frontier`, with the track's fades, removed from `pending`.
@@ -101,7 +106,14 @@ export async function* mixTrack(plan, options = {}) {
    */
   function take(frontier) {
     const count = frontier - emitted;
-    const block = pending.map((channel) => channel.slice(0, count));
+    if ((blocks[0]?.length ?? 0) < count) {
+      blocks = blocks.map(() => new Float32Array(count));
+    }
+    const block = blocks.map((buffer, c) => {
+      const view = buffer.subarray(0, count);
+      view.set(/** @type {Float32Array} */ (pending[c]).subarray(0, count));
+      return view;
+    });
     // Only the frames inside a fade change; the gain is 1 between them.
     const faded = [
       [emitted, Math.min(frontier, fadeFrames.fadeIn)],
@@ -158,7 +170,11 @@ export async function* mixTrack(plan, options = {}) {
         },
       },
     );
-    for await (const chunk of rendered) {
+    for (;;) {
+      const step = await rendered.next();
+      if (step.done) break;
+      /** @type {RenderedChunk | null} */
+      let chunk = step.value;
       // The chunk's frames that fall in the span, in section frames.
       const first = Math.max(chunk.frame, from - start);
       const last = Math.min(chunk.frame + chunk.frames, to - start);
@@ -177,6 +193,8 @@ export async function* mixTrack(plan, options = {}) {
         }
       }
       const frontier = Math.min(start + chunk.frame + chunk.frames, next, to);
+      // Dropped before yielding, so the chunk isn't alive while the block is written.
+      chunk = null;
       if (frontier > emitted) yield take(frontier);
     }
     const frontier = Math.min(next, to);

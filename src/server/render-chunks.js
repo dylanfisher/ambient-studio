@@ -36,13 +36,19 @@ export async function* renderChunks(genome, options, chunking = {}) {
     signal?.throwIfAborted();
     starting?.(index + 1, chunks.length);
     const { offset, duration } = chunk;
-    const { channels } = await renderOffline(genome, { ...options, offset, duration });
-    if (channels[0]?.length !== chunk.frames) {
+    /** @type {RenderedChunk | null} */
+    let rendered = {
+      ...chunk,
+      channels: (await renderOffline(genome, { ...options, offset, duration })).channels,
+    };
+    if (rendered.channels[0]?.length !== chunk.frames) {
       throw new Error(
-        `the chunk at ${offset} s rendered ${channels[0]?.length} frames, not ${chunk.frames}`,
+        `the chunk at ${offset} s rendered ${rendered.channels[0]?.length} frames, not ${chunk.frames}`,
       );
     }
-    yield { ...chunk, channels };
+    yield rendered;
+    // Dropped before the next render, so this suspended frame doesn't keep a chunk alive.
+    rendered = null;
   }
 }
 

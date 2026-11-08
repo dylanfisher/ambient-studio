@@ -61,6 +61,8 @@ const TRACK = Object.freeze({
   ceiling: 2 ** 30,
   spread: 0.1,
 });
+/** What a track child's per-chunk memory lines start with, on stderr. */
+const MEMORY_LINE = "memory";
 const TRACK_MODES = Object.freeze({ "track-render": "render", "track-export": "render+export" });
 
 /** @typedef {keyof typeof MODES} Mode */
@@ -173,11 +175,19 @@ function benchTrack(length) {
 async function trackChild(mode, length) {
   const { plan } = benchTrack(length);
   const dir = await mkdtemp(join(tmpdir(), "bench-track-"));
+  // Before each chunk, what the process holds: all of it, the memory outside V8's heap that
+  // V8 knows of, and the part of that in ArrayBuffers, so native memory shows apart from JS's.
+  const sample = () => {
+    const { rss, external, arrayBuffers } = process.memoryUsage();
+    console.error(`${MEMORY_LINE} ${rss} ${external} ${arrayBuffers}`);
+  };
   const start = performance.now();
   try {
     if (mode === "track-render") {
       let frames = 0;
-      for await (const block of mixTrack(plan)) frames += block[0]?.length ?? 0;
+      for await (const block of mixTrack(plan, { progress: sample })) {
+        frames += block[0]?.length ?? 0;
+      }
       if (frames === 0) throw new Error("bench: the track mixed no frames");
     } else {
       const wav = join(dir, "mix.wav");
@@ -186,6 +196,7 @@ async function trackChild(mode, length) {
         tempDir: dir,
         wav,
         mp3: join(dir, "mix.mp3"),
+        progress: sample,
       });
       await writeFlac(wav, join(dir, "mix.flac"));
     }
@@ -206,11 +217,19 @@ function benchTracks() {
     );
     for (const mode of /** @type {TrackMode[]} */ (Object.keys(TRACK_MODES))) {
       console.log(`  ${load()}`);
-      const { seconds, rss: peak } = measure(mode, length, 1);
+      const { seconds, rss: peak, stderr } = measure(mode, length, 1);
       const wall = seconds[0] ?? NaN;
       if (mode === "track-render") rss[length] = peak;
       console.log(
         `  ${TRACK_MODES[mode].padEnd(13)} ${(length / wall).toFixed(1)}x, ${wall.toFixed(1)} s, ${(found.work / wall).toFixed(0)} node-seconds a second; peak RSS ${mib(peak)} (${peak <= TRACK.ceiling ? "under" : "over"} ${mib(TRACK.ceiling)})`,
+      );
+      const samples = stderr
+        .split("\n")
+        .filter((line) => line.startsWith(`${MEMORY_LINE} `))
+        .map((line) => line.split(" ").slice(1).map(Number));
+      const most = (/** @type {number} */ at) => Math.max(...samples.map((s) => s[at] ?? 0));
+      console.log(
+        `  ${"".padEnd(13)} before each of ${samples.length} chunks, at most: RSS ${mib(most(0))}, external ${mib(most(1))}, of it ArrayBuffers ${mib(most(2))}`,
       );
     }
   }
@@ -229,7 +248,8 @@ function benchTracks() {
  * @param {ChildMode} mode
  * @param {number} duration
  * @param {number} runs
- * @returns {{ seconds: number[]; rss: number }} wall seconds, warm-up first, and peak RSS bytes
+ * @returns {{ seconds: number[]; rss: number; stderr: string }} wall seconds, warm-up first, peak
+ *   RSS bytes, and what the child wrote to stderr
  */
 function measure(mode, duration, runs) {
   const args = ["-l", process.execPath, SELF, "--child", mode, String(duration), String(runs)];
@@ -241,7 +261,11 @@ function measure(mode, duration, runs) {
   if (rss === undefined) {
     throw new Error(`bench: no peak RSS in /usr/bin/time's output:\n${result.stderr}`);
   }
-  return { seconds: JSON.parse(result.stdout.trim().split("\n").at(-1) ?? ""), rss: Number(rss) };
+  return {
+    seconds: JSON.parse(result.stdout.trim().split("\n").at(-1) ?? ""),
+    rss: Number(rss),
+    stderr: result.stderr,
+  };
 }
 
 /** @param {number[]} values */

@@ -21,7 +21,7 @@ import { addSketch } from "../../src/server/rating-store.js";
 import { rerenderTrack } from "../../src/server/render-track.js";
 import { rendererVersions } from "../../src/server/renderer-versions.js";
 import { sha256Hex } from "../../src/server/sha256-hex.js";
-import { exportFolder, trackRenderJob } from "../../src/server/track-render-job.js";
+import { exportFolder, trackExportJob, trackRenderJob } from "../../src/server/track-render-job.js";
 import { listTrackExports, listTrackRevisions } from "../../src/server/track-store.js";
 import { headerBytes, PCM24 } from "../../src/server/wav-writer.js";
 import { removeStudio, startStudio, VIBE } from "../support/studio.js";
@@ -173,6 +173,46 @@ test("a track renders from its route, previews as MP3, exports, and re-renders f
   const refused = await server.api("POST", `${path}/export`, { revisionId: revision.id });
   expect(refused.status).toBe(409);
   expect(refused.json().error).toContain(`${folder} already exists`);
+
+  // A later version that sounds the same shares the cached render, and its export names itself.
+  const same = await ok("POST", `${path}/revisions`, {
+    arrangement: revision.arrangement,
+    note: "same",
+  });
+  const shared = await runJob(studio, `${path}/render`, { revisionId: same.id });
+  expect(shared.result).toMatchObject({ cached: true, url: rendered.result.url });
+  const second = await runJob(studio, `${path}/export`, { revisionId: same.id });
+  expect(second.result.folder).toBe(`track${track.id}-v3-first-light-dawn`);
+  const own = JSON.parse(
+    await readFile(
+      join(server.paths.exports, second.result.folder, `${second.result.folder}.json`),
+      "utf8",
+    ),
+  );
+  expect(own.track).toEqual({ id: track.id, name: track.name, revisionId: same.id });
+  expect(own.pcmSha256).toBe(manifest.pcmSha256);
+  expect(manifest.track.revisionId).toBe(revision.id);
+
+  // A cancel while flac runs removes the export's folder and logs nothing.
+  const third = await ok("POST", `${path}/revisions`, {
+    arrangement: revision.arrangement,
+    note: "third",
+  });
+  const controller = new AbortController();
+  const cancelled = trackExportJob(/** @type {any} */ (server), {
+    trackId: track.id,
+    revisionId: third.id,
+  })({
+    signal: controller.signal,
+    progress: (_done, _total, step) => {
+      if (step) controller.abort(new Error("cancelled"));
+    },
+  });
+  await expect(cancelled).rejects.toThrow("cancelled");
+  expect(existsSync(join(server.paths.exports, `track${track.id}-v4-first-light-dawn`))).toBe(
+    false,
+  );
+  expect(listTrackExports(server.store, third.id)).toEqual([]);
 });
 
 test("an export needs a render first, and a revision must be the track's own", async () => {

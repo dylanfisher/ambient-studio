@@ -1,5 +1,6 @@
 // Playback MP3s through the lame CLI (decision 0048): 320 kbps in every frame, the length that
 // went in, and lame's stderr when it fails.
+import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -84,4 +85,23 @@ test("takes the PCM as chunks, so a whole track is never held, with the same byt
   }
   await writeMp3(streamed, chunks(), { channelCount: 2, sampleRate: SAMPLE_RATE });
   expect(await readFile(streamed)).toEqual(await readFile(whole));
+});
+
+test("a cancel partway kills lame and removes its partial file", async () => {
+  const pcm = encodePcm24(tones(2));
+  const path = join(dir, "cancelled.mp3");
+  const controller = new AbortController();
+  async function* chunks() {
+    yield pcm.subarray(0, 6000);
+    controller.abort(new Error("cancelled"));
+    yield pcm.subarray(6000);
+  }
+  await expect(
+    writeMp3(path, chunks(), {
+      channelCount: 2,
+      sampleRate: SAMPLE_RATE,
+      signal: controller.signal,
+    }),
+  ).rejects.toThrow("cancelled");
+  expect(existsSync(path)).toBe(false);
 });

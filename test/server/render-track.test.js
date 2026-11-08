@@ -57,7 +57,9 @@ test("a track normalizes to its target under its ceiling, and its WAV holds the 
   // The streaming path gives normalize's bits for the whole mix (0060).
   /** @type {Float32Array[][]} */
   const blocks = [];
-  for await (const block of mixTrack(plan, { chunkSeconds: CHUNK })) blocks.push(block);
+  for await (const block of mixTrack(plan, { chunkSeconds: CHUNK })) {
+    blocks.push(block.map((channel) => channel.slice()));
+  }
   const whole = [0, 1].map((c) => {
     const out = new Float32Array(done.frames);
     let at = 0;

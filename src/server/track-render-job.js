@@ -10,7 +10,7 @@
 /** @import { TrackManifest, TrackRecipe } from "./track-manifest.js" */
 import { existsSync } from "node:fs";
 import { link, mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { normalize } from "../domain/normalize.js";
 import { SAMPLE_RATE } from "../engine/render-plan.js";
 import { jobRecordings } from "./candidate-job.js";
@@ -102,6 +102,19 @@ export async function cachedRender(app, trackId, key) {
 }
 
 /**
+ * Removes every entry of a track's cache folder but `keep`: renders and seam previews of other
+ * revisions, which are derived, and temp folders a crash left. One track job runs at a time, so
+ * none of them is in use.
+ * @param {string} trackDir
+ * @param {readonly string[]} keep
+ */
+async function removeOthers(trackDir, keep) {
+  for (const entry of await readdir(trackDir)) {
+    if (!keep.includes(entry)) await rm(join(trackDir, entry), { recursive: true, force: true });
+  }
+}
+
+/**
  * The job that renders a revision, normalizes it and writes its WAV, MP3 preview and manifest
  * to the cache, then removes the track's other cached renders, which are derived and about 0.4 GB
  * each at 20 minutes. A cached render is returned as it is.
@@ -142,11 +155,7 @@ export function trackRenderJob(app, ids) {
       await mkdir(render, { recursive: true });
       for (const file of Object.values(RENDER_FILE))
         await rename(join(temp, file), join(render, file));
-      for (const entry of await readdir(trackDir)) {
-        if (entry !== key && join(trackDir, entry) !== temp) {
-          await rm(join(trackDir, entry), { recursive: true, force: true });
-        }
-      }
+      await removeOthers(trackDir, [key, basename(temp)]);
       job.progress(1, 1, null);
       return { cached: false, key, url, seconds, rate: cost.work / seconds };
     } finally {
@@ -192,7 +201,7 @@ export function seamPreviewJob(app, { trackId, revisionId, transition }) {
     const file = seamFile(transition);
     const span = { from: from / SAMPLE_RATE, to: to / SAMPLE_RATE };
     const url = trackAudioUrl(trackId, key, file);
-    const { render } = folders(app, trackId, key);
+    const { track: trackDir, render } = folders(app, trackId, key);
     if (existsSync(join(render, file))) return { cached: true, url, ...span };
     const { plan } = await recipePlan(recipe, await jobRecordings(app));
     const channels = [0, 1].map(() => new Float32Array(to - from));
@@ -214,8 +223,11 @@ export function seamPreviewJob(app, { trackId, revisionId, transition }) {
       await writeMp3(join(temp, file), encodePcm24(heard.channels), {
         channelCount: heard.channels.length,
         sampleRate: SAMPLE_RATE,
+        signal: job.signal,
       });
       await rename(join(temp, file), join(render, file));
+      // Only the revision being heard keeps a cache folder, rendered or seam-only.
+      await removeOthers(trackDir, [key]);
     } finally {
       await rm(temp, { recursive: true, force: true });
     }
@@ -268,7 +280,7 @@ export function exportPath(app, folder) {
  */
 export function trackExportJob(app, ids) {
   return async (/** @type {JobContext} */ job) => {
-    const { track, version, key } = revisionRecipe(app.store, ids);
+    const { track, version, key, recipe } = revisionRecipe(app.store, ids);
     const cached = await cachedRender(app, ids.trackId, key);
     if (!cached) throw new Error("the version's render is gone from the cache; render it again");
     const folder = exportFolder(track, version);
@@ -287,9 +299,13 @@ export function trackExportJob(app, ids) {
       const files = { wav: `${folder}.wav`, flac: `${folder}.flac` };
       const { render } = folders(app, ids.trackId, key);
       await link(join(render, RENDER_FILE.wav), join(dir, files.wav));
-      await writeFlac(join(dir, files.wav), join(dir, files.flac));
-      const text = `${JSON.stringify({ files, ...cached }, null, 2)}\n`;
+      await writeFlac(join(dir, files.wav), join(dir, files.flac), job.signal);
+      job.signal.throwIfAborted();
+      // The cache is shared by revisions that sound the same, so the track and revision named
+      // are this export's own; the audio and its hash are the cached render's.
+      const text = `${JSON.stringify({ files, ...cached, track: recipe.track }, null, 2)}\n`;
       await writeFile(join(dir, `${folder}.json`), text, { flag: "wx" });
+      job.signal.throwIfAborted();
       addTrackExport(app.store, {
         trackRevisionId: ids.revisionId,
         kind: "mix",
