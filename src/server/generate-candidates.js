@@ -26,7 +26,7 @@ import { buildPrompt } from "../domain/build-prompt.js";
 import { buildRepairPrompt } from "../domain/build-repair-prompt.js";
 import { ANSWER_KEY, extractGenome } from "../domain/extract-genome.js";
 import { lintGenome } from "../domain/lint-genome.js";
-import { lintResult, SCHEMA_RULE } from "../domain/lint-result.js";
+import { ANSWER_RULE, lintResult, SCHEMA_RULE } from "../domain/lint-result.js";
 import { lockRefusal } from "../domain/nudge.js";
 import { OPERATOR } from "../domain/operator.js";
 import { estimateTokens, promptText } from "../domain/prompt-tokens.js";
@@ -69,8 +69,6 @@ export const EXPLORE_OPERATOR = OPERATOR.explore;
 /** The operator and source of a breed's crossover children and their mutations (0058). */
 export const BREED_OPERATOR = OPERATOR.breed;
 export const BREED_SOURCE = "breeding";
-/** The rule a finding takes for an answer-shape error. */
-const ANSWER_RULE = "answer";
 const REPAIR_OVER_BUDGET_RULE = "repairOverBudget";
 const REPAIR_NOT_SENT_RULE = "repairNotSent";
 const UNLISTED_RECORDING = "no recording in the folder has this sha256; use one from the list";
@@ -112,7 +110,22 @@ export function batchOperator(explore, breed) {
  * @param {string | null} [operator] the first tries' operator; null or omitted for a root
  */
 export const requestGroupName = (vibeId, seed, operator = null) =>
-  `vibe-${vibeId}-${operator ?? "stream"}-${seed}`;
+  `${groupPrefix(vibeId, operator)}${seed}`;
+
+/**
+ * What every request group of the vibe and operator starts with, before its seed.
+ * @param {number} vibeId
+ * @param {string | null} operator
+ */
+const groupPrefix = (vibeId, operator) => `vibe-${vibeId}-${operator ?? "stream"}-`;
+
+/**
+ * A SQL `LIKE` pattern for every request group `requestGroupName` names for the vibe and
+ * operator, whatever the seed. Neither a vibe id nor an operator holds `%` or `_`.
+ * @param {number} vibeId
+ * @param {string} operator
+ */
+export const requestGroupPattern = (vibeId, operator) => `${groupPrefix(vibeId, operator)}%`;
 
 /**
  * The request group of the revisions made in one job (decision 0036), named from its first
@@ -274,10 +287,11 @@ export const GENERATION_STEP = Object.freeze({
  */
 
 /**
+ * The sampling and render seed of each of `count` requests, drawn from the stream seed.
  * @param {number} seed
  * @param {number} count
  */
-function samplingStream(seed, count) {
+export function samplingStream(seed, count) {
   const draw = drawer(seed, STREAM_ID);
   return Array.from({ length: count }, (_, i) => {
     const t = TEMPERATURE.min + (TEMPERATURE.max - TEMPERATURE.min) * draw(i, SLOT.temperature);
@@ -439,20 +453,26 @@ export function currentRevision(store, vibeId) {
  */
 
 /**
- * Sends one request and stores it as a generation, with the answer parsed, locked, validated and
- * linted into a verdict. A failure the queue sent at least one attempt for is stored with its
- * error; one it never sent leaves no generation.
- * @param {Batch} batch
+ * What a request sends and stores beside its prompt: the batch's fields every generation row
+ * names. An operator that writes no candidate, as 6h's arrangement (0067), passes these alone.
+ * @typedef {Omit<Batch, "vibeId" | "constraints" | "playable" | "locks" | "onCandidate">} RequestBatch
+ */
+
+/**
+ * Sends one request and stores it as a generation. A failure the queue sent at least one attempt
+ * for is stored with its error; one it never sent leaves no generation.
+ * @param {RequestBatch} batch
  * @param {number} index the candidate's, from 0, for `onStep`
  * @param {ChatMessage[]} prompt
  * @param {Sampling} sampling
  * @param {number | null} repairsId the generation this request repairs; null for a first try
+ * @param {{ name: string, schema: object }} responseFormat sent when the config asks for it
  * @returns {Promise<
- *   | { generation: Generation, verdict: Verdict, failure: null }
- *   | { generation: Generation | null, verdict: null, failure: OmlxRequestError }
+ *   | { generation: Generation, completion: Completion, failure: null }
+ *   | { generation: Generation | null, completion: null, failure: OmlxRequestError }
  * >}
  */
-export async function ask(batch, index, prompt, sampling, repairsId) {
+export async function sendRequest(batch, index, prompt, sampling, repairsId, responseFormat) {
   const { store, queue, config, onStep } = batch;
   const base = {
     vibeRevisionId: batch.vibeRevisionId,
@@ -477,12 +497,12 @@ export async function ask(batch, index, prompt, sampling, repairsId) {
     completion = await queue.request({
       messages: prompt,
       sampling,
-      responseFormat: RESPONSE_FORMAT,
+      responseFormat,
       onRetry: () => onStep?.({ index, kind: GENERATION_STEP.busy }),
     });
   } catch (error) {
     if (!(error instanceof OmlxRequestError)) throw error;
-    if (error.latencyMs === null) return { generation: null, verdict: null, failure: error };
+    if (error.latencyMs === null) return { generation: null, completion: null, failure: error };
     const generation = addGeneration(store, {
       ...base,
       response: "",
@@ -496,7 +516,7 @@ export async function ask(batch, index, prompt, sampling, repairsId) {
       retries: error.retries,
       error: error.message,
     });
-    return { generation, verdict: null, failure: error };
+    return { generation, completion: null, failure: error };
   }
   const generation = addGeneration(store, {
     ...base,
@@ -511,14 +531,35 @@ export async function ask(batch, index, prompt, sampling, repairsId) {
     retries: completion.retries,
     error: null,
   });
+  return { generation, completion, failure: null };
+}
+
+/**
+ * Sends one request through `sendRequest`, with the answer parsed, locked, validated and linted
+ * into a verdict.
+ * @param {Batch} batch
+ * @param {number} index the candidate's, from 0, for `onStep`
+ * @param {ChatMessage[]} prompt
+ * @param {Sampling} sampling
+ * @param {number | null} repairsId the generation this request repairs; null for a first try
+ * @returns {Promise<
+ *   | { generation: Generation, verdict: Verdict, failure: null }
+ *   | { generation: Generation | null, verdict: null, failure: OmlxRequestError }
+ * >}
+ */
+export async function ask(batch, index, prompt, sampling, repairsId) {
+  const sent = await sendRequest(batch, index, prompt, sampling, repairsId, RESPONSE_FORMAT);
+  if (sent.failure !== null) {
+    return { generation: sent.generation, verdict: null, failure: sent.failure };
+  }
   const verdict = judge(
-    completion,
+    sent.completion,
     batch.constraints,
-    config.queue.maxTokens,
+    batch.config.queue.maxTokens,
     batch.playable,
     batch.locks,
   );
-  return { generation, verdict, failure: null };
+  return { generation: sent.generation, verdict, failure: null };
 }
 
 /**

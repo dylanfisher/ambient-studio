@@ -1,6 +1,7 @@
 // Finds the one {intent, genome} answer in a model's response, fenced, bare or wrapped in prose,
 // and says why when there isn't one (decision 0024). The genome is returned as written; the
-// caller validates and lints it.
+// caller validates and lints it. `extractObject` is the scan alone, which 6h's arrangement
+// answer goes through too (0067).
 /** @import { ValidationError } from "../engine/validation-error.js" */
 /** @import { RejectReason } from "./reject-reason.js" */
 import { isObject } from "../engine/is-object.js";
@@ -96,10 +97,16 @@ function shapeErrors(answer) {
 }
 
 /**
- * @param {string} text the response's content, without any reasoning text
- * @returns {Extracted}
+ * The one JSON object a response holds, fenced, bare or wrapped in prose, or why there isn't
+ * one. Every answer the model writes is found this way, a genome's and an arrangement's (0067).
+ * @typedef {{ ok: true, answer: Record<string, unknown> } | { ok: false, reason: RejectReason, message: string }} FoundObject
  */
-export function extractGenome(text) {
+
+/**
+ * @param {string} text the response's content, without any reasoning text
+ * @returns {FoundObject}
+ */
+export function extractObject(text) {
   /** @type {Record<string, unknown>[]} */
   const parsed = [];
   /** Objects inside a top-level list, which is refused rather than unwrapped. */
@@ -137,15 +144,7 @@ export function extractGenome(text) {
       message: `the response holds ${parsed.length + listed} JSON objects; answer with one`,
     };
   }
-  if (answer !== undefined) {
-    return {
-      ok: true,
-      answer,
-      intent: oneLine(answer[ANSWER_KEY.intent]),
-      genome: answer[ANSWER_KEY.genome],
-      errors: shapeErrors(answer),
-    };
-  }
+  if (answer !== undefined) return { ok: true, answer };
   if (listed > 0) {
     return {
       ok: false,
@@ -164,5 +163,22 @@ export function extractGenome(text) {
     ok: false,
     reason: REJECT_REASON.invalidJson,
     message: `the response's JSON doesn't parse: ${failure.message}`,
+  };
+}
+
+/**
+ * @param {string} text the response's content, without any reasoning text
+ * @returns {Extracted}
+ */
+export function extractGenome(text) {
+  const found = extractObject(text);
+  if (!found.ok) return found;
+  const { answer } = found;
+  return {
+    ok: true,
+    answer,
+    intent: oneLine(answer[ANSWER_KEY.intent]),
+    genome: answer[ANSWER_KEY.genome],
+    errors: shapeErrors(answer),
   };
 }

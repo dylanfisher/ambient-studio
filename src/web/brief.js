@@ -1,7 +1,7 @@
 // The brief page (decisions 0028, 0032, 0034, 0051, 0052 and 0058): the name, the description, a
 // rules form built from 2b's table and a ranges form built from 3b's, which a reference region
 // can fill, saved as a new revision; the brief's sessions, notes, attached regions, breeding of
-// two sketches, ratings and revisions. With no `id` in
+// two sketches, proposing a track (0067), ratings and revisions. With no `id` in
 // the query it makes a new brief. A brief is a vibe in the API and the store, and its
 // description is the vibe's `brief` field.
 /** @import { Constraints } from "../domain/constraint-schema.js" */
@@ -9,6 +9,8 @@
 /** @import { ValidationError } from "../engine/validation-error.js" */
 /** @import { ConstraintField } from "./constraint-fields.js" */
 /** @import { TargetField } from "./target-fields.js" */
+
+import { TRACK_LENGTH } from "../domain/arrangement-schema.js";
 import { ATTACHMENT_KIND, MAX_DIRECTIONS } from "../domain/attachment-kind.js";
 import { breedCostText } from "../domain/breed-cost.js";
 import { DEFAULT_BREEDS } from "../domain/breed-settings.js";
@@ -52,10 +54,13 @@ import { directionHelp, directionText } from "./direction-text.js";
 import { elementsById } from "./element-by-id.js";
 import { clockTime } from "./excerpt-player.js";
 import { formatTime } from "./format-time.js";
+import { jobControl } from "./job-control.js";
 import { oneAtATime } from "./one-at-a-time.js";
 import { outcomeText } from "./outcome-text.js";
+import { proposalShareText, proposeCostText } from "./proposal-text.js";
 import { runAnalysis } from "./region-analysis.js";
 import { rangeFill, regionChoiceText } from "./region-ranges.js";
+import { runJob } from "./run-job.js";
 import { statusLine } from "./status-line.js";
 import {
   keptTargets,
@@ -122,7 +127,14 @@ const page = elementsById({
   trackList: HTMLUListElement,
   trackForm: HTMLFormElement,
   trackName: HTMLInputElement,
+  proposeMinutes: HTMLInputElement,
+  proposeArc: HTMLInputElement,
+  proposeRegion: HTMLSelectElement,
+  proposeButton: HTMLButtonElement,
+  proposeShare: HTMLElement,
+  proposeBoxes: HTMLElement,
 });
+const proposeControl = jobControl(page.proposeButton);
 const idText = new URLSearchParams(location.search).get("id");
 const vibeId = idText === null ? null : Number(idText);
 /** The loaded revision's soft targets, whose keys other than the ranges a save keeps. */
@@ -428,6 +440,51 @@ async function makeTrack() {
   location.assign(`./track.html?id=${track.id}`);
 }
 
+/**
+ * Says how the brief's proposals so far came out (decision 0067).
+ * @param {number} id the saved brief's
+ */
+async function showProposalShare(id) {
+  page.proposeShare.textContent = proposalShareText(await getJson(`${VIBES_PATH}/${id}/proposals`));
+}
+
+/** Asks the model to propose a track of the brief, after a confirm, and opens it. */
+async function proposeTrack() {
+  const id = savedId();
+  const name = page.trackName.value.trim();
+  if (name === "") {
+    throw new Error("Name the track first.");
+  }
+  // Propose is a plain button, not a form's submit, so the browser never holds the field to
+  // its min and max; it is checked here, against the length a track may ask for.
+  const minutes = Number(page.proposeMinutes.value);
+  const [least, most] = [TRACK_LENGTH.min / 60, TRACK_LENGTH.max / 60];
+  if (!Number.isInteger(minutes) || minutes < least || minutes > most) {
+    throw new Error(`Give the length as whole minutes, from ${least} to ${most}.`);
+  }
+  const arc = page.proposeArc.value.trim();
+  if (arc === "") {
+    throw new Error("Write the arc first, such as emerge, plateau, dissolve.");
+  }
+  const length = minutes * 60;
+  if (!confirm(proposeCostText(length, await getJson(BREED_ESTIMATE_PATH)))) return;
+  const regionId = page.proposeRegion.value === "" ? null : Number(page.proposeRegion.value);
+  try {
+    const finished = await runJob(status, {
+      path: `${VIBES_PATH}/${id}/proposals`,
+      body: { name, length, arc, regionId },
+      controls: [proposeControl],
+      boxes: page.proposeBoxes,
+      started: "Asking the model to propose the track. Nothing is rendered.",
+    });
+    if (finished === null) return;
+    location.assign(`./track.html?id=${finished.result.trackId}`);
+    return leaving();
+  } finally {
+    await showProposalShare(id);
+  }
+}
+
 /** @param {number} id */
 async function load(id) {
   const [vibe, { revisions }, ratings, { tracks }] = await Promise.all([
@@ -437,6 +494,7 @@ async function load(id) {
     getJson(`${VIBES_PATH}/${id}/tracks`),
   ]);
   showTracks(tracks);
+  await showProposalShare(id);
   const { revision } = vibe;
   page.lineageLink.href = `./lineage.html?id=${id}`;
   page.mapLink.href = `./map.html?id=${id}`;
@@ -545,6 +603,17 @@ async function showAttached(id, regions, names) {
   } = await getJson(`${VIBES_PATH}/${id}/attachments`);
   showDirections(directions);
   showAxes(directions, attached, axes);
+  const following = page.proposeRegion.value;
+  page.proposeRegion.replaceChildren(
+    new Option("None", ""),
+    ...attached.map(
+      (/** @type {any} */ row) =>
+        new Option(regionChoiceText(row, row.fileName), String(row.regionId)),
+    ),
+  );
+  if (attached.some((/** @type {any} */ row) => String(row.regionId) === following)) {
+    page.proposeRegion.value = following;
+  }
   page.attachedList.replaceChildren(
     ...attached.map((/** @type {any} */ row) => {
       const item = cloneTemplate("attached-item", {
@@ -844,6 +913,7 @@ page.attachButton.onclick = () => status.run(attach);
 page.directionButton.onclick = () => status.run(addDirection);
 page.breedButton.onclick = () => status.run(breed);
 page.axesButton.onclick = () => status.run(saveAxes);
+page.proposeButton.onclick = () => status.run(proposeTrack);
 page.trackForm.onsubmit = (event) => {
   event.preventDefault();
   status.run(makeTrack);

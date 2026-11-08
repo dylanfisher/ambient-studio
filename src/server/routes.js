@@ -9,6 +9,7 @@ import { LINEAGE_ROUTES } from "./lineage-routes.js";
 import { LOCK_ROUTES } from "./lock-routes.js";
 import { OPTIMIZER_TEST_ROUTES } from "./optimizer-test-routes.js";
 import { PREFERENCE_ROUTES } from "./preference-routes.js";
+import { PROPOSAL_ROUTES } from "./proposal-routes.js";
 import { RATING_ROUTES } from "./rating-routes.js";
 import { REFERENCE_ROUTES } from "./reference-routes.js";
 import { REGION_ANALYSIS_ROUTES } from "./region-analysis-routes.js";
@@ -36,4 +37,5 @@ export const ROUTES = [
   ...ARCHIVE_ROUTES,
   ...TRACK_ROUTES,
   ...TRACK_RENDER_ROUTES,
+  ...PROPOSAL_ROUTES,
 ];

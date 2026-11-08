@@ -14,6 +14,8 @@ import { listRatedGenomes } from "./rating-store.js";
 export const RETRIEVAL_METHOD = Object.freeze({
   ratingRecency: "rating-recency",
   clapSimilarity: "clap-similarity",
+  /** A prompt that shows no rated genomes, as a proposal's (decision 0067). */
+  none: "none",
 });
 
 /** The most liked, and the most disliked, examples one prompt shows. */

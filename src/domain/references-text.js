@@ -30,7 +30,7 @@ const HEADER =
  * as they are, so the text stays on its one line however a reader splits lines.
  * @param {string} text
  */
-const quoted = (text) =>
+export const quoted = (text) =>
   JSON.stringify(text).replaceAll("\u2028", "\\u2028").replaceAll("\u2029", "\\u2029");
 
 /**
