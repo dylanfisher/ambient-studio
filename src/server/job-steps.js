@@ -39,6 +39,12 @@ export const JOB_STEP = Object.freeze({
   decodingRegion: "Reading the region from the recording",
   /** @param {number} seconds */
   renderingSection: (seconds) => `Rendering the section's ${seconds} s to play`,
+  /** @param {number} n @param {number} of @param {number} chunk @param {number} chunks */
+  renderingTrack: (n, of, chunk, chunks) =>
+    `Rendering section ${n} of ${of}, chunk ${chunk} of ${chunks}`,
+  normalizingTrack: "Bringing the track to its loudness target",
+  encodingTrack: "Writing the track's WAV and its preview",
+  exportingTrack: "Writing the export's WAV, FLAC and manifest",
   /** @param {number} n @param {number} of */
   measuringWindow: (n, of) => `Measuring window ${n} of ${of} of the region`,
   /** @param {number} n @param {number} of */

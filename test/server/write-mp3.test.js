@@ -73,3 +73,15 @@ test("throws with lame's stderr when lame fails", async () => {
     }),
   ).rejects.toThrow(/lame exited with code \d+ writing .*missing\/out\.mp3:\n\S/s);
 });
+
+test("takes the PCM as chunks, so a whole track is never held, with the same bytes", async () => {
+  const pcm = encodePcm24(tones(2));
+  const whole = join(dir, "whole.mp3");
+  const streamed = join(dir, "streamed.mp3");
+  await writeMp3(whole, pcm, { channelCount: 2, sampleRate: SAMPLE_RATE });
+  async function* chunks() {
+    for (let at = 0; at < pcm.length; at += 6000) yield pcm.subarray(at, at + 6000);
+  }
+  await writeMp3(streamed, chunks(), { channelCount: 2, sampleRate: SAMPLE_RATE });
+  expect(await readFile(streamed)).toEqual(await readFile(whole));
+});

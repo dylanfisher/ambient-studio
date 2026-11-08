@@ -3,7 +3,7 @@
 // and FLAC (0012).
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { finished } from "node:stream/promises";
+import { finished, pipeline } from "node:stream/promises";
 import { PCM24_BYTES } from "./encode-pcm24.js";
 
 /** The lame CLI, found on PATH like flac (0012); Homebrew puts it in /opt/homebrew/bin. */
@@ -29,9 +29,11 @@ const MODES = new Map([
 
 /**
  * Encodes 24-bit PCM as a constant-bit-rate MP3. The PCM goes to lame's stdin as raw samples,
- * so no WAV is written first.
+ * so no WAV is written first. Given as chunks, such as a track's WAV read back, it is piped in
+ * as it comes and never held whole.
  * @param {string} path
- * @param {Uint8Array} pcm interleaved 24-bit PCM from `encodePcm24`
+ * @param {Uint8Array | AsyncIterable<Uint8Array>} pcm interleaved 24-bit PCM from `encodePcm24`,
+ *   whole or in chunks of whole frames
  * @param {{ channelCount: number, sampleRate: number }} format
  */
 export async function writeMp3(path, pcm, { channelCount, sampleRate }) {
@@ -49,8 +51,15 @@ export async function writeMp3(path, pcm, { channelCount, sampleRate }) {
   child.stderr.on("data", (chunk) => {
     stderr += chunk;
   });
-  child.stdin.end(pcm);
-  const [input, exit] = await Promise.allSettled([finished(child.stdin), once(child, "close")]);
+  /** @type {Promise<void>} */
+  let written;
+  if (pcm instanceof Uint8Array) {
+    child.stdin.end(pcm);
+    written = finished(child.stdin);
+  } else {
+    written = pipeline(pcm, child.stdin);
+  }
+  const [input, exit] = await Promise.allSettled([written, once(child, "close")]);
   if (exit.status === "rejected") throw exit.reason;
   const [code, signal] = exit.value;
   // Checked before the input: when lame fails early, writing its stdin fails with EPIPE, and
