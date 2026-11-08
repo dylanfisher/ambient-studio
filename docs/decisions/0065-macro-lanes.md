@@ -67,8 +67,8 @@ timeline, its line and points placed by track time and offset, +0.5 at the top
 (`lane-layout.js`), drawn by `lane-panel.js`. A lane and its point are chosen by clicking them.
 The chosen point has fields for its time and offset; a point is dragged across to move it in
 time and up or down for its offset, and the drag makes its one edit when let go. Every action
-has a key and a button showing it (`lane-keys.js`, its own table, none of the timeline's): ↑ and
-↓ choose the lane above or below, J and L the previous or next point, U and O move it 5 s
+has a key and a button showing it (`lane-keys.js`, its own table, sharing no key with the timeline's or the material panel's, 0066; a test checks all three): ↑ and
+↓ choose the lane above or below, H and L the previous or next point, U and O move it 5 s
 earlier or later, Q and W lower or raise its offset by 0.05, Y steps the curve into it, N adds a
 point, D removes it. The edits (`lane-edits.js`) follow `timeline-edits.js`: a typed value is
 kept as typed and the validator's errors say what to fix; a step or a drag stops at the point's

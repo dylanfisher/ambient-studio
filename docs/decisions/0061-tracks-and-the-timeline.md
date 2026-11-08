@@ -149,5 +149,5 @@ where a track is made by name:
 - 2026-11-08: from step 6f ([0065](0065-macro-lanes.md)), provisional: owner to confirm.
   `lanes` holds macro lanes, checked by `checkLanes` with paths such as
   `$.lanes[0].points[2][1]`; stored arrangements hold `[]`, so none needs a migration. A Macro
-  lanes card under the timeline edits them by fields, drags and their own keys (↑ ↓ J L U O Q
+  lanes card under the timeline edits them by fields, drags and their own keys (↑ ↓ H L U O Q
   W Y N D), none of which is a timeline key.

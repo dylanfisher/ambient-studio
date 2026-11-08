@@ -21,7 +21,6 @@ import {
 import { LANE_KEYS } from "../../src/web/lane-keys.js";
 import { dragOffset, laneLayout, laneText, pointText } from "../../src/web/lane-layout.js";
 import { keyLabel } from "../../src/web/quick-ab-keys.js";
-import { TIMELINE_KEYS } from "../../src/web/timeline-keys.js";
 
 const LENGTH = 120;
 const LANED = /** @type {Arrangement} */ (
@@ -151,11 +150,7 @@ describe("lane layout", () => {
   });
 });
 
-test("the lanes' keys are their own: none is one of the timeline's", () => {
-  const timeline = new Set(/** @type {string[]} */ (Object.values(TIMELINE_KEYS)));
-  const lanes = Object.values(LANE_KEYS);
-  expect(lanes.filter((code) => timeline.has(code))).toEqual([]);
-  expect(new Set(lanes).size).toBe(lanes.length);
+test("the lane buttons show the arrows as arrows", () => {
   expect(keyLabel(LANE_KEYS.lanePrevious)).toBe("↑");
   expect(keyLabel(LANE_KEYS.laneNext)).toBe("↓");
 });

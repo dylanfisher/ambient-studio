@@ -8,7 +8,7 @@ import { bindKeyTable } from "./quick-ab-keys.js";
 export const LANE_KEYS = Object.freeze({
   lanePrevious: "ArrowUp",
   laneNext: "ArrowDown",
-  pointPrevious: "KeyJ",
+  pointPrevious: "KeyH",
   pointNext: "KeyL",
   pointEarlier: "KeyU",
   pointLater: "KeyO",
