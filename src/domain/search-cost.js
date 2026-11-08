@@ -83,3 +83,30 @@ export function steerCostText(evaluations, seconds, { measured }) {
     costLine(minutes, seconds, measured)
   );
 }
+
+/**
+ * The map's fill's confirm (decision 0057): its steps, and the control's as many nudges, at the
+ * search's seconds each, and the requests to the language model its explore steps make.
+ * @param {number} steps
+ * @param {number} explores how many of the steps ask the model
+ * @param {StepSeconds} seconds per evaluation
+ * @param {{ measured: boolean, control: boolean }} options as `searchCostText`'s
+ * @returns {string}
+ */
+export function fillCostText(steps, explores, seconds, { measured, control }) {
+  const arms = control ? 2 : 1;
+  const minutes = Math.max(1, Math.round(searchSeconds(arms * steps, seconds) / 60));
+  const then = control
+    ? `, then ${steps} medium nudges from the same starts as a control that isn't shown`
+    : "";
+  const asked =
+    explores === 0
+      ? "Nothing is sent to the language model. "
+      : `${counted(explores, "step")} of them ask the language model for a variation, ${counted(explores, "request")} to it, which wait their turn and add their own time. `;
+  return (
+    `Fill the map with ${counted(steps, "step")}${then}? ` +
+    "Each nudges a candidate beside an empty cell, renders the excerpt and places it on the map. " +
+    asked +
+    costLine(minutes, seconds, measured)
+  );
+}

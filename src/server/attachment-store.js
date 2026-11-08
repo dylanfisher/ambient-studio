@@ -1,19 +1,29 @@
 // What the owner attaches to a vibe beside its revisions (decision 0052): reference regions,
-// directions (0056) and, later, axes, one row each, append-only. Detaching marks the row; a region that
-// is changed or removed is detached from every vibe in the same transaction, so a live
-// attachment always names a live region.
+// directions (0056) and the map's axes (0057), one row each, append-only. Detaching marks the
+// row; a region that is changed or removed is detached from every vibe in the same transaction,
+// so a live attachment always names a live region.
 /** @import { Removable, Store } from "./store.js" */
-import { ATTACHMENT_KIND, DIRECTION_END_CHARS, DIRECTION_ENDS } from "../domain/attachment-kind.js";
+import {
+  ATTACHMENT_KIND,
+  AXIS_DETAILS,
+  AXIS_KEYS,
+  AXIS_SOURCE,
+  DIRECTION_END_CHARS,
+  DIRECTION_ENDS,
+} from "../domain/attachment-kind.js";
 import { NOT_ONE_LINE } from "../domain/explore-direction.js";
+import { TARGET_FEATURES } from "../domain/target-schema.js";
+import { MACROS } from "../engine/genome-schema.js";
 import { insertRow, markRemoved, selectRow, selectRows, TABLE } from "./store.js";
 
 /**
  * @typedef {object} AttachmentDraft
  * @property {number} vibeId
  * @property {string} kind an `ATTACHMENT_KIND` value
- * @property {number | null} regionId the region a reference names; null for a direction
+ * @property {number | null} regionId the region a reference, or an axis on a region, names;
+ *   null otherwise
  * @property {Record<string, unknown>} details what the kind needs besides the region; `{}` for a
- *   reference, `{near, far}` for a direction
+ *   reference, `{near, far}` for a direction, an axis's source, ends and bins (0057)
  */
 
 /** @typedef {AttachmentDraft & Removable & { id: number, createdAt: number }} Attachment */
@@ -36,9 +46,62 @@ function endProblem(end, which) {
   return null;
 }
 
+/** The fewest and most bins one axis may cut its ends into. */
+const AXIS_BIN_RANGE = Object.freeze({ least: 2, most: 16 });
+
+/** @param {unknown} value */
+const positiveId = (value) => Number.isSafeInteger(value) && /** @type {number} */ (value) > 0;
+
+/**
+ * An axis's problem, or null when its details are right (decision 0057): its source, what names
+ * it, `ends` as `[low, high]` with either null for the default, and `bins`. An axis on a region
+ * names the region in the row's `regionId`.
+ * @param {Record<string, unknown>} details
+ * @param {number | null} regionId
+ * @returns {string | null}
+ */
+function axisProblem(details, regionId) {
+  const { source, name, directionId, ends, bins } = details;
+  const extra = typeof source === "string" ? AXIS_KEYS[source] : undefined;
+  if (extra === undefined) return "an axis's source is feature, macro, direction or region";
+  const keys = [AXIS_DETAILS.source, ...extra, AXIS_DETAILS.ends, AXIS_DETAILS.bins];
+  if (Object.keys(details).length !== keys.length || !keys.every((key) => key in details)) {
+    return `an axis on a ${source}'s details are {${keys.join(", ")}}`;
+  }
+  if (source === AXIS_SOURCE.region && regionId === null) return "an axis on a region names it";
+  if (source !== AXIS_SOURCE.region && regionId !== null) {
+    return "an axis names a region only on a region";
+  }
+  if (source === AXIS_SOURCE.feature && !(String(name) in TARGET_FEATURES)) {
+    return `${JSON.stringify(name)} is not a feature a range may name`;
+  }
+  if (source === AXIS_SOURCE.macro && !(String(name) in MACROS)) {
+    return `${JSON.stringify(name)} is not a macro`;
+  }
+  if (source === AXIS_SOURCE.direction && !positiveId(directionId)) {
+    return "an axis on a direction names a direction attachment's id";
+  }
+  if (
+    !Array.isArray(ends) ||
+    ends.length !== 2 ||
+    !ends.every((end) => end === null || Number.isFinite(end))
+  ) {
+    return "its ends are [low, high], each a number or null for the default";
+  }
+  const [low, high] = ends;
+  if (low !== null && high !== null && low >= high) {
+    return "its low end must be under its high end";
+  }
+  const { least, most } = AXIS_BIN_RANGE;
+  if (!Number.isInteger(bins) || Number(bins) < least || Number(bins) > most) {
+    return `its bins are a whole number from ${least} to ${most}`;
+  }
+  return null;
+}
+
 /**
  * What each kind's `details` and region may be: a check returning the problem, or null when
- * they are right. 5h adds the axis's check here.
+ * they are right.
  * @type {Readonly<Record<string, (details: Record<string, unknown>, regionId: number | null) => string | null>>}
  */
 const DETAILS_CHECKS = Object.freeze({
@@ -59,6 +122,7 @@ const DETAILS_CHECKS = Object.freeze({
     if (problem !== null) return problem;
     return near !== null && near.trim() === far.trim() ? "its two ends are the same text" : null;
   },
+  [ATTACHMENT_KIND.axis]: axisProblem,
 });
 
 /** Why an attachment was marked removed. */
@@ -71,6 +135,8 @@ export const DETACHED = Object.freeze({
   regionRemoved: "region removed",
   /** the owner removed the recording its region is on */
   fileRemoved: "recording removed",
+  /** the owner chose the map's axes again, which replaces every live axis (0057) */
+  axesReplaced: "axes replaced",
 });
 
 /**

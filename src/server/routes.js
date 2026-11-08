@@ -1,6 +1,7 @@
 // The app's route table (decision 0025). Each step adds its routes here; `matchRoute` takes
 // the first whose path and method match, so a literal path goes before a `:name` one.
 /** @import { Route } from "./routing.js" */
+import { ARCHIVE_ROUTES } from "./archive-routes.js";
 import { ATTACHMENT_ROUTES } from "./attachment-routes.js";
 import { EMBEDDING_ROUTES } from "./embedding-routes.js";
 import { EVALUATION_ROUTES } from "./evaluation-routes.js";
@@ -28,4 +29,5 @@ export const ROUTES = [
   ...REFERENCE_ROUTES,
   ...REGION_ANALYSIS_ROUTES,
   ...ATTACHMENT_ROUTES,
+  ...ARCHIVE_ROUTES,
 ];

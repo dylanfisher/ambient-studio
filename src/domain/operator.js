@@ -17,4 +17,8 @@ export const OPERATOR = Object.freeze({
   optimizeEar: "optimize-ear",
   /** A point of a steer along a brief's directions or toward its regions (0056). */
   steer: "steer",
+  /** A fill step of the brief's map: a nudge of an elite beside an empty cell (0057). */
+  elite: "elite",
+  /** The fill's control: as many medium nudges from the same starts, never shown (0057). */
+  eliteControl: "elite-control",
 });

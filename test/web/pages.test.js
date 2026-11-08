@@ -17,6 +17,7 @@ const PAGES = [
   "evaluation.html",
   "index.html",
   "lineage.html",
+  "map.html",
   "quick-ab.html",
   "references.html",
   "session.html",
