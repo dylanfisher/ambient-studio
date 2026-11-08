@@ -15,6 +15,7 @@ import { CHUNK_SECONDS } from "../../src/engine/chunk-windows.js";
 import { CROSSFADE_LAW } from "../../src/engine/crossfade.js";
 import { ENGINE_VERSION } from "../../src/engine/engine-version.js";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
+import { LANE_CURVE, LANE_POINTS, LANE_SAMPLE_SECONDS } from "../../src/engine/macro-lane.js";
 import { MORPH_HANDOVER } from "../../src/engine/morph.js";
 import { requireGenome } from "../../src/engine/validate-genome.js";
 import { addCandidate, putGenome } from "../../src/server/generation-store.js";
@@ -263,6 +264,62 @@ test("a morph renders as the outgoing genome moving into the next, and one that 
     [0, 16],
   ]);
   expect(manifest.frames).toBe((16 + 16 + 16 - 8 - 8) * 48000);
+  const temp = await mkdtemp(join(server.paths.trackRenders, "rerender-"));
+  try {
+    expect(await rerenderTrack(manifest, { tempDir: temp })).toEqual({
+      pcmSha256: manifest.pcmSha256,
+    });
+  } finally {
+    await rm(temp, { recursive: true });
+  }
+});
+
+test("macro lanes reach the section genomes and name their rule; a lane with no points changes no key", async () => {
+  const studio = await setup();
+  const { ok, server, track, revision, path } = studio;
+  /** @param {string} key */
+  const manifestOf = async (key) =>
+    JSON.parse(
+      await readFile(
+        join(server.paths.trackRenders, String(track.id), key, "manifest.json"),
+        "utf8",
+      ),
+    );
+  const plain = await runJob(studio, `${path}/render`, { revisionId: revision.id });
+  const before = await manifestOf(plain.result.key);
+  expect(before).not.toHaveProperty("laneRule");
+
+  /** @param {unknown[]} lanes */
+  const save = (lanes) =>
+    ok("POST", `${path}/revisions`, {
+      arrangement: { ...revision.arrangement, lanes },
+      note: "lanes",
+    });
+  const empty = await save([{ macro: "brightness", points: [] }]);
+  const same = await runJob(studio, `${path}/render`, { revisionId: empty.id });
+  expect(same.result).toMatchObject({ cached: true, key: plain.result.key });
+
+  const laned = await save([
+    {
+      macro: "brightness",
+      points: [
+        [0, -0.3],
+        [20, 0.3, "linear"],
+      ],
+    },
+  ]);
+  const moved = await runJob(studio, `${path}/render`, { revisionId: laned.id });
+  expect(moved.result.key).not.toBe(plain.result.key);
+  const manifest = await manifestOf(moved.result.key);
+  expect(manifest.laneRule).toEqual({
+    sampleSeconds: LANE_SAMPLE_SECONDS,
+    points: LANE_POINTS,
+    curve: LANE_CURVE,
+  });
+  // The drone sketches hold brightness at 0.7; the first section starts 0.3 under it.
+  const [time, value] = manifest.sections[0].genome.macros.brightness.points[0];
+  expect(time).toBe(0);
+  expect(value).toBeCloseTo(0.4, 12);
   const temp = await mkdtemp(join(server.paths.trackRenders, "rerender-"));
   try {
     expect(await rerenderTrack(manifest, { tempDir: temp })).toEqual({

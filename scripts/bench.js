@@ -9,8 +9,10 @@
 //   ./scripts/bench --duration S    one case, 300 or 720, which takes under 5 minutes
 //   ./scripts/bench --features      the features case alone, which takes seconds
 //   ./scripts/bench --track         a 20-minute and a 10-minute track of five golden genomes
-//                                   with four crossfades (decision 0062), each rendered alone and
+//                                   with four transitions, the first a morph, and two macro lanes
+//                                   (decisions 0062, 0064, 0065), each rendered alone and
 //                                   rendered and exported, against phase 6's 1 GiB ceiling
+/** @import { Lane } from "../src/domain/lane-schema.js" */
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -30,6 +32,7 @@ import {
 import { trackCost } from "../src/domain/track-cost.js";
 import { trackFades } from "../src/domain/track-fades.js";
 import { cost } from "../src/engine/cost.js";
+import { MACRO } from "../src/engine/macro-table.js";
 import { requireGenome } from "../src/engine/validate-genome.js";
 import { exportRender } from "../src/server/export-render.js";
 import { mixTrack } from "../src/server/mix-track.js";
@@ -135,7 +138,7 @@ async function featuresChild(genome, duration, runs) {
 /**
  * The track case's arrangement and plan: five sections of the golden genomes, each extended to
  * its length as `sectionGenome` does, with equal transitions between them, the first a morph,
- * `length` seconds in all.
+ * and two macro lanes, `length` seconds in all.
  * @param {number} length
  */
 function benchTrack(length) {
@@ -164,6 +167,25 @@ function benchTrack(length) {
           ? { kind: "morph", seconds: transition, curve: MORPH_CURVE }
           : { kind: "crossfade", seconds: transition },
       ),
+    // Acceptance 4's two macro lanes (0065), each moving across every section.
+    lanes: /** @type {Lane[]} */ ([
+      {
+        macro: MACRO.brightness,
+        points: [
+          [0, -0.2],
+          [length / 2, 0.3, "smooth"],
+          [length, -0.1, "linear"],
+        ],
+      },
+      {
+        macro: MACRO.space,
+        points: [
+          [0, 0],
+          [length * 0.75, 0.25, "early"],
+          [length, 0, "late"],
+        ],
+      },
+    ]),
   };
   const morph = sectionMorph(arrangement, 0, genomes);
   if (!morph?.ok) throw new Error(`the bench's morph falls back: ${morph?.reason}`);

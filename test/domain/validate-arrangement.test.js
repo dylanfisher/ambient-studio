@@ -9,6 +9,7 @@ import {
   TRANSITION_KIND,
   TRANSITION_SECONDS,
 } from "../../src/domain/arrangement-schema.js";
+import { LANE_MOST_POINTS } from "../../src/domain/lane-schema.js";
 import { validateArrangement } from "../../src/domain/validate-arrangement.js";
 
 const VIBE = 1;
@@ -41,6 +42,26 @@ const VALID = Object.freeze({
   proposal: null,
 });
 
+/** A brightness lane: up from no change, then down past the first section. */
+const LANE = Object.freeze({
+  macro: "brightness",
+  points: [
+    [0, 0],
+    [30, 0.25, "smooth"],
+    [100, -0.5, "linear"],
+  ],
+});
+
+/**
+ * A change to a copy of `LANE`, as the arrangement's one lane.
+ * @param {(lane: any) => void} change
+ * @returns {(copy: any) => void}
+ */
+const withLane = (change) => (copy) => {
+  copy.lanes = [structuredClone(LANE)];
+  change(copy.lanes[0]);
+};
+
 /** @param {unknown} value */
 function errorsOf(value) {
   const result = validateArrangement(value, context);
@@ -67,6 +88,11 @@ describe("validateArrangement", () => {
     expect(validateArrangement(emptyArrangement(), context).ok).toBe(true);
     const aimed = { ...VALID, length: 600, arc: "emerge, plateau, dissolve", proposal: 12 };
     expect(validateArrangement(aimed, context).ok).toBe(true);
+  });
+
+  test("macro lanes pass, one per macro, empty or with breakpoints in track seconds", () => {
+    const laned = changed((a) => (a.lanes = [LANE, { macro: "tension", points: [] }]));
+    expect(validateArrangement(laned, context)).toEqual({ ok: true, arrangement: laned });
   });
 
   test("a crossfade's default is 8 s", () => {
@@ -192,7 +218,82 @@ describe("validateArrangement", () => {
       /unknown key/,
     ],
     ["a missing key", (a) => delete a.lanes, "$.lanes", /missing/],
-    ["lanes before 6f", (a) => (a.lanes = [{}]), "$.lanes", /empty/],
+    ["lanes not a list", (a) => (a.lanes = {}), "$.lanes", /must be a list/],
+    ["a lane not an object", (a) => (a.lanes = [3]), "$.lanes[0]", /must be an object/],
+    [
+      "a lane of an unknown macro",
+      (a) => (a.lanes = [{ macro: "loudness", points: [] }]),
+      "$.lanes[0].macro",
+      /"brightness"/,
+    ],
+    [
+      "two lanes of one macro",
+      (a) => (a.lanes = [LANE, structuredClone(LANE)]),
+      "$.lanes[1].macro",
+      /one lane per macro/,
+    ],
+    [
+      "a lane with no points key",
+      (a) => (a.lanes = [{ macro: "density" }]),
+      "$.lanes[0].points",
+      /missing/,
+    ],
+    [
+      "an unknown lane key",
+      (a) => (a.lanes = [{ ...LANE, curve: "smooth" }]),
+      "$.lanes[0].curve",
+      /unknown key/,
+    ],
+    [
+      "a lane over its points",
+      (a) =>
+        (a.lanes = [
+          {
+            macro: "density",
+            points: Array.from({ length: LANE_MOST_POINTS + 1 }, (_, i) =>
+              i === 0 ? [0, 0] : [i, 0, "linear"],
+            ),
+          },
+        ]),
+      "$.lanes[0].points",
+      new RegExp(`at most ${LANE_MOST_POINTS} points`),
+    ],
+    [
+      "an offset past a half",
+      (a) => (a.lanes = [{ macro: "density", points: [[0, 0.6]] }]),
+      "$.lanes[0].points[0][1]",
+      /must be from -0.5 to 0.5/,
+    ],
+    [
+      "lane times that don't rise",
+      withLane((lane) => (lane.points[1][0] = 0)),
+      "$.lanes[0].points[1][0]",
+      /must rise/,
+    ],
+    [
+      "a lane time past the longest track",
+      withLane((lane) => (lane.points[1][0] = MAX_TRACK_SECONDS + 1)),
+      "$.lanes[0].points[1][0]",
+      /from 0 to 1200/,
+    ],
+    [
+      "a curve on a lane's first point",
+      withLane((lane) => (lane.points[0] = [0, 0, "linear"])),
+      "$.lanes[0].points[0][2]",
+      /first point/,
+    ],
+    [
+      "a later lane point with no curve",
+      withLane((lane) => (lane.points[1] = [30, 0.2])),
+      "$.lanes[0].points[1]",
+      /\[seconds, offset, curve\]/,
+    ],
+    [
+      "a lane point with an unknown curve",
+      withLane((lane) => (lane.points[1][2] = "steep")),
+      "$.lanes[0].points[1][2]",
+      /"smooth"/,
+    ],
     ["a length outside 3 to 20 minutes", (a) => (a.length = 100), "$.length", /must be from 180/],
     ["an arc on two lines", (a) => (a.arc = "rise\nfall"), "$.arc", /one line/],
     ["a proposal that isn't an id", (a) => (a.proposal = 0), "$.proposal", /generation id or null/],

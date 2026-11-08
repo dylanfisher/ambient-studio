@@ -3,6 +3,7 @@
 // timeline page's fields. Stored as a track revision's JSON, every key present.
 /** @import { NumberDescriptor } from "../engine/descriptor.js" */
 /** @import { Curve } from "../engine/trajectory.js" */
+/** @import { Lane } from "./lane-schema.js" */
 import { number } from "../engine/descriptor.js";
 import { MAX_DURATION } from "../engine/timeline.js";
 
@@ -117,7 +118,7 @@ export const TRANSITION_KEYS = Object.freeze({
  * @property {string | null} arc the owner's, in words
  * @property {Section[]} sections in the order they play
  * @property {Transition[]} transitions one between each pair of neighbors
- * @property {unknown[]} lanes empty until 6f's macro lanes
+ * @property {Lane[]} lanes at most one per macro (decision 0065)
  * @property {number | null} proposal the generation a proposed arrangement came from (6h)
  */
 

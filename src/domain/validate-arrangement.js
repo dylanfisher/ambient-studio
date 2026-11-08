@@ -22,6 +22,7 @@ import {
   TRANSITION_SECONDS,
 } from "./arrangement-schema.js";
 import { NOT_ONE_LINE } from "./explore-direction.js";
+import { checkLanes } from "./validate-lanes.js";
 
 /**
  * What the validator needs to know of a sketch a section names.
@@ -253,12 +254,7 @@ export function validateArrangement(value, context) {
     (given) => (isRowId(given) ? null : `must be a generation id or null, got ${show(given)}`),
     errors,
   );
-  if (lanes !== undefined && !(Array.isArray(lanes) && lanes.length === 0)) {
-    errors.push({
-      path: `$.${ARRANGEMENT_KEY.lanes}`,
-      message: "must be empty: a track has no macro lanes yet",
-    });
-  }
+  if (lanes !== undefined) checkLanes(lanes, errors);
   if (sections === undefined) return { ok: false, errors };
   if (!Array.isArray(sections)) {
     errors.push({
