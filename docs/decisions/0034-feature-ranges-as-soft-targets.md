@@ -4,7 +4,8 @@
 - **Status:** accepted; provisional: owner to confirm. Amends
   [0024](0024-prompt-parse-repair-generation.md) (the ranges enter the first prompt),
   [0027](0027-session-api-and-ratings.md) (soft targets are checked on every save) and
-  [0030](0030-seed-vibes-and-evaluation.md) (the seed vibes have ranges).
+  [0030](0030-seed-vibes-and-evaluation.md) (the seed vibes have ranges). Amended by
+  [0051](0051-region-analysis-and-ranges.md) (a reference region can fill the ranges form).
 
 ## Context
 
@@ -163,3 +164,12 @@ may still edit a vibe's ranges on the brief page; 3h's report names the ranges e
 - The calibration draws are lint-passing random genomes, not model answers. How often the model's
   first tries miss shows only in 3h's run; if it is far from half, the minimum of 20 revised first
   tries needs a larger count, not new ranges.
+
+## Amendments
+
+- 2026-11-07: from step 5b ([0051](0051-region-analysis-and-ranges.md)). On a saved brief, "Set
+  ranges from a region" fills the ranges form from a reference region's measured windows: the
+  10th to 90th percentile of each feature in the table, widened to `MIN_RANGE_WIDTH` and kept
+  inside the bounds here, never the two raw levels. Beside each filled range the page says what
+  is saved now. Nothing is saved until the owner presses Save, which makes a new revision as any
+  edit does. The seed ranges stay fixed, as above.

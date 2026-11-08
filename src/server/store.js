@@ -49,11 +49,14 @@ export const TABLE = /** @type {const} */ ({
   referenceRegions: "reference_regions",
   renders: "renders",
   embeddings: "embeddings",
+  regionAnalyses: "region_analyses",
 });
 
 /**
- * @typedef {Exclude<(typeof TABLE)[keyof typeof TABLE], typeof TABLE.renders | typeof TABLE.embeddings>}
- *   IrreplaceableTable
+ * @typedef {Exclude<
+ *   (typeof TABLE)[keyof typeof TABLE],
+ *   typeof TABLE.renders | typeof TABLE.embeddings | typeof TABLE.regionAnalyses
+ * >} IrreplaceableTable
  */
 
 const MIGRATIONS_DIR = join(import.meta.dirname, "migrations");
@@ -68,7 +71,12 @@ const MIGRATION_FILE = /^(\d{4})-[a-z0-9-]+\.sql$/;
  * Tables without the append-only triggers: the migration log, and derived tables, which are
  * deleted and rebuilt (AGENTS.md). Every other table must have removedAt and removedReason.
  */
-const NOT_APPEND_ONLY = new Set(["migrations", TABLE.renders, TABLE.embeddings]);
+const NOT_APPEND_ONLY = new Set([
+  "migrations",
+  TABLE.renders,
+  TABLE.embeddings,
+  TABLE.regionAnalyses,
+]);
 const REMOVED_AT = "removedAt";
 const REMOVED_REASON = "removedReason";
 

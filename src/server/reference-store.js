@@ -124,6 +124,13 @@ export const listRegions = (store, referenceFileId) =>
   selectRows(store, TABLE.referenceRegions, PLAIN, { referenceFileId });
 
 /**
+ * Every live region, of every live file, oldest first.
+ * @param {Store} store
+ * @returns {Region[]}
+ */
+export const listAllRegions = (store) => selectRows(store, TABLE.referenceRegions, PLAIN, {});
+
+/**
  * Marks a live region replaced and adds its successor on the same file, in one transaction.
  * Throws when the region doesn't exist or was removed.
  * @param {Store} store
