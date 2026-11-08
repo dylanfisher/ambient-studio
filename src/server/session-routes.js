@@ -1,6 +1,6 @@
 // The session and job routes (decision 0027): a session's state and stop, asking for
 // candidates, nudging (0037), exploring (0038), searching (0054) and steering (0056) from one,
-// re-rendering
+// breeding two sketches (0058) and the breed's estimate, re-rendering
 // missing excerpts, the candidates with their excerpts, revised pairs (0036), places in the
 // ranking (0046) and a search's shown points, hiding and showing them again (0049), and job
 // status and cancel. Stopping a session cancels its jobs, and with them their omlx requests.
@@ -13,6 +13,7 @@
 /** @import { Session } from "./session-store.js" */
 import { applyLocks } from "../domain/apply-locks.js";
 import { ATTACHMENT_KIND, MAX_DIRECTIONS, MAX_REFERENCES } from "../domain/attachment-kind.js";
+import { DEFAULT_BREEDS, PARENT_NAME } from "../domain/breed-settings.js";
 import {
   DEFAULT_EAR_QUERIES,
   EAR_PHASE,
@@ -23,6 +24,7 @@ import {
 import { DEFAULT_EXPLORES, NOT_ONE_LINE } from "../domain/explore-direction.js";
 import { DEFAULT_NUDGES, lockRefusal, STEP_SIZE } from "../domain/nudge.js";
 import { OPERATOR } from "../domain/operator.js";
+import { percentiles } from "../domain/percentiles.js";
 import {
   DEFAULT_SEARCH_BUDGET,
   DEFAULT_STEER_BUDGET,
@@ -35,14 +37,19 @@ import { currentExcerpt } from "./candidate-excerpt.js";
 import { candidateJob, DEFAULT_CANDIDATES, excerptJob, MAX_CANDIDATES } from "./candidate-job.js";
 import { candidatePairs } from "./candidate-pair.js";
 import { createEarChannel, earChannel, earSearchJob, setEarChannel } from "./ear-search-job.js";
-import { currentRevision, EXPLORE_OPERATOR } from "./generate-candidates.js";
-import { getCandidate, getGenome, listSessionCandidates } from "./generation-store.js";
+import { BREED_OPERATOR, currentRevision, EXPLORE_OPERATOR } from "./generate-candidates.js";
+import {
+  getCandidate,
+  getGenome,
+  listSessionCandidates,
+  recentLatencies,
+} from "./generation-store.js";
 import { HIDDEN, hiddenInSession, setHidden } from "./hide-store.js";
 import { CANDIDATE_ID, vibeCandidate } from "./lock-routes.js";
 import { locksInForce } from "./lock-store.js";
 import { NUDGE_OPERATOR, nudgeJob } from "./nudge-job.js";
 import { currentModel } from "./preference-summary.js";
-import { FEEDBACK_KIND, getRating, listSessionFeedback } from "./rating-store.js";
+import { FEEDBACK_KIND, getRating, getSketch, listSessionFeedback } from "./rating-store.js";
 import { fields, idParam, integer, MAX_CHARS, oneOf, rowId, text } from "./request-fields.js";
 import { duplicateJob, HttpError, wrongType } from "./routing.js";
 import { readSearchResults, searchEstimate, searchJob, searchRefusal } from "./search-job.js";
@@ -136,6 +143,10 @@ const SEARCH = OPERATOR.optimize;
 const EAR = OPERATOR.optimizeEar;
 /** A steer is named for the operator its points store. */
 const STEER = OPERATOR.steer;
+/** A breed is named for the operator its children store. */
+const BREED = BREED_OPERATOR;
+/** The requests the model answered that a breed's estimate takes its median from. */
+const RECENT_REQUESTS = 20;
 /** The type a browser labels a beacon's string body with. */
 const BEACON_TYPE = "text/plain";
 const STEP_SIZES = /** @type {(keyof typeof STEP_SIZE)[]} */ (Object.keys(STEP_SIZE));
@@ -186,6 +197,9 @@ const DUPLICATE = Object.freeze({
   /** @param {number} id */
   [STEER]: (id) =>
     `This session is already running this steer (job ${id}). Wait for it to finish, or cancel it.`,
+  /** @param {number} id */
+  [BREED]: (id) =>
+    `This session is already breeding these sketches (job ${id}). Wait for it to finish, or cancel it.`,
   /** @param {number} id */
   [EAR]: (id) =>
     `This session is already searching by ear (job ${id}). Finish or stop it on the Quick A/B page first.`,
@@ -329,6 +343,54 @@ function baseCandidate(app, session, candidateId) {
   const found = vibeCandidate(app.store, session.vibeId, candidateId);
   const refused = lockRefusal(applyLocks(found.genome, locksInForce(app.store, session.vibeId)));
   if (refused !== null) throw new HttpError(409, `candidate ${candidateId} ${refused}`);
+  return found;
+}
+
+/**
+ * The two sketches a breed names, A first: a 400 unless the body gives two different ids.
+ * @param {Record<string, unknown>} given
+ * @returns {[number, number]}
+ */
+function breedSketchIds(given) {
+  const list = given.sketchIds;
+  if (!Array.isArray(list) || list.length !== 2 || list[0] === list[1]) {
+    throw new HttpError(
+      400,
+      `sketchIds must be a list of two different sketch ids, got ${JSON.stringify(list)}`,
+    );
+  }
+  const [a, b] = list.map((value, i) => rowId({ [`sketchIds[${i}]`]: value }, `sketchIds[${i}]`));
+  return [/** @type {number} */ (a), /** @type {number} */ (b)];
+}
+
+/**
+ * The sketch a breed names, or a 400 when there is none or it was removed.
+ * @param {App} app
+ * @param {number} sketchId
+ */
+function liveSketch(app, sketchId) {
+  const sketch = getSketch(app.store, sketchId);
+  if (!sketch) throw new HttpError(400, `there is no sketch ${sketchId}`);
+  if (sketch.removedAt !== null) {
+    throw new HttpError(400, `sketch ${sketchId} was removed (${sketch.removedReason})`);
+  }
+  return sketch;
+}
+
+/**
+ * A breed's parent: the candidate a sketch keeps, checked as a nudge's base is, and to take the
+ * vibe's locks, a 409 otherwise (decision 0058).
+ * @param {App} app
+ * @param {Session} session
+ * @param {{ candidateId: number }} sketch
+ * @param {string} name from `PARENT_NAME`
+ */
+function sketchParent(app, session, sketch, name) {
+  const found = vibeCandidate(app.store, session.vibeId, sketch.candidateId);
+  const refused = lockRefusal(applyLocks(found.genome, locksInForce(app.store, session.vibeId)));
+  if (refused !== null) {
+    throw new HttpError(409, `${name}, candidate ${found.candidate.id}, ${refused}`);
+  }
   return found;
 }
 
@@ -568,6 +630,51 @@ export const SESSION_ROUTES = [
       });
       // A direction may hold spaces, so the action is written as JSON.
       return addSessionJob(app, session, EXPLORE, run, JSON.stringify([candidateId, line, count]));
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/sessions/:sessionId/breeds",
+    handle: async ({ app, params, body }) => {
+      const session = requireOpenSession(app, params);
+      const given = fields(await body(), ["sketchIds", "count"]);
+      const sketchIds = breedSketchIds(given);
+      const count =
+        given.count === undefined
+          ? DEFAULT_BREEDS
+          : integer(given, "count", { min: 1, max: MAX_CANDIDATES });
+      const [a, b] = [liveSketch(app, sketchIds[0]), liveSketch(app, sketchIds[1])];
+      if (a.candidateId === b.candidateId) {
+        throw new HttpError(
+          400,
+          `sketches ${a.id} and ${b.id} keep the same candidate, ${a.candidateId}; choose sketches of two different candidates`,
+        );
+      }
+      const parentA = sketchParent(app, session, a, PARENT_NAME.a);
+      const parentB = sketchParent(app, session, b, PARENT_NAME.b);
+      const run = candidateJob(app, {
+        vibeId: session.vibeId,
+        sessionId: session.id,
+        count,
+        breed: {
+          a: { base: parentA.candidate, genome: parentA.genome, direction: null },
+          b: { base: parentB.candidate, genome: parentB.genome, direction: null },
+          sketchIds,
+        },
+      });
+      // A and B play different parts in the prompt, so the order is part of the action.
+      return addSessionJob(app, session, BREED, run, JSON.stringify([...sketchIds, count]));
+    },
+  },
+  {
+    method: "GET",
+    path: "/api/breed-estimate",
+    handle: ({ app }) => {
+      const latencies = recentLatencies(app.store, RECENT_REQUESTS);
+      return {
+        seconds: latencies.length === 0 ? null : percentiles(latencies).p50 / 1000,
+        timed: latencies.length,
+      };
     },
   },
   {

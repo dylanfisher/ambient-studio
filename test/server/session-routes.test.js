@@ -8,8 +8,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { checkRatedAudio } from "../../src/server/check-rated-audio.js";
-import { addCandidate, putGenome } from "../../src/server/generation-store.js";
+import { addCandidate, addGeneration, putGenome } from "../../src/server/generation-store.js";
 import { listHides } from "../../src/server/hide-store.js";
+import { addSketch } from "../../src/server/rating-store.js";
 import { getRender } from "../../src/server/render-store.js";
 import { sha256Hex } from "../../src/server/sha256-hex.js";
 import { markRemoved, TABLE } from "../../src/server/store.js";
@@ -690,4 +691,166 @@ test("hiding either member of a revised pair hides both, and showing either show
     hidden: [],
   });
   expect(listHides(server.store, revision.id).map((row) => row.hidden)).toEqual([true, false]);
+});
+
+// Breeding (decision 0058).
+
+/**
+ * Two sketches of the vibe's candidates, their candidates seeded with the two genomes.
+ * @param {Studio} studio
+ * @param {any} vibe
+ */
+function seedSketches(studio, vibe) {
+  const a = seedCandidate(studio, vibe, GENOMES[0]);
+  const b = seedCandidate(studio, vibe, GENOMES[1]);
+  const sketchA = addSketch(studio.server.store, { candidateId: a.id, notes: "", tags: [] });
+  const sketchB = addSketch(studio.server.store, { candidateId: b.id, notes: "", tags: [] });
+  return { a, b, sketchIds: [sketchA.id, sketchB.id] };
+}
+
+test("a breed through its route asks for each child from both sketches' candidates and lists it under both", async () => {
+  const studio = await setup();
+  const { server, omlx, ok, openSession, drive } = studio;
+  const { vibe, session } = await openSession();
+  const { a, b, sketchIds } = seedSketches(studio, vibe);
+  // Only the request and the row matter here, so the child gives no genome and renders nothing.
+  omlx.script({ tokens: ["no genome here"] });
+
+  const job = await ok("POST", `/api/sessions/${session.id}/breeds`, { sketchIds, count: 1 });
+  expect(job).toMatchObject({ kind: "breed" });
+  await drive(server.jobs.settled(job.id));
+  const done = await ok("GET", `/api/jobs/${job.id}`);
+  expect(done).toMatchObject({ state: "done", error: null, progress: { done: 1, total: 1 } });
+
+  expect(omlx.requests).toHaveLength(1);
+  const text = omlx.requests[0]?.body.messages[1].content;
+  expect(text).toContain("Parent A:\n");
+  expect(text).toContain("Parent B:\n");
+  const { candidates } = await ok("GET", `/api/sessions/${session.id}/candidates`);
+  expect(candidates.map((/** @type {any} */ c) => c.id)).toEqual(done.result.candidateIds);
+  expect(candidates[0]).toMatchObject({
+    rejectReason: "noJson",
+    operator: "breed",
+    parentIds: [a.id, b.id],
+    operatorParams: { stage: "crossover", sketchIds, parentsTrimmed: [] },
+  });
+});
+
+test("a second identical breed while one is unfinished is a 409, and other sketches or a count queue", async () => {
+  const studio = await setup();
+  const { server, omlx, ok, openSession } = studio;
+  const { vibe, session } = await openSession();
+  const { sketchIds } = seedSketches(studio, vibe);
+  const third = seedCandidate(studio, vibe, GENOMES[0]);
+  const other = addSketch(server.store, { candidateId: third.id, notes: "", tags: [] });
+  // A held request in another session keeps every breed queued.
+  const blocker = await openSession();
+  omlx.script({ tokens: ["{"], holdAfter: 0 });
+  await ok("POST", `/api/sessions/${blocker.session.id}/candidates`, { count: 1 });
+
+  const path = `/api/sessions/${session.id}/breeds`;
+  const body = { sketchIds, count: 2 };
+  const { id, refused } = oneAccepted(await postTwice(studio, path, body));
+  expect(refused).toEqual({
+    error: `This session is already breeding these sketches (job ${id}). Wait for it to finish, or cancel it.`,
+    jobId: id,
+  });
+  for (const queued of [
+    { ...body, count: 3 },
+    { ...body, sketchIds: [...sketchIds].reverse() },
+    { ...body, sketchIds: [sketchIds[0], other.id] },
+  ]) {
+    expect((await server.api("POST", path, queued)).status).toBe(200);
+  }
+  expect(server.jobs.list().filter((job) => job.kind === "breed")).toHaveLength(4);
+  for (const job of server.jobs.list()) server.jobs.cancel(job.id);
+  await server.jobs.idle();
+});
+
+test("a malformed breed, or one naming a sketch it can't take, is refused naming the problem", async () => {
+  const studio = await setup();
+  const { server, ok, openSession } = studio;
+  const { vibe, session } = await openSession();
+  const { a, sketchIds } = seedSketches(studio, vibe);
+  const [one, two] = /** @type {[number, number]} */ (sketchIds);
+  const removed = addSketch(server.store, { candidateId: a.id, notes: "", tags: [] });
+  markRemoved(server.store, TABLE.sketches, removed.id, "test");
+  const twin = addSketch(server.store, { candidateId: a.id, notes: "again", tags: [] });
+  const elsewhere = await openSession();
+  const foreign = seedCandidate(studio, elsewhere.vibe, GENOMES[0]);
+  const foreignSketch = addSketch(server.store, { candidateId: foreign.id, notes: "", tags: [] });
+  const path = `/api/sessions/${session.id}/breeds`;
+  /** @type {[unknown, number, RegExp][]} */
+  const cases = [
+    [[], 400, /^the body must be a JSON object/],
+    [{ sketchIds, direction: "x" }, 400, /^unknown fields direction/],
+    [{}, 400, /^sketchIds must be a list of two different sketch ids/],
+    [{ sketchIds: [one] }, 400, /^sketchIds must be a list of two different sketch ids/],
+    [{ sketchIds: [one, one] }, 400, /^sketchIds must be a list of two different sketch ids/],
+    [{ sketchIds: [one, "2"] }, 400, /^sketchIds\[1\] must be an integer/],
+    [{ sketchIds: [one, 999] }, 400, /^there is no sketch 999$/],
+    [
+      { sketchIds: [one, removed.id] },
+      400,
+      new RegExp(`^sketch ${removed.id} was removed \\(test\\)`),
+    ],
+    [{ sketchIds: [one, twin.id] }, 400, /keep the same candidate/],
+    [{ sketchIds: [one, foreignSketch.id] }, 400, /is not a candidate of vibe/],
+    [{ sketchIds, count: 0 }, 400, /^count must be an integer from 1 to 32, got 0/],
+  ];
+  for (const [body, status, message] of cases) {
+    const reply = await server.api("POST", path, body);
+    expect(reply.status, JSON.stringify(body)).toBe(status);
+    expect(reply.json().error, JSON.stringify(body)).toMatch(message);
+  }
+  expect((await server.api("POST", "/api/sessions/999/breeds", { sketchIds })).status).toBe(404);
+
+  // A parent that can't take the vibe's locks is a 409: the drone has no pad voice.
+  await ok("POST", `/api/vibes/${vibe.id}/locks`, {
+    candidateId: seedCandidate(studio, vibe, SEED_GENOMES["cold-dorian"]).id,
+    path: "voices.pad.level",
+  });
+  const locked = await server.api("POST", path, { sketchIds: [two, one] });
+  expect(locked.status).toBe(409);
+  expect(locked.json().error).toMatch(
+    /^parent A, candidate \d+, can't take the vibe's locks: .*voices\.pad\.level/,
+  );
+  expect(server.jobs.list()).toEqual([]);
+});
+
+test("the breed estimate is the median time of the last requests the model answered", async () => {
+  const studio = await setup();
+  const { server, ok, openSession } = studio;
+  const { vibe } = await openSession();
+  expect(await ok("GET", "/api/breed-estimate")).toEqual({ seconds: null, timed: 0 });
+  /** @param {number} latencyMs @param {string | null} error */
+  const asked = (latencyMs, error) =>
+    addGeneration(server.store, {
+      vibeRevisionId: vibe.revision.id,
+      sessionId: null,
+      requestGroup: "g",
+      prompt: [],
+      exampleIds: [],
+      attachmentIds: [],
+      retrievalMethod: "rating-recency",
+      model: "m",
+      sampling: {},
+      response: "",
+      finishReason: error === null ? "stop" : "error",
+      repairRound: 0,
+      repairsId: null,
+      latencyMs,
+      firstTokenMs: null,
+      promptTokens: null,
+      completionTokens: null,
+      reasoning: null,
+      requestParams: null,
+      retries: null,
+      error,
+    });
+  // The oldest is past the last 20; a failed request isn't a time the model answered in.
+  asked(900_000, null);
+  for (let i = 0; i < 20; i++) asked((i + 1) * 1000, null);
+  asked(5, "timed out");
+  expect(await ok("GET", "/api/breed-estimate")).toEqual({ seconds: 10, timed: 20 });
 });

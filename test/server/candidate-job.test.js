@@ -19,6 +19,7 @@ import { candidatePairs } from "../../src/server/candidate-pair.js";
 import { NO_CHECKPOINT_CACHE } from "../../src/server/embed-audio.js";
 import { findEmbedding, putEmbedding } from "../../src/server/embedding-store.js";
 import {
+  mutationSeed,
   requestGroupName,
   revisedGroupName,
   revisionSeed,
@@ -104,12 +105,13 @@ async function sessionApp(onReport, draft = VIBE) {
   /**
    * @param {number} count
    * @param {Parameters<typeof candidateJob>[1]["explore"]} [explore]
+   * @param {Parameters<typeof candidateJob>[1]["breed"]} [breed]
    */
-  const run = (count, explore) =>
+  const run = (count, explore, breed) =>
     driveGaps(
       clock,
       app.config.queue.minGapMs,
-      candidateJob(app, { vibeId: vibe.id, sessionId: session.id, count, explore })(job),
+      candidateJob(app, { vibeId: vibe.id, sessionId: session.id, count, explore, breed })(job),
     );
   return { app, omlx, sidecar, vibe, session, reports, run };
 }
@@ -901,6 +903,117 @@ test("a sidecar failure while embedding the vocabulary fails the job before aski
   );
   await expect(run(1)).rejects.toThrow(
     /^embedding the word "dark" failed: sidecar request embed_text failed: the sidecar exited with code 3: MemoryError$/,
+  );
+  expect(omlx.requests).toHaveLength(0);
+});
+
+// Breeding (decision 0058): a crossover child of two parents by a fresh first prompt, then one
+// small nudge of it.
+
+/**
+ * Two parents seeded as rows, the second with a longer reverb, as the route passes them.
+ * @param {TestApp["app"]} app
+ * @param {{ id: number, revision: { id: number } }} vibe
+ * @param {{ id: number }} session
+ */
+function seedParents(app, vibe, session) {
+  const a = seedBase(app, vibe, session, GENOMES[0]);
+  const b = seedBase(app, vibe, session, GENOMES[1]);
+  return {
+    a,
+    b,
+    breed: {
+      a: { base: a, genome: genomeOf(app, a), direction: null },
+      b: { base: b, genome: genomeOf(app, b), direction: null },
+      sketchIds: [21, 22],
+    },
+  };
+}
+
+test("breed sends each child a first prompt holding both parents with the live locks, stores it under both, and mutates it once", async () => {
+  const { app, omlx, vibe, session, reports, run } = await sessionApp(undefined, INSIDE);
+  const { a, b, breed } = seedParents(app, vibe, session);
+  setLock(app.store, {
+    vibeId: vibe.id,
+    candidateId: a.id,
+    path: "reverbDecay",
+    value: 3,
+    voiceType: null,
+  });
+  // The answer changes the locked value, which goes back.
+  omlx.script(answer({ ...GENOMES[0], reverbDecay: 6, delayLevel: -28 }));
+
+  const result = await run(1, undefined, breed);
+  expect(omlx.requests).toHaveLength(1);
+  const text = /** @type {any} */ (omlx.requests[0]).body.messages[1].content;
+  expect(text).toContain(`Parent A:\n${canonicalGenome({ ...GENOMES[0], reverbDecay: 3 })}`);
+  expect(text).toContain(`Parent B:\n${canonicalGenome({ ...GENOMES[1], reverbDecay: 3 })}`);
+  expect(text).toContain("reverbDecay = 3");
+
+  const [child, ...mutations] = listSessionCandidates(app.store, session.id).slice(2);
+  expect(child).toMatchObject({
+    parentIds: [a.id, b.id],
+    operator: "breed",
+    source: "breeding",
+    rejectReason: null,
+    operatorParams: expect.objectContaining({
+      stage: "crossover",
+      sketchIds: [21, 22],
+      parentsTrimmed: [],
+      locksChanged: ["reverbDecay"],
+    }),
+  });
+  const generation = getGeneration(app.store, /** @type {number} */ (child?.generationId));
+  expect(generation?.requestGroup).toBe(requestGroupName(vibe.id, STREAM_SEED, "breed"));
+
+  const mutation = /** @type {Candidate} */ (mutations.at(-1));
+  for (const draw of mutations) {
+    expect(draw).toMatchObject({
+      parentIds: [child?.id],
+      operator: "breed",
+      source: "breeding",
+      seed: child?.seed,
+      operatorParams: expect.objectContaining({
+        stage: "mutation",
+        stepSize: "small",
+        seed: mutationSeed(STREAM_SEED, 0),
+      }),
+    });
+  }
+  expect(mutation.rejectReason).toBeNull();
+  expect(genomeOf(app, mutation).reverbDecay).toBe(3);
+  expect(genomeOf(app, mutation)).not.toEqual(genomeOf(app, /** @type {Candidate} */ (child)));
+  expect(result.candidateIds).toEqual([child?.id, ...mutations.map(({ id }) => id)]);
+  expect(result.excerpts.map(({ candidateId }) => candidateId)).toEqual([child?.id, mutation.id]);
+  const steps = reports.map(({ step }) => step);
+  expect(steps).toContain("Asking the model for child 1 of 1");
+  expect(steps).toContain("Rendering the mutation of child 1 of 1");
+});
+
+test("a crossover child with no genome is stored under both parents and not mutated", async () => {
+  const { app, omlx, vibe, session, run } = await sessionApp(undefined, INSIDE);
+  const { a, b, breed } = seedParents(app, vibe, session);
+  omlx.script(NO_GENOME);
+  const result = await run(1, undefined, breed);
+  const made = listSessionCandidates(app.store, session.id).slice(2);
+  expect(made).toHaveLength(1);
+  expect(made[0]).toMatchObject({ parentIds: [a.id, b.id], rejectReason: "noJson" });
+  expect(result.excerpts).toEqual([]);
+});
+
+test("a breed whose parent B can't take the locks set after the route took it fails before asking", async () => {
+  const { app, omlx, vibe, session, run } = await sessionApp();
+  const { b, breed } = seedParents(app, vibe, session);
+  // The drone has no pad voice, so a lock on the pad's level can't go into either parent.
+  setLock(app.store, {
+    vibeId: vibe.id,
+    candidateId: b.id,
+    path: "voices.pad.level",
+    value: -12,
+    voiceType: "pad",
+  });
+  await expect(run(1, undefined, breed)).rejects.toThrow(
+    /^parent A, candidate \d+, can't take the vibe's locks: .*voices\.pad\.level/,
   );
   expect(omlx.requests).toHaveLength(0);
 });

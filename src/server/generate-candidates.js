@@ -21,6 +21,7 @@
 /** @import { Store } from "./store.js" */
 /** @import { VibeRevision } from "./vibe-store.js" */
 import { applyLocks } from "../domain/apply-locks.js";
+import { BREED_STAGE, PARENT_NAME } from "../domain/breed-settings.js";
 import { buildPrompt } from "../domain/build-prompt.js";
 import { buildRepairPrompt } from "../domain/build-repair-prompt.js";
 import { ANSWER_KEY, extractGenome } from "../domain/extract-genome.js";
@@ -53,6 +54,7 @@ const SLOT = Object.freeze({
   candidateSeed: 2,
   revisionSeed: 3,
   controlSeed: 4,
+  mutationSeed: 5,
 });
 const TEMPERATURE = Object.freeze({ min: 0.6, max: 1 });
 const TOP_P = 0.95;
@@ -64,6 +66,9 @@ const CANDIDATE_SEEDS = 2 ** 32;
 export const LLM_SOURCE = "llm";
 /** The operator an explore child stores (decision 0038). */
 export const EXPLORE_OPERATOR = OPERATOR.explore;
+/** The operator and source of a breed's crossover children and their mutations (0058). */
+export const BREED_OPERATOR = OPERATOR.breed;
+export const BREED_SOURCE = "breeding";
 /** The rule a finding takes for an answer-shape error. */
 const ANSWER_RULE = "answer";
 const REPAIR_OVER_BUDGET_RULE = "repairOverBudget";
@@ -85,6 +90,18 @@ const RESPONSE_FORMAT = Object.freeze({
     additionalProperties: false,
   },
 });
+
+/**
+ * The operator a batch's first tries store: an explore's, a breed's, or null for roots.
+ * @param {ExploreFrom | undefined} explore
+ * @param {BreedFrom | undefined} breed
+ * @returns {string | null}
+ */
+export function batchOperator(explore, breed) {
+  if (explore) return EXPLORE_OPERATOR;
+  if (breed) return BREED_OPERATOR;
+  return null;
+}
 
 /**
  * The request group of a vibe's candidates drawn from one stream seed (decision 0024): named
@@ -112,6 +129,15 @@ export const revisedGroupName = (requestGroup) => `${requestGroup}-revisions`;
  */
 export const revisionSeed = (seed, index) =>
   Math.floor(drawer(seed, STREAM_ID)(index, SLOT.revisionSeed) * CANDIDATE_SEEDS);
+
+/**
+ * The seed of the mutation of crossover child `index` (from 0), slot 5 of the stream, so a
+ * breed's mutations are the same for the same stream seed (decision 0058).
+ * @param {number} seed the stream seed
+ * @param {number} index
+ */
+export const mutationSeed = (seed, index) =>
+  Math.floor(drawer(seed, STREAM_ID)(index, SLOT.mutationSeed) * CANDIDATE_SEEDS);
 
 /**
  * The request group of an evaluation's control-arm revisions (decision 0040), apart from the
@@ -163,6 +189,15 @@ export const playableHashes = (recordings) =>
  */
 
 /**
+ * The two candidates a breed's crossover takes parts of, as the owner picked them (decision
+ * 0058): A first, kept in the prompt longer than B. Each `direction` is null.
+ * @typedef {object} BreedFrom
+ * @property {ExploreFrom} a
+ * @property {ExploreFrom} b
+ * @property {number[]} sketchIds the sketches the owner picked, A's first, stored on each child
+ */
+
+/**
  * @typedef {object} GenerateOptions
  * @property {Config} config
  * @property {number} seed the stream seed, an integer in [0, 2^32): sampling and candidate seeds
@@ -175,6 +210,8 @@ export const playableHashes = (recordings) =>
  *   config sets no folder: the prompt lists them, and a genome naming another is repaired
  * @property {ExploreFrom | undefined} [explore] makes the candidates explore children of its
  *   base: the prompt holds the base, and each child stores it as its parent
+ * @property {BreedFrom | undefined} [breed] makes the candidates crossover children of its two
+ *   parents: the prompt holds both, and each child stores both as its parents
  * @property {TextEmbedder | null} [textEmbedder] orders the examples by similarity to the brief
  *   when their rated audio has embeddings under its producer; omitted or null, by recency
  *   (decision 0024). The session's job passes one when the sidecar has a checkpoint, the
@@ -191,13 +228,25 @@ export const playableHashes = (recordings) =>
  * predate one. Throws when the base can't take them, as a nudge does (decision 0037).
  * @param {ExploreFrom} explore
  * @param {readonly Lock[]} locks
+ * @param {string} [name] what the error calls it
  */
-function promptBase({ base, genome, direction }, locks) {
+function promptBase({ base, genome, direction }, locks, name = "the base") {
   const applied = applyLocks(genome, locks);
   const refused = lockRefusal(applied);
-  if (refused !== null) throw new Error(`the base, candidate ${base.id}, ${refused}`);
+  if (refused !== null) throw new Error(`${name}, candidate ${base.id}, ${refused}`);
   return { genome: applied.genome, direction };
 }
+
+/**
+ * The prompt's view of a breed's parents, each with the locks in force applied. Throws naming
+ * the first that can't take them.
+ * @param {BreedFrom} breed
+ * @param {readonly Lock[]} locks
+ */
+const promptParents = ({ a, b }, locks) => ({
+  a: promptBase(a, locks, PARENT_NAME.a).genome,
+  b: promptBase(b, locks, PARENT_NAME.b).genome,
+});
 
 /**
  * Called as each candidate is stored, with the reason its first answer was rejected (null when
@@ -611,11 +660,12 @@ export async function requestCandidate(batch, index, prompt, sampling, origin) {
 }
 
 /**
- * Generates `n` candidates for the vibe's current revision, or `n` explore children of a base,
- * and stores every LLM call and every candidate. When a request fails in the queue (a cancel, a
- * busy omlx past its wait, a timeout, an error status) the batch stops and rethrows it, after
- * storing the failed request as a generation, if it was sent, and the candidate it was for, so
- * every generation has a candidate. A failure embedding the brief stops it before any request.
+ * Generates `n` candidates for the vibe's current revision, `n` explore children of a base, or
+ * `n` crossover children of two parents, and stores every LLM call and every candidate. When a
+ * request fails in the queue (a cancel, a busy omlx past its wait, a timeout, an error status)
+ * the batch stops and rethrows it, after storing the failed request as a generation, if it was
+ * sent, and the candidate it was for, so every generation has a candidate. A failure embedding
+ * the brief stops it before any request.
  * @param {number} vibeId
  * @param {number} n
  * @param {Store} store
@@ -635,6 +685,7 @@ export async function generateCandidates(
     locks,
     recordings,
     explore,
+    breed,
     textEmbedder,
     references = [],
     onCandidate,
@@ -642,9 +693,14 @@ export async function generateCandidates(
   },
 ) {
   if (!Number.isInteger(n) || n < 1) throw new Error(`n must be a positive integer, got ${n}`);
+  if (explore && breed) throw new Error("a batch explores a base or breeds two parents, not both");
   const { revision, constraints, ranges } = currentRevision(store, vibeId);
   const draws = samplingStream(seed, n);
-  const requestGroup = requestGroupName(vibeId, seed, explore && EXPLORE_OPERATOR);
+  const operator = batchOperator(explore, breed);
+  // The locks go in before any request, so a parent that can't take them sends nothing.
+  const base = explore ? promptBase(explore, locks) : null;
+  const parents = breed ? promptParents(breed, locks) : null;
+  const requestGroup = requestGroupName(vibeId, seed, operator);
   if (listRequestGroup(store, requestGroup).length > 0) {
     throw new Error(`request group ${requestGroup} already exists; draw a new stream seed`);
   }
@@ -654,7 +710,7 @@ export async function generateCandidates(
     revision.brief,
     textEmbedder ?? null,
   );
-  const { messages, exampleIds, referenceIds, baseTrimmed } = buildPrompt(
+  const { messages, exampleIds, referenceIds, baseTrimmed, parentsTrimmed } = buildPrompt(
     { ...revision, constraints, ranges },
     {
       notes: listNotes(store, vibeId).map((note) => note.text),
@@ -662,7 +718,8 @@ export async function generateCandidates(
       examples,
       budgetTokens: config.queue.contextBudgetTokens,
       recordings,
-      base: explore ? promptBase(explore, locks) : null,
+      base,
+      parents,
       references,
     },
   );
@@ -687,13 +744,23 @@ export async function generateCandidates(
   /** @type {Candidate[]} */
   const candidates = [];
   for (const [index, { sampling, candidateSeed }] of draws.entries()) {
+    /** @type {CandidateOrigin} */
     const origin = {
       seed: candidateSeed,
       source: LLM_SOURCE,
       parentIds: explore ? [explore.base.id] : [],
-      operator: explore ? EXPLORE_OPERATOR : null,
+      operator,
       operatorParams: explore ? { direction: explore.direction, baseTrimmed } : null,
     };
+    if (breed) {
+      origin.source = BREED_SOURCE;
+      origin.parentIds = [breed.a.base.id, breed.b.base.id];
+      origin.operatorParams = {
+        stage: BREED_STAGE.crossover,
+        sketchIds: breed.sketchIds,
+        parentsTrimmed,
+      };
+    }
     candidates.push(await requestCandidate(batch, index, messages, sampling, origin));
   }
   return { requestGroup, retrievalMethod: method, candidates };

@@ -1,10 +1,10 @@
 // The session's jobs (decisions 0027, 0031): ask omlx for candidates (0024), render each valid
-// one's excerpt as it is made (0026) and revise one that misses (0036), or render the excerpts a
-// session's candidates are missing.
+// one's excerpt as it is made (0026) and revise one that misses (0036), and for a breed nudge
+// each child once (0058); or render the excerpts a session's candidates are missing.
 // Each runs only when the owner's request adds it to the job runner.
 /** @import { Features } from "../domain/extract-features.js" */
 /** @import { LintResult } from "../domain/lint-result.js" */
-/** @import { ExploreFrom, GenerationStep } from "./generate-candidates.js" */
+/** @import { BreedFrom, ExploreFrom, GenerationStep } from "./generate-candidates.js" */
 /** @import { Candidate } from "./generation-store.js" */
 /** @import { Embedder } from "./embed-audio.js" */
 /** @import { JobContext } from "./job-runner.js" */
@@ -14,20 +14,28 @@
 /** @import { App } from "./routing.js" */
 
 import { join } from "node:path";
+import { mutateChild } from "../domain/breed-mutation.js";
+import { BREED_STAGE, MUTATION_STEP } from "../domain/breed-settings.js";
 import { excerptMisses } from "../domain/excerpt-misses.js";
 import { excerptRequest } from "./candidate-excerpt.js";
 import { embedAudio, embedText, readEmbedder } from "./embed-audio.js";
 import { findEmbedding } from "./embedding-store.js";
 import {
+  BREED_OPERATOR,
+  BREED_SOURCE,
+  batchOperator,
   checkRevision,
-  EXPLORE_OPERATOR,
   GENERATION_STEP,
   generateCandidates,
+  keep,
+  mutationSeed,
   playableHashes,
   requestGroupName,
   revisedGroupName,
   revisionSeed,
+  verdictOf,
 } from "./generate-candidates.js";
+import { getGenome } from "./generation-store.js";
 import { JOB_STEP } from "./job-steps.js";
 import { locksInForce } from "./lock-store.js";
 import { promptReferences } from "./prompt-references.js";
@@ -133,16 +141,18 @@ export function generationStepText({ index, kind }, offset, total, asking = JOB_
  * cancels the omlx queue too, which is the job's alone while it runs, since the runner runs one
  * job at a time, and a cancel during a render stops the job before its next request. With
  * `explore`, the candidates are explore children of its base (decision 0038), revised like any
- * first try. When the sidecar is set up (0042), the prompt's examples are the rated genomes
- * nearest the brief, and each excerpt is embedded after its features; the result says why not
- * when it isn't. Once every candidate is made, the session is ranked by the brief's taste
- * model when it has a current one (0046).
+ * first try. With `breed`, they are crossover children of its two parents (0058), revised like
+ * any first try, and then each valid one, its revision when that changed it, is nudged once at
+ * the small step and the nudge rendered. When the sidecar is set up (0042), the prompt's
+ * examples are the rated genomes nearest the brief, and each excerpt is embedded after its
+ * features; the result says why not when it isn't. Once every candidate is made, the session
+ * is ranked by the brief's taste model when it has a current one (0046).
  * @param {App} app
  * @param {{ vibeId: number, sessionId: number, count: number,
- *   explore?: ExploreFrom | undefined }} request
+ *   explore?: ExploreFrom | undefined, breed?: BreedFrom | undefined }} request
  * @returns {(job: JobContext) => Promise<CandidateJobResult>}
  */
-export function candidateJob(app, { vibeId, sessionId, count, explore }) {
+export function candidateJob(app, { vibeId, sessionId, count, explore, breed }) {
   return async (job) => {
     const recordings = await jobRecordings(app);
     const playable = playableHashes(recordings);
@@ -204,15 +214,18 @@ export function candidateJob(app, { vibeId, sessionId, count, explore }) {
       job.signal.throwIfAborted();
       const seed = Math.floor(app.random() * STREAM_SEEDS);
       const revisions = revisedGroupName(
-        requestGroupName(vibeId, seed, explore && EXPLORE_OPERATOR),
+        requestGroupName(vibeId, seed, batchOperator(explore, breed)),
       );
-      const asking = explore ? JOB_STEP.exploring : JOB_STEP.asking;
+      const asking = explore ? JOB_STEP.exploring : breed ? JOB_STEP.breeding : JOB_STEP.asking;
 
       /**
        * Measures the first try's excerpt and revises the first try when it misses anything.
+       * Returns the candidate to carry on from: the revision when it changed the first try and
+       * became a genome, the first try otherwise.
        * @param {Candidate} firstTry
        * @param {Render} rendered
        * @param {number} index
+       * @returns {Promise<Candidate>}
        */
       const measureAndRevise = async (firstTry, rendered, index) => {
         job.progress(done, count, JOB_STEP.measuring(done + 1, count));
@@ -221,8 +234,9 @@ export function candidateJob(app, { vibeId, sessionId, count, explore }) {
         const features = /** @type {Features} */ (rendered.features);
         const checks = /** @type {LintResult} */ (rendered.checks);
         const misses = excerptMisses(features, checks, checkRevision(revision).ranges);
-        if (misses.length === 0) return;
+        if (misses.length === 0) return firstTry;
         job.signal.throwIfAborted();
+        let carried = firstTry;
         await reviseCandidate(app.store, app.queue, firstTry, {
           config: app.config,
           sessionId,
@@ -239,9 +253,57 @@ export function candidateJob(app, { vibeId, sessionId, count, explore }) {
           onCandidate: async (revised) => {
             candidateIds.push(revised.id);
             if (isUnchanged(revised)) return;
-            await render(revised, JOB_STEP.renderingRevision(done + 1, count));
+            if (await render(revised, JOB_STEP.renderingRevision(done + 1, count))) {
+              carried = revised;
+            }
           },
         });
+        return carried;
+      };
+
+      /**
+       * Nudges a breed's child once (decision 0058) under the live locks and the revision it
+       * was made under, stores every draw, and renders the mutation when one passed.
+       * @param {Candidate} child with a genome
+       * @param {number} index the crossover child's, from 0
+       */
+      const mutate = async (child, index) => {
+        const revision = getRevision(app.store, child.vibeRevisionId);
+        if (!revision) throw new Error(`there is no vibe revision ${child.vibeRevisionId}`);
+        const row = getGenome(app.store, /** @type {number} */ (child.genomeId));
+        if (!row) throw new Error(`candidate ${child.id} has no genome row`);
+        const locks = locksInForce(app.store, vibeId);
+        const drawSeed = mutationSeed(seed, index);
+        const draws = mutateChild({
+          child: row.genome,
+          childId: child.id,
+          locks,
+          constraints: checkRevision(revision).constraints,
+          seed: drawSeed,
+        });
+        const batch = {
+          store: app.store,
+          vibeId,
+          vibeRevisionId: child.vibeRevisionId,
+          sessionId,
+          locks,
+        };
+        // A mutation keeps its child's seed, as a nudge child keeps its base's.
+        const origin = {
+          seed: child.seed,
+          source: BREED_SOURCE,
+          parentIds: [child.id],
+          operator: BREED_OPERATOR,
+          operatorParams: { stage: BREED_STAGE.mutation, stepSize: MUTATION_STEP, seed: drawSeed },
+        };
+        /** @type {Candidate | null} */
+        let mutation = null;
+        for (const draw of draws) {
+          const candidate = keep(batch, null, verdictOf(draw), origin);
+          candidateIds.push(candidate.id);
+          if (draw.genome) mutation = candidate;
+        }
+        if (mutation) await render(mutation, JOB_STEP.renderingMutation(done + 1, count));
       };
 
       const ready = await readyEmbedder();
@@ -264,6 +326,7 @@ export function candidateJob(app, { vibeId, sessionId, count, explore }) {
         locks: locksInForce(app.store, vibeId),
         recordings,
         explore,
+        breed,
         textEmbedder,
         references: await promptReferences(app.store, vibeId, textEmbedder),
         onStep: (step) => job.progress(done, count, generationStepText(step, 0, count, asking)),
@@ -271,7 +334,13 @@ export function candidateJob(app, { vibeId, sessionId, count, explore }) {
           const index = firstTries++;
           candidateIds.push(candidate.id);
           const rendered = await render(candidate, JOB_STEP.renderingCandidate(done + 1, count));
-          if (rendered) await measureAndRevise(candidate, rendered, index);
+          if (rendered) {
+            const carried = await measureAndRevise(candidate, rendered, index);
+            if (breed) {
+              job.signal.throwIfAborted();
+              await mutate(carried, index);
+            }
+          }
           job.progress(++done, count, null);
           job.signal.throwIfAborted();
         },
