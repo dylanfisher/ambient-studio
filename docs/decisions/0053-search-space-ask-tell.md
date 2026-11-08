@@ -3,7 +3,8 @@
 - **Date:** 2026-11-07
 - **Status:** accepted; provisional: owner to confirm. Amends
   [0037](0037-nudge-and-branch.md) (the nudge's chain and free-path rule move out of `nudge`)
-  and [0041](0041-sidecar-process.md) (the optimizer methods and run folders)
+  and [0041](0041-sidecar-process.md) (the optimizer methods and run folders). Amended by
+  [0055](0055-search-by-ear.md) (a null score, and copies of a run)
 
 ## Context
 
@@ -138,3 +139,7 @@ nothing reads one after its job ends.
 
 - 2026-11-07: from step 5e, once 5a had merged. The search folder moved from a join in
   `search-run.js` into `paths()` as `search`, and the run helpers take that folder.
+- 2026-11-07 (5f, [0055](0055-search-by-ear.md)): a tell's score may be null for an optimizer in
+  `TAKES_NO_ANSWER` (preferential BO, for a skip); the others still refuse one. `forkSearch`
+  copies a run's spec, state and last ask into a run folder inside it, and `searchGeneration`'s
+  ask and tell are `askPoints` and `tellScores`, which the search by ear shares.

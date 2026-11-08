@@ -1,6 +1,7 @@
 // A job's status as the pages show it (decision 0032): what it is doing in a sentence, a bar
 // from its count, and how long it has run. No DOM here, so the wording is tested.
 import { JOB_KIND } from "../domain/job-kind.js";
+import { OPERATOR } from "../domain/operator.js";
 import { isObject } from "../engine/is-object.js";
 
 /** What each kind of job is called on the page. */
@@ -11,6 +12,8 @@ const TITLE = Object.freeze({
   agreement: "Taste model test",
   nudge: "Nudging a candidate",
   explore: "The model's variations of a candidate",
+  [OPERATOR.optimize]: "Searching by your taste model",
+  [OPERATOR.optimizeEar]: "Searching by ear",
   [JOB_KIND.analyze]: "Analyzing a region",
   [JOB_KIND.embed]: "Analyzing the sound",
   [JOB_KIND.fit]: "Fitting the taste model",

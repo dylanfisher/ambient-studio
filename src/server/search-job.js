@@ -17,8 +17,7 @@
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
-import { applyLocks } from "../domain/apply-locks.js";
-import { lockRefusal, nudge } from "../domain/nudge.js";
+import { nudge } from "../domain/nudge.js";
 import { OPERATOR } from "../domain/operator.js";
 import { PREFERENCE_STATE } from "../domain/preference-text.js";
 import { BENCH_SECONDS, medianTimings } from "../domain/search-cost.js";
@@ -30,7 +29,6 @@ import {
   searchPopulation,
 } from "../domain/search-settings.js";
 import { MIN_SHOWN_DISTANCE, shownPoints } from "../domain/search-shown.js";
-import { searchSpace } from "../domain/search-space.js";
 import { excerptTerms } from "../domain/training-set.js";
 import { canonicalGenome } from "../engine/canonical-genome.js";
 import { requireGenome } from "../engine/validate-genome.js";
@@ -39,10 +37,9 @@ import { excerptRequest } from "./candidate-excerpt.js";
 import { jobRecordings, STREAM_SEEDS } from "./candidate-job.js";
 import { embedAudio } from "./embed-audio.js";
 import { findEmbedding } from "./embedding-store.js";
-import { currentRevision, keep } from "./generate-candidates.js";
+import { keep } from "./generate-candidates.js";
 import { getGenome } from "./generation-store.js";
 import { JOB_STEP } from "./job-steps.js";
-import { locksInForce } from "./lock-store.js";
 import { verdictOf } from "./nudge-job.js";
 import { predictScores } from "./predict-scores.js";
 import { currentModel } from "./preference-summary.js";
@@ -52,12 +49,13 @@ import {
   numberedRuns,
   searchGeneration,
   searchRunFolder,
+  searchStart,
   startSearch,
 } from "./search-run.js";
 import { rankSession } from "./session-ranking.js";
 
-/** The source every point and control child stores. */
-const SOURCE = "optimizer";
+/** The source every point and control child stores, and a search by ear's points (0055). */
+export const SEARCH_SOURCE = "optimizer";
 /** Each run's summary, written after every generation, so a cancel keeps what was scored. */
 const RESULTS = "results.json";
 
@@ -186,7 +184,7 @@ async function modelScorer(app, { vibeId, recordings, signal }) {
  * @param {string} folder
  * @param {SearchResults} results
  */
-async function writeResults(folder, results) {
+export async function writeResults(folder, results) {
   const file = join(folder, RESULTS);
   await writeFile(`${file}.partial`, JSON.stringify(results));
   await rename(`${file}.partial`, file);
@@ -245,16 +243,12 @@ export function searchJob(app, request, { makeScorer = modelScorer } = {}) {
   return async (job) => {
     const recordings = await jobRecordings(app);
     job.signal.throwIfAborted();
-    const { revision, constraints } = currentRevision(app.store, vibeId);
-    const locks = locksInForce(app.store, vibeId);
-    const applied = applyLocks(genome, locks);
-    const refused = lockRefusal(applied);
-    if (refused !== null) throw new Error(`candidate ${base.id} ${refused}`);
-    const start = applied.genome;
-    const paths = searchSpace(start, locks, constraints, raw);
-    if (paths.length === 0) {
-      throw new Error("every macro is locked or fixed by the brief and no path was chosen");
-    }
+    const { revision, constraints, locks, start, paths } = searchStart(app, {
+      vibeId,
+      base,
+      genome,
+      raw,
+    });
     const score = await makeScorer(app, { vibeId, recordings, signal: job.signal });
     const seed = Math.floor(app.random() * STREAM_SEEDS);
     const population = searchPopulation(paths.length);
@@ -270,7 +264,7 @@ export function searchJob(app, request, { makeScorer = modelScorer } = {}) {
     // A point keeps the base's seed, so it differs from the base only in its genome.
     const origin = {
       seed: base.seed,
-      source: SOURCE,
+      source: SEARCH_SOURCE,
       parentIds: [base.id],
       operator: OPERATOR.optimize,
       operatorParams: { run, seed, budget, population, paths },

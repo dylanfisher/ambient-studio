@@ -10,6 +10,9 @@ import { searchPaths } from "./search-paths.js";
 /** The most dimensions a search takes; past it a few hundred evaluations is a few per dimension. */
 export const MAX_SEARCH_DIMENSIONS = 24;
 
+/** Why a search job that starts with no dimension fails: the locks changed since its request. */
+export const NO_SEARCH_SPACE = "every macro is locked or fixed by the brief and no path was chosen";
+
 /** @param {string} path */
 const isMacro = (path) => path.startsWith(`${GENOME_KEY.macros}.`);
 

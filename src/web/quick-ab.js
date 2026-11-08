@@ -2,10 +2,14 @@
 // the order, the save queue and undo. This module wires the two players, the keys and the
 // buttons, and renders the session's view after each change. Saves run in the background, so
 // what is still saving or failed to save stays on screen until it is resolved, and leaving the
-// page asks first.
+// page asks first. With `&ear` in the address the page is in search-by-ear mode (0055): the
+// pairs come from the session's search by ear through `quick-ab-ear.js`, the order switch is
+// hidden and Stop ends the search.
 /** @import { PlayedTracker } from "./played-tracker.js" */
+/** @import { EarState } from "./quick-ab-ear.js" */
 /** @import { QuickAbAction } from "./quick-ab-keys.js" */
 /** @import { Playable } from "./quick-ab-session.js" */
+import { EAR_IDLE_MS, EAR_PHASE } from "../domain/ear-settings.js";
 import { OUTCOMES } from "../domain/rating-values.js";
 import { chosenOutcome, SCREEN_SIDES } from "./ab-rating.js";
 import { ACTIVE_SIDE } from "./ab-view.js";
@@ -15,6 +19,8 @@ import { cloneTemplate } from "./clone-template.js";
 import { elementById, elementsById } from "./element-by-id.js";
 import { mountPlayer, playAudio, switchPlayback } from "./excerpt-player.js";
 import { createPlayedTracker } from "./played-tracker.js";
+import { POLL_MS } from "./poll-ms.js";
+import { createEarSession, NO_UNDO } from "./quick-ab-ear.js";
 import { bindQuickAbKeys, keyLabel, QUICK_AB_KEYS } from "./quick-ab-keys.js";
 import { ORDER_MODES } from "./quick-ab-order.js";
 import { createQuickAbSession, nameOf, PHASE, unloadGuard } from "./quick-ab-session.js";
@@ -32,6 +38,10 @@ const page = elementsById({
   modeChampion: HTMLInputElement,
   modeRandom: HTMLInputElement,
   modeBest: HTMLInputElement,
+  orderModes: HTMLElement,
+  pageTitle: HTMLElement,
+  earHelp: HTMLElement,
+  stopEar: HTMLButtonElement,
   progressLine: HTMLElement,
   saveLine: HTMLElement,
   retry: HTMLButtonElement,
@@ -60,6 +70,7 @@ const NO_BEST_TITLE =
 const idText = new URLSearchParams(location.search).get("id");
 if (idText === null) throw new Error("quick-ab.html needs ?id=<session id>");
 const sessionId = Number(idText);
+const earMode = new URLSearchParams(location.search).has("ear");
 
 /** Each action's button, which shows its key and does what the key does. */
 const buttons = /** @type {Record<QuickAbAction, HTMLButtonElement>} */ (
@@ -112,13 +123,31 @@ let said = "";
 /** The pair whose excerpts are on the elements, so a render that keeps it doesn't reload them. */
 let wiredPair = /** @type {object | null} */ (null);
 
-const session = createQuickAbSession({
-  sessionId,
-  random: Math.random,
-  now: () => performance.now(),
-  onChange: render,
-  onError: status.fail,
-});
+const earSession = earMode
+  ? createEarSession({
+      sessionId,
+      now: () => performance.now(),
+      pause: () => new Promise((resolve) => setTimeout(resolve, POLL_MS)),
+      onChange: render,
+    })
+  : null;
+const session =
+  earSession ??
+  createQuickAbSession({
+    sessionId,
+    random: Math.random,
+    now: () => performance.now(),
+    onChange: render,
+    onError: status.fail,
+  });
+page.orderModes.hidden = earMode;
+page.earHelp.hidden = !earMode;
+page.stopEar.hidden = !earMode;
+if (earMode) {
+  page.pageTitle.textContent = "Search by ear";
+  buttons.undo.disabled = true;
+  buttons.undo.title = NO_UNDO;
+}
 
 /** @param {Side} side */
 const showPlayed = (side) => {
@@ -186,18 +215,27 @@ function render() {
   page.modeBest.title = view.bestAvailable ? BEST_TITLE : NO_BEST_TITLE;
 
   const left = view.remaining;
+  // Only the search-by-ear session's view has it.
+  const ear = /** @type {{ ear?: EarState | null }} */ (view).ear ?? null;
+  page.stopEar.disabled = ear === null || ear.phase === EAR_PHASE.finished || ear.stopped;
   page.progressLine.textContent =
     view.phase === PHASE.done
       ? ""
-      : view.mode === RANDOM || view.mode === BEST
-        ? `${left} pair${left === 1 ? "" : "s"} not yet rated, this one included.`
-        : `${left} challenger${left === 1 ? "" : "s"} still to come, this one included.` +
-          (view.champion === null ? "" : ` The one that stays: ${nameOf(view.champion)}.`);
+      : ear
+        ? `Pair ${ear.query + 1} of ${ear.budget}.` +
+          (view.champion === null
+            ? ""
+            : ` The one that stays is the best so far: ${nameOf(view.champion)}.`)
+        : view.mode === RANDOM || view.mode === BEST
+          ? `${left} pair${left === 1 ? "" : "s"} not yet rated, this one included.`
+          : `${left} challenger${left === 1 ? "" : "s"} still to come, this one included.` +
+            (view.champion === null ? "" : ` The one that stays: ${nameOf(view.champion)}.`);
 
   page.doneLine.hidden = view.phase !== PHASE.done;
   const best = view.champion === null ? "" : ` The last one chosen is ${nameOf(view.champion)}.`;
-  page.doneLine.textContent =
-    view.poolSize < 2
+  page.doneLine.textContent = ear
+    ? earDoneText(ear)
+    : view.poolSize < 2
       ? "This session has fewer than two candidates with an excerpt, so there is nothing to compare. Ask for candidates on the session page first."
       : view.mode === RANDOM
         ? `Every pair has been rated.${best} Undo takes the last choice back.`
@@ -227,6 +265,25 @@ function render() {
     said = view.message;
     status.say(said);
   }
+}
+
+/**
+ * What the done line says of a search by ear that ended.
+ * @param {EarState} ear
+ */
+function earDoneText({ answered, best, stopped, idle, error }) {
+  const choices = `${answered} choice${answered === 1 ? "" : "s"}`;
+  const kept =
+    best === null
+      ? ""
+      : ` Its best is ${nameOf(best.id)}, shown first in its fold on the session page.`;
+  if (error !== null) return `The search by ear stopped after ${choices}: ${error}${kept}`;
+  const how = idle
+    ? `The search by ear stopped itself when a pair waited ${EAR_IDLE_MS / 60_000} minutes for a choice,`
+    : stopped
+      ? "You stopped the search by ear"
+      : "The search by ear asked every pair";
+  return `${how} after ${choices}.${kept}`;
 }
 
 const played = () => ({
@@ -273,12 +330,19 @@ for (const [name, button] of Object.entries(buttons)) {
   button.onclick = actions[/** @type {QuickAbAction} */ (name)];
 }
 page.retry.onclick = () => status.run(session.retry);
+page.stopEar.onclick = () => {
+  if (earSession) status.run(earSession.stop);
+};
 for (const [input, mode] of modeInputs) {
   input.onchange = () => {
     if (input.checked) status.run(() => session.setMode(mode));
   };
 }
 window.addEventListener("beforeunload", unloadGuard(session));
+// pagehide, not unload: Safari fires it on closing a tab and on leaving for another page.
+window.addEventListener("pagehide", () => {
+  earSession?.leave((url, body) => navigator.sendBeacon(url, body));
+});
 
 status.run(async () => {
   const { vibeId } = await session.load();
@@ -287,5 +351,6 @@ status.run(async () => {
   page.briefLink.textContent = vibe.revision.name;
   page.sessionLink.href = `./session.html?id=${sessionId}`;
   page.sessionLink.textContent = `Session ${sessionId}`;
-  document.title = `Quick A/B, session ${sessionId}, ${vibe.revision.name} · Ambient Studio`;
+  const name = earMode ? "Search by ear" : "Quick A/B";
+  document.title = `${name}, session ${sessionId}, ${vibe.revision.name} · Ambient Studio`;
 });

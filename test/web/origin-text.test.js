@@ -63,6 +63,26 @@ describe("originText", () => {
     );
   });
 
+  test("a search-by-ear point names its pair and base, and says when it is the best", () => {
+    const point = candidate({
+      operator: "optimize-ear",
+      parentIds: [3],
+      operatorParams: { query: 6 },
+    });
+    expect(originText({ ...point, search: { shown: false, score: null } }, nameOf)).toBe(
+      "Pair 7 of a search by ear from candidate 3: you compared it with the best so far.",
+    );
+    expect(originText({ ...point, search: { shown: true, score: null } }, nameOf)).toBe(
+      "Pair 7 of a search by ear from candidate 3: you compared it with the best so far. Shown as the search's best: the one you chose last.",
+    );
+    expect(operatorLabel("optimize-ear")).toBe("searched by ear");
+    expect(
+      rejectText(candidate({ operator: "optimize-ear", rejectReason: REJECT_REASON.repeated })),
+    ).toBe(
+      "a search-by-ear point that landed on a genome already made, so it was told as a loss and never played",
+    );
+  });
+
   test("an operator the page doesn't know is an error", () => {
     expect(() => originText(candidate({ operator: "crossover" }), nameOf)).toThrow(/crossover/);
   });

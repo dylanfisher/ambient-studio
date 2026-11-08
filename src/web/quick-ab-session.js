@@ -27,6 +27,9 @@ export const PHASE = /** @type {const} */ ({
   done: "done",
 });
 
+/** The status line while a page's first pair loads. */
+export const LOADING = "Loading…";
+
 /** @typedef {{ renderId: number, url: string, duration: number }} Excerpt */
 /** @typedef {{ id: number, genomeId: number, seed: number, excerpt: Excerpt }} Playable */
 /** @typedef {{ id: number, genomeId: number | null, seed: number, excerpt: Excerpt | null, hidden: boolean }} Candidate */
@@ -115,7 +118,7 @@ export function createQuickAbSession({ sessionId, random, now, onChange, onError
   let pairError = null;
   /** @type {string | null} */
   let undoError = null;
-  let message = "Loading…";
+  let message = LOADING;
   /** @type {Save[]} every rating made on the page, oldest first; undo removes the last */
   const saves = [];
   let draining = false;

@@ -56,6 +56,7 @@ export async function testApp() {
       log: () => undefined,
     }),
     random: () => 0.25,
+    clock,
     sessionJobs: new Map(),
   };
   return {

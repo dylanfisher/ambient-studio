@@ -180,6 +180,7 @@ export async function startServer(
     jobs,
     sidecar,
     random,
+    clock,
     sessionJobs: new Map(),
   };
   /** @type {Set<Promise<void>>} */
