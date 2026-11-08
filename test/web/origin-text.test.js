@@ -173,16 +173,22 @@ describe("a breed's candidates", () => {
     expect(originText(crossover, nameOf)).toBe(
       "The model's child of candidate 3 and candidate 4, taking parts of both.",
     );
-    const oneLeft = { ...crossover, operatorParams: { stage: "crossover", parentsTrimmed: ["B"] } };
+    // A trimmed parent isn't in parentIds, since the model never read it.
+    const oneLeft = {
+      ...crossover,
+      parentIds: [3],
+      operatorParams: { stage: "crossover", parentsTrimmed: ["B"] },
+    };
     expect(originText(oneLeft, nameOf)).toBe(
-      "The model's child of candidate 3 and candidate 4, taking parts of both. Candidate 4 didn't fit in the model's context, so the model read only candidate 3: this is a variation of it.",
+      "The model's variation of candidate 3, bred with a second sketch that didn't fit in the model's context, so the model never read it.",
     );
     const none = {
       ...crossover,
+      parentIds: [],
       operatorParams: { stage: "crossover", parentsTrimmed: ["B", "A"] },
     };
     expect(originText(none, nameOf)).toBe(
-      "The model's child of candidate 3 and candidate 4, taking parts of both. Neither parent fit in the model's context, so the model never read them: this is a plain first try.",
+      "A plain first try from a breed: neither sketch fit in the model's context, so the model read neither.",
     );
   });
 

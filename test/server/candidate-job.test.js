@@ -1017,3 +1017,41 @@ test("a breed whose parent B can't take the locks set after the route took it fa
   );
   expect(omlx.requests).toHaveLength(0);
 });
+
+test("a crossover child stores as parents only the ones its prompt held: A when B was trimmed, none when both were", async () => {
+  // The size of the full prompt, from a first breed with room for everything.
+  const full = await sessionApp(undefined, INSIDE);
+  const first = seedParents(full.app, full.vibe, full.session);
+  full.omlx.script(NO_GENOME);
+  await full.run(1, undefined, first.breed);
+  const both = estimateTokens(promptText(full.omlx.requests[0]?.body.messages));
+
+  /** @param {(sent: number) => number} budget from the full prompt's size */
+  const bredUnder = async (budget) => {
+    const { app, omlx, vibe, session, run } = await sessionApp(undefined, INSIDE);
+    const { a, breed } = seedParents(app, vibe, session);
+    app.config = {
+      ...app.config,
+      queue: { ...app.config.queue, contextBudgetTokens: budget(both) },
+    };
+    omlx.script(NO_GENOME);
+    await run(1, undefined, breed);
+    const [child] = listSessionCandidates(app.store, session.id).slice(2);
+    return { a, child, text: omlx.requests[0]?.body.messages[1].content };
+  };
+
+  const withoutB = await bredUnder((sent) => sent - 1);
+  expect(withoutB.text).not.toContain("Parent B:");
+  expect(withoutB.child).toMatchObject({
+    parentIds: [withoutB.a.id],
+    operatorParams: expect.objectContaining({ sketchIds: [21, 22], parentsTrimmed: ["B"] }),
+  });
+
+  // Each drone parent is about 150 tokens, so the plain prompt fits where parent A alone does not.
+  const withoutBoth = await bredUnder((sent) => sent - 250);
+  expect(withoutBoth.text).toContain("Write one new genome for this vibe.");
+  expect(withoutBoth.child).toMatchObject({
+    parentIds: [],
+    operatorParams: expect.objectContaining({ sketchIds: [21, 22], parentsTrimmed: ["B", "A"] }),
+  });
+});

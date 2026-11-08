@@ -251,7 +251,7 @@ which 2l settles.
   gone, A is written as explore's base with no direction. The result's `parentsTrimmed` names
   the parents left out, B first, and the error says "with no examples and no parents".
   `generateCandidates` takes an optional `breed` (`{a, b, sketchIds}`): its candidates store
-  both parents in `parentIds`, operator `breed`, source `breeding` and `{stage: "crossover",
+  in `parentIds` the parents the prompt held after trimming, operator `breed`, source `breeding` and `{stage: "crossover",
   sketchIds, parentsTrimmed}`, in the request group `vibe-<vibeId>-breed-<seed>`.
   `mutationSeed` draws slot 5 of the stream, and `verdictOf`, a proposal as the verdict `keep`
   stores, moved here from the nudge job.

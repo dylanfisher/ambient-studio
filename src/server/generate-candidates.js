@@ -211,7 +211,8 @@ export const playableHashes = (recordings) =>
  * @property {ExploreFrom | undefined} [explore] makes the candidates explore children of its
  *   base: the prompt holds the base, and each child stores it as its parent
  * @property {BreedFrom | undefined} [breed] makes the candidates crossover children of its two
- *   parents: the prompt holds both, and each child stores both as its parents
+ *   parents: the prompt holds both, and each child stores as its parents the ones the prompt
+ *   held after trimming
  * @property {TextEmbedder | null} [textEmbedder] orders the examples by similarity to the brief
  *   when their rated audio has embeddings under its producer; omitted or null, by recency
  *   (decision 0024). The session's job passes one when the sidecar has a checkpoint, the
@@ -754,7 +755,9 @@ export async function generateCandidates(
     };
     if (breed) {
       origin.source = BREED_SOURCE;
-      origin.parentIds = [breed.a.base.id, breed.b.base.id];
+      // Only the parents the prompt held, so the lineage shows what the model read; the owner's
+      // two picks stay in sketchIds.
+      origin.parentIds = [breed.a.base.id, breed.b.base.id].slice(0, 2 - parentsTrimmed.length);
       origin.operatorParams = {
         stage: BREED_STAGE.crossover,
         sketchIds: breed.sketchIds,

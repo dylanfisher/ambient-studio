@@ -32,9 +32,6 @@ const REJECTED = Object.freeze({
   [REJECT_REASON.repeated]: "that landed on a genome already made",
 });
 
-/** @param {string} text */
-const capitalized = (text) => `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
-
 /**
  * A breed's mutation: one nudge of its crossover child, drawn as a nudge's children are.
  * @param {Origin} candidate
@@ -43,18 +40,18 @@ const isMutation = ({ operator, operatorParams }) =>
   operator === OPERATOR.breed && operatorParams?.stage === BREED_STAGE.mutation;
 
 /**
- * A crossover child: both parents, and which of them the model never read.
- * @param {string} parent parent A, named
- * @param {string} other parent B, named
- * @param {readonly string[]} trimmed the parents left out of the prompt, B first
+ * A crossover child, from the parents its prompt held: both, parent A alone when B didn't fit,
+ * or none.
+ * @param {readonly unknown[]} parentIds
+ * @param {(id: number) => string} nameOf
  */
-function crossoverText(parent, other, trimmed) {
-  const both = `The model's child of ${parent} and ${other}, taking parts of both.`;
-  if (trimmed.length === 0) return both;
-  if (trimmed.length === 1) {
-    return `${both} ${capitalized(other)} didn't fit in the model's context, so the model read only ${parent}: this is a variation of it.`;
+function crossoverText(parentIds, nameOf) {
+  const [a, b] = parentIds.map((id) => nameOf(/** @type {number} */ (id)));
+  if (b !== undefined) return `The model's child of ${a} and ${b}, taking parts of both.`;
+  if (a !== undefined) {
+    return `The model's variation of ${a}, bred with a second sketch that didn't fit in the model's context, so the model never read it.`;
   }
-  return `${both} Neither parent fit in the model's context, so the model never read them: this is a plain first try.`;
+  return "A plain first try from a breed: neither sketch fit in the model's context, so the model read neither.";
 }
 
 /**
@@ -99,8 +96,7 @@ export function originText({ operator, operatorParams, parentIds, search }, name
     if (operatorParams.stage === BREED_STAGE.mutation) {
       return `A ${operatorParams.stepSize} nudge of the bred child ${parent}: its numbers moved, with no model request.`;
     }
-    const other = nameOf(/** @type {number} */ (parentIds[1]));
-    return crossoverText(parent, other, operatorParams.parentsTrimmed);
+    return crossoverText(parentIds, nameOf);
   }
   if (operator === OPERATOR.optimizeEar) {
     const best = search?.shown ? " Shown as the search's best: the one you chose last." : "";

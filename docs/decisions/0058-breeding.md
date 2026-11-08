@@ -53,7 +53,9 @@ locks changed after the route took it fails the job before any request, naming i
 goes through `requestCandidate` (parse, locks, validate, lint, one repair) and the revision pass,
 replaying its own crossover prompt. A child stores `parentIds: [A, B]` (the candidates the
 sketches keep), operator `breed`, source `breeding`, and `operatorParams` `{stage: "crossover",
-sketchIds, parentsTrimmed}`, beside the lock paths the answer changed. Its group is
+sketchIds, parentsTrimmed}`, beside the lock paths the answer changed. `parentIds` holds only
+the parents the prompt held after trimming: `[A]` when B was trimmed, `[]` when both were, so
+the lineage shows what the model read. The owner's two picks stay in `sketchIds`. Its group is
 `vibe-<vibeId>-breed-<seed>`, its revisions' `<group>-revisions`.
 
 **Trimming.** Over the budget, examples go first, then references, then parent B, then parent
@@ -102,6 +104,8 @@ follows the running job.
   hasn't heard, and hiding it would make its excerpt and revision invisible work.
 - **Trimming A before B, or both together** — rejected by the plan: A is the owner's first
   choice, and one parent is still a useful variation.
+- **Both parents in `parentIds` whatever was trimmed** — rejected: the lineage page would draw
+  a child under a parent the model never read; `sketchIds` already keeps what the owner chose.
 - **Writing parent A alone under its own heading** — rejected: one parent is exactly explore's
   case, and its base section is the text the model already answers.
 - **A breed route under the brief, outside any session** — rejected: every job, cancel and
@@ -118,5 +122,5 @@ follows the running job.
 - A child's prompt is about 330 tokens larger than an explore's, so the examples are trimmed a
   little sooner.
 - The lineage page draws a crossover child under parent A, its first parent; the card's origin
-  line names both parents.
+  line names both parents, or says which sketch the model never read.
 - 5j's statistics can tell crossover children from mutations by `operatorParams.stage`.
