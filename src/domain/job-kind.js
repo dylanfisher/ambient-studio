@@ -12,4 +12,10 @@ export const JOB_KIND = Object.freeze({
   optimizerTest: "optimizer-test",
   /** One track section's window, rendered for its player on the timeline (0061). */
   sectionAudio: "section-audio",
+  /** A whole track's render and its preview (0062). */
+  trackRender: "track-render",
+  /** The span around one of a track's transitions, rendered to play (0062). */
+  seamPreview: "seam-preview",
+  /** A rendered track's WAV, FLAC and manifest, written to a new folder (0062). */
+  trackExport: "track-export",
 });

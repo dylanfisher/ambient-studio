@@ -1,0 +1,60 @@
+// A track's cost and render estimate (decision 0062): the most cost sounding at once, two
+// sections in a crossfade, and the work its chunks take, pre-roll included.
+import { expect, test } from "vitest";
+import { emptyArrangement } from "../../src/domain/arrangement-schema.js";
+import { sectionGenome } from "../../src/domain/section-genome.js";
+import { BENCH_RATE, trackCost, trackSeconds } from "../../src/domain/track-cost.js";
+import { CHUNK_SECONDS } from "../../src/engine/chunk-windows.js";
+import { cost } from "../../src/engine/cost.js";
+import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
+import { preRoll } from "../../src/engine/render-plan.js";
+
+const genomes = new Map([
+  [1, droneGenome],
+  [
+    2,
+    {
+      ...droneGenome,
+      duration: 300,
+      voices: [...droneGenome.voices, { ...droneGenome.voices[0], id: "b" }],
+    },
+  ],
+]);
+
+const arrangement = {
+  ...emptyArrangement(),
+  sections: [
+    { sketchId: 1, offset: 0, seconds: 40 },
+    { sketchId: 2, offset: 30, seconds: 250 },
+  ],
+  transitions: [{ kind: "crossfade", seconds: 10 }],
+};
+
+test("the peak is both sections' cost in a crossfade, and the work counts each chunk's pre-roll", () => {
+  const one = cost(sectionGenome(arrangement, 0, genomes));
+  const second = sectionGenome(arrangement, 1, genomes);
+  const two = cost(second);
+  const found = trackCost(arrangement, genomes);
+  expect(found.peak).toBe(one + two);
+  expect(found.audio).toBe(290);
+  expect(found.length).toBe(280);
+  // Section 2 is three chunks, from 30, 150 and 270 s on its sketch's timeline.
+  const chunks = [30, 30 + CHUNK_SECONDS, 30 + 2 * CHUNK_SECONDS];
+  const lengths = [CHUNK_SECONDS, CHUNK_SECONDS, 250 - 2 * CHUNK_SECONDS];
+  const work =
+    one * 40 +
+    chunks.reduce((sum, at, i) => sum + two * ((lengths[i] ?? 0) + preRoll(second, at)), 0);
+  expect(found.work).toBeCloseTo(work, 9);
+});
+
+test("one section's peak is its own cost, and an empty track costs nothing", () => {
+  const alone = { ...emptyArrangement(), sections: [{ sketchId: 1, offset: 0, seconds: 40 }] };
+  expect(trackCost(alone, genomes).peak).toBe(cost(sectionGenome(alone, 0, genomes)));
+  expect(trackCost(emptyArrangement(), genomes)).toEqual({ peak: 0, work: 0, audio: 0, length: 0 });
+});
+
+test("the estimate is the work at a rate of node-seconds a second", () => {
+  expect(
+    trackSeconds({ peak: 600, work: BENCH_RATE * 150, audio: 1210, length: 1200 }, BENCH_RATE),
+  ).toBe(150);
+});

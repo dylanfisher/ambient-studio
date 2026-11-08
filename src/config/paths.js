@@ -16,6 +16,10 @@ import { join } from "node:path";
  * @property {string} referenceCache derived from references: peaks, playback MP3s, and uploads
  *   still being checked
  * @property {string} search the optimizers' search runs, derived, one folder each (decision 0053)
+ * @property {string} trackRenders each track's newest render and its seam previews, derived, in
+ *   a folder per track and one per render's hash, plus the temp files of a render in progress
+ *   (decision 0062)
+ * @property {string} exports what the owner exported, a folder each (decision 0062)
  */
 
 /**
@@ -34,5 +38,7 @@ export function paths(dataRoot) {
     references: join(dataRoot, "references"),
     referenceCache: join(dataRoot, "reference-cache"),
     search: join(dataRoot, "search"),
+    trackRenders: join(dataRoot, "track-renders"),
+    exports: join(dataRoot, "exports"),
   };
 }

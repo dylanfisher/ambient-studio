@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createReadStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
+import { removeCancelled } from "./write-mp3.js";
 
 /** The flac CLI, found on PATH (0012). */
 export const FLAC = "flac";
@@ -11,10 +12,13 @@ export const FLAC = "flac";
  * flac's stdin, so a long render isn't held in memory a second time.
  * @param {string} wavPath
  * @param {string} flacPath
+ * @param {AbortSignal} [cancel] kills flac and removes the partial file when it aborts,
+ *   rejecting with its reason
  */
-export async function writeFlac(wavPath, flacPath) {
+export async function writeFlac(wavPath, flacPath, cancel) {
   const child = spawn(FLAC, ["--best", "--silent", "-o", flacPath, "-"], {
     stdio: ["pipe", "ignore", "pipe"],
+    ...(cancel && { signal: cancel }),
   });
   let stderr = "";
   child.stderr.setEncoding("utf8");
@@ -25,6 +29,7 @@ export async function writeFlac(wavPath, flacPath) {
     pipeline(createReadStream(wavPath), child.stdin),
     once(child, "close"),
   ]);
+  if (cancel?.aborted) await removeCancelled(flacPath, cancel);
   if (exit.status === "rejected") throw exit.reason;
   const [code, signal] = exit.value;
   // Checked before the input: when flac fails early, writing its stdin fails with EPIPE, and

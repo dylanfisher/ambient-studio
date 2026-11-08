@@ -15,12 +15,13 @@ import { JOB_KIND } from "../domain/job-kind.js";
 import { validateArrangement } from "../domain/validate-arrangement.js";
 import { currentExcerpt, excerptRequest } from "./candidate-excerpt.js";
 import { jobRecordings } from "./candidate-job.js";
-import { getCandidate, getGenome } from "./generation-store.js";
+import { getCandidate } from "./generation-store.js";
 import { JOB_STEP } from "./job-steps.js";
 import { getSketch, listSketches } from "./rating-store.js";
 import { renderExcerpt, vibeLoudness } from "./render-excerpt.js";
 import { fields, idParam, MAX_CHARS, text } from "./request-fields.js";
 import { duplicateJob, HttpError } from "./routing.js";
+import { sketchParts } from "./track-manifest.js";
 import {
   createTrack,
   getTrack,
@@ -31,26 +32,9 @@ import {
   TRACK_REVISION_FIELD,
 } from "./track-store.js";
 import { requireVibe } from "./vibe-routes.js";
-import { getRevision, getVibe } from "./vibe-store.js";
+import { getVibe } from "./vibe-store.js";
 
 const SECTION_AUDIO_JOB = JOB_KIND.sectionAudio;
-
-/**
- * The sketch's candidate and genome. Throws when a row it names is missing, which the store's
- * foreign keys rule out.
- * @param {Store} store
- * @param {{ id: number, candidateId: number }} sketch
- */
-function sketchParts(store, { id, candidateId }) {
-  const candidate = getCandidate(store, candidateId);
-  if (!candidate) throw new Error(`sketch ${id} names no candidate ${candidateId}`);
-  const revision = getRevision(store, candidate.vibeRevisionId);
-  if (!revision) throw new Error(`candidate ${candidateId} names no revision`);
-  if (candidate.genomeId === null) throw new Error(`sketch ${id} keeps a candidate with no genome`);
-  const genome = getGenome(store, candidate.genomeId)?.genome;
-  if (!genome) throw new Error(`candidate ${candidateId} names no genome ${candidate.genomeId}`);
-  return { candidate, vibeId: revision.vibeId, duration: /** @type {number} */ (genome.duration) };
-}
 
 /**
  * What `validateArrangement` reads of the sketches, for a track of `vibeId`.
@@ -80,7 +64,7 @@ function arrangementContext(store, vibeId) {
  * @param {number} vibeId
  * @param {unknown} given
  */
-function checkedArrangement(store, vibeId, given) {
+export function checkedArrangement(store, vibeId, given) {
   const checked = validateArrangement(given, arrangementContext(store, vibeId));
   if (!checked.ok) {
     const list = checked.errors.map((e) => `${e.path}: ${e.message}`).join("; ");
@@ -94,7 +78,7 @@ function checkedArrangement(store, vibeId, given) {
  * @param {Store} store
  * @param {Record<string, string>} params
  */
-function requireTrack(store, params) {
+export function requireTrack(store, params) {
   const id = idParam(params, "trackId");
   const track = getTrack(store, id);
   const vibe = track && getVibe(store, track.vibeId);

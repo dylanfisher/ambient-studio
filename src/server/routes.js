@@ -14,6 +14,7 @@ import { REFERENCE_ROUTES } from "./reference-routes.js";
 import { REGION_ANALYSIS_ROUTES } from "./region-analysis-routes.js";
 import { serveAudio } from "./serve-audio.js";
 import { SESSION_ROUTES } from "./session-routes.js";
+import { TRACK_RENDER_ROUTES } from "./track-render-routes.js";
 import { TRACK_ROUTES } from "./track-routes.js";
 import { VIBE_ROUTES } from "./vibe-routes.js";
 
@@ -34,4 +35,5 @@ export const ROUTES = [
   ...ATTACHMENT_ROUTES,
   ...ARCHIVE_ROUTES,
   ...TRACK_ROUTES,
+  ...TRACK_RENDER_ROUTES,
 ];

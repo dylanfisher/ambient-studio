@@ -25,6 +25,13 @@ export const PCM24 = Object.freeze({ tag: 1, bytes: PCM24_BYTES, fmtBytes: 16, f
  */
 export const FLOAT32 = Object.freeze({ tag: 3, bytes: FLOAT32_BYTES, fmtBytes: 18, fact: true });
 
+/**
+ * Bytes before the first sample: the RIFF and fmt chunks, the fact chunk when the format has
+ * one, and the data chunk's own header.
+ * @param {Readonly<SampleFormat>} format
+ */
+export const headerBytes = (format) => 12 + 8 + format.fmtBytes + (format.fact ? 12 : 0) + 8;
+
 // The RIFF size field is 32 bits and counts everything after its own 8-byte chunk header.
 const MAX_RIFF_BYTES = 2 ** 32 - 1;
 
@@ -143,7 +150,7 @@ export async function createWavWriter(path, { channelCount, sampleRate, frames, 
 function wavHeader(format, { channelCount, sampleRate, frames, blockAlign, pad }) {
   const dataBytes = frames * blockAlign;
   const factBytes = format.fact ? 12 : 0;
-  const header = Buffer.alloc(12 + 8 + format.fmtBytes + factBytes + 8);
+  const header = Buffer.alloc(headerBytes(format));
   header.write("RIFF", 0, "latin1");
   header.writeUInt32LE(header.length - 8 + dataBytes + pad, 4);
   header.write("WAVEfmt ", 8, "latin1");

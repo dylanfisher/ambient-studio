@@ -8,19 +8,29 @@
 //                                   projected from both to 0010's 900 s, then the features case
 //   ./scripts/bench --duration S    one case, 300 or 720, which takes under 5 minutes
 //   ./scripts/bench --features      the features case alone, which takes seconds
+//   ./scripts/bench --track         a 20-minute and a 10-minute track of five golden genomes
+//                                   with four crossfades (decision 0062), each rendered alone and
+//                                   rendered and exported, against phase 6's 1 GiB ceiling
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { loadavg, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { emptyArrangement } from "../src/domain/arrangement-schema.js";
 import { extractFeatures } from "../src/domain/extract-features.js";
 import { normalize } from "../src/domain/normalize.js";
 import { renderChecks } from "../src/domain/render-checks.js";
+import { sectionGenome } from "../src/domain/section-genome.js";
+import { trackCost } from "../src/domain/track-cost.js";
+import { trackFades } from "../src/domain/track-fades.js";
 import { cost } from "../src/engine/cost.js";
 import { requireGenome } from "../src/engine/validate-genome.js";
 import { exportRender } from "../src/server/export-render.js";
+import { mixTrack } from "../src/server/mix-track.js";
 import { renderOffline } from "../src/server/render-offline.js";
+import { renderTrack } from "../src/server/render-track.js";
+import { writeFlac } from "../src/server/write-flac.js";
 
 const SELF = fileURLToPath(import.meta.url);
 const GENOME_PATH = fileURLToPath(new URL("../src/engine/genomes/example.json", import.meta.url));
@@ -34,9 +44,30 @@ const MODES = Object.freeze({ render: "render", export: "render+export" });
 /** The features case: one excerpt of this length, timed this many runs after a warm-up. */
 const FEATURES_CASE = Object.freeze({ duration: 30, runs: 5 });
 const MIB = 2 ** 20;
+/**
+ * The track cases (decision 0062): the golden genomes its five sections play, in order, where
+ * each starts on its timeline, its crossfades' seconds, and one timed run per child for each
+ * length, with no warm-up, so each case stays under 5 minutes (agent rule 9). The 10-minute case
+ * is there for memory: its peak RSS within 10% of the 20-minute one's says memory doesn't grow
+ * with length. Sections start past 0 so that in both cases a full chunk renders with its
+ * pre-roll, the largest context a chunk makes; from 0, the 10-minute case's only full chunks
+ * have none.
+ */
+const TRACK = Object.freeze({
+  genomes: ["example", "drone", "colundi", "pad", "bell"],
+  offset: 30,
+  transition: 10,
+  lengths: [1200, 600],
+  ceiling: 2 ** 30,
+  spread: 0.1,
+});
+/** What a track child's per-chunk memory lines start with, on stderr. */
+const MEMORY_LINE = "memory";
+const TRACK_MODES = Object.freeze({ "track-render": "render", "track-export": "render+export" });
 
 /** @typedef {keyof typeof MODES} Mode */
-/** @typedef {Mode | "features"} ChildMode */
+/** @typedef {keyof typeof TRACK_MODES} TrackMode */
+/** @typedef {Mode | TrackMode | "features"} ChildMode */
 
 /**
  * The example genome stretched to `duration` when the case is longer than its timeline, so the
@@ -56,6 +87,7 @@ function benchGenome(duration) {
  * @param {number} runs
  */
 async function child(mode, duration, runs) {
+  if (mode === "track-render" || mode === "track-export") return trackChild(mode, duration);
   const genome = benchGenome(duration);
   if (mode === "features") return featuresChild(genome, duration, runs);
   /** @type {number[]} */
@@ -96,11 +128,128 @@ async function featuresChild(genome, duration, runs) {
 }
 
 /**
+ * The track case's arrangement and plan: five sections of the golden genomes, each extended to
+ * its length as `sectionGenome` does, with equal crossfades between them, `length` seconds in all.
+ * @param {number} length
+ */
+function benchTrack(length) {
+  const { genomes: names, transition } = TRACK;
+  const seconds = (length + transition * (names.length - 1)) / names.length;
+  /** @type {Map<number, unknown>} */
+  const genomes = new Map(
+    names.map((name, i) => [
+      i + 1,
+      JSON.parse(
+        readFileSync(
+          fileURLToPath(new URL(`../src/engine/genomes/${name}.json`, import.meta.url)),
+          "utf8",
+        ),
+      ),
+    ]),
+  );
+  const arrangement = {
+    ...emptyArrangement(),
+    sections: names.map((_, i) => ({ sketchId: i + 1, offset: TRACK.offset, seconds })),
+    transitions: names.slice(1).map(() => ({ kind: "crossfade", seconds: transition })),
+  };
+  const plan = {
+    sections: arrangement.sections.map((section, index) => ({
+      genome: sectionGenome(arrangement, index, genomes),
+      seed: SEED,
+      offset: section.offset,
+      duration: section.seconds,
+    })),
+    transitions: arrangement.transitions.map(({ seconds: s }) => s),
+    fades: trackFades(arrangement, genomes),
+  };
+  return { plan, cost: trackCost(arrangement, genomes) };
+}
+
+/**
+ * The track child: one run, timed, printed as `child` prints. Render alone mixes every chunk and
+ * drops the blocks; render and export is the track job's path, raw file, normalize, WAV and MP3,
+ * plus the export's FLAC, all in a temp folder.
+ * @param {TrackMode} mode
+ * @param {number} length
+ */
+async function trackChild(mode, length) {
+  const { plan } = benchTrack(length);
+  const dir = await mkdtemp(join(tmpdir(), "bench-track-"));
+  // Before each chunk, what the process holds: all of it, the memory outside V8's heap that
+  // V8 knows of, and the part of that in ArrayBuffers, so native memory shows apart from JS's.
+  const sample = () => {
+    const { rss, external, arrayBuffers } = process.memoryUsage();
+    console.error(`${MEMORY_LINE} ${rss} ${external} ${arrayBuffers}`);
+  };
+  const start = performance.now();
+  try {
+    if (mode === "track-render") {
+      let frames = 0;
+      for await (const block of mixTrack(plan, { progress: sample })) {
+        frames += block[0]?.length ?? 0;
+      }
+      if (frames === 0) throw new Error("bench: the track mixed no frames");
+    } else {
+      const wav = join(dir, "mix.wav");
+      await renderTrack(plan, {
+        loudness: { target: -16, ceiling: -1 },
+        tempDir: dir,
+        wav,
+        mp3: join(dir, "mix.mp3"),
+        progress: sample,
+      });
+      await writeFlac(wav, join(dir, "mix.flac"));
+    }
+  } finally {
+    await rm(dir, { recursive: true });
+  }
+  console.log(JSON.stringify([(performance.now() - start) / 1000]));
+}
+
+/** The track cases, then whether the peaks meet the ceiling and don't grow with length. */
+function benchTracks() {
+  /** @type {Record<number, number>} */
+  const rss = {};
+  for (const length of TRACK.lengths) {
+    const { cost: found } = benchTrack(length);
+    console.log(
+      `${length} s track of ${TRACK.genomes.join(", ")} from ${TRACK.offset} s, ${TRACK.transition} s crossfades, seed ${SEED}; peak cost ${found.peak.toFixed(1)}, ${(found.work / 1e3).toFixed(0)}k node-seconds; 1 timed run`,
+    );
+    for (const mode of /** @type {TrackMode[]} */ (Object.keys(TRACK_MODES))) {
+      console.log(`  ${load()}`);
+      const { seconds, rss: peak, stderr } = measure(mode, length, 1);
+      const wall = seconds[0] ?? NaN;
+      if (mode === "track-render") rss[length] = peak;
+      console.log(
+        `  ${TRACK_MODES[mode].padEnd(13)} ${(length / wall).toFixed(1)}x, ${wall.toFixed(1)} s, ${(found.work / wall).toFixed(0)} node-seconds a second; peak RSS ${mib(peak)} (${peak <= TRACK.ceiling ? "under" : "over"} ${mib(TRACK.ceiling)})`,
+      );
+      const samples = stderr
+        .split("\n")
+        .filter((line) => line.startsWith(`${MEMORY_LINE} `))
+        .map((line) => line.split(" ").slice(1).map(Number));
+      const most = (/** @type {number} */ at) => Math.max(...samples.map((s) => s[at] ?? 0));
+      console.log(
+        `  ${"".padEnd(13)} before each of ${samples.length} chunks, at most: RSS ${mib(most(0))}, external ${mib(most(1))}, of it ArrayBuffers ${mib(most(2))}`,
+      );
+    }
+  }
+  console.log(`  ${load()}`);
+  const [long, short] = TRACK.lengths.map((length) => rss[length] ?? NaN);
+  const spread =
+    Math.abs(/** @type {number} */ (short) - /** @type {number} */ (long)) /
+    /** @type {number} */ (long);
+  console.log(
+    `render peak RSS at ${TRACK.lengths[1]} s is ${(spread * 100).toFixed(1)}% from ${TRACK.lengths[0]} s's, ${spread <= TRACK.spread ? "within" : "outside"} ${TRACK.spread * 100}%`,
+  );
+}
+
+/**
  * Runs a child under /usr/bin/time -l.
  * @param {ChildMode} mode
  * @param {number} duration
  * @param {number} runs
- * @returns {{ seconds: number[]; rss: number }} wall seconds, warm-up first, and peak RSS bytes
+ * @returns {{ seconds: number[]; rss: number; stderr: string }} wall seconds, warm-up first, peak
+ *   RSS bytes, and what the child wrote to stderr
  */
 function measure(mode, duration, runs) {
   const args = ["-l", process.execPath, SELF, "--child", mode, String(duration), String(runs)];
@@ -112,7 +261,11 @@ function measure(mode, duration, runs) {
   if (rss === undefined) {
     throw new Error(`bench: no peak RSS in /usr/bin/time's output:\n${result.stderr}`);
   }
-  return { seconds: JSON.parse(result.stdout.trim().split("\n").at(-1) ?? ""), rss: Number(rss) };
+  return {
+    seconds: JSON.parse(result.stdout.trim().split("\n").at(-1) ?? ""),
+    rss: Number(rss),
+    stderr: result.stderr,
+  };
 }
 
 /** @param {number[]} values */
@@ -169,10 +322,18 @@ function benchFeatures() {
 const childAt = process.argv.indexOf("--child");
 if (childAt !== -1) {
   const [mode, duration, runs] = process.argv.slice(childAt + 1);
-  if (mode !== "render" && mode !== "export" && mode !== "features") {
+  if (
+    mode !== "render" &&
+    mode !== "export" &&
+    mode !== "features" &&
+    mode !== "track-render" &&
+    mode !== "track-export"
+  ) {
     throw new Error(`bench: no mode "${mode}"`);
   }
   await child(mode, Number(duration), Number(runs));
+} else if (process.argv.includes("--track")) {
+  benchTracks();
 } else if (process.argv.includes("--features")) {
   benchFeatures();
 } else {

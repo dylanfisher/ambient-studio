@@ -7,7 +7,7 @@
   again) and [0032](0032-plain-language-pages.md) (keys on the Quick A/B page). Amended by
   [0046](0046-ranking-wildcards-pair-picker.md) (a third order, Best questions) and
   [0055](0055-search-by-ear.md) (a search-by-ear mode) and
-  [0059](0059-optimizer-evaluation.md) (a spot-check mode)
+  [0059](0059-optimizer-evaluation.md) (a spot-check mode) and [0062](0062-track-render-and-export.md) (an MP3 from chunks)
 
 ## Context
 
@@ -202,3 +202,6 @@ owner asked for keys here; every other page stays as 0032 has it.
   modes a choice is sent before the next pair shows, since the search draws from it, and Undo is
   off. The order switch is hidden and a Stop the search button ends the run. Keys and the
   player are unchanged.
+- 2026-11-07: from step 6c ([0062](0062-track-render-and-export.md)). `writeMp3` also takes the PCM as an async iterable of
+  chunks, piped to lame's stdin as they come, with the same bytes as whole; a track's preview is
+  its WAV's data chunk read back, so 20 minutes is never held.

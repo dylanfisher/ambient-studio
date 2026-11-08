@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -106,6 +107,19 @@ describe("writeFlac", () => {
       expect(flacClosedFirst(Object.assign(new Error("write"), { code }))).toBe(true);
     },
   );
+
+  test("a cancel kills flac and removes its partial file", async () => {
+    const wavPath = join(dir, "out.wav");
+    const flacPath = join(dir, "out.flac");
+    await writeWav(wavPath, encodePcm24(testSignal()), {
+      channelCount: 2,
+      sampleRate: SAMPLE_RATE,
+    });
+    const controller = new AbortController();
+    controller.abort(new Error("cancelled"));
+    await expect(writeFlac(wavPath, flacPath, controller.signal)).rejects.toThrow("cancelled");
+    expect(existsSync(flacPath)).toBe(false);
+  });
 
   test("does not treat a read error on the WAV as flac having stopped reading", () => {
     expect(flacClosedFirst(Object.assign(new Error("read"), { code: "EIO" }))).toBe(false);

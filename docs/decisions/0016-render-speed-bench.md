@@ -1,7 +1,7 @@
 # 0016. Render speed is measured by a bench script on mbp2021, outside the gate
 
 - **Date:** 2026-11-05
-- **Status:** accepted
+- **Status:** accepted; amended by [0062](0062-track-render-and-export.md) (the track cases)
 
 ## Context
 
@@ -58,3 +58,12 @@ phase's Result line.
     export median 19.1x, slowest 18.9x, 672 MiB; load average 1.25–1.53 (1 min). 720 s render
     alone 22.9x and 22.9x, 873 MiB; render and export 18.9x and 18.9x, 1183 MiB; load average
     1.34–1.53. The render's RSS projects to about 1009 MiB at 900 s.
+- 2026-11-07: from step 6c ([0062](0062-track-render-and-export.md)). `./scripts/bench --track` runs a 20-minute and a
+  10-minute track of five golden genomes with four 10 s crossfades, each rendered alone and
+  rendered and exported, one timed run per child under `/usr/bin/time -l` and no warm-up, so
+  each length takes under 2 minutes. It prints each mode's speed, its rate in node-seconds a
+  second and its peak RSS against 1 GiB, the most RSS, external and ArrayBuffer memory sampled
+  before a chunk, and whether the 10-minute render's peak is within 10% of the 20-minute one's.
+  Measured on mbp2021, 2026-11-07: 27.2x and 544 MiB rendering 20 minutes, 17.3x and 594 MiB
+  with the export; 25.4x and 467 MiB rendering 10 minutes, 16.5x and 585 MiB with the export.
+  The spread, 14.2%, misses the 10% check; 0062 says why and keeps it open.

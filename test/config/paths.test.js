@@ -29,5 +29,7 @@ test("names the folders the store and job runner use", () => {
     references: join(root, "references"),
     referenceCache: join(root, "reference-cache"),
     search: join(root, "search"),
+    trackRenders: join(root, "track-renders"),
+    exports: join(root, "exports"),
   });
 });

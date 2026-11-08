@@ -2,6 +2,7 @@
 // re-renders them (decisions 0009, 0011, 0012, 0015).
 /** @import { Genome } from "../engine/genome-schema.js" */
 /** @import { RecordingEntry } from "./recording-index.js" */
+/** @import { RendererVersions } from "./renderer-versions.js" */
 import { lstatSync } from "node:fs";
 import { link, mkdir, mkdtemp, readFile, rm, rmdir, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
@@ -279,17 +280,22 @@ function requireSidecar(value, path) {
 }
 
 /**
- * @param {Sidecar} recorded
+ * @param {RendererVersions} recorded
+ * @param {string} [where] what the recorded versions are from
  * @returns {string[]} one line per renderer version that differs from this run's
  */
-function rendererDifferences(recorded) {
+export function rendererDifferences(recorded, where = "the sidecar") {
   const here = rendererVersions();
   return [
-    recorded.node !== here.node && `Node is ${recorded.node} in the sidecar and ${here.node} here`,
+    recorded.node !== here.node && `Node is ${recorded.node} in ${where} and ${here.node} here`,
     recorded.nodeWebAudioApi !== here.nodeWebAudioApi &&
-      `node-web-audio-api is ${recorded.nodeWebAudioApi} in the sidecar and ${here.nodeWebAudioApi} here`,
+      `node-web-audio-api is ${recorded.nodeWebAudioApi} in ${where} and ${here.nodeWebAudioApi} here`,
   ].filter((line) => typeof line === "string");
 }
+
+/** Why a re-render can differ when every recorded version matches this run's. */
+export const SAME_RENDERERS =
+  "Node and node-web-audio-api match too, so the engine changed without a version bump.";
 
 /**
  * Re-exports from a sidecar into `outDir` and writes the files only when the new PCM hash
@@ -340,7 +346,7 @@ export async function rerender(sidecarPath, outDir, recordings) {
     const why =
       differences.length > 0
         ? `${differences.join("; ")}. Going back to the sidecar's versions may reproduce it.`
-        : "Node and node-web-audio-api match too, so the engine changed without a version bump.";
+        : SAME_RENDERERS;
     throw new Error(
       `re-rendering ${sidecarPath} doesn't reproduce it: the PCM hashes to ${pcmSha256}, the sidecar says ${recorded.pcmSha256}. Both are the same engine version, ${ENGINE_VERSION}. ${why}`,
     );

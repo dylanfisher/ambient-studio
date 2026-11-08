@@ -11,8 +11,8 @@ import { renderOffline } from "../../src/server/render-offline.js";
 // The stated tolerance, from renders measured on mbp2021: an excerpt differs from its window of
 // a full render by at most a peak of 1e-5, with the difference at least 100 dB under the signal
 // (decision 0007).
-const EXCERPT_PEAK = 1e-5;
-const EXCERPT_BELOW_DB = 100;
+export const EXCERPT_PEAK = 1e-5;
+export const EXCERPT_BELOW_DB = 100;
 
 /**
  * Largest absolute difference between two renders, and the difference's RMS in dB below the
