@@ -7,7 +7,6 @@
 // owner-started job through the excerpt player.
 /** @import { Arrangement, Section } from "../domain/arrangement-schema.js" */
 /** @import { ArrangementSketch } from "../domain/validate-arrangement.js" */
-/** @import { JobStatus } from "./job-progress.js" */
 /** @import { TimelineAction } from "./timeline-keys.js" */
 /** @import { TrackCost } from "../domain/track-cost.js" */
 /** @import { Curve } from "../engine/trajectory.js" */
@@ -20,18 +19,16 @@ import {
 } from "../domain/arrangement-schema.js";
 import { sectionMorph } from "../domain/section-genome.js";
 import { validateArrangement } from "../domain/validate-arrangement.js";
-import { getJson, jobPath, postJson, startJob, trackPath } from "./api.js";
+import { getJson, postJson, trackPath } from "./api.js";
 import { cloneTemplate } from "./clone-template.js";
 import { elementsById } from "./element-by-id.js";
 import { clockTime, mountPlayer, playAudio } from "./excerpt-player.js";
-import { followJob } from "./follow-job.js";
 import { formatTime } from "./format-time.js";
 import { jobControl } from "./job-control.js";
-import { endedText, JOB_STATE } from "./job-progress.js";
-import { jobBox } from "./job-view.js";
 import { keyButtons } from "./key-buttons.js";
 import { NOT_STARTED } from "./owner-job.js";
 import { unloadGuard } from "./quick-ab-session.js";
+import { runJob } from "./run-job.js";
 import { statusLine } from "./status-line.js";
 import {
   addSection,
@@ -446,24 +443,16 @@ async function playSection() {
     play(known);
     return;
   }
-  playControl.wait();
   try {
-    const { job, refused } = await startJob(`${trackPath(trackId)}/section-audio`, section);
-    status.say(
-      refused ? `${refused} Showing that job's progress.` : "Rendering the section to play.",
-    );
-    const box = jobBox((current) =>
-      status.run(async () => box.show(await postJson(`${jobPath(current.id)}/cancel`, {}))),
-    );
-    page.jobBox.replaceChildren(box.root);
-    playControl.hold(job);
-    /** @type {JobStatus & { result?: any }} */
-    const finished = await followJob(job, (current) => box.show(current));
-    if (finished.state !== JOB_STATE.done) {
-      status.say(endedText(finished));
-      return;
-    }
-    if (refused) {
+    const finished = await runJob(status, {
+      path: `${trackPath(trackId)}/section-audio`,
+      body: section,
+      controls: [playControl],
+      boxes: page.jobBox,
+      started: "Rendering the section to play.",
+    });
+    if (finished === null) return;
+    if (finished.refused) {
       status.say("That job was for another window. Press Play again to render this one.");
       return;
     }
@@ -476,7 +465,6 @@ async function playSection() {
       );
     }
   } finally {
-    playControl.release();
     draw();
   }
 }
@@ -555,24 +543,16 @@ function drawRender() {
  * @returns {Promise<any>}
  */
 async function trackJob(path, body, started) {
-  for (const control of trackJobControls) control.wait();
   try {
-    const { job, refused } = await startJob(path, body);
-    status.say(refused ? `${refused} Showing that job's progress.` : started);
-    const box = jobBox((current) =>
-      status.run(async () => box.show(await postJson(`${jobPath(current.id)}/cancel`, {}))),
-    );
-    page.renderJobBox.replaceChildren(box.root);
-    for (const control of trackJobControls) control.hold(job);
-    /** @type {JobStatus & { result?: any }} */
-    const finished = await followJob(job, (current) => box.show(current));
-    if (finished.state !== JOB_STATE.done) {
-      status.say(endedText(finished));
-      return null;
-    }
-    return refused ? null : finished.result;
+    const finished = await runJob(status, {
+      path,
+      body,
+      controls: trackJobControls,
+      boxes: page.renderJobBox,
+      started,
+    });
+    return finished === null || finished.refused ? null : finished.result;
   } finally {
-    for (const control of trackJobControls) control.release();
     draw();
   }
 }
