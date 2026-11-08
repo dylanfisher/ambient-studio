@@ -96,7 +96,11 @@ full. One cell takes Tab; the arrow keys move one cell at a time and stop at the
 (`arrowMove`, `src/web/map-grid.js`, no DOM). Click or Enter opens a cell: it plays the elite
 through 4i's excerpt player and offers the shared explore, nudge and search controls and Keep as
 sketch. Fill the map has its steps, the share in percent and the control switch, asks first, and
-follows its job, reading the map again as its count moves.
+follows its job, reading the map again as its count moves: one read at a time, and one
+more after the last call (`latestOnly`), since a read can ask the sidecar to score every
+excerpt. Each opened cell keeps its controls, so a job it started still holds its button after
+another cell opens. An end the owner or the range gives that meets the excerpts' percentile end
+says so, apart from the reason for too few or alike excerpts.
 
 ## Alternatives considered
 

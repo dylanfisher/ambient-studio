@@ -264,18 +264,31 @@ export function heldAxes({ axes, ranges }, entries) {
   const reasons = axes.map((axis, i) => {
     if (axis.reason !== null) return axis.reason;
     const range = axis.source === AXIS_SOURCE.feature ? ranges[String(axis.name)] : undefined;
-    const [low, high] = axis.ends;
-    const ends = axisEnds(
-      entries.map(({ values }) => /** @type {number} */ (values[i])),
-      [low ?? range?.[0] ?? null, high ?? range?.[1] ?? null],
-    );
-    if (ends === null) {
-      return "Its ends can't be set yet: the brief's excerpts all read the same on it, or it has too few, and no range gives both ends.";
-    }
+    const values = entries.map((entry) => /** @type {number} */ (entry.values[i]));
+    const given = [axis.ends[0] ?? range?.[0] ?? null, axis.ends[1] ?? range?.[1] ?? null];
+    const ends = axisEnds(values, /** @type {[number | null, number | null]} */ (given));
+    if (ends === null) return endsReason(values, given);
     held.push({ bins: axis.bins, ...ends });
     return null;
   });
   return { axes: held, reasons };
+}
+
+/**
+ * Why an axis has no ends: one end given, by the owner or the brief's range, meets or passes
+ * the end the excerpts' percentile gives; or the excerpts are too few or read alike.
+ * @param {readonly number[]} values
+ * @param {readonly (number | null)[]} given
+ * @returns {string}
+ */
+function endsReason(values, given) {
+  const [low, high] = given;
+  if (values.length > 0 && (low === null) !== (high === null)) {
+    return low !== null
+      ? `Its low end, ${low}, isn't under the high end the brief's excerpts give it (their 90th percentile); give the axis a high end too, or a lower low end.`
+      : `Its high end, ${high}, isn't above the low end the brief's excerpts give it (their 10th percentile); give the axis a low end too, or a higher high end.`;
+  }
+  return "Its ends can't be set yet: the brief's excerpts all read the same on it, or it has too few, and no range gives both ends.";
 }
 
 /**

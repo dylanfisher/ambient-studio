@@ -306,6 +306,16 @@ test("an axis holds its source, its ends and its bins, and names a region only f
       "its bins are a whole number from 2 to 16",
       null,
     ],
+    // A prototype's key is no source or name.
+    [{ source: "constructor", ends, bins: 8 }, "an axis's source is feature, macro", null],
+    [
+      { source: "feature", name: "toString", ends, bins: 8 },
+      "is not a feature a range may name",
+      null,
+    ],
+    [{ source: "macro", name: "hasOwnProperty", ends, bins: 8 }, "is not a macro", null],
+    [{ source: "macro", name: 3, ends, bins: 8 }, "is not a macro", null],
+    [{ source: "region", ends, bins: 8 }, "an axis on a region names it", -1],
   ];
   for (const [details, message, region] of wrong) {
     expect(() => add(details, region)).toThrow(message);

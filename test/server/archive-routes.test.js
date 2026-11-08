@@ -163,4 +163,14 @@ test("the map places each live valid candidate by its excerpt, its elite the few
   ]);
   expect(map.cells[0]).toMatchObject({ intent: "low, a little less still", misses: 0 });
   expect([a.id, d.id]).not.toContain(map.cells[0].candidateId);
+
+  // A low end the owner gives at or past the excerpts' 90th percentile says so.
+  await studio.ok("POST", `/api/vibes/${vibe.id}/axes`, {
+    axes: [TWO[0], { ...TWO[1], low: 0.95 }],
+  });
+  const crossed = await studio.ok("GET", archivePath);
+  expect(crossed.cells).toEqual([]);
+  expect(crossed.reason).toBe(
+    "Its low end, 0.95, isn't under the high end the brief's excerpts give it (their 90th percentile); give the axis a high end too, or a lower low end.",
+  );
 });

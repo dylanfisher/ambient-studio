@@ -62,20 +62,24 @@ const positiveId = (value) => Number.isSafeInteger(value) && /** @type {number} 
  */
 function axisProblem(details, regionId) {
   const { source, name, directionId, ends, bins } = details;
-  const extra = typeof source === "string" ? AXIS_KEYS[source] : undefined;
+  // Own keys only, so a prototype name such as "constructor" is no source or name.
+  const extra =
+    typeof source === "string" && Object.hasOwn(AXIS_KEYS, source) ? AXIS_KEYS[source] : undefined;
   if (extra === undefined) return "an axis's source is feature, macro, direction or region";
   const keys = [AXIS_DETAILS.source, ...extra, AXIS_DETAILS.ends, AXIS_DETAILS.bins];
   if (Object.keys(details).length !== keys.length || !keys.every((key) => key in details)) {
     return `an axis on a ${source}'s details are {${keys.join(", ")}}`;
   }
-  if (source === AXIS_SOURCE.region && regionId === null) return "an axis on a region names it";
+  if (source === AXIS_SOURCE.region && !positiveId(regionId)) return "an axis on a region names it";
   if (source !== AXIS_SOURCE.region && regionId !== null) {
     return "an axis names a region only on a region";
   }
-  if (source === AXIS_SOURCE.feature && !(String(name) in TARGET_FEATURES)) {
+  const named = (/** @type {object} */ table) =>
+    typeof name === "string" && Object.hasOwn(table, name);
+  if (source === AXIS_SOURCE.feature && !named(TARGET_FEATURES)) {
     return `${JSON.stringify(name)} is not a feature a range may name`;
   }
-  if (source === AXIS_SOURCE.macro && !(String(name) in MACROS)) {
+  if (source === AXIS_SOURCE.macro && !named(MACROS)) {
     return `${JSON.stringify(name)} is not a macro`;
   }
   if (source === AXIS_SOURCE.direction && !positiveId(directionId)) {

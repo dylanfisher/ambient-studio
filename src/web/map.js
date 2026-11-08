@@ -14,6 +14,7 @@ import { briefJobs, briefQuery, NO_OPEN_SESSION, targetSession } from "./brief-j
 import { elementsById } from "./element-by-id.js";
 import { mountPlayer, playAudio } from "./excerpt-player.js";
 import { jobControl } from "./job-control.js";
+import { latestOnly } from "./latest-only.js";
 import {
   arrowMove,
   axisLine,
@@ -76,6 +77,12 @@ let focused = null;
 let opened = null;
 /** @type {SteerControls | null} */
 let steer = null;
+/**
+ * Each opened cell's controls, by candidate, kept when another cell opens, so a job one of them
+ * started still holds its button when the owner comes back.
+ * @type {Map<number, SteerControls>}
+ */
+const steers = new Map();
 /** @type {number | null} the open session new candidates go to */
 let target = null;
 const fill = jobControl(page.fillButton);
@@ -170,12 +177,15 @@ function openCell(cell, index) {
   const url = new URL(cellAudio(cell), location.href).href;
   if (page.openAudio.src !== url) page.openAudio.src = cellAudio(cell);
   playAudio(page.openAudio, status.fail);
-  steer = steerControls({
-    candidateId: cell.candidateId,
-    sessionId: () => target,
-    start,
-    run: status.run,
-  });
+  steer =
+    steers.get(cell.candidateId) ??
+    steerControls({
+      candidateId: cell.candidateId,
+      sessionId: () => target,
+      start,
+      run: status.run,
+    });
+  steers.set(cell.candidateId, steer);
   page.openSteer.replaceChildren(steer.root);
   showSteer();
   drawGrid();
@@ -193,7 +203,7 @@ function showSteer() {
 }
 
 /** Reads the map and draws it. */
-async function loadMap() {
+async function readMap() {
   /** @type {MapView} */
   const read = await getJson(`${VIBES_PATH}/${vibeId}/archive`);
   map = read;
@@ -217,6 +227,12 @@ async function loadMap() {
   else page.grid.replaceChildren();
   showSteer();
 }
+
+/**
+ * One read at a time, and one more after the last call: a fill moves its count every step, and
+ * each read can ask the sidecar to score every excerpt on the map.
+ */
+const loadMap = latestOnly(readMap);
 
 page.layerSelect.onchange = () => drawGrid();
 
