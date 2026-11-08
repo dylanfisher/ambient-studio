@@ -282,3 +282,109 @@ def test_a_cma_es_state_for_another_run_is_refused_with_a_reason(
     (run / STATE).write_text(json.dumps(state), encoding="utf-8")
     with pytest.raises(ValueError, match=message):
         ask(run, 0, 2)
+
+
+def bo_run(root: Path, name: str, seed: int, start: list[float]) -> Path:
+    run = root / "search" / name
+    run.mkdir(parents=True)
+    settings = {"sigma": 0.12, "draws": 1000}
+    spec = {"optimizer": "preferential-bo", "start": start, "seed": seed, "settings": settings}
+    (run / "spec.json").write_text(json.dumps(spec), encoding="utf-8")
+    assert METHODS["optimizer_start"]({"spec": str(run / "spec.json")}) == {"dimension": len(start)}
+    return run
+
+
+BO_START = [0.2, 0.2, 0.2, 0.2]
+# 0.67 from the start.
+BO_OPTIMUM = [0.7, 0.45, 0.55, 0.3]
+
+
+def utility(point: list[float]) -> float:
+    return -sum((u - o) ** 2 for u, o in zip(point, BO_OPTIMUM, strict=True))
+
+
+def distance(point: list[float]) -> float:
+    return math.sqrt(-utility(point))
+
+
+def test_preferential_bo_on_simulated_choices_beats_its_start_in_9_of_10_seeds(
+    tmp_path: Path,
+) -> None:
+    """The simulated owner prefers the higher utility after noise of 0.02 on each side, and
+    calls it a tie within 0.002. The run's best is the point that won last."""
+    beaten = 0
+    for seed in range(10):
+        run = bo_run(tmp_path, f"run-{seed + 1}", seed, BO_START)
+        owner = numpy.random.default_rng(1000 + seed)
+        best = BO_START
+        for query in range(30):
+            [point] = ask(run, query, 1)
+            gap = utility(point) - utility(best) + owner.normal(0, 0.02) - owner.normal(0, 0.02)
+            outcome = 0.5 if abs(gap) < 0.002 else 1.0 if gap > 0 else 0.0
+            tell(run, query, [outcome])
+            if outcome == 1.0:
+                best = point
+        beaten += distance(best) < distance(BO_START)
+    assert beaten >= 9
+
+
+def test_a_skip_tells_preferential_bo_nothing_and_the_next_draw_is_new(tmp_path: Path) -> None:
+    run = bo_run(tmp_path, "run-1", 3, BO_START)
+    [first] = ask(run, 0, 1)
+    before = json.loads((run / STATE).read_text(encoding="utf-8"))["optimizer"]
+    tell(run, 0, [None])  # pyright: ignore[reportArgumentType]
+    after = json.loads((run / STATE).read_text(encoding="utf-8"))["optimizer"]
+    assert after == before
+    assert after["points"] == [BO_START] and after["comparisons"] == []
+    [second] = ask(run, 1, 1)
+    assert second != first
+
+
+def test_preferential_bo_keeps_wins_ties_and_losses_against_the_best(tmp_path: Path) -> None:
+    run = bo_run(tmp_path, "run-1", 3, BO_START)
+    told: list[list[float]] = []
+    for query, outcome in enumerate([0.0, 1.0, 0.5]):
+        told += ask(run, query, 1)
+        tell(run, query, [outcome])
+    state = json.loads((run / STATE).read_text(encoding="utf-8"))["optimizer"]
+    assert state["points"] == [BO_START, *told]
+    # Lost to the start; beat the start and became the best; tied with that best.
+    assert state["comparisons"] == [[0, 1, 1.0], [2, 0, 1.0], [3, 2, 0.5], [2, 3, 0.5]]
+    assert state["best"] == 2
+
+
+def test_one_seed_gives_one_preferential_bo_run(tmp_path: Path) -> None:
+    def points(name: str, seed: int) -> list[list[float]]:
+        run = bo_run(tmp_path, name, seed, BO_START)
+        asked: list[list[float]] = []
+        for query, outcome in enumerate([0.0, 1.0, 0.0, 0.5]):
+            asked += ask(run, query, 1)
+            tell(run, query, [outcome])
+        return asked
+
+    first = points("run-1", 5)
+    assert points("run-2", 5) == first
+    assert points("run-3", 6) != first
+
+
+@pytest.mark.parametrize("scores", [[0.25], [2.0], ["win"]])
+def test_preferential_bo_refuses_a_score_that_is_no_outcome(
+    tmp_path: Path, scores: list[Any]
+) -> None:
+    run = bo_run(tmp_path, "run-1", 3, BO_START)
+    ask(run, 0, 1)
+    with pytest.raises(ValueError, match=r"for a win|finite numbers or nulls"):
+        tell(run, 0, scores)
+
+
+def test_preferential_bo_asks_one_point_at_a_time(tmp_path: Path) -> None:
+    run = bo_run(tmp_path, "run-1", 3, BO_START)
+    with pytest.raises(ValueError, match="one point at a time"):
+        ask(run, 0, 2)
+
+
+def test_cma_es_refuses_a_null_score(tmp_path: Path) -> None:
+    run = cma_run(tmp_path, "run-1", 7, [0.5, 0.5])
+    ask(run, 0, 5)
+    with pytest.raises(ValueError, match="finite numbers"):
+        tell(run, 0, [1.0, 1.0, None, 1.0, 1.0])  # pyright: ignore[reportArgumentType]
