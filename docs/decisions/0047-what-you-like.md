@@ -3,7 +3,8 @@
 - **Date:** 2026-11-07
 - **Status:** accepted; provisional: owner to confirm the wording and the cap. Amends
   [0041](0041-sidecar-process.md) (a route, not only a job, may ask the sidecar two metadata
-  methods)
+  methods). Amended by [0046](0046-ranking-wildcards-pair-picker.md) (the text points at the
+  Model test page's buttons, and the ranking shares the current-model lookup)
 
 ## Context
 
@@ -94,3 +95,11 @@ leaves the page filled.
   data".
 - The share of the sound is an approximation. If the owner reads it as exact, a variance
   decomposition over the basis items' terms would replace it, at the cost of storing them.
+
+## Amendments
+
+- 2026-11-07 (4f, [0046](0046-ranking-wildcards-pair-picker.md)): the Model test page has
+  Analyze the sound and Fit the taste model buttons, so the `none` and `stale` texts name them
+  instead of the routes. The lookup of the vibe's current model is `currentModel` in
+  `preference-summary.js`, which the ranking reads too. The models folder's taste test report is
+  no model, so a studio with only a report reads `none` and asks the sidecar nothing.

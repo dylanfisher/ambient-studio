@@ -4,7 +4,8 @@
 - **Status:** accepted; provisional: owner to confirm. Amends
   [0025](0025-http-server-and-audio.md) (`audio/mpeg`),
   [0026](0026-job-runner-and-excerpt-renders.md) (the render cache holds MP3s, and capture renders
-  again) and [0032](0032-plain-language-pages.md) (keys on the Quick A/B page)
+  again) and [0032](0032-plain-language-pages.md) (keys on the Quick A/B page). Amended by
+  [0046](0046-ranking-wildcards-pair-picker.md) (a third order, Best questions)
 
 ## Context
 
@@ -184,3 +185,7 @@ owner asked for keys here; every other page stays as 0032 has it.
   out of the draw until Retry or Discard, so it can't be rated twice; each failed save has a
   Discard. Undo says it waits for a save still sending; a render fault during a save can't
   leave a save stuck; the mode set during a load is kept.
+- 2026-11-07 (4f, [0046](0046-ranking-wildcards-pair-picker.md)): a third order, Best questions,
+  asks the pair the taste model is least sure how to order, under the same rules: no pair rated
+  on the page or earlier in the session, none held by a failed save. The switch is three radio
+  buttons; Best questions is off in a session the taste model hasn't ranked.
