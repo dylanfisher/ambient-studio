@@ -3391,3 +3391,8 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   small-step mutation per valid child from a new stream slot (slots 0–4 unchanged). The builder's
   `--low` run had 13 render-backed route tests time out under load; the seeded-candidate helper
   goes next. The gate passes, 1862 tests.
+- 2026-11-07 — Route-test seeding merged (e3e92ce). `test/support/seed-excerpts.js` writes
+  candidates, their excerpt rows and MP3 files straight to the store and render cache; a test that
+  rates an excerpt asks for `measured`, which renders once per worker and copies the result.
+  `rating-routes` drops from 46 s to 16 s, 57 s to 21 s under load; no test neared the 30 s
+  timeout in the loaded runs. Rating tests still render on capture. The gate passes, 1862 tests.
