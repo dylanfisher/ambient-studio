@@ -153,6 +153,7 @@
               <span class="badge" data-part="wildcardBadge" hidden>Wildcard</span>
             </div>
             <p class="small muted" data-part="origin"></p>
+            <p class="small muted" data-part="positions" hidden></p>
             <button class="button outline small" type="button" data-part="pairLink" hidden title="Shows the other version of this candidate in its place.">Show the other version</button>
             <button class="button outline small" type="button" data-part="foldToggle" aria-expanded="false" hidden title="Shows or hides the other points of this search whose sound is nearest this one, nested under it.">Show nearby points</button>
           </td>
@@ -273,6 +274,35 @@
           <button class="button outline small" type="button" data-part="ear" title="Searches near this candidate by your ear, on the Quick A/B page.">Search by ear</button>
         </div>
       </div>
+    </template>
+    <template id="steer-sliders">
+      <div class="stack small" hidden>
+        <p class="muted">
+          Move a slider toward where you want this candidate to go, or tick a region, then press
+          Steer from here. Each slider runs from the brief's least to its most of that direction
+          among its excerpts so far; only the sliders you moved are sent.
+        </p>
+        <div class="stack" data-part="sliders"></div>
+        <div class="stack" data-part="regions"></div>
+        <div class="row">
+          <input data-part="budget" type="number" step="1" size="5" title="How many points Steer from here tries, from 1 to 400. Each one renders an excerpt and has its sound analyzed." />
+          <button class="button outline small" type="button" data-part="steer" title="Searches near this candidate for sounds that sit where the sliders you moved point and near the regions you ticked, with a little weight on your taste model when the brief has one. No model request. Asks first, with the time it takes.">Steer from here</button>
+        </div>
+      </div>
+    </template>
+    <template id="steer-slider">
+      <div class="stack">
+        <span data-part="name">direction</span>
+        <label class="row">
+          <span class="muted" data-part="near">less</span>
+          <input data-part="input" type="range" min="0" max="1" title="Sets where Steer from here aims on this direction: left for less, right for more." />
+          <span class="muted" data-part="far">more</span>
+        </label>
+        <span class="muted" data-part="position"></span>
+      </div>
+    </template>
+    <template id="steer-region">
+      <label class="row"><input data-part="input" type="checkbox" title="Steer from here also aims at this region's sound, as heard by the sound analysis." /> Toward this region: <span data-part="name">region</span></label>
     </template>
     <template id="lock-item">
       <li class="item row">

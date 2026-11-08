@@ -9,7 +9,7 @@
 /** @import { ValidationError } from "../engine/validation-error.js" */
 /** @import { ConstraintField } from "./constraint-fields.js" */
 /** @import { TargetField } from "./target-fields.js" */
-import { ATTACHMENT_KIND } from "../domain/attachment-kind.js";
+import { ATTACHMENT_KIND, MAX_DIRECTIONS } from "../domain/attachment-kind.js";
 import { FORM } from "../domain/constraint-schema.js";
 import { constraintsText } from "../domain/constraints-text.js";
 import { rangesFromRegion } from "../domain/ranges-from-region.js";
@@ -28,6 +28,7 @@ import {
   rangeInput,
   readConstraints,
 } from "./constraint-fields.js";
+import { directionHelp, directionText } from "./direction-text.js";
 import { elementsById } from "./element-by-id.js";
 import { formatTime } from "./format-time.js";
 import { oneAtATime } from "./one-at-a-time.js";
@@ -77,6 +78,11 @@ const page = elementsById({
   attachedHelp: HTMLElement,
   attachSelect: HTMLSelectElement,
   attachButton: HTMLButtonElement,
+  directionList: HTMLUListElement,
+  directionHelp: HTMLElement,
+  nearInput: HTMLInputElement,
+  farInput: HTMLInputElement,
+  directionButton: HTMLButtonElement,
   ratingList: HTMLUListElement,
   noRatings: HTMLElement,
   revisionList: HTMLUListElement,
@@ -427,7 +433,12 @@ async function showRegions(id) {
  * @param {Map<unknown, any>} names each recording's file name, by id
  */
 async function showAttached(id, regions, names) {
-  const { target, references: attached } = await getJson(`${VIBES_PATH}/${id}/attachments`);
+  const {
+    target,
+    references: attached,
+    directions,
+  } = await getJson(`${VIBES_PATH}/${id}/attachments`);
+  showDirections(directions);
   page.attachedList.replaceChildren(
     ...attached.map((/** @type {any} */ row) => {
       const item = cloneTemplate("attached-item", {
@@ -466,6 +477,28 @@ async function showAttached(id, regions, names) {
   if (choices.some((region) => String(region.id) === chosen)) page.attachSelect.value = chosen;
   page.attachSelect.disabled = choices.length === 0;
   page.attachButton.disabled = choices.length === 0;
+}
+
+/**
+ * The brief's directions (decision 0056), each with Remove.
+ * @param {{ id: number, near: string | null, far: string }[]} directions
+ */
+function showDirections(directions) {
+  page.directionList.replaceChildren(
+    ...directions.map((direction) => {
+      const item = cloneTemplate("direction-item", {
+        line: HTMLElement,
+        remove: HTMLButtonElement,
+      });
+      const text = directionText(direction);
+      item.line.textContent = `From ${text}`;
+      const removeThis = oneAtATime(() => removeDirection(direction.id, text));
+      item.remove.onclick = () => status.run(removeThis);
+      return item.root;
+    }),
+  );
+  page.directionHelp.textContent = directionHelp(directions.length);
+  page.directionButton.disabled = directions.length >= MAX_DIRECTIONS;
 }
 
 /**
@@ -582,6 +615,37 @@ async function detach(attachmentId, text) {
   status.say(`Detached ${text}. Later requests for candidates leave it out.`);
 }
 
+/**
+ * @param {number} attachmentId
+ * @param {string} text the direction as its row names it
+ */
+async function removeDirection(attachmentId, text) {
+  const id = savedId();
+  await postJson(`${attachmentPath(attachmentId)}/detach`, {});
+  await showRegions(id);
+  status.say(`Removed the direction from ${text}. Session pages stop showing its slider.`);
+}
+
+const addDirection = oneAtATime(async () => {
+  const id = savedId();
+  const near = page.nearInput.value.trim();
+  const far = page.farInput.value.trim();
+  if (far.length === 0) {
+    throw new Error("Type the direction's second end first, such as underwater.");
+  }
+  await postJson(`${VIBES_PATH}/${id}/attachments`, {
+    kind: ATTACHMENT_KIND.direction,
+    near: near === "" ? null : near,
+    far,
+  });
+  page.nearInput.value = "";
+  page.farInput.value = "";
+  await showRegions(id);
+  status.say(
+    "Added the direction. Session pages show where each candidate sits on it once the page is opened again.",
+  );
+});
+
 const startSession = oneAtATime(async () => {
   const session = await postJson(`${VIBES_PATH}/${savedId()}/sessions`, {});
   location.assign(`./session.html?id=${session.id}`);
@@ -603,6 +667,7 @@ page.noteForm.onsubmit = (event) => {
 page.startButton.onclick = () => status.run(startSession);
 page.regionRangesButton.onclick = () => status.run(setRangesFromRegion);
 page.attachButton.onclick = () => status.run(attach);
+page.directionButton.onclick = () => status.run(addDirection);
 
 if (vibeId === null) {
   page.pageTitle.textContent = "New brief";

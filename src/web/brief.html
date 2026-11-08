@@ -124,6 +124,29 @@
             </div>
           </section>
 
+          <section class="card stack" aria-labelledby="directions-heading">
+            <h2 id="directions-heading">Directions for the sliders</h2>
+            <p class="small muted">
+              Type two ends, such as dry and underwater. Every candidate on a session page then
+              shows where it sits between this brief's least and most of that direction, with a
+              slider to steer from it. Leave the first end empty to start from the sound of this
+              brief's excerpts so far.
+            </p>
+            <ul id="directionList" class="list"></ul>
+            <p id="directionHelp" class="small muted"></p>
+            <div class="row">
+              <label class="field"
+                >From
+                <input id="nearInput" type="text" size="16" placeholder="this brief so far" title="The end the slider's left side means, such as dry. Leave it empty to start from the sound of this brief's excerpts so far." />
+              </label>
+              <label class="field"
+                >To
+                <input id="farInput" type="text" size="16" placeholder="underwater" title="The end the slider's right side means, such as underwater." />
+              </label>
+              <button id="directionButton" class="button outline" type="button" title="Adds the direction to this brief. No new version of the brief is saved.">Add the direction</button>
+            </div>
+          </section>
+
           <section class="card stack" aria-labelledby="ratings-heading">
             <h2 id="ratings-heading">Ratings and sketches, newest first</h2>
             <ul id="ratingList" class="list"></ul>
@@ -182,6 +205,13 @@
           <button data-part="measure" class="button outline" type="button" title="Measures this region at this brief's saved loudness and analyzes its sound, where either is missing or out of date, so the model can be told its measurements and words.">Measure</button>
           <button data-part="detach" class="button outline" type="button" title="Detaches this region from the brief. Later requests for candidates leave it out; no new version of the brief is saved.">Detach</button>
         </div>
+      </li>
+    </template>
+    <template id="direction-item">
+      <li class="item small row">
+        <span data-part="line"></span>
+        <span class="spacer"></span>
+        <button data-part="remove" class="button outline" type="button" title="Removes this direction from the brief, so session pages stop showing its slider. No new version of the brief is saved.">Remove</button>
       </li>
     </template>
     <template id="session-item">

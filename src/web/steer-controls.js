@@ -35,6 +35,9 @@ export const steerTitles = () => ({
   queries: `How many pairs Search by ear asks you, from 1 to ${MAX_EAR_QUERIES}. Each takes about as long as hearing the two excerpts.`,
 });
 
+/** Why a card's job button sends nothing: the page has no open session. */
+export const NO_SESSION = "There is no open session to send this to.";
+
 /**
  * Sends a job's request and follows the job. The control is off until the job finishes.
  * @typedef {(control: JobControl, path: string, body: Record<string, unknown>) => Promise<void>} StartJob
@@ -100,7 +103,7 @@ export function steerControls({ candidateId, sessionId, start, run }) {
   /** @returns {number} */
   const session = () => {
     const id = sessionId();
-    if (id === null) throw new Error("There is no open session to send this to.");
+    if (id === null) throw new Error(NO_SESSION);
     return id;
   };
   parts.explore.onclick = () =>
