@@ -1,11 +1,12 @@
-// Embeds an audio file through the sidecar's CLAP methods (decision 0042) and stores the vector.
-// The sidecar writes each vector to a file in a temp folder under the data root, since arrays
-// pass as file paths (0041), and the store keeps its bytes.
+// Embeds an audio file or a text through the sidecar's CLAP methods (decision 0042). The sidecar
+// writes each vector to a file in a temp folder under the data root, since arrays pass as file
+// paths (0041); the store keeps an audio file's bytes, and a text's go to a file cache.
 /** @import { EmbeddingSource, Embedding } from "./embedding-store.js" */
 /** @import { App } from "./routing.js" */
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { putEmbedding } from "./embedding-store.js";
+import { putEmbedding, vectorFloats } from "./embedding-store.js";
+import { sha256Hex } from "./sha256-hex.js";
 
 /** Bytes per float32 the sidecar writes. */
 const FLOAT_BYTES = 4;
@@ -59,6 +60,45 @@ export async function readEmbedder(app, { fetch, signal }) {
 }
 
 /**
+ * Asks the sidecar for one embedding, `method` with `params` and an `out` file in a temp folder
+ * under the data root, and hands its bytes to `keep` before the folder is removed. A failure
+ * names `what`.
+ * @template T
+ * @param {App} app
+ * @param {Embedder} embedder
+ * @param {{ method: "embed_audio" | "embed_text", params: Record<string, unknown>,
+ *   what: string, signal: AbortSignal }} request
+ * @param {(vector: Uint8Array, out: string) => Promise<T> | T} keep
+ * @returns {Promise<T>}
+ */
+async function requestVector(app, embedder, { method, params, what, signal }, keep) {
+  const temp = await mkdtemp(join(app.config.dataRoot, ".embed-"));
+  try {
+    const out = join(temp, "vector.f32");
+    try {
+      await app.sidecar.request(
+        method,
+        { checkpointCache: embedder.checkpointCache, ...params, out },
+        { signal },
+      );
+    } catch (error) {
+      throw new Error(`embedding ${what} failed: ${/** @type {Error} */ (error).message}`, {
+        cause: error,
+      });
+    }
+    const bytes = await readFile(out);
+    if (bytes.length !== embedder.dimension * FLOAT_BYTES) {
+      throw new Error(
+        `the sidecar wrote ${bytes.length} bytes for ${what}, not ${embedder.dimension} floats`,
+      );
+    }
+    return await keep(new Uint8Array(bytes), out);
+  } finally {
+    await rm(temp, { recursive: true });
+  }
+}
+
+/**
  * Embeds the audio `file` and stores it as `source`'s embedding, replacing any row it had.
  * A failure names the file.
  * @param {App} app
@@ -68,27 +108,39 @@ export async function readEmbedder(app, { fetch, signal }) {
  * @param {AbortSignal} signal
  * @returns {Promise<Embedding>}
  */
-export async function embedAudio(app, embedder, source, file, signal) {
-  const temp = await mkdtemp(join(app.config.dataRoot, ".embed-"));
-  try {
-    const out = join(temp, "vector.f32");
-    const params = { checkpointCache: embedder.checkpointCache, audio: file, out };
-    try {
-      await app.sidecar.request("embed_audio", params, { signal });
-    } catch (error) {
-      throw new Error(`embedding ${file} failed: ${/** @type {Error} */ (error).message}`, {
-        cause: error,
-      });
-    }
-    const bytes = await readFile(out);
-    if (bytes.length !== embedder.dimension * FLOAT_BYTES) {
-      throw new Error(
-        `the sidecar wrote ${bytes.length} bytes for ${file}, not ${embedder.dimension} floats`,
-      );
-    }
-    const vector = new Uint8Array(bytes);
-    return putEmbedding(app.store, { ...source, producer: embedder.producer, vector });
-  } finally {
-    await rm(temp, { recursive: true });
+export function embedAudio(app, embedder, source, file, signal) {
+  const request = { method: /** @type {const} */ ("embed_audio"), params: { audio: file } };
+  return requestVector(app, embedder, { ...request, what: file, signal }, (vector) =>
+    putEmbedding(app.store, { ...source, producer: embedder.producer, vector }),
+  );
+}
+
+/**
+ * The text's embedding under the embedder's producer: from the cache in `paths.textEmbeddings`
+ * when it holds it, and otherwise from the sidecar, which then fills the cache. A cached file of
+ * the wrong size is embedded again, as other derived data is rebuilt. A sidecar failure names
+ * `what`.
+ * @param {App} app
+ * @param {Embedder} embedder
+ * @param {string} text
+ * @param {string} what names the text in an error
+ * @param {AbortSignal} signal
+ * @returns {Promise<Float32Array>}
+ */
+export async function embedText(app, embedder, text, what, signal) {
+  const folder = app.paths.textEmbeddings;
+  const file = join(folder, `${sha256Hex(`${embedder.producer}\n${text}`)}.f32`);
+  const cached = await readFile(file).catch((/** @type {NodeJS.ErrnoException} */ error) => {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  });
+  if (cached?.length === embedder.dimension * FLOAT_BYTES) {
+    return vectorFloats(new Uint8Array(cached));
   }
+  const request = { method: /** @type {const} */ ("embed_text"), params: { text } };
+  return requestVector(app, embedder, { ...request, what, signal }, async (vector, out) => {
+    await mkdir(folder, { recursive: true });
+    await rename(out, file);
+    return vectorFloats(vector);
+  });
 }

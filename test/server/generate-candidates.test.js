@@ -120,7 +120,11 @@ describe("generateCandidates", () => {
     expect(repair?.repairsId).toBe(second?.id);
     expect(generations.map((g) => g.finishReason)).toEqual(["stop", "stop", "stop", "length"]);
     for (const g of generations) {
-      expect(g).toMatchObject({ model: MODEL, retrievalMethod: RETRIEVAL_METHOD, exampleIds: [] });
+      expect(g).toMatchObject({
+        model: MODEL,
+        retrievalMethod: RETRIEVAL_METHOD.ratingRecency,
+        exampleIds: [],
+      });
     }
 
     expect(candidates.map((c) => c.rejectReason)).toEqual([null, null, REJECT_REASON.truncated]);

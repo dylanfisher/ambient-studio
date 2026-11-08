@@ -71,3 +71,34 @@ export function dropOtherEmbeddings(store, producer) {
   const { changes } = store.db.prepare("DELETE FROM embeddings WHERE producer <> ?").run(producer);
   return Number(changes);
 }
+
+/**
+ * A stored vector's floats.
+ * @param {Uint8Array} bytes little-endian float32, as the sidecar writes them
+ * @returns {Float32Array}
+ */
+export function vectorFloats(bytes) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const floats = new Float32Array(bytes.byteLength / Float32Array.BYTES_PER_ELEMENT);
+  for (let i = 0; i < floats.length; i++)
+    floats[i] = view.getFloat32(i * Float32Array.BYTES_PER_ELEMENT, true);
+  return floats;
+}
+
+/**
+ * The embeddings under `producer` of the genome's rated audio that isn't removed, oldest first.
+ * @param {Store} store
+ * @param {number} genomeId
+ * @param {string} producer
+ * @returns {Float32Array[]}
+ */
+export function ratedAudioEmbeddings(store, genomeId, producer) {
+  const rows = store.db
+    .prepare(
+      `SELECT e.vector FROM embeddings e JOIN ${TABLE.ratedAudio} r ON r.id = e.ratedAudioId
+        WHERE r.genomeId = ? AND r.removedAt IS NULL AND e.producer = ?
+        ORDER BY r.id`,
+    )
+    .all(genomeId, producer);
+  return rows.map((row) => vectorFloats(/** @type {Uint8Array} */ (row.vector)));
+}

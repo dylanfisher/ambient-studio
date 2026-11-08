@@ -16,7 +16,7 @@
 import { join } from "node:path";
 import { excerptMisses } from "../domain/excerpt-misses.js";
 import { excerptRequest } from "./candidate-excerpt.js";
-import { embedAudio, readEmbedder } from "./embed-audio.js";
+import { embedAudio, embedText, readEmbedder } from "./embed-audio.js";
 import { findEmbedding } from "./embedding-store.js";
 import {
   checkRevision,
@@ -67,6 +67,7 @@ export async function jobRecordings(app) {
 /**
  * @typedef {object} CandidateJobResult
  * @property {string} requestGroup
+ * @property {string} retrievalMethod how the prompt's examples were chosen (decision 0024)
  * @property {number[]} candidateIds every candidate made, rejected ones included, in order
  * @property {CandidateRender[]} excerpts one per valid candidate
  * @property {string | null} notEmbedded why the excerpts weren't embedded, or null when they
@@ -127,8 +128,9 @@ export function generationStepText({ index, kind }, offset, total, asking = JOB_
  * cancels the omlx queue too, which is the job's alone while it runs, since the runner runs one
  * job at a time, and a cancel during a render stops the job before its next request. With
  * `explore`, the candidates are explore children of its base (decision 0038), revised like any
- * first try. Each excerpt is embedded after its features when the sidecar is set up (0042), and
- * the result says why not when it isn't.
+ * first try. When the sidecar is set up (0042), the prompt's examples are the rated genomes
+ * nearest the brief, and each excerpt is embedded after its features; the result says why not
+ * when it isn't.
  * @param {App} app
  * @param {{ vibeId: number, sessionId: number, count: number,
  *   explore?: ExploreFrom | undefined }} request
@@ -167,14 +169,17 @@ export function candidateJob(app, { vibeId, sessionId, count, explore }) {
       return render;
     };
 
+    // The sidecar is asked whether it is set up once, before the first request, and never
+    // fetches the checkpoint.
+    const readyEmbedder = () =>
+      (embedder ??= readEmbedder(app, { fetch: false, signal: job.signal }));
+
     /**
-     * Embeds the excerpt unless it has an embedding under the sidecar's producer. The sidecar is
-     * asked whether it is set up once, at the first excerpt, and never fetches the checkpoint.
+     * Embeds the excerpt unless it has an embedding under the sidecar's producer.
      * @param {Render} render
      */
     const embed = async (render) => {
-      embedder ??= readEmbedder(app, { fetch: false, signal: job.signal });
-      const ready = await embedder;
+      const ready = await readyEmbedder();
       if (typeof ready === "string") {
         if (notEmbedded === null) app.log(`candidates job: ${ready}`);
         notEmbedded = ready;
@@ -233,13 +238,27 @@ export function candidateJob(app, { vibeId, sessionId, count, explore }) {
         });
       };
 
-      const { requestGroup } = await generateCandidates(vibeId, count, app.store, app.queue, {
+      const ready = await readyEmbedder();
+      const textEmbedder =
+        typeof ready === "string"
+          ? null
+          : {
+              producer: ready.producer,
+              // A cache hit sends no sidecar request, so check the cancel here before omlx.
+              embedText: async (/** @type {string} */ text) => {
+                const vector = await embedText(app, ready, text, "the vibe's brief", job.signal);
+                job.signal.throwIfAborted();
+                return vector;
+              },
+            };
+      const generated = await generateCandidates(vibeId, count, app.store, app.queue, {
         config: app.config,
         seed,
         sessionId,
         locks: locksInForce(app.store, vibeId),
         recordings,
         explore,
+        textEmbedder,
         onStep: (step) => job.progress(done, count, generationStepText(step, 0, count, asking)),
         onCandidate: async (candidate) => {
           const index = firstTries++;
@@ -250,7 +269,9 @@ export function candidateJob(app, { vibeId, sessionId, count, explore }) {
           job.signal.throwIfAborted();
         },
       });
-      return { requestGroup, candidateIds, excerpts, notEmbedded };
+      const { requestGroup, retrievalMethod } = generated;
+      app.log(`candidates job: ${requestGroup} chose its examples by ${retrievalMethod}`);
+      return { requestGroup, retrievalMethod, candidateIds, excerpts, notEmbedded };
     } finally {
       job.signal.removeEventListener("abort", cancelRequests);
     }
