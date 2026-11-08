@@ -62,7 +62,8 @@ phase's Result line.
   10-minute track of five golden genomes with four 10 s crossfades, each rendered alone and
   rendered and exported, one timed run per child under `/usr/bin/time -l` and no warm-up, so
   each length takes under 2 minutes. It prints each mode's speed, its rate in node-seconds a
-  second and its peak RSS against 1 GiB, and whether the 10-minute render's peak is within 10%
-  of the 20-minute one's. Measured on mbp2021, 2026-11-07: 27.2x and 600 MiB rendering 20
-  minutes, 17.3x and 598 MiB with the export; 25.3x and 522 MiB rendering 10 minutes, 16.4x and
-  637 MiB with the export. The spread, 13.0%, misses the 10% check; 0062 says why.
+  second and its peak RSS against 1 GiB, the most RSS, external and ArrayBuffer memory sampled
+  before a chunk, and whether the 10-minute render's peak is within 10% of the 20-minute one's.
+  Measured on mbp2021, 2026-11-07: 27.2x and 544 MiB rendering 20 minutes, 17.3x and 594 MiB
+  with the export; 25.4x and 467 MiB rendering 10 minutes, 16.5x and 585 MiB with the export.
+  The spread, 14.2%, misses the 10% check; 0062 says why and keeps it open.

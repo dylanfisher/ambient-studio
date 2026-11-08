@@ -26,7 +26,11 @@ own pre-roll. Boundaries sit on multiples of the chunk length from the window's 
 section splits the same way wherever it sits on its sketch's timeline; the last chunk ends
 exactly at the window's end, so it never runs past an extended genome's duration. A chunked
 window matches one render of it within 0007's tolerance (peak 1e-5, the difference 100 dB
-under), at every seam (`test/server/render-chunks.test.js`). `renderChunks` can skip the chunks
+under), at every seam (`test/server/render-chunks.test.js`: the drone in 2 s chunks, and the
+bell with a 10 s reverb, about 18 s of pre-roll and its seeded strikes, in 2 s chunks). By
+hand at the real 120 s chunk, `example.json` with a 20 s reverb (30 s of pre-roll), 250 s from
+30 s in three chunks against one render: a peak of 1.25e-6 and 122.4 dB under over the window,
+6.6e-7 and 121.3 dB at the 120 s seam, 7.2e-7 and 121.6 dB at the 240 s one. `renderChunks` can skip the chunks
 a span of frames doesn't need, which the seam preview uses, and checks the job's signal before
 each chunk. 120 s, not 60: on the bench's track 60 s chunks lowered the 20-minute peak RSS from
 about 600 to 492 MiB but spent more on pre-roll (25.6x against 27.2x), and 600 MiB is already
@@ -50,6 +54,10 @@ when they add up to more than the track.
 of an `n`-frame crossfade the outgoing section is scaled by `cos(π/2 · (j + 0.5)/n)` and the
 incoming by `sin`, so the two gains' squares sum to 1. Two sketches are unrelated signals whose
 powers add, so the overlap keeps its level, where a linear crossfade dips 3 dB in the middle.
+The law assumes the two sections are unrelated. Neighbors cut from the same sketch at the same
+seed, near the same point of its timeline, are correlated, and their sum can rise up to 3 dB at
+the crossfade's midpoint; the owner hears it as a swell where the two windows play the same
+material.
 The chunk length and the law are named in the manifest; changing either changes a track's
 samples and bumps the engine version (0009).
 
@@ -58,7 +66,10 @@ starts where the one before ends less their crossfade. The mix yields blocks in 
 holds one chunk and the overlap still waiting for the next section: frames before the next
 section's start are final once a chunk passes them. The outgoing section's weighted samples are
 written first and the incoming one's added, in float32. Given a span, it renders only the chunks
-that reach it, and the span's samples equal the same span of the whole mix exactly.
+that reach it, and the span's samples equal the same span of the whole mix exactly. Each block
+it yields is a view of one buffer the next block overwrites, and neither it nor `renderChunks`
+keeps a chunk referenced across the next render, so a suspended generator frame holds no
+finished chunk.
 
 **The render** (`renderTrack` in `src/server/render-track.js`). The mix is written as interleaved
 float32 to `mix.f32` in a temp folder, the only copy of the raw track (461 MB at 20 minutes);
@@ -71,8 +82,9 @@ removed however the render ends. A sample that isn't finite throws before anythi
 **The job** (`track-render`, `POST /api/tracks/:id/render` with `{revisionId}`). Nothing renders
 until the owner starts it; one track job (render, seam preview or export) runs at a time, and a
 second is a 409 naming the first. Progress counts chunks ("Rendering section 2 of 5, chunk 3 of
-6"), then the loudness passes and the encoding. Cancel aborts at the next chunk or read block
-and the job removes its temp folder; the revision is untouched. Renders are derived and cached
+6"), then the loudness passes and the encoding. Cancel aborts at the next chunk or read block,
+or kills lame (`writeMp3` takes the signal) and removes its partial file; the job removes its
+temp folder, ends cancelled, and the revision is untouched. Renders are derived and cached
 in `track-renders/<trackId>/<hash>/` (`mix.wav`, `mix.mp3`, `manifest.json`, moved in last), the
 hash being SHA-256 of the sorted JSON of every recipe field that decides the samples (sections
 with their genome hashes, seeds and windows, transitions, fades, chunk length, law, target and
@@ -90,7 +102,8 @@ renders slower, since each section is its own context.
 from 0). 30 s of track centered on the transition's middle, inside the track, rendered through
 `mixTrack` with that span, so before normalizing it is that span of the full render; it is then
 normalized on its own to the target, like an excerpt, and cached as `seam-<n>.mp3` in the
-revision's cache folder.
+revision's cache folder. Writing one removes the track's other cache folders, as a render does,
+so a seam-only folder doesn't outlive the version being heard.
 
 **Export** (`track-export`, `POST …/export` with `{revisionId}`). Needs the revision's cached
 render, else a 409 saying to render first. The folder is `exports/track<id>-v<n>-<name>`, `n` the
@@ -99,7 +112,11 @@ at most 40 characters, or nothing; so neither the name nor the body can reach ou
 `exports/`, and the resolved path is checked to sit directly in it. A folder that exists is a
 409 before the job and `mkdir` without `recursive` refuses it again in the job, so an export
 never writes into one. In it: `<folder>.wav`, a hard link to the cached WAV; `<folder>.flac`
-from it (0012); `<folder>.json`, the manifest with `files` first. A failure removes the folder.
+from it (0012); `<folder>.json`, the manifest with `files` first and `track` set to the
+revision being exported, since revisions that sound the same share one cached manifest; its
+audio fields and `pcmSha256` are the cached render's. A failure removes the folder, and so does
+a cancel, which kills flac (`writeFlac` takes the signal) and ends the job cancelled with no
+row logged.
 The export is logged in `track_exports` as `mix` with the manifest's SHA-256.
 
 **The manifest**, built like 0015's sidecar: `files`, `track` (`id`, `name`, `revisionId`),
@@ -153,22 +170,30 @@ the 20-minute one's. No morph or lane yet: 6e and 6f add them to the case.
 ## Consequences
 
 - Measured on mbp2021, 2026-11-07, Node 26.12.1, at nice 10 with omlx serving, load average
-  1.1–1.4: the 20-minute track (peak cost 441.4, 290k node-seconds) rendered alone at 27.2x
-  (44.1 s), peak RSS 600 MiB; rendered and exported at 17.3x (69.5 s), 598 MiB. The 10-minute
-  track rendered alone at 25.3x (23.7 s), 522 MiB; rendered and exported at 16.4x (36.5 s),
-  637 MiB. The 10x speed target and the 1 GiB ceiling are met.
-- **The 10% memory check is missed**: the 10-minute render's peak is 13.0% under the 20-minute
-  one's. An earlier run, with sections from 0 s and before two buffers were reused, missed by
-  28.8% (492 against 692 MiB): from 0, the 10-minute case's only full chunks have no pre-roll.
+  1.4–1.8, after the review's fixes (block buffer reused, chunks dropped before the next
+  render): the 20-minute track (peak cost 441.4, 290k node-seconds) rendered alone at 27.2x
+  (44.1 s), peak RSS 544 MiB; rendered and exported at 17.3x (69.4 s), 594 MiB. The 10-minute
+  track rendered alone at 25.4x (23.6 s), 467 MiB; rendered and exported at 16.5x (36.4 s),
+  585 MiB. The 10x speed target and the 1 GiB ceiling are met.
+- **Open: the 10% memory check is missed.** The 10-minute render's peak is 14.2% under the
+  20-minute one's (467 against 544 MiB). The bench now samples `process.memoryUsage()` before
+  each chunk: the most V8 counts outside its heap is 180 and 181 MiB, nearly all ArrayBuffers
+  (175 and 177 MiB), the same at both lengths, while the sampled RSS is at most 409 and 477 MiB.
+  So the JS-held memory doesn't grow with length; the difference is native memory outside V8's
+  count, the library's rendered contexts and their buffers, freed only when V8 collects their
+  small JS objects. Earlier runs missed by 13.0% (522 against 600 MiB) and, with sections from 0 s
+  and before two buffers were reused, by 28.8% (492 against 692 MiB): from 0, the 10-minute
+  case's only full chunks have no pre-roll.
   The probes say memory doesn't grow with length but with the garbage the library's contexts
   leave until V8 collects them: four passes of the 10-minute track in one process, 40 minutes
   of audio, peaked at 482 MiB with a collection forced after each block, against 467 MiB for one
   pass and 537 MiB for the 20-minute track forced the same way; without forcing, the same
-  20-minute render peaked at 692 and 600 MiB in two runs. The target stands; the remaining spread
-  is from when V8 frees each context's native buffers.
+  20-minute render peaked at 692 and 600 MiB in two runs. The target stands, and the spread
+  stays open until the library's native memory can be freed when a render ends.
 - Tests render seconds: 1 to 3 s chunks against one render, a 7 s track for the mix, the
-  normalize and the cancel, and a 26 s track of three sections through the routes, about 15 s
-  under `--low`.
+  normalize and the cancel, and a 26 s track of three sections through the routes, about 12 s
+  under `--low`. The long-reverb seam case takes about 3 s at normal priority and about 19 s
+  under `--low`, where the pre-roll's 18 s per chunk dominates.
 - A removed sketch makes a revision invalid (0061), so it can't render until the section goes.
 - 6d's stems render each voice through the same `mixTrack` with `voices` limited, and scale by
   the manifest's `gainDb`; 6e's morph and 6f's lanes change `sectionGenome` and add their rules
