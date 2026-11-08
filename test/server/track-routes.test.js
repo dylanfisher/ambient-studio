@@ -163,3 +163,26 @@ test("a section's player renders its own window, cut at the sketch's end", async
   expect(refused.status).toBe(400);
   expect(refused.json().error).toContain("$.sections[0].offset");
 });
+
+test("a second section job while one is unfinished is a 409 naming it", async () => {
+  const { server, ok, vibe, sketch } = await setup();
+  const { track } = await ok("POST", `/api/vibes/${vibe.id}/tracks`, { name: "t" });
+  // A job holding the runner keeps the section job queued, with no race on its render.
+  /** @type {() => void} */
+  let release = () => {};
+  const held = server.jobs.add(
+    "hold",
+    () => new Promise((resolve) => (release = () => resolve(null))),
+  );
+  const path = `/api/tracks/${track.id}/section-audio`;
+  const first = await ok("POST", path, { sketchId: sketch.id, offset: 0, seconds: 10 });
+  const second = await server.api("POST", path, { sketchId: sketch.id, offset: 20, seconds: 10 });
+  expect(second.status).toBe(409);
+  expect(second.json()).toMatchObject({
+    jobId: first.id,
+    error: expect.stringContaining(`already being rendered to play (job ${first.id})`),
+  });
+  server.jobs.cancel(first.id);
+  release();
+  await server.jobs.settled(held.id);
+});

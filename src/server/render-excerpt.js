@@ -157,6 +157,11 @@ export async function renderExcerpt(store, folder, { genomeId, seed, target }, r
   const row = getGenome(store, genomeId);
   if (!row) throw new Error(`there is no genome ${genomeId} to render`);
   const genome = requireGenome(row.genome, `genome ${genomeId}`);
+  if (window && !(window.offset >= 0 && window.offset + window.duration <= genome.duration)) {
+    throw new Error(
+      `the window ${window.offset} s to ${window.offset + window.duration} s isn't inside genome ${genomeId}'s ${genome.duration} s`,
+    );
+  }
   const duration = window?.duration ?? EXCERPT_SECONDS;
   const offset = window?.offset ?? excerptOffset(genome, seed, duration);
   const key = { genomeId, seed, offset, duration, target, producer: PRODUCER };

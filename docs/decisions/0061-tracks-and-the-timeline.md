@@ -81,7 +81,14 @@ vibe's current loudness target, through `renderExcerpt` with a window. It is cac
 excerpt in `renders`, so playing it again is immediate, and played through 4i's excerpt player.
 The window stops at the sketch's end; the extended part plays once 6c renders section genomes.
 `renderExcerpt`'s cached file name now holds the offset, so two windows of one genome, seed and
-length don't share a file.
+length don't share a file; a row cached under the older name still resolves, since a row names
+its own file. A window not inside the genome's duration throws. Section renders share the
+derived `renders` table with excerpts, with no new column and no migration: whatever reads
+excerpts only tells them apart exactly, with `isExcerptWindow` (`candidate-excerpt.js`), true
+when the window is `EXCERPT_SECONDS` long at `excerptOffset` for the render's genome and seed.
+The embed job is the one reader of every render, and skips the rest, so a section never gets
+an embedding; the taste model, ranking and the taste test read excerpts by their exact window
+or through rated audio already.
 
 **The timeline page** (`track.html`, `track.js`), opened from the brief page's Tracks card,
 where a track is made by name:

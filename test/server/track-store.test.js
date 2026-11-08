@@ -138,4 +138,17 @@ test("migration 0011 over a database built with 0001 to 0010 keeps its rows and 
       )
       .run(track.id),
   ).toThrow(/CHECK constraint/);
+  addTrackExport(store, {
+    trackRevisionId: revision.id,
+    kind: "mix",
+    folder: "after-1",
+    manifestSha256: "b".repeat(64),
+  });
+  // The append-only triggers cover 0011's tables once migrated from 0010's shape.
+  for (const table of ["tracks", "track_revisions", "track_exports"]) {
+    expect(() => store.db.prepare(`DELETE FROM ${table}`).run(), table).toThrow(/append-only/);
+    expect(() => store.db.prepare(`UPDATE ${table} SET createdAt = 1`).run(), table).toThrow(
+      /append-only/,
+    );
+  }
 });
