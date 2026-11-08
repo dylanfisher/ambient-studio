@@ -1,6 +1,6 @@
 // Renders are short (2–6 s) to keep the gate light on a machine that also serves omlx.
 /** @import { Genome } from "../../src/engine/genome-schema.js" */
-import { setImmediate } from "node:timers/promises";
+import { setImmediate, setTimeout as sleep } from "node:timers/promises";
 import v8 from "node:v8";
 import vm from "node:vm";
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
@@ -108,14 +108,19 @@ describe("render", () => {
   test("retries when the library refuses a suspend after rendering started", async () => {
     const expected = await renderOffline(golden, { seed: 1, duration: 3 });
     const scriptedFailures = 2;
-    // One entry per attempt: "scripted" is a failure this test throws, "library" is a real
-    // suspend race from the library's own startRendering(), "ok" is the attempt that rendered.
-    /** @type {string[]} */
-    const outcomes = [];
+    // Each attempt builds a context, so `prepare` runs once per attempt. The test throws the
+    // first `scriptedFailures` of them; under load the library's own suspend race can add more,
+    // and it may surface from `startRendering()` or from a window's suspend, so the test does
+    // not say which attempt it hit.
+    let attempts = 0;
     /** @type {number[]} */
     const waits = [];
+    // The library registers a suspend on its own thread, which needs real time to finish before
+    // `startRendering()`. The scripted attempts never reach the library, so they skip the wait;
+    // the rest wait as production does, so a render that has to retry is not starved of retries.
     const wait = async (/** @type {number} */ ms) => {
       waits.push(ms);
+      if (waits.length > scriptedFailures) await sleep(ms);
     };
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     try {
@@ -123,32 +128,15 @@ describe("render", () => {
         golden,
         { seed: 1, duration: 3 },
         (ctx) => {
-          const start = ctx.startRendering.bind(ctx);
+          attempts++;
+          if (attempts > scriptedFailures) return;
           ctx.startRendering = async () => {
-            if (outcomes.length < scriptedFailures) {
-              outcomes.push("scripted");
-              throw new DOMException("Error in async function", "InvalidStateError");
-            }
-            try {
-              const buffer = await start();
-              outcomes.push("ok");
-              return buffer;
-            } catch (error) {
-              outcomes.push("library");
-              throw error;
-            }
+            throw new DOMException("Error in async function", "InvalidStateError");
           };
         },
         wait,
       );
       expect(retried.channels).toEqual(expected.channels);
-      // The injected wait is a no-op, so the first attempts after the script get no settle time
-      // and under load the library can hit its own suspend race, which adds retries. Those are
-      // allowed; anything else between the scripted failures and the final render is not.
-      const attempts = outcomes.length;
-      expect(outcomes.slice(0, scriptedFailures)).toEqual(["scripted", "scripted"]);
-      expect(outcomes.at(-1)).toBe("ok");
-      expect(outcomes.slice(scriptedFailures, -1).every((o) => o === "library")).toBe(true);
       expect(attempts).toBeGreaterThanOrEqual(scriptedFailures + 1);
       expect(warn).toHaveBeenCalledTimes(attempts - 1);
       expect(waits).toHaveLength(attempts);
