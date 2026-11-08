@@ -7,16 +7,26 @@ scores, updates the optimizer and clears the pending points. The state is writte
 and each tell, by a rename, so a sidecar started again reads the run where the last one left
 it. Higher scores are better.
 
-An optimizer is a class in `OPTIMIZERS`, made from the spec and the state it last saved. Step
-5e adds CMA-ES; the scripted optimizer here answers points the spec lists, for tests.
+An optimizer is a class in `OPTIMIZERS`, made from the spec and the state it last saved:
+CMA-ES (decision 0054), and a scripted optimizer that answers points the spec lists, for tests.
 """
 
+import base64
 import json
 import math
 import os
+import pickle
+import warnings
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
+
+import numpy
+
+with warnings.catch_warnings():
+    # `cma` warns on import that matplotlib is missing; the sidecar never plots.
+    warnings.filterwarnings("ignore", message="Could not import matplotlib")
+    import cma  # pyright: ignore[reportMissingTypeStubs]
 
 from ambient_sidecar.preference import read_json, write_json
 from ambient_sidecar.protocol import Handler
@@ -131,7 +141,105 @@ class ScriptedOptimizer:
         return {"next": self.next, "best": self.best, "bestScore": self.best_score}
 
 
-OPTIMIZERS: dict[str, Factory] = {"scripted": ScriptedOptimizer}
+CMA_ES = "cma-es"
+
+
+def _settings(spec: Spec, keys: tuple[str, ...]) -> None:
+    for key in spec.settings:
+        if key not in keys:
+            raise ValueError(f"the settings have {key}, which {spec.optimizer} doesn't read")
+
+
+class CmaOptimizer:
+    """CMA-ES (decision 0054) through Hansen's `cma`, inside [0, 1]^d by its bound handling,
+    from the spec's start with step `settings.sigma` and `settings.population` points a
+    generation. Higher scores are better, so `cma`, which minimizes, is told their negatives.
+
+    The strategy draws from its own generator, seeded by the spec, never numpy's global one, so
+    one seed gives one run whatever else the sidecar draws. The state is the strategy pickled,
+    its generator inside it, as base64 in the run's state file: one rename then writes all of
+    it. A told generation shorter than the population, as a budget's last one is, can't update
+    the distribution (`cma` needs at least half a population), so it is counted and no more.
+    """
+
+    def __init__(self, spec: Spec, state: dict[str, Any] | None) -> None:
+        _settings(spec, ("sigma", "population"))
+        sigma = spec.settings.get("sigma")
+        if not _is_position(sigma) or sigma == 0:
+            raise ValueError(f"settings.sigma must be a number above 0, at most 1, got {sigma!r}")
+        population = spec.settings.get("population")
+        if not isinstance(population, int) or isinstance(population, bool) or population < 2:
+            raise ValueError(
+                f"settings.population must be a whole number from 2, got {population!r}"
+            )
+        self.population = population
+        if state is None:
+            generator = numpy.random.RandomState(spec.seed)
+            options = {
+                "bounds": [0, 1],
+                "popsize": population,
+                # nan leaves numpy's global generator alone; `randn` is the strategy's own.
+                "seed": math.nan,
+                "randn": generator.randn,
+                "verbose": -9,
+                "verb_log": 0,
+                "verb_disp": 0,
+            }
+            self.strategy: Any = cma.CMAEvolutionStrategy(spec.start, sigma, options)
+            self.told = 0
+            self.updates = 0
+        else:
+            self.strategy = _read_strategy(state, spec.dimension)
+            self.told = int(state["told"])
+            self.updates = int(state["updates"])
+
+    def ask(self, count: int) -> list[Point]:
+        if count > self.population:
+            raise ValueError(
+                f"cma-es asks at most {self.population} points a generation, not {count}"
+            )
+        drawn: list[Any] = self.strategy.ask(count)
+        # The bound handling maps into [0, 1]; the clip only guards rounding at an edge.
+        return [[min(1.0, max(0.0, float(u))) for u in x] for x in drawn]
+
+    def tell(self, points: list[Point], scores: list[float]) -> None:
+        if len(points) == self.population:
+            self.strategy.tell([numpy.array(p) for p in points], [-s for s in scores])
+            self.updates += 1
+        self.told += len(points)
+
+    def state(self) -> dict[str, Any]:
+        strategy = base64.b64encode(pickle.dumps(self.strategy)).decode("ascii")
+        return {
+            "optimizer": CMA_ES,
+            "dimension": self.strategy.N,
+            "strategy": strategy,
+            "told": self.told,
+            "updates": self.updates,
+        }
+
+
+def _read_strategy(state: dict[str, Any], dimension: int) -> Any:
+    """The strategy a CMA-ES state holds, checked to be one for this run. The pickle is the
+    sidecar's own, written to the run folder by `CmaOptimizer.state`."""
+    missing = [
+        k for k in ("optimizer", "dimension", "strategy", "told", "updates") if k not in state
+    ]
+    if missing:
+        raise ValueError(f"the run's CMA-ES state has no {', '.join(missing)}")
+    if state["optimizer"] != CMA_ES:
+        raise ValueError(f"the run's state is {state['optimizer']!r}'s, not {CMA_ES}'s")
+    if state["dimension"] != dimension:
+        raise ValueError(
+            f"the run's CMA-ES state is in {state['dimension']} dimensions, its spec in {dimension}"
+        )
+    strategy: Any = pickle.loads(base64.b64decode(state["strategy"]))
+    if not isinstance(strategy, cma.CMAEvolutionStrategy) or dimension != strategy.N:
+        raise ValueError(f"the run's CMA-ES state doesn't hold a {dimension}-dimensional strategy")
+    return strategy
+
+
+OPTIMIZERS: dict[str, Factory] = {"scripted": ScriptedOptimizer, CMA_ES: CmaOptimizer}
 
 
 def _save_state(run: Path, state: dict[str, Any]) -> None:

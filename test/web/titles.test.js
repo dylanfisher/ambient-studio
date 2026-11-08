@@ -5,6 +5,8 @@ import { describe, expect, test } from "vitest";
 import { DEFAULT_EXPLORES } from "../../src/domain/explore-direction.js";
 import { macroTitles } from "../../src/domain/macro-words.js";
 import { DEFAULT_NUDGES } from "../../src/domain/nudge.js";
+import { MAX_SEARCH_BUDGET } from "../../src/domain/search-settings.js";
+import { SHOWN_POINTS } from "../../src/domain/search-shown.js";
 import { RANGE_ENDS } from "../../src/domain/target-schema.js";
 import { MACROS } from "../../src/engine/genome-schema.js";
 import { constraintFields, fieldTitle } from "../../src/web/constraint-fields.js";
@@ -64,9 +66,11 @@ describe("titles the modules set", () => {
     }
   });
 
-  test("the explore and nudge buttons' titles name the counts they send", () => {
-    const { explore, nudge } = steerTitles();
-    expect(isSentence(explore) && isSentence(nudge)).toBe(true);
+  test("the explore, nudge and search buttons' titles name the counts they send", () => {
+    const { explore, nudge, search, budget } = steerTitles();
+    expect([explore, nudge, search, budget].every(isSentence)).toBe(true);
+    expect(search).toContain(`the best ${SHOWN_POINTS} that sound different`);
+    expect(budget).toContain(`from 1 to ${MAX_SEARCH_BUDGET}`);
     expect(explore).toContain(`for ${DEFAULT_EXPLORES} variations`);
     expect(nudge).toContain(`Makes ${DEFAULT_NUDGES} children`);
   });

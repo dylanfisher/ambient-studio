@@ -100,6 +100,11 @@
           <select data-part="stepSize" title="How far Nudge from here moves this candidate's numbers: a small, medium or large step."></select>
           <button class="button outline small" type="button" data-part="nudge" title="Makes children of this candidate by moving its numbers a step, with no model request, and renders an excerpt of each. Takes a few seconds per child.">Nudge from here</button>
         </div>
+        <div class="row">
+          <input data-part="budget" type="number" step="1" size="5" title="How many points Search from here tries, from 1 to 400. Each one renders an excerpt and is scored by your taste model." />
+          <label class="row small"><input data-part="control" type="checkbox" title="Also makes as many medium nudges of this candidate after the search, scored the same way and never shown, to test whether the search beats nudging." /> With a control</label>
+          <button class="button outline small" type="button" data-part="search" title="Searches near this candidate, scoring each point by your taste model with no model request. Asks first, with the time it takes.">Search from here</button>
+        </div>
       </div>
     </template>
   </body>

@@ -49,18 +49,34 @@ describe("originText", () => {
     );
   });
 
+  test("a search point names its base, generation and point, and its score once scored", () => {
+    const point = candidate({
+      operator: "optimize",
+      parentIds: [3],
+      operatorParams: { generation: 2, point: 4 },
+    });
+    expect(originText({ ...point, search: { shown: true, score: -0.25 } }, nameOf)).toBe(
+      "Point 5 of generation 3 of a search from candidate 3, scored by your taste model with no model request. Shown as one of the search's best: search score -0.25.",
+    );
+    expect(originText({ ...point, search: { shown: false, score: null } }, nameOf)).toBe(
+      "Point 5 of generation 3 of a search from candidate 3, scored by your taste model with no model request.",
+    );
+  });
+
   test("an operator the page doesn't know is an error", () => {
     expect(() => originText(candidate({ operator: "crossover" }), nameOf)).toThrow(/crossover/);
   });
 });
 
 test("operatorLabel names each operator in a word, and refuses one it doesn't know", () => {
-  expect([null, "revise", "nudge", "explore"].map(operatorLabel)).toEqual([
+  expect([null, "revise", "nudge", "explore", "optimize"].map(operatorLabel)).toEqual([
     "first try",
     "revised",
     "nudged",
     "variation",
+    "searched",
   ]);
+  expect(() => operatorLabel("optimize-control")).toThrow(/optimize-control/);
   expect(() => operatorLabel("revise-control")).toThrow(/revise-control/);
 });
 
@@ -71,6 +87,9 @@ describe("intentText", () => {
       "A nudge has no intent of its own: it is its base with some numbers moved.",
     );
     expect(intentText(candidate({}))).toBe("The model gave no intent.");
+    expect(intentText(candidate({ operator: "optimize" }))).toBe(
+      "A search point has no intent of its own: it is its base with some numbers moved.",
+    );
   });
 });
 
@@ -82,6 +101,9 @@ describe("rejectText", () => {
     expect(
       rejectText(candidate({ operator: "nudge", rejectReason: REJECT_REASON.lintErrors })),
     ).toBe("a nudge draw that broke the brief's rules, so it was drawn again");
+    expect(
+      rejectText(candidate({ operator: "optimize", rejectReason: REJECT_REASON.lintErrors })),
+    ).toBe("a search point that broke the brief's rules, so it was told a low score");
     expect(rejectText(candidate({ rejectReason: REJECT_REASON.noJson }))).toBe(
       "a model answer with no JSON in it",
     );
@@ -89,7 +111,7 @@ describe("rejectText", () => {
 
   test("every reject reason has words, for a draw and for an answer", () => {
     for (const reason of Object.values(REJECT_REASON)) {
-      for (const operator of [null, "nudge"]) {
+      for (const operator of [null, "nudge", "optimize"]) {
         expect(rejectText(candidate({ operator, rejectReason: reason }))).toMatch(/^a /);
       }
     }

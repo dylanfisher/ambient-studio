@@ -4,6 +4,7 @@ version = "0.0.0"
 description = "ML sidecar for Ambient Studio: CLAP embeddings, preference models, optimizers, LoRA training."
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "cma==4.5.0",
     "numpy>=2.5.4",
     "torch>=2.15.0",
     "transformers>=5.22.2",

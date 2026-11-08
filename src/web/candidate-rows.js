@@ -4,7 +4,8 @@
 // by side and a child of either nests under both. In a ranked session (0046) the roots follow
 // their places in the ranking, a pair by its better member's, and the unranked come after in
 // the order given; children stay under their parent in the order given, so lineage still reads.
-// No DOM, so the layout is tested on its own.
+// A search's points (0054) nest under the shown point each folds under, and the page closes them
+// until the owner opens that point's fold. No DOM, so the layout is tested on its own.
 import { lineageTree } from "./lineage-tree.js";
 
 /**
@@ -14,6 +15,8 @@ import { lineageTree } from "./lineage-tree.js";
  * @property {{ firstTryId: number, revisionId: number } | null} pair
  * @property {boolean} hidden
  * @property {{ slot: number } | null} [ranking] its excerpt's place in the shown order
+ * @property {{ foldedUnder: number | null } | null} [search] a search point's place: the shown
+ *   point it folds under, or null when it is shown
  */
 
 /**
@@ -23,7 +26,42 @@ import { lineageTree } from "./lineage-tree.js";
  * @property {number} depth 0 for a root
  * @property {number | null} parentMissing the parent of a root that has one, which isn't in the
  *   table: hidden, or of another session; null otherwise
+ * @property {number | null} foldedUnder the shown search point whose fold holds the row, itself
+ *   or one it was made from; null for a row no fold holds
  */
+
+/**
+ * The nodes with each after its parent, as `lineageTree` needs: a search point can fold under a
+ * shown point made after it. A node waits for a listed parent and follows it at once; the rest
+ * keep their order.
+ * @param {readonly { id: number, parentIds: number[] }[]} nodes
+ */
+function parentsFirst(nodes) {
+  const listed = new Set(nodes.map(({ id }) => id));
+  /** @type {Set<number>} */
+  const placed = new Set();
+  /** @type {Map<number, typeof nodes[number][]>} */
+  const waiting = new Map();
+  /** @type {typeof nodes[number][]} */
+  const ordered = [];
+  /** @param {typeof nodes[number]} node */
+  const place = (node) => {
+    ordered.push(node);
+    placed.add(node.id);
+    const next = waiting.get(node.id) ?? [];
+    waiting.delete(node.id);
+    for (const child of next) place(child);
+  };
+  for (const node of nodes) {
+    const [parent] = node.parentIds;
+    if (parent !== undefined && listed.has(parent) && !placed.has(parent)) {
+      waiting.set(parent, [...(waiting.get(parent) ?? []), node]);
+    } else place(node);
+  }
+  // A node whose parent never came, which a loop of parents would leave, keeps its place last.
+  for (const left of waiting.values()) ordered.push(...left);
+  return ordered;
+}
 
 /**
  * Lays out the session's candidates. A parent comes before its children, as in the route's id
@@ -37,6 +75,8 @@ export function candidateRows(candidates) {
   const placeOf = (candidate) => candidate.pair?.firstTryId ?? candidate.id;
   /** @type {Map<number, number>} each candidate's place, by id */
   const places = new Map(candidates.map((candidate) => [candidate.id, placeOf(candidate)]));
+  /** @type {Map<number, number>} each folded search point's place, by the place it folds under */
+  const folds = new Map();
   /** @type {Map<number, RowCandidate[]>} each place's members, in the order given */
   const members = new Map();
   for (const candidate of candidates) {
@@ -50,8 +90,16 @@ export function candidateRows(candidates) {
   const nodes = [...members]
     .filter(([place]) => !hiddenPlaces.has(place))
     .map(([place, list]) => {
-      const [first] = /** @type {RowCandidate[]} */ (list)[0]?.parentIds ?? [];
-      const parent = typeof first === "number" ? (places.get(first) ?? first) : null;
+      const lead = /** @type {RowCandidate} */ (list[0]);
+      const [first] = lead.parentIds;
+      const under = lead.search?.foldedUnder ?? null;
+      // A fold under a shown point that is hidden, or not in the table, couldn't be opened, so
+      // such a point takes its own parent instead.
+      const target = under === null ? null : (places.get(under) ?? under);
+      const folded = target !== null && members.has(target) && !hiddenPlaces.has(target);
+      if (folded) folds.set(place, target);
+      const from = folded ? target : first;
+      const parent = typeof from === "number" ? (places.get(from) ?? from) : null;
       return { id: place, parentIds: parent === null ? [] : [parent] };
     });
 
@@ -60,21 +108,45 @@ export function candidateRows(candidates) {
   /**
    * @param {ReturnType<typeof lineageTree<{ id: number, parentIds: number[] }>>} branches
    * @param {number} depth
+   * @param {number | null} held the fold holding these branches, if any
    */
-  const walk = (branches, depth) => {
+  const walk = (branches, depth, held) => {
     for (const { node, children, parentMissing } of branches) {
-      for (const { id } of members.get(node.id) ?? []) shown.push({ id, depth, parentMissing });
-      walk(children, depth + 1);
+      const foldedUnder = held ?? folds.get(node.id) ?? null;
+      for (const { id } of members.get(node.id) ?? []) {
+        shown.push({ id, depth, parentMissing, foldedUnder });
+      }
+      walk(children, depth + 1, foldedUnder);
     }
   };
   /** @param {number} place the best slot of its members; unranked places sort last */
   const slotOf = (place) =>
     Math.min(...(members.get(place) ?? []).map((c) => c.ranking?.slot ?? Number.POSITIVE_INFINITY));
   // `sort` is stable, so unranked roots, and roots of an unranked session, keep their order.
-  const roots = lineageTree(nodes).sort((x, y) => slotOf(x.node.id) - slotOf(y.node.id) || 0);
-  walk(roots, 0);
+  const roots = lineageTree(parentsFirst(nodes)).sort(
+    (x, y) => slotOf(x.node.id) - slotOf(y.node.id) || 0,
+  );
+  walk(roots, 0, null);
   const hidden = candidates.filter((c) => hiddenPlaces.has(placeOf(c))).map((c) => c.id);
   return { shown, hidden };
+}
+
+/**
+ * The rows a closed fold keeps out of sight: every row a fold holds unless the owner opened it,
+ * except a held row, which stays in sight as `rowPlacement` keeps it in place.
+ * @param {readonly CandidateRow[]} shown as `candidateRows` gives them
+ * @param {ReadonlySet<number>} open the shown points whose folds are open
+ * @param {ReadonlySet<number>} held rows that play or `card-hold.js` holds
+ * @returns {Set<number>}
+ */
+export function foldedOut(shown, open, held) {
+  return new Set(
+    shown
+      .filter(
+        ({ id, foldedUnder }) => foldedUnder !== null && !open.has(foldedUnder) && !held.has(id),
+      )
+      .map(({ id }) => id),
+  );
 }
 
 /**

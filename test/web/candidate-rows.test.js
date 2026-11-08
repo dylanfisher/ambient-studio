@@ -2,18 +2,20 @@
 // revised pair in one place with the children of either under it, and hidden candidates moved
 // to the hidden list, their children left in the table as roots that name them.
 import { expect, test } from "vitest";
-import { candidateRows, rowPlacement } from "../../src/web/candidate-rows.js";
+import { candidateRows, foldedOut, rowPlacement } from "../../src/web/candidate-rows.js";
 
 /**
  * @param {number} id
- * @param {{ parent?: number, pair?: [number, number], hidden?: boolean }} [options] `pair` is
- *   the first try's id and the revision's
+ * @param {{ parent?: number, pair?: [number, number], hidden?: boolean,
+ *   foldedUnder?: number | null }} [options] `pair` is the first try's id and the revision's;
+ *   `foldedUnder` makes it a search point, shown when null
  */
-const candidate = (id, { parent, pair, hidden = false } = {}) => ({
+const candidate = (id, { parent, pair, hidden = false, foldedUnder } = {}) => ({
   id,
   parentIds: parent === undefined ? [] : [parent],
   pair: pair ? { firstTryId: pair[0], revisionId: pair[1] } : null,
   hidden,
+  ...(foldedUnder !== undefined && { search: { foldedUnder } }),
 });
 
 /** @param {ReturnType<typeof candidateRows>["shown"]} rows */
@@ -186,4 +188,57 @@ test("a held row coming into the table, as Show again sends it, comes in", () =>
   const { order, moves } = rowPlacement([1, 3], [1, 2, 3], new Set([2]));
   expect(order).toEqual([1, 2, 3]);
   expect(moves).toEqual([[2, 3]]);
+});
+
+test("a search's points fold under the shown one nearest, which nests under the base", () => {
+  const { shown } = candidateRows([
+    candidate(1),
+    candidate(2, { parent: 1, foldedUnder: 4 }),
+    candidate(3, { parent: 1, foldedUnder: null }),
+    candidate(4, { parent: 1, foldedUnder: null }),
+    candidate(5, { parent: 1, foldedUnder: 3 }),
+    // A nudge of a folded point folds with it.
+    candidate(6, { parent: 5 }),
+    candidate(7, { parent: 1 }),
+  ]);
+  expect(shown.map(({ id, depth, foldedUnder }) => [id, depth, foldedUnder])).toEqual([
+    [1, 0, null],
+    [3, 1, null],
+    [5, 2, 3],
+    [6, 3, 3],
+    [4, 1, null],
+    [2, 2, 4],
+    [7, 1, null],
+  ]);
+});
+
+test("points folded under a hidden shown point stay in the table, under their own parent", () => {
+  const { shown, hidden } = candidateRows([
+    candidate(1),
+    candidate(2, { parent: 1, foldedUnder: null, hidden: true }),
+    candidate(3, { parent: 1, foldedUnder: 2 }),
+    candidate(4, { parent: 1, foldedUnder: 9 }), // a shown point that isn't in the table
+  ]);
+  expect(hidden).toEqual([2]);
+  expect(shown.map(({ id, depth, foldedUnder }) => [id, depth, foldedUnder])).toEqual([
+    [1, 0, null],
+    [3, 1, null],
+    [4, 1, null],
+  ]);
+  expect(foldedOut(shown, new Set(), new Set())).toEqual(new Set());
+});
+
+test("a closed fold hides its rows except an open fold's and a held row", () => {
+  const { shown } = candidateRows([
+    candidate(1),
+    candidate(2, { parent: 1, foldedUnder: null }),
+    candidate(3, { parent: 1, foldedUnder: 2 }),
+    candidate(4, { parent: 1, foldedUnder: 2 }),
+    candidate(5, { parent: 1, foldedUnder: null }),
+    candidate(6, { parent: 1, foldedUnder: 5 }),
+  ]);
+  expect(foldedOut(shown, new Set(), new Set())).toEqual(new Set([3, 4, 6]));
+  // A playing or in-use row stays in sight, as a held row keeps its place.
+  expect(foldedOut(shown, new Set(), new Set([4]))).toEqual(new Set([3, 6]));
+  expect(foldedOut(shown, new Set([5]), new Set())).toEqual(new Set([3, 4]));
 });

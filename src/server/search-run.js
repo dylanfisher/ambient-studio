@@ -9,7 +9,7 @@
 /** @import { CandidateOrigin } from "./generate-candidates.js" */
 /** @import { Candidate } from "./generation-store.js" */
 /** @import { App } from "./routing.js" */
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { penalizedScores } from "../domain/penalized-scores.js";
 import { proposeGenome } from "../domain/propose-genome.js";
@@ -17,8 +17,6 @@ import { canonicalGenome } from "../engine/canonical-genome.js";
 import { keep } from "./generate-candidates.js";
 import { verdictOf } from "./nudge-job.js";
 
-/** The data root's folder of search runs, one folder each. */
-const SEARCH_FOLDER = "search";
 const SPEC = "spec.json";
 // A run's name is a folder name; letters, digits and dashes keep it inside the search folder.
 const RUN_NAME = /^[a-z0-9][a-z0-9-]*$/;
@@ -58,12 +56,45 @@ const RUN_NAME = /^[a-z0-9][a-z0-9-]*$/;
 
 /**
  * A run's folder. Throws on a name that isn't a plain folder name.
- * @param {string} dataRoot
+ * @param {string} folder the search folder, `paths().search`
  * @param {string} run
  */
-export function searchRunFolder(dataRoot, run) {
+export function searchRunFolder(folder, run) {
   if (!RUN_NAME.test(run)) throw new Error(`a search run's name must match ${RUN_NAME}: ${run}`);
-  return join(dataRoot, SEARCH_FOLDER, run);
+  return join(folder, run);
+}
+
+/** A numbered run's name; the search job numbers its runs from 1 (decision 0054). */
+const NUMBERED = /^run-([1-9]\d*)$/;
+
+/**
+ * The numbered runs in the search folder, oldest first.
+ * @param {string} folder `paths().search`
+ * @returns {Promise<string[]>}
+ */
+export async function numberedRuns(folder) {
+  /** @type {string[]} */
+  let names;
+  try {
+    names = await readdir(folder);
+  } catch (error) {
+    if (/** @type {NodeJS.ErrnoException} */ (error).code === "ENOENT") return [];
+    throw error;
+  }
+  const numbered = names.flatMap((name) => {
+    const match = NUMBERED.exec(name);
+    return match ? [{ name, n: Number(match[1]) }] : [];
+  });
+  return numbered.sort((a, b) => a.n - b.n).map(({ name }) => name);
+}
+
+/**
+ * The name the next numbered run takes. One job runs at a time, so two never take one name.
+ * @param {string} folder `paths().search`
+ */
+export async function nextRun(folder) {
+  const last = (await numberedRuns(folder)).at(-1);
+  return `run-${last === undefined ? 1 : Number(NUMBERED.exec(last)?.[1]) + 1}`;
 }
 
 /**
@@ -75,8 +106,8 @@ export function searchRunFolder(dataRoot, run) {
  * @returns {Promise<string>} the run's folder
  */
 export async function startSearch(app, run, spec, { signal }) {
-  const folder = searchRunFolder(app.config.dataRoot, run);
-  await mkdir(join(app.config.dataRoot, SEARCH_FOLDER), { recursive: true });
+  const folder = searchRunFolder(app.paths.search, run);
+  await mkdir(app.paths.search, { recursive: true });
   await mkdir(folder);
   const specPath = join(folder, SPEC);
   await writeFile(specPath, JSON.stringify(spec), { flag: "wx" });
