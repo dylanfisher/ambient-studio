@@ -15,6 +15,7 @@ import { getRender } from "../../src/server/render-store.js";
 import { sha256Hex } from "../../src/server/sha256-hex.js";
 import { markRemoved, TABLE } from "../../src/server/store.js";
 import { FIXTURE_RECORDINGS } from "../support/golden.js";
+import { seedExcerpts } from "../support/seed-excerpts.js";
 import { SEED_GENOMES } from "../support/seed-genomes.js";
 import { GENOMES, removeStudio, startStudio } from "../support/studio.js";
 
@@ -157,9 +158,11 @@ test("cancelling a job through its route aborts its omlx request", async () => {
 });
 
 test("a candidate whose excerpt file is gone gets it back from the excerpts job", async () => {
-  const { server, ok, openSession, generate, drive } = await setup();
-  const { session } = await openSession();
-  await generate(session.id, GENOMES.slice(0, 1));
+  const studio = await setup();
+  const { server, ok, openSession, drive } = studio;
+  const opened = await openSession();
+  const { session } = opened;
+  await seedExcerpts(studio, opened, GENOMES.slice(0, 1));
   const [before] = (await ok("GET", `/api/sessions/${session.id}/candidates`)).candidates;
   const render = getRender(server.store, before.excerpt.renderId);
   await rm(join(server.paths.renderCache, /** @type {any} */ (render).file));
@@ -322,10 +325,11 @@ function seedCandidate({ server }, vibe, genome, sessionId = null) {
 
 test("a nudge through its route puts its children in the session's candidate list", async () => {
   const studio = await setup();
-  const { server, omlx, ok, openSession, generate, drive } = studio;
-  const { session } = await openSession();
-  const made = await generate(session.id, GENOMES.slice(0, 1));
-  const [baseId] = made.result.candidateIds;
+  const { server, omlx, ok, openSession, drive } = studio;
+  const opened = await openSession();
+  const { session } = opened;
+  const [{ candidate: base }] = await seedExcerpts(studio, opened, GENOMES.slice(0, 1));
+  const baseId = base.id;
 
   const job = await ok("POST", `/api/sessions/${session.id}/nudges`, {
     candidateId: baseId,
@@ -353,8 +357,7 @@ test("a nudge through its route puts its children in the session's candidate lis
   });
   expect(candidates[0].vibeRevisionId).toEqual(expect.any(Number));
   expect(child.excerpt.url).toBe(`/audio/${done.result.excerpts[0].renderId}`);
-  // One request made the base; the nudge sent none.
-  expect(omlx.requests).toHaveLength(1);
+  expect(omlx.requests).toHaveLength(0);
 });
 
 test("a second identical nudge while one is unfinished is a 409, and another base or step size queues", async () => {
