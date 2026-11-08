@@ -3454,3 +3454,10 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   section's measured features (`POST /api/tracks/:id/measures`, reads only). The arc target is
   not saved in the arrangement. Review passed; fixes made the swap a tested pure function, the
   measures read a POST, and added more 400 cases. 2,177 tests.
+- 2026-11-08 — 6f merged (6f13402): one lane per macro under the timeline, breakpoints in track
+  seconds with offsets −0.5 to 0.5. `applyLanes` runs last in `sectionGenome`, after a morph, and
+  writes own value plus offset, sampled at both breakpoint sets and every 10 s, clamped, at most 64
+  points. A dense lane thins a section's own points, which the card names (`sectionThinning`). A
+  track with no lane points keeps its cache key. The lane keys moved J to H after 6g; one test
+  checks timeline, lane and material keys against each other. Bench with two lanes and a morph,
+  one run under load: 20 min at 27.1x and 548 MiB, a spread of 11.5% (open). 2,211 tests.
