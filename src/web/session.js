@@ -27,7 +27,7 @@ import { abView } from "./ab-view.js";
 import { getJson, jobPath, postJson, sessionPath, startJob, VIBES_PATH } from "./api.js";
 import { trackAudio } from "./audio-player.js";
 import { questionOf } from "./best-question.js";
-import { candidateRows, rowPlacement } from "./candidate-rows.js";
+import { candidateRows, foldedOut, rowPlacement } from "./candidate-rows.js";
 import { createSelection } from "./candidate-selection.js";
 import { createCardHold } from "./card-hold.js";
 import { cloneTemplate } from "./clone-template.js";
@@ -1180,6 +1180,15 @@ function isEditing(card) {
 }
 
 /**
+ * The rows that play or are in use, which neither a move nor a closed fold takes out of sight.
+ * @param {readonly Card[]} rows
+ */
+const heldRows = (rows) =>
+  new Set(
+    rows.filter((card) => isPlaying(card) || isEditing(card)).map((card) => card.candidate.id),
+  );
+
+/**
  * Puts the table's rows in the order given, moving only the rows out of place and never a row
  * that plays or is in use (`rowPlacement`), since Safari pauses an `<audio>` and blurs a field
  * taken out of the page. Such a row takes its place when `showPairs` runs after its release.
@@ -1192,9 +1201,7 @@ function placeRows(table, rows) {
     const card = byRoot.get(body);
     return card ? [card.candidate.id] : [];
   });
-  const held = new Set(
-    rows.filter((card) => isPlaying(card) || isEditing(card)).map((card) => card.candidate.id),
-  );
+  const held = heldRows(rows);
   const byId = new Map(rows.map((card) => [card.candidate.id, card.parts.root]));
   const { moves } = rowPlacement(
     current,
@@ -1238,15 +1245,16 @@ function layoutRows() {
   );
   // A search's other points stay out of sight under the shown point they fold under, until
   // its fold is opened; `showPairs` shows every row again before this runs.
+  for (const id of foldedOut(shown, openFolds, heldRows(cards))) {
+    cardOf(id).parts.root.hidden = true;
+  }
   /** @type {Map<number, number>} rows each fold holds, by its shown point */
-  const held = new Map();
-  for (const { id, foldedUnder } of shown) {
-    if (foldedUnder === null) continue;
-    held.set(foldedUnder, (held.get(foldedUnder) ?? 0) + 1);
-    if (!openFolds.has(foldedUnder)) cardOf(id).parts.root.hidden = true;
+  const folds = new Map();
+  for (const { foldedUnder } of shown) {
+    if (foldedUnder !== null) folds.set(foldedUnder, (folds.get(foldedUnder) ?? 0) + 1);
   }
   for (const card of cards) {
-    const count = held.get(card.candidate.id) ?? 0;
+    const count = folds.get(card.candidate.id) ?? 0;
     const open = openFolds.has(card.candidate.id);
     card.parts.foldToggle.hidden = count === 0;
     card.parts.foldToggle.setAttribute("aria-expanded", String(open));

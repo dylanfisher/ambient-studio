@@ -93,8 +93,12 @@ export function candidateRows(candidates) {
       const lead = /** @type {RowCandidate} */ (list[0]);
       const [first] = lead.parentIds;
       const under = lead.search?.foldedUnder ?? null;
-      if (under !== null) folds.set(place, places.get(under) ?? under);
-      const from = under ?? first;
+      // A fold under a shown point that is hidden, or not in the table, couldn't be opened, so
+      // such a point takes its own parent instead.
+      const target = under === null ? null : (places.get(under) ?? under);
+      const folded = target !== null && members.has(target) && !hiddenPlaces.has(target);
+      if (folded) folds.set(place, target);
+      const from = folded ? target : first;
       const parent = typeof from === "number" ? (places.get(from) ?? from) : null;
       return { id: place, parentIds: parent === null ? [] : [parent] };
     });
@@ -125,6 +129,24 @@ export function candidateRows(candidates) {
   walk(roots, 0, null);
   const hidden = candidates.filter((c) => hiddenPlaces.has(placeOf(c))).map((c) => c.id);
   return { shown, hidden };
+}
+
+/**
+ * The rows a closed fold keeps out of sight: every row a fold holds unless the owner opened it,
+ * except a held row, which stays in sight as `rowPlacement` keeps it in place.
+ * @param {readonly CandidateRow[]} shown as `candidateRows` gives them
+ * @param {ReadonlySet<number>} open the shown points whose folds are open
+ * @param {ReadonlySet<number>} held rows that play or `card-hold.js` holds
+ * @returns {Set<number>}
+ */
+export function foldedOut(shown, open, held) {
+  return new Set(
+    shown
+      .filter(
+        ({ id, foldedUnder }) => foldedUnder !== null && !open.has(foldedUnder) && !held.has(id),
+      )
+      .map(({ id }) => id),
+  );
 }
 
 /**
