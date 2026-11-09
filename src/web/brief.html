@@ -36,6 +36,19 @@
       <div class="columns">
         <form id="draft" class="card stack" novalidate>
           <h2>The brief</h2>
+          <fieldset class="stack">
+            <legend>Describe the brief</legend>
+            <p id="describeHelp" class="small muted">
+              Say in your own words how the brief should be, such as slow, dark, underwater
+              drone, almost no rhythm, a little bell now and then. The model fills in the name,
+              description, rules and ranges below. Nothing is saved until you press Save.
+            </p>
+            <textarea id="describeWords" rows="3" title="Your words for how the brief should be, in plain sentences or a list. The model reads them once, when you press the button below; they aren't saved."></textarea>
+            <div class="row">
+              <button id="describeButton" class="button outline" type="button" title="Asks the model to fill in the name, description, rules and ranges from your words, after a confirm that says how long the request takes. Nothing is saved until you press Save.">Fill in the brief</button>
+            </div>
+            <div id="describeBoxes"></div>
+          </fieldset>
           <label class="field"
             >Name
             <input name="name" id="briefName" required size="40" title="The brief's name, shown in lists and on the session page. Saved when you press Save." />

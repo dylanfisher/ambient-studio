@@ -13,7 +13,8 @@ import { CONSTRAINT_KINDS, FORM } from "./constraint-schema.js";
  * @typedef {{ ok: true, constraints: Constraints } | { ok: false, errors: ValidationError[] }} ConstraintsValidation
  */
 
-const RANGE_ENDS = Object.freeze(["min", "max"]);
+/** A range constraint's two keys, low end first. */
+export const RANGE_ENDS = Object.freeze(["min", "max"]);
 
 /**
  * @param {Descriptor} descriptor

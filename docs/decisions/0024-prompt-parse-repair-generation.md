@@ -10,8 +10,10 @@
   [0052](0052-references-in-the-prompt.md) (the references section, its trimming, and
   `attachmentIds`); amended by [0058](0058-breeding.md) (the parents sections and their
   trimming); amended by [0067](0067-proposed-track.md) (`sendRequest` and `extractObject`
-  shared with the proposal, `ANSWER_RULE` in the domain, `RETRIEVAL_METHOD.none`); amended by [0072](0072-prompt-room-and-low-chant.md) (examples
-  written without their defaults)
+  shared with the proposal, `ANSWER_RULE` in the domain, `RETRIEVAL_METHOD.none`); amended by
+  [0072](0072-prompt-room-and-low-chant.md) (examples written without their defaults) and
+  [0074](0074-draft-brief-from-words.md) (a brief's draft through `sendRequest`, and the parse
+  step shared as `judgeAnswer`)
 
 ## Context
 

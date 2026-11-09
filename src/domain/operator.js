@@ -31,4 +31,7 @@ export const OPERATOR = Object.freeze({
   /** The model's reading of the owner's words as a search by ear's shift (0075); its
    * generation names it in its request group, since it makes no candidate. */
   shift: "shift",
+  /** A saved brief reworked by the model from the owner's words (0074); its generations name it
+   * in their request group, since they make no candidate. */
+  draft: "draft",
 });

@@ -133,6 +133,12 @@ describe("jobProgress", () => {
     expect(jobProgress(job({ kind: "fit" }), 3_000).title).toBe("Fitting the taste model");
   });
 
+  test("the brief's draft from the owner's words has a title (0074)", () => {
+    expect(jobProgress(job({ kind: "draft-brief" }), 3_000).title).toBe(
+      "Writing the brief from your words",
+    );
+  });
+
   test("a kind the page doesn't know is an error, not a blank title", () => {
     expect(() => jobProgress(job({ kind: "mystery" }), 3_000)).toThrow(/mystery/);
   });

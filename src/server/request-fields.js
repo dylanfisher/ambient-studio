@@ -19,6 +19,9 @@ export const MAX_CHARS = Object.freeze({
   // A lock path: `voices.`, a 16-character voice id and a parameter name fit with room to spare.
   lockPath: 64,
   direction: DIRECTION_CHARS,
+  // The owner's words a brief is drafted from (0074): about 290 tokens, so a draft's prompt
+  // with a full brief stays under half the context budget.
+  draftWords: 1000,
 });
 /** The most tags one sketch may carry. */
 export const MAX_TAGS = 32;

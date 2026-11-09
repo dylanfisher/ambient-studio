@@ -117,6 +117,10 @@ export const SEARCH_ESTIMATE_PATH = "/api/search-estimate";
  */
 export const BREED_ESTIMATE_PATH = "/api/breed-estimate";
 
+/** Where a new brief's draft from the owner's words starts (decision 0074); a saved brief's is at
+ * `/api/vibes/:id/drafts`. */
+export const BRIEF_DRAFTS_PATH = "/api/brief-drafts";
+
 /**
  * A session's route; its candidates, jobs and ratings are under it.
  * @param {number} sessionId

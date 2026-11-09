@@ -57,8 +57,11 @@ const voiceLines = (types) =>
 export const recordingVoiceText = () =>
   voiceLines(voiceTypeIds().filter(usesRecordings)).join("\n");
 
-/** Each tuning's key range and scales, with tunings that share both on one line. */
-function pitchLines() {
+/**
+ * Each tuning's key range and scales, with tunings that share both on one line.
+ * @returns {string[]}
+ */
+export function pitchLines() {
   /** @type {Map<string, string[]>} key range and scale list → tunings */
   const groups = new Map();
   for (const id of tuningIds()) {

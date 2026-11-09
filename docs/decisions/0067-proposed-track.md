@@ -4,7 +4,8 @@
 - **Status:** accepted; provisional: owner to confirm the material's order and cap, keeping a
   named elite as a sketch with no heard copy, the 5% rule's wording, and where the share is
   shown. Amends [0024](0024-prompt-parse-repair-generation.md) (a second operator through the same
-  request path, `extractObject`, `RETRIEVAL_METHOD.none`)
+  request path, `extractObject`, `RETRIEVAL_METHOD.none`); amended by
+  [0074](0074-draft-brief-from-words.md) (`judgeProposal`'s parse step shared as `judgeAnswer`)
 
 ## Context
 

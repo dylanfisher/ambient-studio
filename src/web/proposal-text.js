@@ -3,22 +3,21 @@
 import { MAX_MATERIAL_LINES } from "../domain/arrange-prompt.js";
 import { clockTime } from "./excerpt-player.js";
 
-/** The requests a proposal takes: one, and one more when its answer needs fixing. */
-const REQUESTS = Object.freeze({ low: 1, high: 2 });
+/**
+ * The requests one answer with a repair round takes: one, and one more when it needs fixing.
+ * The brief's draft (0074) takes as many.
+ */
+export const REQUESTS = Object.freeze({ low: 1, high: 2 });
 
 /**
- * @param {number} length seconds asked for
+ * How long `REQUESTS` take, from recent requests' times, as the confirm's last sentence.
  * @param {{ seconds: number | null, timed: number }} estimate the median seconds of the last
  *   `timed` requests the model answered; null seconds when none was timed
- * @returns {string} the confirm's question and its cost
+ * @returns {string}
  */
-export function proposeCostText(length, { seconds, timed }) {
-  const what =
-    `Ask the model to propose a ${clockTime(length)} track? It reads the brief, your arc, and one line each for up to ${MAX_MATERIAL_LINES} sketches and map elites, sketches first. ` +
-    `That is ${REQUESTS.low} or ${REQUESTS.high} requests to the model: one, and another when the answer needs fixing. ` +
-    "Nothing is rendered: the proposal opens on the timeline as the track's first version, and any elite it places is kept as a sketch.";
+export function requestsTimeText({ seconds, timed }) {
   if (seconds === null) {
-    return `${what} No request to the model has been timed yet, so the time can't be estimated.`;
+    return "No request to the model has been timed yet, so the time can't be estimated.";
   }
   /** @param {number} requests */
   const minutes = (requests) => Math.max(1, Math.round((requests * seconds) / 60));
@@ -28,7 +27,20 @@ export function proposeCostText(length, { seconds, timed }) {
     timed === 1
       ? "the one request timed so far"
       : `the median of the last ${timed} the model answered`;
-  return `${what} At ${Math.round(seconds)} s a request, ${source}, that is about ${span}, longer while the live site keeps the model busy.`;
+  return `At ${Math.round(seconds)} s a request, ${source}, that is about ${span}, longer while the live site keeps the model busy.`;
+}
+
+/**
+ * @param {number} length seconds asked for
+ * @param {{ seconds: number | null, timed: number }} estimate as `requestsTimeText` takes it
+ * @returns {string} the confirm's question and its cost
+ */
+export function proposeCostText(length, estimate) {
+  const what =
+    `Ask the model to propose a ${clockTime(length)} track? It reads the brief, your arc, and one line each for up to ${MAX_MATERIAL_LINES} sketches and map elites, sketches first. ` +
+    `That is ${REQUESTS.low} or ${REQUESTS.high} requests to the model: one, and another when the answer needs fixing. ` +
+    "Nothing is rendered: the proposal opens on the timeline as the track's first version, and any elite it places is kept as a sketch.";
+  return `${what} ${requestsTimeText(estimate)}`;
 }
 
 /**

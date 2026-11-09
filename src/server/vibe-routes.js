@@ -31,9 +31,11 @@ import {
  * A vibe's whole draft from a body, its constraints checked by 2b's validator and its soft
  * targets by 3b's.
  * @param {unknown} body
+ * @param {{ allowEmpty?: boolean }} [options] whether the name and description may be blank, as
+ *   in a new brief's form the model is asked to rework (0074); a save needs both
  * @returns {VibeDraft}
  */
-function readDraft(body) {
+export function readDraft(body, { allowEmpty = false } = {}) {
   const given = fields(body, Object.values(VIBE_DRAFT_FIELD));
   const checked = validateConstraints(given.constraints);
   if (!checked.ok) {
@@ -46,8 +48,8 @@ function readDraft(body) {
     throw new HttpError(400, `the soft targets are invalid: ${list}`);
   }
   return {
-    name: text(given, VIBE_DRAFT_FIELD.name, MAX_CHARS.name),
-    brief: text(given, VIBE_DRAFT_FIELD.brief, MAX_CHARS.brief),
+    name: text(given, VIBE_DRAFT_FIELD.name, MAX_CHARS.name, { allowEmpty }),
+    brief: text(given, VIBE_DRAFT_FIELD.brief, MAX_CHARS.brief, { allowEmpty }),
     constraints: checked.constraints,
     softTargets: targets.softTargets,
   };

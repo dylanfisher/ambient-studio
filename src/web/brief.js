@@ -1,7 +1,8 @@
 // The brief page (decisions 0028, 0032, 0034, 0051, 0052 and 0058): the name, the description, a
 // rules form built from 2b's table and a ranges form built from 3b's, which a reference region
 // can fill, saved as a new revision; the brief's sessions, notes, attached regions, breeding of
-// two sketches, proposing a track (0067), ratings and revisions. With no `id` in
+// two sketches, proposing a track (0067), ratings and revisions; and a draft of the whole form
+// by the model from the owner's words (0074). With no `id` in
 // the query it makes a new brief. A brief is a vibe in the API and the store, and its
 // description is the vibe's `brief` field.
 /** @import { Constraints } from "../domain/constraint-schema.js" */
@@ -18,7 +19,7 @@ import { FORM } from "../domain/constraint-schema.js";
 import { constraintsText } from "../domain/constraints-text.js";
 import { rangesFromRegion } from "../domain/ranges-from-region.js";
 import { MACRO_DIRECTIONS } from "../domain/rating-values.js";
-import { RANGE_ENDS } from "../domain/target-schema.js";
+import { RANGE_ENDS, RANGES_KEY } from "../domain/target-schema.js";
 import { targetsText } from "../domain/targets-text.js";
 import { validateConstraints } from "../domain/validate-constraints.js";
 import { validateTargets } from "../domain/validate-targets.js";
@@ -26,6 +27,7 @@ import {
   ApiError,
   attachmentPath,
   BREED_ESTIMATE_PATH,
+  BRIEF_DRAFTS_PATH,
   getJson,
   postJson,
   REGIONS_PATH,
@@ -51,6 +53,7 @@ import {
   readConstraints,
 } from "./constraint-fields.js";
 import { directionHelp, directionText } from "./direction-text.js";
+import { draftCostText, draftFilledText } from "./draft-brief-text.js";
 import { elementsById } from "./element-by-id.js";
 import { clockTime } from "./excerpt-player.js";
 import { formatTime } from "./format-time.js";
@@ -83,6 +86,10 @@ const page = elementsById({
   draft: HTMLFormElement,
   briefName: HTMLInputElement,
   briefDescription: HTMLTextAreaElement,
+  describeHelp: HTMLElement,
+  describeWords: HTMLTextAreaElement,
+  describeButton: HTMLButtonElement,
+  describeBoxes: HTMLElement,
   constraintBox: HTMLElement,
   constraintsText: HTMLElement,
   targetBox: HTMLElement,
@@ -136,6 +143,7 @@ const page = elementsById({
   proposeBoxes: HTMLElement,
 });
 const proposeControl = jobControl(page.proposeButton);
+const describeControl = jobControl(page.describeButton);
 const idText = new URLSearchParams(location.search).get("id");
 const vibeId = idText === null ? null : Number(idText);
 /** The loaded revision's soft targets, whose keys other than the ranges a save keeps. */
@@ -755,6 +763,44 @@ async function regionWindows(vibe, regionId) {
   return measured.analysis.windows;
 }
 
+/**
+ * Asks the model to draft the brief from the owner's words, after a confirm, and fills the form
+ * with its answer (decision 0074). It sends the form as it is now, unsaved edits included, since
+ * that is what the owner sees; a new brief's empty form sends none. Nothing is saved.
+ */
+async function describeBrief() {
+  const words = page.describeWords.value.trim();
+  if (words === "") {
+    throw new Error("Write how the brief should be first, such as slow, dark, underwater drone.");
+  }
+  const form = readDraft();
+  const ranges = /** @type {SoftTargets} */ (form.softTargets)[RANGES_KEY] ?? {};
+  const empty =
+    form.name.trim() === "" &&
+    form.brief.trim() === "" &&
+    Object.keys(form.constraints).length === 0 &&
+    Object.keys(ranges).length === 0;
+  const current = vibeId === null && empty ? null : form;
+  if (!confirm(draftCostText(current !== null, await getJson(BREED_ESTIMATE_PATH)))) return;
+  const finished = await runJob(status, {
+    path: vibeId === null ? BRIEF_DRAFTS_PATH : `${VIBES_PATH}/${vibeId}/drafts`,
+    body: { words, current },
+    controls: [describeControl],
+    boxes: page.describeBoxes,
+    started:
+      "Asking the model to write the brief from your words. Nothing is saved until you press Save.",
+  });
+  if (finished === null) return;
+  const { draft, repaired } = finished.result;
+  page.briefName.value = draft.name;
+  page.briefDescription.value = draft.brief;
+  fillConstraints(draft.constraints);
+  // The saved targets' other keys stay as they are, as Save keeps them.
+  fillTargets({ ...savedTargets, [RANGES_KEY]: draft.softTargets[RANGES_KEY] });
+  checkedForm();
+  status.say(draftFilledText(repaired));
+}
+
 /** The saved vibe's id, or an error saying to save it first. */
 function savedId() {
   if (vibeId === null) throw new Error("Save the brief first.");
@@ -938,6 +984,7 @@ page.directionButton.onclick = () => status.run(addDirection);
 page.breedButton.onclick = () => status.run(breed);
 page.axesButton.onclick = () => status.run(saveAxes);
 page.proposeButton.onclick = () => status.run(proposeTrack);
+page.describeButton.onclick = () => status.run(describeBrief);
 page.trackForm.onsubmit = (event) => {
   event.preventDefault();
   status.run(makeTrack);
@@ -954,6 +1001,11 @@ if (vibeId === null) {
   page.briefName.focus();
 } else {
   page.saveButton.textContent = "Save as a new version";
+  page.describeButton.textContent = "Rework the brief";
+  page.describeButton.title =
+    "Asks the model to write the whole brief again from the form as it is now, unsaved edits included, and your words, after a confirm that says how long the request takes. Its answer fills the form; nothing is saved until you press Save.";
+  page.describeHelp.textContent =
+    "Say how the brief should change, such as colder and sparser, drop the bells. The model reads the form as it is now, unsaved edits included, and writes the whole brief again into the form. Nothing is saved until you press Save.";
   status.run(async () => {
     await load(vibeId);
     status.say("Press Start a session to get candidates, or edit the brief and save.");

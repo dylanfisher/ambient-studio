@@ -20,4 +20,6 @@ export const JOB_KIND = Object.freeze({
   trackExport: "track-export",
   /** The model's proposed arrangement for a new track, stored as its first revision (0067). */
   propose: "propose",
+  /** The model's draft of a brief from the owner's words, to fill the brief form (0074). */
+  draftBrief: "draft-brief",
 });
