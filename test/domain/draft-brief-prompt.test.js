@@ -1,12 +1,15 @@
 // The prompt that drafts a brief (decision 0074): every constraint kind and range feature from
 // their tables, the words and the brief now, the size it stays under with everything at its
-// limit, and the repair turn.
+// limit, and the repair turn; and a suggestion's prompt, quoting as many of the owner's briefs as
+// fit (0093).
 import { describe, expect, test } from "vitest";
 import example from "../../src/config/example.json" with { type: "json" };
 import { CONSTRAINT_KINDS } from "../../src/domain/constraint-schema.js";
 import {
   buildDraftBriefPrompt,
   buildDraftBriefRepair,
+  buildSuggestBriefPrompt,
+  OTHER_BRIEF_CHARS,
 } from "../../src/domain/draft-brief-prompt.js";
 import { estimateTokens, promptText, ROLE } from "../../src/domain/prompt-tokens.js";
 import { TARGET_FEATURES } from "../../src/domain/target-schema.js";
@@ -83,4 +86,44 @@ test("the repair is a follow-up turn quoting every error", () => {
   expect(repair[2]).toEqual({ role: ROLE.assistant, content: JSON.stringify(answer) });
   expect(repair[3]?.content).toContain("- $.name (name): must be a non-empty string");
   expect(() => buildDraftBriefRepair({ messages, answer }, [])).toThrow();
+});
+
+describe("a suggestion's prompt", () => {
+  const other = { name: "Bell field", brief: "Struck bells over a quiet bed.", constraints: {} };
+
+  test("quotes the briefs newest first and the words, and says what to do with no words", () => {
+    const newer = { ...other, name: "Underwater drone", brief: "b".repeat(OTHER_BRIEF_CHARS + 50) };
+    const { messages, read } = buildSuggestBriefPrompt(
+      { words: "something stranger", others: [newer, other], limits },
+      BUDGET,
+    );
+    expect(read).toBe(2);
+    const [system, user] = messages;
+    expect(system?.content).toContain("You write briefs");
+    const quoted = JSON.stringify({ ...newer, brief: `${"b".repeat(OTHER_BRIEF_CHARS)}…` });
+    expect(user?.content).toContain(`one JSON object a line:\n${quoted}\n${JSON.stringify(other)}`);
+    expect(user?.content).toContain(JSON.stringify("something stranger"));
+    const [, bare] = buildSuggestBriefPrompt(
+      { words: "", others: [other], limits },
+      BUDGET,
+    ).messages;
+    expect(bare?.content).toContain("The owner gave no words");
+  });
+
+  test("drops the oldest briefs to fit the budget, and refuses none or one that never fits", () => {
+    const long = { ...other, brief: "b".repeat(OTHER_BRIEF_CHARS) };
+    const others = Array.from({ length: 40 }, (_, i) => ({ ...long, name: `brief ${i}` }));
+    const { messages, read } = buildSuggestBriefPrompt({ words: "", others, limits }, BUDGET);
+    expect(read).toBeGreaterThan(0);
+    expect(read).toBeLessThan(others.length);
+    expect(estimateTokens(promptText(messages))).toBeLessThanOrEqual(BUDGET);
+    expect(messages[1]?.content).toContain('"brief 0"');
+    expect(messages[1]?.content).not.toContain(`"brief ${read}"`);
+    expect(() => buildSuggestBriefPrompt({ words: "", others: [], limits }, BUDGET)).toThrow(
+      /no briefs to suggest from/,
+    );
+    expect(() => buildSuggestBriefPrompt({ words: "", others, limits }, 100)).toThrow(
+      /even with one brief/,
+    );
+  });
 });

@@ -2,7 +2,8 @@
 // one request holding the owner's words, its draft returned and nothing stored; a saved brief's
 // rework holding the form's draft, stored as a generation of its revision while the brief keeps
 // its revisions; one repair quoting the validators' errors; and a draft still invalid failing
-// with its findings.
+// with its findings; and a brief suggested from the owner's briefs, newest first, nothing stored
+// until the page approves it (0093).
 /** @import { Studio } from "../support/studio.js" */
 import { afterEach, expect, test } from "vitest";
 import { ROLE } from "../../src/domain/prompt-tokens.js";
@@ -173,4 +174,37 @@ test("the routes refuse bad words, a bad form and a second draft while one runs"
   await studio.omlx.waitForRequests(1);
   studio.omlx.release();
   await studio.drive(server.jobs.settled(first.id));
+});
+
+test("a suggestion quotes the briefs newest first, stores nothing, and says how many it read", async () => {
+  const studio = await setup();
+  const empty = await studio.server.api("POST", "/api/brief-suggestions", { words: "" });
+  expect(empty.status).toBe(400);
+  expect(empty.body.toString()).toContain("no briefs to suggest from");
+
+  const older = await studio.ok("POST", "/api/vibes", VIBE);
+  const newer = await studio.ok("POST", "/api/vibes", { ...VIBE, name: "warm hum" });
+  await studio.ok("POST", `/api/vibes/${older.id}/revisions`, { ...VIBE, name: "colder drone" });
+  studio.omlx.script(tokens(DRAFT));
+  const job = await studio.ok("POST", "/api/brief-suggestions", { words: " what's missing " });
+  await studio.drive(studio.server.jobs.settled(job.id));
+  const finished = await studio.ok("GET", `/api/jobs/${job.id}`);
+  expect(finished.state).toBe("done");
+  expect(finished.kind).toBe("draft-brief");
+  expect(finished.result).toEqual({
+    draft: DRAFT,
+    repaired: false,
+    generationId: null,
+    briefsRead: 2,
+    briefsTotal: 2,
+  });
+  const [, user] = sent(studio, 0);
+  // The brief edited last comes first, by its current revision.
+  expect(user.content.indexOf('"colder drone"')).toBeLessThan(user.content.indexOf('"warm hum"'));
+  expect(user.content).toContain(JSON.stringify("what's missing"));
+  expect(generationCount(studio)).toBe(0);
+  expect((await studio.ok("GET", "/api/vibes")).vibes.map((/** @type {any} */ v) => v.id)).toEqual([
+    older.id,
+    newer.id,
+  ]);
 });

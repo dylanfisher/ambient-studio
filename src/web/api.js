@@ -127,6 +127,9 @@ export const BREED_ESTIMATE_PATH = "/api/breed-estimate";
  * `/api/vibes/:id/drafts`. */
 export const BRIEF_DRAFTS_PATH = "/api/brief-drafts";
 
+/** Where a brief suggested from the owner's briefs starts, on the dashboard (decision 0093). */
+export const BRIEF_SUGGESTIONS_PATH = "/api/brief-suggestions";
+
 /**
  * A session's route; its candidates, jobs and ratings are under it.
  * @param {number} sessionId

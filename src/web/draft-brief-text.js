@@ -1,6 +1,6 @@
 // What the brief page says about drafting a brief from the owner's words (decision 0074): the
-// confirm before it starts, and the status line once the form is filled. No DOM here, so the
-// wording is tested.
+// confirm before it starts, and the status line once the form is filled; and what the dashboard
+// says about a brief suggested from the owner's (0093). No DOM here, so the wording is tested.
 import { REQUESTS, requestsTimeText } from "./proposal-text.js";
 
 /**
@@ -24,3 +24,25 @@ export function draftCostText(rework, estimate) {
  */
 export const draftFilledText = (repaired) =>
   `The model filled in the form${repaired ? ", after one fix" : ""}. Nothing is saved yet: check it, edit it, and press Save to keep it.`;
+
+/**
+ * The dashboard's confirm before the model suggests a brief from the owner's (decision 0093).
+ * @param {number} briefs how many briefs there are for it to read
+ * @param {{ seconds: number | null, timed: number }} estimate as `requestsTimeText` takes it
+ */
+export const suggestCostText = (briefs, estimate) =>
+  `Ask the model to suggest a new brief? It reads your ${briefs} brief${briefs === 1 ? "" : "s"}, newest edit first, as many as fit, and your words. ` +
+  `That is ${REQUESTS.low} or ${REQUESTS.high} requests to the model: one, and another when the answer needs fixing. ` +
+  `Nothing is saved until you press Approve. ${requestsTimeText(estimate)}`;
+
+/**
+ * @param {{ repaired: boolean, briefsRead: number, briefsTotal: number }} result the job's
+ * @returns {string} the status line once the suggestion is shown
+ */
+export function suggestedText({ repaired, briefsRead, briefsTotal }) {
+  const read =
+    briefsRead === briefsTotal
+      ? `all ${briefsTotal} of your briefs`
+      : `your newest ${briefsRead} of ${briefsTotal} briefs, all that fit`;
+  return `The model suggested a brief from ${read}${repaired ? ", after one fix" : ""}. Nothing is saved yet: press Approve to add it as a brief.`;
+}

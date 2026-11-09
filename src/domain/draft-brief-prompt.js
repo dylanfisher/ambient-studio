@@ -152,6 +152,73 @@ export function buildDraftBriefPrompt(ask, budgetTokens) {
   return built;
 }
 
+/** The most of another brief's description a suggestion's prompt quotes (decision 0093). */
+export const OTHER_BRIEF_CHARS = 600;
+
+/**
+ * One of the owner's briefs as a suggestion's prompt quotes it: its saved revision's fields.
+ * @typedef {{ name: string, brief: string, constraints: unknown }} OtherBrief
+ */
+
+/**
+ * @typedef {object} SuggestAsk
+ * @property {string} words the owner's, "" for none
+ * @property {readonly OtherBrief[]} others the owner's briefs, newest edit first
+ * @property {DraftLimits} limits
+ */
+
+/** @param {OtherBrief} other */
+const otherJson = ({ name: otherName, brief: description, constraints: rules }) =>
+  JSON.stringify({
+    [name]: otherName,
+    [brief]:
+      description.length > OTHER_BRIEF_CHARS
+        ? `${description.slice(0, OTHER_BRIEF_CHARS)}…`
+        : description,
+    [constraints]: rules,
+  });
+
+/**
+ * @param {SuggestAsk} ask
+ * @returns {ChatMessage[]}
+ */
+function suggestMessages({ words, others, limits }) {
+  const user = [
+    [
+      "The owner's briefs so far, newest edit first, one JSON object a line:",
+      ...others.map(otherJson),
+    ].join("\n"),
+    words === ""
+      ? "The owner gave no words. Suggest the new brief their set most lacks: a mood, a sound or a way of moving that none of these covers."
+      : `The owner's words for the brief to suggest, as a JSON string: ${quoted(words)}`,
+    "Write one new brief that is none of the above: its own name, and a description whose first sentence says what it adds to the set.",
+  ];
+  return [
+    { role: ROLE.system, content: system(limits) },
+    { role: ROLE.user, content: user.join("\n\n") },
+  ];
+}
+
+/**
+ * The prompt for a suggested brief: as many of the owner's briefs as fit `budgetTokens`, newest
+ * first. Throws when there are none, or when not even one fits.
+ * @param {SuggestAsk} ask
+ * @param {number} budgetTokens
+ * @returns {{ messages: ChatMessage[], read: number }} `read` is how many briefs it quotes
+ */
+export function buildSuggestBriefPrompt(ask, budgetTokens) {
+  if (ask.others.length === 0) {
+    throw new Error("there are no briefs to suggest from yet; write or add one first");
+  }
+  for (let read = ask.others.length; read > 0; read -= 1) {
+    const built = suggestMessages({ ...ask, others: ask.others.slice(0, read) });
+    if (estimateTokens(promptText(built)) <= budgetTokens) return { messages: built, read };
+  }
+  throw new Error(
+    `the suggestion's prompt is over its ${budgetTokens}-token budget even with one brief; shorten your words`,
+  );
+}
+
 /**
  * The repair as a follow-up turn on the prompt sent, quoting every error.
  * @param {{ messages: ChatMessage[], answer: unknown }} previous

@@ -88,6 +88,10 @@ const ALLOWED = {
     constraints:
       "An earlier version's rules and ranges stay in its own disclosure, written by constraintsText and targetsText.",
   },
+  "index.html": {
+    suggestionRules:
+      "A suggested brief's rules and ranges stay in their own disclosure, written by constraintsText and targetsText, as an earlier version's do on the brief page.",
+  },
 };
 
 const VOID = new Set([
