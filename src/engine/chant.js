@@ -482,10 +482,10 @@ export function wanderAt(parts, t) {
 }
 
 /**
- * A wander is computed at this many points a control-grid step, 200 a second, and the frames
+ * A wander is computed at this many points a control-grid step, 100 a second, and the frames
  * between two points take the straight line between them, so they cost no `Math.sin` each.
  */
-const WANDER_SEGMENTS = 20;
+const WANDER_SEGMENTS = 10;
 
 /**
  * The first frame of segment m of grid step k: the frame at or after the segment's start.
@@ -518,7 +518,8 @@ function wanderPoints(points, k, parts, lag) {
     const turn = (2 * Math.PI * hz) / (WANDER_SEGMENTS * CONTROL_RATE);
     const turnCos = Math.cos(turn);
     const turnSin = Math.sin(turn);
-    // The integral of a sin(2π hz t + φ) is −a cos(2π hz t + φ) / (2π hz).
+    // The integral of a sin(2π hz t + φ) is −a cos(2π hz t + φ) / (2π hz), so the lag reads the
+    // cosine where the wander reads the sine.
     const weight = lag ? -(LAG_PER_CENT * amplitude) / (2 * Math.PI * hz) : amplitude;
     for (let m = 0; m <= WANDER_SEGMENTS; m++) {
       points[m] = /** @type {number} */ (points[m]) + weight * (lag ? cosine : sine);
@@ -529,16 +530,49 @@ function wanderPoints(points, k, parts, lag) {
   }
 }
 
+/** Numbers a segment holds in `wanderTerms`: the phase's q0, q1, q2 and the gain's g0, g1. */
+const TERMS = 5;
+
 /**
- * The line through segment m's two points as α + β u, where u is a frame's place in the grid
- * step from 0 to 1, so a frame's value takes one multiply-add.
- * @param {Float64Array} points
- * @param {number} m
+ * Fills `terms` with each segment of grid step k's five numbers for a singer with a wander:
+ * q0 + u (q1 + u q2) is its turns, divided by `span`, at place u of the step, and g0 + g1 u its
+ * level wander's gain. The fundamental ramps linearly over the step, from `hz` by `rise`, and
+ * turns `turns` + hz u / CONTROL_RATE + rise u² / (2 CONTROL_RATE) cycles; the pitch wander adds
+ * its lag, the line α + β u through the segment's two points, times the frame's frequency. The
+ * rate of change of that product differs from the wander by the lag, at most about 1 ms, times
+ * the bend's rate: 0.001 cents for a bend of 100 cents over two minutes. Without flutter the lag
+ * is 0, and without shimmer the gain is 1.
+ * @param {Float64Array} terms `TERMS` × `WANDER_SEGMENTS`
+ * @param {Float64Array | null} lag the lag's points
+ * @param {Float64Array | null} level the gain's points
+ * @param {{ turns: number; hz: number; rise: number }} at the grid step
+ * @param {{ ratio: number; phase: number; span: number }} singer its detune, phase and the span
  */
-function segmentLine(points, m) {
-  const lo = /** @type {number} */ (points[m]);
-  const rise = /** @type {number} */ (points[m + 1]) - lo;
-  return { alpha: lo - m * rise, beta: WANDER_SEGMENTS * rise };
+function wanderTerms(terms, lag, level, { turns, hz, rise }, { ratio, phase, span }) {
+  for (let m = 0; m < WANDER_SEGMENTS; m++) {
+    let alpha = 0;
+    let beta = 0;
+    if (lag) {
+      const lo = /** @type {number} */ (lag[m]);
+      const by = /** @type {number} */ (lag[m + 1]) - lo;
+      alpha = lo - m * by;
+      beta = WANDER_SEGMENTS * by;
+    }
+    let g0 = 1;
+    let g1 = 0;
+    if (level) {
+      const lo = /** @type {number} */ (level[m]);
+      const by = /** @type {number} */ (level[m + 1]) - lo;
+      g0 = lo - m * by;
+      g1 = WANDER_SEGMENTS * by;
+    }
+    const at = TERMS * m;
+    terms[at] = (ratio * (turns + hz * alpha) + phase) / span;
+    terms[at + 1] = (ratio * (hz / CONTROL_RATE + hz * beta + rise * alpha)) / span;
+    terms[at + 2] = (ratio * (rise / (2 * CONTROL_RATE) + rise * beta)) / span;
+    terms[at + 3] = g0;
+    terms[at + 4] = g1;
+  }
 }
 
 /**
@@ -745,27 +779,6 @@ function tableAt(near, far, cycles, u) {
   return now + u * (next - now);
 }
 
-/** The line of a singer without shimmer: a gain of exactly 1. */
-const NO_LINE = Object.freeze({ alpha: 1, beta: 0 });
-
-/**
- * Fills `terms` with q0, q1 and q2, so that q0 + u (q1 + u q2) is a singer's turns, divided by
- * `span`, at place u of a grid step, within one wander segment. The fundamental ramps linearly
- * over the step, from `hz` by `rise`, and turns `turns` + hz u / CONTROL_RATE + rise u² /
- * (2 CONTROL_RATE) cycles; the pitch wander adds its lag, α + β u over the segment, times the
- * frame's frequency. The rate of change of that product differs from the wander by the lag, at
- * most about 1 ms, times the bend's rate: 0.001 cents for a bend of 100 cents over two minutes.
- * @param {Float64Array} terms
- * @param {{ turns: number; hz: number; rise: number }} at the grid step
- * @param {{ alpha: number; beta: number }} line the lag over the segment
- * @param {{ ratio: number; phase: number; span: number }} singer its detune, phase and the span
- */
-function phaseTerms(terms, { turns, hz, rise }, { alpha, beta }, { ratio, phase, span }) {
-  terms[0] = (ratio * (turns + hz * alpha) + phase) / span;
-  terms[1] = (ratio * (hz / CONTROL_RATE + hz * beta + rise * alpha)) / span;
-  terms[2] = (ratio * (rise / (2 * CONTROL_RATE) + rise * beta)) / span;
-}
-
 /**
  * The voice's stereo sound for timeline frames `[first, first + frames)`, before its level. Each
  * frame's value depends only on the track and the frame: amplitudes are interpolated between
@@ -795,16 +808,17 @@ export function chantChunk(track, first, frames) {
   const end = first + frames;
   const scale = 1 / Math.sqrt(singers.length);
   const gains = singers.map((_, s) => singerGain(track, s, first, frames, scale));
-  // Each singer's pitch wander's lag and level wander's gain at the step's segment points, filled
-  // step by step, or null without the wander.
+  // Each singer's pitch wander's lag and level wander's gain at the step's segment points, or
+  // null without the wander, and with either, its segments' terms; all filled step by step.
   const lags = singers.map(({ flutter }) =>
     flutter.length > 0 ? new Float64Array(WANDER_SEGMENTS + 1) : null,
   );
   const levels = singers.map(({ shimmer }) =>
     shimmer.length > 0 ? new Float64Array(WANDER_SEGMENTS + 1) : null,
   );
-  /** The phase's three terms over a segment, from `phaseTerms`. */
-  const terms = new Float64Array(3);
+  const terms = singers.map(({ flutter, shimmer }) =>
+    flutter.length > 0 || shimmer.length > 0 ? new Float64Array(TERMS * WANDER_SEGMENTS) : null,
+  );
   const sides = singers.map(({ pan }) => {
     const angle = ((pan + 1) * Math.PI) / 4;
     return { toLeft: Math.cos(angle), toRight: Math.sin(angle) };
@@ -865,27 +879,40 @@ export function chantChunk(track, first, frames) {
     const hi = Math.min(end, (k + 1) * step);
     const lead = /** @type {Float64Array} */ (gains[0]);
     const { toLeft, toRight } = /** @type {(typeof sides)[number]} */ (sides[0]);
-    singers.forEach(({ flutter, shimmer }, s) => {
-      const lag = lags[s];
-      const level = levels[s];
+    const at = { turns, hz: a.hz, rise };
+    for (let s = 0; s < singers.length; s++) {
+      const { flutter, shimmer, phase } = /** @type {Singer} */ (singers[s]);
+      const lag = lags[s] ?? null;
+      const level = levels[s] ?? null;
+      const own = terms[s];
+      if (!own) continue;
       if (lag) wanderPoints(lag, k, flutter, true);
       if (level) {
         wanderPoints(level, k, shimmer, false);
         for (let m = 0; m <= WANDER_SEGMENTS; m++)
           level[m] = dbToGain(/** @type {number} */ (level[m]));
       }
-    });
-    const leadLag = lags[0];
-    const leadLevel = levels[0];
-    const step0 = { turns, hz: a.hz, rise };
-    // A singer without either wander sings the step in one piece.
-    const leadPieces = leadLag || leadLevel ? WANDER_SEGMENTS : 1;
+      const ratio = /** @type {number} */ (ratios[s]);
+      // The lead's turns aren't divided by the span: it takes half of them for growl itself.
+      wanderTerms(
+        own,
+        lag,
+        level,
+        at,
+        s === 0 ? { ratio, phase, span: 1 } : { ratio, phase, span },
+      );
+    }
+    const leadTerms = terms[0];
+    // A singer without either wander sings the step in one piece, as before the wanders.
+    const leadPieces = leadTerms ? WANDER_SEGMENTS : 1;
     for (let m = 0; m < leadPieces; m++) {
-      if (leadLag)
-        phaseTerms(terms, step0, segmentLine(leadLag, m), { ratio: 1, phase: 0, span: 1 });
-      const [q0, q1, q2] = /** @type {[number, number, number]} */ (/** @type {unknown} */ (terms));
-      // Without shimmer the wander's gain is 1 + 0u, exactly 1, so it changes no bits.
-      const { alpha: g0, beta: g1 } = leadLevel ? segmentLine(leadLevel, m) : NO_LINE;
+      const t = TERMS * m;
+      const q0 = leadTerms ? /** @type {number} */ (leadTerms[t]) : 0;
+      const q1 = leadTerms ? /** @type {number} */ (leadTerms[t + 1]) : 0;
+      const q2 = leadTerms ? /** @type {number} */ (leadTerms[t + 2]) : 0;
+      // Without a wander the gain is 1 + 0u, exactly 1, so it changes no bits.
+      const g0 = leadTerms ? /** @type {number} */ (leadTerms[t + 3]) : 1;
+      const g1 = leadTerms ? /** @type {number} */ (leadTerms[t + 4]) : 0;
       const pieceEnd = leadPieces === 1 ? hi : Math.min(hi, segmentStart(k, step, m + 1));
       for (
         let i = leadPieces === 1 ? lo : Math.max(lo, segmentStart(k, step, m));
@@ -895,7 +922,7 @@ export function chantChunk(track, first, frames) {
         const u = (i - k * step) / step;
         const out = i - first;
         let cycles;
-        if (leadLag) cycles = q0 + u * (q1 + u * q2);
+        if (leadTerms) cycles = q0 + u * (q1 + u * q2);
         else {
           const tau = u / CONTROL_RATE;
           // The phase of a frequency ramping from a.hz to b.hz over the step.
@@ -947,9 +974,8 @@ export function chantChunk(track, first, frames) {
         const { phase } = /** @type {Singer} */ (singers[s]);
         const gain = /** @type {Float64Array} */ (gains[s]);
         const side = /** @type {(typeof sides)[number]} */ (sides[s]);
-        const lag = lags[s];
-        const level = levels[s];
-        if (!lag && !level) {
+        const own = terms[s];
+        if (!own) {
           for (let i = lo; i < hi; i++) {
             const u = (i - k * step) / step;
             const tau = u / CONTROL_RATE;
@@ -965,27 +991,25 @@ export function chantChunk(track, first, frames) {
           }
           continue;
         }
+        const { toLeft: sideLeft, toRight: sideRight } = side;
         for (let m = 0; m < WANDER_SEGMENTS; m++) {
-          if (lag) phaseTerms(terms, step0, segmentLine(lag, m), { ratio, phase, span });
-          const [q0, q1, q2] = /** @type {[number, number, number]} */ (
-            /** @type {unknown} */ (terms)
-          );
-          const { alpha: g0, beta: g1 } = level ? segmentLine(level, m) : NO_LINE;
+          const t = TERMS * m;
+          const q0 = /** @type {number} */ (own[t]);
+          const q1 = /** @type {number} */ (own[t + 1]);
+          const q2 = /** @type {number} */ (own[t + 2]);
+          const g0 = /** @type {number} */ (own[t + 3]);
+          const g1 = /** @type {number} */ (own[t + 4]);
           const pieceEnd = Math.min(hi, segmentStart(k, step, m + 1));
           for (let i = Math.max(lo, segmentStart(k, step, m)); i < pieceEnd; i++) {
             const u = (i - k * step) / step;
-            const tau = u / CONTROL_RATE;
-            const cycles = lag
-              ? q0 + u * (q1 + u * q2)
-              : (ratio * (turns + a.hz * tau + (rise * tau * u) / 2) + phase) / span;
             const out = i - first;
             const value =
-              tableAt(near, far, cycles, u) *
+              tableAt(near, far, q0 + u * (q1 + u * q2), u) *
               /** @type {number} */ (swell[out]) *
               /** @type {number} */ (gain[out]) *
               (g0 + g1 * u);
-            left[out] = /** @type {number} */ (left[out]) + side.toLeft * value;
-            right[out] = /** @type {number} */ (right[out]) + side.toRight * value;
+            left[out] = /** @type {number} */ (left[out]) + sideLeft * value;
+            right[out] = /** @type {number} */ (right[out]) + sideRight * value;
           }
         }
       }
@@ -1007,10 +1031,10 @@ export function chantChunk(track, first, frames) {
  * and each chorus singer about 0.3 ms whatever its partials (3) (decision 0070). Timed alone,
  * the lead's half-integer harmonics take about 0.14 ms a partial (1.1), and its half phase's
  * cosine and swing a frame about 0.5 ms (4); a table of two cycles costs what one of one cycle
- * does for the same partials (decision 0088). A singer's shimmer, its points and a multiply-add
- * a frame, took about 0.017 ms (0.15); its flutter's points about 0.005 ms (0.05), and its phase
- * a frame, a quadratic with no division, took less than the plain phase, which isn't credited
- * (decision 0089).
+ * does for the same partials (decision 0088). A singer's wanders' points take about 0.017 ms for
+ * shimmer (0.15) and 0.005 ms for flutter (0.05); timed one mode a process, a singer with either
+ * wander took about 0.08 ms less than a plain one, as its phase a frame is a quadratic with no
+ * division, a saving not credited (decision 0089).
  */
 const PARTIAL_WEIGHT = 0.9;
 const LEAD_WEIGHT = 23;

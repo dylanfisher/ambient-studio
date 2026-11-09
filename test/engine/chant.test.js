@@ -882,6 +882,27 @@ describe("the chant's flutter and shimmer", () => {
     expect(correlation(measured, expected)).toBeGreaterThan(0.98);
   });
 
+  test("a chorus singer's level follows its own shimmer, measured on its sound", () => {
+    const change = { root: 65, depth: 0, spread: 0, shimmer: 1 };
+    const pair = oneChant({ ...change, singers: 2 });
+    const two = summed(sourceOf(pair, seconds * RATE));
+    const one = summed(sourceOf(oneChant(change), seconds * RATE));
+    // The lead sings the same samples at 1/√2 of its level, so what's left is singer 1 alone.
+    const data = two.map((v, i) => v - /** @type {number} */ (one[i]) / Math.SQRT2);
+    const { track } = source(pair, 0);
+    const levels = cycleLevels(data, track.control(0).hz);
+    const measured = levels.map((l) => l.db);
+    const singer = /** @type {Singer} */ (track.singers[1]);
+    const lead = /** @type {Singer} */ (track.singers[0]);
+    const expected = levels.map((l) => wanderAt(singer.shimmer, l.t));
+    expect(rms(measured)).toBeGreaterThanOrEqual(0.3);
+    expect(rms(measured) / rms(expected)).toBeGreaterThan(0.95);
+    expect(rms(measured) / rms(expected)).toBeLessThan(1.05);
+    expect(correlation(measured, expected)).toBeGreaterThan(0.98);
+    const leads = levels.map((l) => wanderAt(lead.shimmer, l.t));
+    expect(Math.abs(correlation(measured, leads))).toBeLessThan(0.2);
+  });
+
   test("each of twelve singers wanders within the ranges at 1, and no two singers' wanders correlate 0.2 or more", () => {
     for (const seed of [1, 2, 3]) {
       const genome = oneChant({ singers: 12, flutter: 1, shimmer: 1 });

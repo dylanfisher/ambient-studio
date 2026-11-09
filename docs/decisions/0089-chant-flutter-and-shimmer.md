@@ -31,7 +31,8 @@ lie from 1 to 7.8 Hz. One part a hertz at an amplitude of 1/√f has a power spe
 1/f, the 1/f wander the plan names. Each part has a seeded phase, and the amplitudes are scaled
 so the sum's RMS over a long time is exactly the target (the parts' a²/2 add). Over 20 s at 1 the
 measured RMS is 4.94–5.08 cents and 0.69–0.71 dB across seeds 1–30 and twelve
-singers; all of the power lies in 1–8 Hz by construction, and 99.1–99.9% of it measured on the sound.
+singers; all of the power lies in 1–8 Hz by construction, and 99.1–99.9% of it measured on
+the sound.
 
 **Singers apart.** Part i's place in its hertz is one seeded draw for the voice, and singer s
 sits s × 0.618… (the golden ratio's fraction) past it, wrapped into [0, 1) and scaled into the
@@ -53,22 +54,29 @@ cents, within 0.02 cents of 2^(c/1200) at 8 cents. So its phase gains its freque
 lag, the wander's integral times ln 2 / 1200, which each part gives exactly from timeline time:
 −a cos(2π f t + φ) / (2π f). The product's rate of change differs from the wander by the lag, at
 most about 1 ms, times the bend's rate: 0.001 cents for a bend of 100 cents over two minutes,
-and a few cents only while a bend sweeps its whole 400 cents within one 0.1 s step. The lag is computed
-at 20 points a control-grid step, 200 a second, and the frames between two points take the line
-between them; over a segment the phase is then a quadratic in the frame's place in the grid
-step, q0 + u (q1 + u q2), whose terms fold in the step's frequency ramp, the singer's detune and
-seeded phase and the table's span. The lead sums its partials at that phase, and a chorus singer
-reads the shared table at it, so a wander costs no partials and needs no table of its own. Each
-part's sine and cosine are taken at the step's start and turned through the 20 segments by a
-fixed rotation, so a step costs four `Math.sin` or `Math.cos` a part. Measured on one singer's
-sound (harmonic 5's phase, demodulated and differenced at 100 Hz), the pitch wander follows the
-voice's own `wanderAt` to an RMS ratio of 0.99 (4.93–4.97 cents against 4.98–5.03, seeds 1–3) and a correlation of 0.9995; a chorus singer,
-isolated by subtracting the lead, follows its own the same way.
+and a few cents only while a bend sweeps its whole 400 cents within one 0.1 s step. The lag is
+computed at 10 points a control-grid step, 100 a second, and the frames between two points take
+the line between them; over a segment the phase is then a quadratic in the frame's place in the
+grid step, q0 + u (q1 + u q2), whose terms fold in the step's frequency ramp, the singer's
+detune and seeded phase and the table's span. The lead sums its partials at that phase, and a
+chorus singer reads the shared table at it, so a wander costs no partials and needs no table of
+its own. Each part's sine and cosine are taken at the step's start and turned through the 10
+segments by a fixed rotation, so a step costs four `Math.sin` or `Math.cos` a part. Measured on
+one singer's sound (harmonic 5's phase, demodulated and differenced at 100 Hz), the pitch wander
+follows the voice's own `wanderAt` to an RMS ratio of 0.98–0.99 (4.91–4.95 cents against
+4.98–5.03, seeds 1–3) and a correlation of 0.9993; a chorus singer, isolated by subtracting the
+lead, follows its own the same way.
 
 **Level.** The level wander in dB becomes a gain at the same points and is multiplied into each
-singer's samples on the line between them. A singer without shimmer multiplies by 1 + 0 u,
-exactly 1, so its bits don't change. Measured on the sound per cycle of f0, the level follows
-`wanderAt` to an RMS ratio of 0.99 (0.696–0.699 dB against 0.700–0.702) and a correlation of 0.995.
+singer's samples on the line between them. Measured on the sound per cycle of f0, the level
+follows `wanderAt` to an RMS ratio of 0.99 (0.694–0.696 dB against 0.700–0.702) and a
+correlation of 0.995; a chorus singer, isolated by subtracting the lead, follows its own.
+
+**One loop shape.** A singer with either wander takes the same path: each grid step its five
+numbers a segment (the phase's q0, q1, q2 and the gain's g0, g1) are written into one typed array
+made once a window, with a lag of 0 without flutter and a gain of 1 without shimmer, and the
+frames read them as plain numbers. So the hot loop has one shape whichever wanders are on, and
+allocates nothing a step.
 
 **Windows.** Every point depends on its grid step and segment alone, and every frame on its
 segment's points and its own place, so a window computes the same bits wherever it starts
@@ -83,23 +91,28 @@ wander"), neither a trajectory and neither with a safe range; no macro moves the
 also a cymbal parameter, with another meaning; the names are the plan's, and a parameter belongs
 to its voice type.
 
-**Cost:** per singer, 0.15 node-seconds with shimmer and 0.05 with flutter. Timed alone on
-mbp2021 under `nice -n 10` while omlx served, the voice's JS over 30 s in 2 s windows, modes
-round-robin, median of 7, ms a timeline second at the 65 Hz root:
+**Cost:** per singer, 0.15 node-seconds with shimmer and 0.05 with flutter. Timed on mbp2021
+under `nice -n 10` while omlx served, the voice's JS alone, one mode a process (a process that
+runs several modes compiles one loop for all of them and times each wrongly), 2 s windows from
+20 to 30 s, median of 15, ms a timeline second, twelve singers unless named; "before" is the
+commit before this step:
 
-| singers | plain | flutter | shimmer | both | growl, rough | all four |
-|---|---|---|---|---|---|---|
-| 1 | 7.53 | 7.49 | 7.53 | 7.51 | 14.61 | 14.60 |
-| 6 | 10.08 | 9.61 | 10.17 | 9.64 | 17.12 | 16.74 |
-| 12 | 12.40 | 11.43 | 12.57 | 11.60 | 19.48 | 18.69 |
+| root, singers | before | plain | flutter | shimmer | both | growl, rough | all four |
+|---|---|---|---|---|---|---|---|
+| 65 Hz, 1 | 7.38 | 7.38 | 7.33 | 7.32 | 7.33 | 14.38 | 14.33 |
+| 65 Hz, 6 | 9.77 | 9.82 | 9.37 | 9.34 | 9.37 | 16.74 | 16.45 |
+| 65 Hz, 12 | 11.95 | 11.95 | 10.92 | 10.96 | 11.06 | 18.90 | 17.99 |
+| 33 Hz, 12 | 16.31 | 16.43 | 15.30 | 15.43 | 15.48 | 29.16 | 28.49 |
+| 135 Hz, 12 | 9.08 | 9.17 | 8.06 | 8.08 | 8.24 | 12.25 | 11.49 |
 
-Shimmer adds about 0.017 ms a singer, its points and a multiply-add a frame. Flutter's points
-take about 0.005 ms a singer, and its quadratic phase has no division where the plain phase has
-three, so a fluttering singer measured faster than a plain one; the weight prices the points and
-doesn't credit the saving, so the cost stays a bound. The plain path, at the commit before this step, measured
-7.49, 9.98 and 12.26 ms in the same run: about 0.1 ms slower at twelve singers now, within the
-spread of repeated runs. Twelve singers at the default root with growl, rough, flutter and
-shimmer cost 164.3 (161.9 without the wanders), and fit beside a reverb of up to 15.19 s.
+A singer with a wander measured about 0.08 ms a timeline second faster than a plain one: its
+quadratic phase has no division where the plain phase has three, and that outweighs the points
+(four `Math.sin` or `Math.cos` a part a step, a rotation a point, and with shimmer a `dbToGain` a
+point) and the gain's multiply-add a frame. The weights price the points, about 0.005 ms a
+singer for flutter and 0.017 for shimmer with its gains, and don't credit the saving, so the
+cost stays a bound. The plain path measures as before. Twelve singers at the default root with
+growl, rough, flutter and shimmer cost 164.3 (161.9 without the wanders), and fit beside a
+reverb of up to 15.19 s.
 
 ## Alternatives considered
 
@@ -117,6 +130,11 @@ shimmer cost 164.3 (161.9 without the wanders), and fit beside a reverb of up to
 - **The lag and gain as arrays a frame**, interpolated from 400 points a second — rejected after
   measuring: the extra passes cost about 0.17 ms a singer each, about 35 node-seconds for twelve
   singers with both.
+- **20 segments a step, each segment's line returned as an object, and the plain phase kept for
+  a singer with shimmer alone** — rejected after a review timed one mode a process: three loop
+  shapes measured flutter 1.9 ms and shimmer 3.5 ms slower than plain at twelve singers, 16 and
+  30 node-seconds against the 0.6 and 1.8 priced. The single shape above measures faster than
+  plain.
 - **The points by `Math.sin` each** — rejected after measuring: 147 calls a wander a step made
   shimmer cost about three times what it does by rotation.
 - **Phase accumulated sample by sample** — rejected: an excerpt's first window would start from
