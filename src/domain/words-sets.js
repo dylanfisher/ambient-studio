@@ -2,28 +2,52 @@
 // set by its name and never takes field definitions from the page. Each set says what its
 // fields set, where their values now are read from, and its fields as descriptors, built from
 // what the route reads on its own: a search's paths, a candidate's genome, the brief's
-// directions.
+// directions, the track's arrangement (0087).
 /** @import { Descriptor } from "../engine/descriptor.js" */
 /** @import { Genome } from "../engine/genome-schema.js" */
+/** @import { Arrangement } from "./arrangement-schema.js" */
+/** @import { TrackContext, TrackDetail, TrackEdit, TrackTarget } from "./track-words.js" */
 import { choice, number } from "../engine/descriptor.js";
 import { MACROS } from "../engine/genome-schema.js";
+import { arrangementLength } from "./arrangement-length.js";
+import { SECTION_FIELDS, TRANSITION_KIND, TRANSITION_SECONDS } from "./arrangement-schema.js";
 import { nearText } from "./axis-words.js";
 import { EAR_SHIFT } from "./ear-settings.js";
+import { LANE_OFFSET } from "./lane-schema.js";
 import { lockChoices } from "./lock-choices.js";
 import { macroWords } from "./macro-words.js";
 import { MACRO_DIRECTIONS } from "./rating-values.js";
+import {
+  applyLane,
+  applyLength,
+  applyTransition,
+  laneCurrent,
+  laneField,
+  laneGrid,
+  laneNarrower,
+  laneReading,
+  laneRoom,
+  lengthCurrent,
+  lengthReading,
+  TRACK_TARGET,
+  transitionCurrent,
+  transitionReading,
+} from "./track-words.js";
 
 /**
  * Where a set's values now come from, and so which route asks it. `page`: the page sends them,
  * unsaved, and the words route checks them against the set's descriptors. `candidate`: the same,
  * and the page names the candidate the fields belong to, whose genome the route reads for the
  * fields and whose reading goes in the prompt (0085). `earSearch`: the running search by ear's
- * steering, read by the search's own route.
+ * steering, read by the search's own route. `track`: the page sends the track's arrangement as
+ * it is now, unsaved, and names the part the fields change; the route checks the arrangement as
+ * Save would and reads the values now and the reading from it (0087).
  */
 export const WORDS_SCOPE = Object.freeze({
   page: "page",
   candidate: "candidate",
   earSearch: "ear-search",
+  track: "track",
 });
 
 /** @typedef {(typeof WORDS_SCOPE)[keyof typeof WORDS_SCOPE]} WordsScope */
@@ -35,6 +59,10 @@ export const WORDS_SCOPE = Object.freeze({
  * What a set's fields are built from. Each set reads only its own, and throws when it is missing.
  * @typedef {object} WordsContext
  * @property {readonly string[]} [paths] the paths a search by ear moves
+ * @property {Arrangement} [arrangement] a track set's, valid
+ * @property {number | string} [target] what a track set changes in it
+ * @property {readonly string[]} [names] each section's name, for a track set's reading
+ * @property {TrackDetail} [detail] how much of the track the lane set reads
  * @property {Genome} [genome] the candidate's
  * @property {readonly WordsDirection[]} [directions] the brief's live directions
  * @property {number} [voicesWithParams] how many of the genome's voices, from the first, list
@@ -50,7 +78,17 @@ export const WORDS_SCOPE = Object.freeze({
  * @property {(context: WordsContext) => Readonly<Record<string, Descriptor>>} fields each
  *   field's descriptor by name
  * @property {(context: WordsContext) => WordsContext | null} [narrower] the same fields with
- *   fewer of them, for a prompt over its budget, or null when there is none narrower
+ *   fewer of them, or a shorter reading, for a prompt over its budget, or null when there is
+ *   none narrower
+ * @property {TrackTarget} [target] a track set's: what its `target` names
+ * @property {(context: TrackContext) => Record<string, unknown>} [current] a track set's values
+ *   now, read from the arrangement
+ * @property {(context: TrackContext, changes: Readonly<Record<string, unknown>>) => TrackEdit}
+ *   [apply] a track set's checked answer applied to the arrangement
+ * @property {(context: TrackContext) => string[]} [reading] a track set's reading, which the
+ *   prompt holds in place of the one the route is given
+ * @property {(context: TrackContext) => string | null} [refusal] why a track set can't be asked
+ *   of this part of the track at all, before any request, or null when it can
  */
 
 /** A lock field's two values: locked keeps the value as the candidate has it. */
@@ -90,6 +128,18 @@ function needs(value, what) {
   if (value === undefined) throw new Error(`this field set needs ${what}`);
   return value;
 }
+
+/**
+ * A track set's context, with the arrangement and target it needs.
+ * @param {WordsContext} context
+ * @returns {TrackContext}
+ */
+const track = ({ arrangement, target, names, detail }) => ({
+  arrangement: needs(arrangement, "the track's arrangement"),
+  target: needs(target, "what it changes"),
+  ...(names === undefined ? {} : { names }),
+  ...(detail === undefined ? {} : { detail }),
+});
 
 /** @param {WordsContext} context */
 function lockFields({ genome, voicesWithParams }) {
@@ -170,6 +220,56 @@ export const WORDS_SETS = Object.freeze(
             }),
           ]),
         ),
+    },
+    /** A section's seconds on the timeline (0061). */
+    length: {
+      subject:
+        "how long one section of a track plays, in seconds; its neighbors overlap it by their transitions' seconds",
+      scope: WORDS_SCOPE.track,
+      label: "Its length",
+      target: TRACK_TARGET.section,
+      fields: () => ({ seconds: SECTION_FIELDS.seconds }),
+      current: lengthCurrent,
+      apply: applyLength,
+      reading: lengthReading,
+    },
+    /** How a section passes into the next: its kind (0064, 0080) and seconds. */
+    transition: {
+      subject:
+        "how one section of a track becomes the next: the kind of transition and how many seconds the two overlap",
+      scope: WORDS_SCOPE.track,
+      label: "How it becomes the next",
+      target: TRACK_TARGET.transition,
+      fields: () => ({
+        kind: choice({
+          values: Object.values(TRANSITION_KIND),
+          default: TRANSITION_KIND.crossfade,
+          description: `${TRANSITION_KIND.crossfade}: one fades out as the next fades in; ${TRANSITION_KIND.morph}: the first section's sounds move toward the next one's before it takes over; ${TRANSITION_KIND.weave}: a morph whose sounds that can't move hand over one at a time`,
+        }),
+        seconds: TRANSITION_SECONDS,
+      }),
+      current: transitionCurrent,
+      apply: applyTransition,
+      reading: transitionReading,
+    },
+    /** A macro lane (0065), read and set at every `LANE_GRID_SECONDS` of the track. */
+    lane: {
+      subject:
+        "one macro lane of a track: an offset added to that macro of every section, read at every 30 s of the track. Give the offset at each time where a change starts, turns and ends; between the times you give the lane moves evenly, and before the first and after the last it stays as it is now",
+      scope: WORDS_SCOPE.track,
+      target: TRACK_TARGET.macro,
+      fields: (context) =>
+        Object.fromEntries(
+          laneGrid(arrangementLength(track(context).arrangement)).map((time) => [
+            laneField(time),
+            number({ ...LANE_OFFSET, description: `the offset ${time} s into the track` }),
+          ]),
+        ),
+      current: laneCurrent,
+      apply: applyLane,
+      reading: laneReading,
+      narrower: (context) => laneNarrower(track(context)),
+      refusal: laneRoom,
     },
   }),
 );

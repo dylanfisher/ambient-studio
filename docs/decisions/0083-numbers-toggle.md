@@ -9,7 +9,8 @@
   and lineage pages, and a search point's score moves behind the toggle) and
   [0086](0086-other-pages-in-words.md) (the map's grid, axis captions and open cell's line and
   the brief's ratings list leave the allowlist, said in words with their numbers behind the
-  toggle).
+  toggle) and [0087](0087-track-page-in-words.md) (the track page leaves the allowlist, its
+  numbers behind its own toggle).
 
 ## Context
 

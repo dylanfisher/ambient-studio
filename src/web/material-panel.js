@@ -2,14 +2,17 @@
 // its position on the brief's directions (0056) read from its excerpt, the map's elites by cell
 // with the cell's axis words (0057), the directions a section can be steered along, and the
 // attached regions that can be the arc target. A brief with no map, directions or regions
-// lists its sketches alone.
+// lists its sketches alone. Positions, places and verdicts are said in words (0087), with the
+// numbers beside them for the numbers toggle.
 /** @import { AxisSource } from "../domain/axis-words.js" */
 /** @import { MapCell } from "./map-grid.js" */
 /** @import { SteeringView } from "./steer-sliders.js" */
 import { axisName } from "../domain/axis-words.js";
+import { cellPlaceWords, cellVerdictWords } from "../domain/map-words.js";
+import { positionsWords } from "../domain/position-words.js";
 import { directionText, positionsLine } from "./direction-text.js";
 import { clockTime } from "./excerpt-player.js";
-import { endText, openText } from "./map-grid.js";
+import { endText, openScore, openWords } from "./map-grid.js";
 
 /**
  * A sketch as the track route lists it.
@@ -44,9 +47,10 @@ import { endText, openText } from "./map-grid.js";
  * @property {string} key its cell, as "2,5"
  * @property {MapCell} cell
  * @property {number | null} sketchId the sketch already kept of its candidate, or null
- * @property {string} words the cell's place on each axis
- * @property {string} label the line the panel shows
- * @property {string} about what the cell holds, as the map says it
+ * @property {string} words the cell's stretch of each axis, in its numbers
+ * @property {string} label the line the panel shows, its place in words
+ * @property {string} about what the cell holds, where it sits and its verdict, in words
+ * @property {string} numbers its stretch of each axis and its score, for the numbers toggle
  */
 
 /**
@@ -57,7 +61,8 @@ import { endText, openText } from "./map-grid.js";
 /**
  * @typedef {object} MaterialPanel
  * @property {{ sketch: PanelSketch, name: string, positions: { directionId: number,
- *   position: number | null }[], line: string }[]} sketches
+ *   position: number | null }[], words: string, line: string }[]} sketches `words` says the
+ *   positions, `line` gives their numbers
  * @property {EliteRow[]} elites
  * @property {string} elitesLine why there are none, or how many cells there are
  * @property {DirectionRow[]} directions
@@ -125,20 +130,31 @@ export function materialPanel({ sketches, archive, steering, regions }) {
           directionId: id,
           position: renderId === null ? null : (positions[renderId] ?? null),
         })),
+        words: positionsWords(directions, renderId),
         line: positionsLine(directions, renderId),
       };
     }),
     elites: cells.map((cell) => {
+      const { axes, model } = /** @type {PanelArchive} */ (archive);
       const sketchId = sketches.find((sketch) => sketch.candidateId === cell.candidateId)?.id;
-      const words = cellWords(/** @type {PanelArchive} */ (archive).axes, cell.index);
+      const words = cellWords(axes, cell.index);
+      const place = cellPlaceWords(
+        cell.index,
+        axes.map(({ bins }) => bins),
+        axes,
+      );
+      const key = cell.index.join(",");
+      const others = cells.filter((other) => other !== cell).map(({ score }) => score);
+      const verdict = cellVerdictWords(cell, others, model);
       const kept = sketchId === undefined ? "" : ` (kept as sketch ${sketchId})`;
       return {
-        key: cell.index.join(","),
+        key,
         cell,
         sketchId: sketchId ?? null,
         words,
-        label: `Candidate #${cell.candidateId}${kept}: ${words}`,
-        about: openText(cell, /** @type {PanelArchive} */ (archive).model),
+        label: `Candidate #${cell.candidateId}${kept}: ${place}`,
+        about: openWords(cell, { place, verdict }),
+        numbers: `${words}. ${openScore(cell, model)}`,
       };
     }),
     elitesLine,

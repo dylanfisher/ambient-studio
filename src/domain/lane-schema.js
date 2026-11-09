@@ -1,10 +1,12 @@
 // A track's macro lanes (decision 0065): at most one lane per macro across the track, its
 // breakpoints in track seconds with 0007's curves, each an offset added to every section's own
 // macro there. Stored in the arrangement's `lanes`, checked by `validateArrangement`.
+/** @import { Arrangement } from "./arrangement-schema.js" */
 /** @import { NumberDescriptor } from "../engine/descriptor.js" */
 /** @import { MacroName } from "../engine/macro-table.js" */
 /** @import { Curve, Trajectory } from "../engine/trajectory.js" */
 import { number } from "../engine/descriptor.js";
+import { MACROS } from "../engine/genome-schema.js";
 import { LANE_POINTS } from "../engine/macro-lane.js";
 import { POINTS_KEY, valueAt } from "../engine/trajectory.js";
 import { MAX_TRACK_SECONDS } from "./arrangement-schema.js";
@@ -63,3 +65,24 @@ export const LANE_FIELDS = Object.freeze(["macro", POINTS_KEY]);
  */
 export const laneOffsetAt = (points, time) =>
   valueAt(/** @type {Trajectory} */ (/** @type {unknown} */ ({ points })), time, LANE_OFFSET.scale);
+
+/** @type {readonly string[]} */
+const ORDER = Object.keys(MACROS);
+
+/**
+ * The arrangement with the macro's lane holding `points`: made when it had none, gone when
+ * `points` is empty, and kept in the schema's order of macros. The first point never names a
+ * curve.
+ * @param {Arrangement} arrangement
+ * @param {MacroName} macro
+ * @param {LanePoint[]} points
+ * @returns {Arrangement}
+ */
+export function withLanePoints(arrangement, macro, points) {
+  const [first, ...rest] = points;
+  const others = arrangement.lanes.filter((lane) => lane.macro !== macro);
+  /** @type {Lane[]} */
+  const lanes = first ? [...others, { macro, points: [[first[0], first[1]], ...rest] }] : others;
+  lanes.sort((a, b) => ORDER.indexOf(a.macro) - ORDER.indexOf(b.macro));
+  return { ...arrangement, lanes };
+}

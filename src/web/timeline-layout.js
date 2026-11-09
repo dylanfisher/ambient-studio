@@ -2,7 +2,7 @@
 // a share of the track's length, each crossfade the overlap of two blocks, and the words a block
 // shows. `timeline-view.js` draws it.
 /** @import { Arrangement, Section } from "../domain/arrangement-schema.js" */
-import { arrangementLength } from "../domain/arrangement-length.js";
+import { arrangementLength, sectionStarts } from "../domain/arrangement-length.js";
 import { clockTime } from "./excerpt-player.js";
 
 /**
@@ -84,6 +84,45 @@ function startOf(text) {
   const cut = line.slice(0, BLOCK_WORDS + 1);
   const space = cut.lastIndexOf(" ");
   return `${(space > 0 ? cut.slice(0, space) : cut.slice(0, BLOCK_WORDS)).trimEnd()}…`;
+}
+
+/**
+ * A section's place on the track in words (0087): how long it plays and where it starts, as
+ * clock times.
+ * @param {Arrangement} arrangement
+ * @param {number} index the section's, from 0
+ */
+export function placeWords(arrangement, index) {
+  const { seconds } = /** @type {Section} */ (arrangement.sections[index]);
+  const start = /** @type {number} */ (sectionStarts(arrangement)[index]);
+  return `Plays ${clockTime(seconds)}, from ${clockTime(start)} on the track.`;
+}
+
+/**
+ * What a section plays, as "its …" says it: its sketch, its development, or its bridge (0079,
+ * 0081), whose own timeline its offset is on.
+ * @param {{ bridge: boolean }} [development] the one it plays, if any
+ */
+export const playedName = (development) =>
+  development ? (development.bridge ? "its bridge" : "its development") : "its sketch";
+
+/**
+ * Where a section plays from, in words (0087): the start of what it plays or partway in, and
+ * whether it runs past the end of that genome. The offset and seconds are behind the numbers
+ * toggle.
+ * @param {Section} section
+ * @param {BlockSketch | undefined} sketch
+ * @param {{ seconds: number, bridge: boolean }} [development]
+ */
+export function playsWords({ offset, seconds }, sketch, development) {
+  const what = playedName(development);
+  const from = offset === 0 ? "from the start" : "from partway in";
+  const duration = development?.seconds ?? sketch?.duration;
+  const past =
+    duration !== undefined && offset + seconds > duration
+      ? ", and runs past its end, which extends it"
+      : "";
+  return `It plays ${what} ${from}${past}.`;
 }
 
 /**

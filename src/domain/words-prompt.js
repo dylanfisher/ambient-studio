@@ -102,6 +102,7 @@ export function buildWordsPrompt({ words, subject, fields, brief, reading }, bud
 export function fitWordsPrompt({ set, context, current, ...rest }, budgetTokens) {
   let at = context;
   for (;;) {
+    const reading = set.reading ? set.reading(/** @type {any} */ (at)) : rest.reading;
     const fields = Object.entries(set.fields(at)).map(([name, descriptor]) => ({
       name,
       descriptor,
@@ -109,7 +110,10 @@ export function fitWordsPrompt({ set, context, current, ...rest }, budgetTokens)
     }));
     try {
       return {
-        messages: buildWordsPrompt({ ...rest, subject: set.subject, fields }, budgetTokens),
+        messages: buildWordsPrompt(
+          { ...rest, reading, subject: set.subject, fields },
+          budgetTokens,
+        ),
         fields,
       };
     } catch (error) {

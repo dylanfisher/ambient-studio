@@ -7,7 +7,11 @@
   [0077](0077-section-and-transition-text.md) (`text` on every section and transition, two text
   fields in the chosen section's panel, the start of the text on each block) and
   [0079](0079-develop-a-section.md) (`developmentId` on every section, its offset on the
-  development's timeline, the develop and plain-sketch actions and keys). Amends
+  development's timeline, the develop and plain-sketch actions and keys) and
+  [0087](0087-track-page-in-words.md) (the timeline leads with words; the offset, seconds and
+  crossfade fields and their step buttons sit behind the numbers toggle; the offset's label names
+  the development or bridge a section plays; a section's length and transition are asked in
+  words). Amends
   [0021](0021-store-tables-and-append-only.md) (the track tables) and
   [0032](0032-plain-language-pages.md) (the timeline page and its keys)
 

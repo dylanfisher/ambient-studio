@@ -43,6 +43,28 @@ export const kindButtonWords = (kind) => {
   return words;
 };
 
+/** What a transition does, by its kind, after "section 1". */
+const KIND_VERB = Object.freeze(
+  /** @type {Record<string, string>} */ ({
+    [TRANSITION_KIND.crossfade]: "crossfades",
+    [TRANSITION_KIND.morph]: "morphs",
+    [TRANSITION_KIND.weave]: "weaves",
+  }),
+);
+
+/**
+ * A transition in words, its kind and a morph's or weave's curve, with no seconds (0087).
+ * @param {number} index the transition's, counted from 0
+ * @param {Transition} transition
+ * @returns {string} lowercase, to start a clause
+ */
+export function transitionWords(index, { kind, curve }) {
+  const verb = KIND_VERB[kind];
+  if (verb === undefined) throw new Error(`there is no transition kind ${JSON.stringify(kind)}`);
+  const how = morphs(kind) ? `, ${CURVE_WORDS[/** @type {Curve} */ (curve)]}` : "";
+  return `section ${index + 1} ${verb} into section ${index + 2}${how}`;
+}
+
 /**
  * A weave's handovers in its order, each side's voices by the names their sketches give them.
  * @param {readonly Handover[]} order

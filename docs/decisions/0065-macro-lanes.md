@@ -3,7 +3,10 @@
 - **Date:** 2026-11-08
 - **Status:** accepted; provisional: owner to confirm the 10 s sampling, the 62-point lane, the
   lanes' keys and their steps. Amends [0006](0006-macros-bounded-offsets.md) (track
-  automation on macros) and [0061](0061-tracks-and-the-timeline.md) (`lanes` hold lanes)
+  automation on macros) and [0061](0061-tracks-and-the-timeline.md) (`lanes` hold lanes);
+  amended by [0087](0087-track-page-in-words.md) (a lane is said in words and asked in words,
+  read at every 30 s of the track; its point fields, step buttons and point line sit behind the
+  numbers toggle)
 
 ## Context
 

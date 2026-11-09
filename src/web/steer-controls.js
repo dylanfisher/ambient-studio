@@ -16,6 +16,7 @@ import { SHOWN_POINTS } from "../domain/search-shown.js";
 import { ApiError, getJson, postJson, SEARCH_ESTIMATE_PATH, sessionPath } from "./api.js";
 import { cloneTemplate } from "./clone-template.js";
 import { jobControl } from "./job-control.js";
+import { WORDS_SAY } from "./words-edits.js";
 
 /** Each step size as the select shows it. A size without words here throws. */
 const STEP_WORDS = Object.freeze({
@@ -151,7 +152,7 @@ export function steerControls({ candidateId, sessionId, start, run, words }) {
       run(async () => {
         const line = oneLine();
         if (line.trim() === "") {
-          throw new Error("Write the change in words first.");
+          throw new Error(WORDS_SAY.empty);
         }
         const chosen = parts.wordsSet.selectedOptions[0];
         if (chosen?.disabled) throw new Error(chosen.title);

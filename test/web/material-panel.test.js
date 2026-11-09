@@ -4,6 +4,7 @@
 // brief with no map, directions or regions lists its sketches alone.
 import { expect, test } from "vitest";
 import { directionVector, projection } from "../../src/domain/direction-vector.js";
+import { positionWords } from "../../src/domain/position-words.js";
 import { scaledPosition, vibeScale } from "../../src/domain/vibe-scale.js";
 import { steeringView } from "../../src/server/vibe-steering.js";
 import { cellWords, materialPanel } from "../../src/web/material-panel.js";
@@ -53,6 +54,9 @@ test("each sketch's position is its excerpt's projection on the vibe's scale, as
     [{ directionId: 5, position: expected(2) }],
     [{ directionId: 5, position: null }],
   ]);
+  expect(panel.sketches[0]?.words).toBe(
+    `On “dry” to “underwater”, ${positionWords({ near: "dry", far: "underwater" }, expected(0))}.`,
+  );
   expect(panel.sketches[0]?.line).toBe(
     `Where it sits, from 0 (this brief's least) to 1 (its most): “dry” to “underwater” ${expected(0).toFixed(2)}.`,
   );
@@ -100,9 +104,14 @@ test("the map's elites are listed by cell with the cell's axis words, and one al
       words: "spectral centroid (Hz) 500 to 600; motion (the macro, over the excerpt) 0.5 to 0.625",
     },
   ]);
-  expect(panel.elites[0]?.label).toMatch(/^Candidate #21 \(kept as sketch 1\): spectral centroid/);
+  expect(panel.elites[0]?.label).toBe(
+    "Candidate #21 (kept as sketch 1): A lower spectral centroid; more motion.",
+  );
   expect(panel.elites[1]?.about).toBe(
-    "The candidate here: “seeded”, missing 0 of the brief's ranges.",
+    "The candidate here: “seeded”. Midway on spectral centroid (Hz); midway on motion (the macro, over the excerpt). Inside every one of the brief's ranges.",
+  );
+  expect(panel.elites[1]?.numbers).toBe(
+    "spectral centroid (Hz) 500 to 600; motion (the macro, over the excerpt) 0.5 to 0.625. Missing 0 of the brief's ranges.",
   );
   expect(cellWords(AXES, [7, 0])).toBe(
     "spectral centroid (Hz) 900 or more; motion (the macro, over the excerpt) up to 0.125",
@@ -116,10 +125,12 @@ test("with no map, directions or regions the panel lists the sketches alone", ()
     steering: { reason: null, directions: [], regions: [] },
     regions: [],
   });
-  expect(panel.sketches.map(({ name, positions, line }) => ({ name, positions, line }))).toEqual([
-    { name: "Sketch 1: cold, 5:00", positions: [], line: "" },
-    { name: "Sketch 2, 4:00", positions: [], line: "" },
-    { name: "Sketch 3: unheard, 3:20", positions: [], line: "" },
+  expect(
+    panel.sketches.map(({ name, positions, words, line }) => ({ name, positions, words, line })),
+  ).toEqual([
+    { name: "Sketch 1: cold, 5:00", positions: [], words: "", line: "" },
+    { name: "Sketch 2, 4:00", positions: [], words: "", line: "" },
+    { name: "Sketch 3: unheard, 3:20", positions: [], words: "", line: "" },
   ]);
   expect(panel.elites).toEqual([]);
   expect(panel.elitesLine).toBe("No elites from the map: Choose two or three axes.");
