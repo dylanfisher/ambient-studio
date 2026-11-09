@@ -4297,3 +4297,12 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   worst prompt is about 4,055 of 4,096 after narrowing. `./scripts/check` clean: 2,671 tests.
   Pending owner check in Safari 17.6: each "Change it" choice, Keep and Undo, and the words lines
   with the numbers closed.
+- 2026-11-09: WF.4 merged as 0369c51 (Opus: 256k tokens, 136 calls, 29 min; the orchestrator read
+  the diff). The map says each cell by its axis words and a verdict against the whole map, and a
+  fill's budget as minutes (`searchMinutes`, shared by the four search confirms); Quick A/B leads
+  with its steering words and says how much was played and how far through the pairs; a region
+  says what it can be used for; each model-test card opens with its verdict; the brief's ratings
+  list is in words. Scores, counts, times and tables moved into the toggle, and the map and the
+  ratings list left the page-numbers allowlist; only the track page and an earlier version's
+  constraints remain on it (0086). `./scripts/check` clean: 2,686 tests. Pending owner check in
+  Safari 17.6: each page with the numbers closed and open, and the bands (played 0.3/0.7/0.95).
