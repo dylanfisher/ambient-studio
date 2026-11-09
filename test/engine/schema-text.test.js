@@ -20,6 +20,22 @@ describe("schemaText", () => {
     expect(text).toMatch(/^ type "drum": sparse low accents: /m);
   });
 
+  // Phase CG's acceptance 7: the model can use the chant's growl and breath.
+  test("lists phase CG's chant parameters on the chant's lines", () => {
+    const [, chant = ""] = schemaText().split(/^ type "chant".*$/m);
+    const lines = chant.split(/^ type /m)[0] ?? "";
+    for (const name of [
+      "growl",
+      "rough",
+      "flutter",
+      "shimmer",
+      "aspiration",
+      "breathiness",
+      "narrow",
+    ])
+      expect(lines).toMatch(new RegExp(`^ {2}${name} 0\\.\\.1 =0 `, "m"));
+  });
+
   test("names every global parameter, macro, voice parameter and voice type", () => {
     const text = schemaText();
     const names = [

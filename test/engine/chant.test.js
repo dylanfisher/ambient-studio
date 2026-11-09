@@ -12,6 +12,7 @@ import chantGenome from "../../src/engine/genomes/chant.json" with { type: "json
 import breathGenome from "../../src/engine/genomes/chant-breath.json" with { type: "json" };
 import ensembleGenome from "../../src/engine/genomes/chant-ensemble.json" with { type: "json" };
 import flutterGenome from "../../src/engine/genomes/chant-flutter.json" with { type: "json" };
+import focusGenome from "../../src/engine/genomes/chant-focus.json" with { type: "json" };
 import growlGenome from "../../src/engine/genomes/chant-growl.json" with { type: "json" };
 import { requireGenome, validateGenome } from "../../src/engine/validate-genome.js";
 import { voiceTypeIds } from "../../src/engine/voice-registry.js";
@@ -31,6 +32,7 @@ const ensemble = requireGenome(ensembleGenome, "the six-singer chant golden geno
 const growling = requireGenome(growlGenome, "the growling chant golden genome");
 const unsteady = requireGenome(flutterGenome, "the fluttering chant golden genome");
 const breathing = requireGenome(breathGenome, "the breathing chant golden genome");
+const focusing = requireGenome(focusGenome, "the focusing chant golden genome");
 /** C2, the A-minor scale note nearest the 65 Hz default root. */
 const C2 = 65.40639;
 /** Growl at 0 until 1.5 s, up to 0.8, back to 0 at 4 s, and up again: it crosses 0 twice. */
@@ -375,6 +377,7 @@ describe("the chant voice", () => {
       oneChant({ phrase: 3, breath: 0.8, aspiration: 0.7, breathiness: 1 }),
     ],
     ["four singers breathing, aspiration moving, breathiness, growl and flutter", breathing],
+    ["three singers, focus and the vowel moving, narrow", focusing],
   ])(
     "%s: its source is the same whichever window computes it, and from a track started anywhere",
     (_, genome) => {
@@ -412,6 +415,7 @@ describe("the chant voice", () => {
     ["four singers, growl a trajectory, rough", growling],
     ["five singers, flutter and shimmer", unsteady],
     ["four singers, aspiration and breathiness", breathing],
+    ["three singers, focus moving, narrow", focusing],
   ])(
     "%s: excerpts at several offsets match their window of a full render (0007's tolerance)",
     async (_, genome) => {
@@ -480,6 +484,7 @@ describe("the chant voice", () => {
         "flutter",
         "focus",
         "growl",
+        "narrow",
         "pan",
         "phrase",
         "pulse",
@@ -515,6 +520,9 @@ describe("the chant voice", () => {
       }),
     ).toEqual([]);
     expect(errors({ breathiness: { points: [[0, 1]] } })).toEqual(["$.voices[0].breathiness"]);
+    // Narrow is fixed for the track; focus, which it sharpens, may move.
+    expect(errors({ narrow: 1 })).toEqual([]);
+    expect(errors({ narrow: { points: [[0, 1]] } })).toEqual(["$.voices[0].narrow"]);
     expect(errors({ aspiration: 1.5, breathiness: -0.5 })).toEqual([
       "$.voices[0].aspiration",
       "$.voices[0].breathiness",
@@ -1494,6 +1502,77 @@ describe("the chant's breathiness", () => {
         voices: [{ id: "c", type: "chant", singers: 12, phrase: 5, breath: 0.6, ...every }],
       },
       "twelve singers with every setting, breathing as the bench's do, beside a 15 s reverb",
+    );
+    expect(cost(bench)).toBeLessThanOrEqual(COST_BUDGET);
+  });
+});
+
+describe("the chant's narrow focus", () => {
+  /**
+   * Harmonics 1 to 30 of one singer at a 65 Hz root, without the swell, in dB under the strongest.
+   * @param {Record<string, unknown>} change
+   */
+  const levels = (change) =>
+    harmonics(mono(oneChant({ root: 65, depth: 0, ...change }), 0, RATE), C2, 30).db;
+  /** @param {number[]} db @param {number} i */
+  const stand = (db, i) =>
+    /** @type {number} */ (db[i]) -
+    Math.max(/** @type {number} */ (db[i - 1]), /** @type {number} */ (db[i + 1]));
+
+  test.each([0, 0.2, 1])(
+    "narrow 1 at vowel %s stands the focused partial 6 dB or more further over its neighbors",
+    (vowel) => {
+      // The focused partial is the one focus lifts most, as the voice sings without narrow.
+      const flat = levels({ vowel, focus: 0 });
+      const wide = levels({ vowel, focus: 12 });
+      const gains = wide.map((d, i) => d - /** @type {number} */ (flat[i]));
+      const focused = gains.indexOf(Math.max(...gains));
+      const narrow = levels({ vowel, focus: 12, narrow: 1 });
+      expect(stand(narrow, focused) - stand(wide, focused)).toBeGreaterThanOrEqual(6);
+    },
+  );
+
+  test("narrow at 0 sings the samples every chant golden sings without it", () => {
+    for (const genome of [golden, ensemble, growling, unsteady, breathing]) {
+      const zero = requireGenome(
+        { ...genome, voices: genome.voices.map((v) => ({ ...v, narrow: 0 })) },
+        "narrow at 0",
+      );
+      expect(sourceOf(zero, 3 * RATE)).toEqual(sourceOf(genome, 3 * RATE));
+    }
+  });
+
+  test("the focusing golden has narrow, focus as a trajectory, a chorus and a non-neutral macro", () => {
+    const voice = /** @type {Voice} */ (focusing.voices[0]);
+    expect(voice.narrow).toBeGreaterThan(0);
+    expect(voice.focus).toHaveProperty("points");
+    expect(voice.singers).toBeGreaterThan(1);
+    expect(focusing.macros.brightness).not.toBe(0.5);
+  });
+
+  test("narrow costs nothing more, and twelve singers with every setting at its most fit beside a 15 s reverb", () => {
+    /** @param {Record<string, unknown>} change */
+    const at = (change) => {
+      const genome = oneChant({ singers: 12, phrase: 5, breath: 0.6, ...change });
+      return chant.cost(/** @type {Voice} */ (genome.voices[0]), genome);
+    };
+    expect(at({ narrow: 1 })).toBe(at({}));
+    const every = {
+      growl: 1,
+      rough: 1,
+      flutter: 1,
+      shimmer: 1,
+      aspiration: 1,
+      breathiness: 1,
+      focus: 18,
+      narrow: 1,
+    };
+    const bench = requireGenome(
+      {
+        reverbDecay: 15,
+        voices: [{ id: "c", type: "chant", singers: 12, phrase: 5, breath: 0.6, ...every }],
+      },
+      "twelve singers with every setting at its most, breathing as the bench's do, beside a 15 s reverb",
     );
     expect(cost(bench)).toBeLessThanOrEqual(COST_BUDGET);
   });

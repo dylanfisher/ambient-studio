@@ -5,7 +5,8 @@
   [0013](0013-pad-and-bell-voices.md) (the drone's root snapping is shared) and
   [0014](0014-granular-cloud-noise-bed.md) (a second JS-mixed voice); amended by
   [0070](0070-chant-singers-and-breath.md) (singers, breaths, cost, `detune`) and by
-  [0088](0088-chant-growl.md) (half-integer harmonics, the level swing, the RMS rule, cost).
+  [0088](0088-chant-growl.md) (half-integer harmonics, the level swing, the RMS rule, cost) and
+  by [0091](0091-chant-narrow-focus.md) (`narrow`, the upper resonance's width and peak).
 
 ## Context
 
@@ -139,3 +140,6 @@ load, so compare speeds only within one run.
   pans, phases and breath schedules, and `chantTrack` takes the seed. The cost adds 0.15 a
   partial and 3 a singer past the first, so twelve at the default root cost 107.3, not 770. The
   common `detune` still does nothing: `spread` is the ensemble's detune.
+- 2026-11-09: from step CG.4 ([0091](0091-chant-narrow-focus.md)), provisional: owner to
+  confirm. `narrow` (0–1, default 0) takes the upper resonance's width toward 40 Hz and raises
+  its peak by as much, so its area stays the same; at 0 the resonance is as above, bit for bit.
