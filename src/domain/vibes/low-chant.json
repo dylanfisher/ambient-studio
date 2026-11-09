@@ -1,6 +1,6 @@
 {
   "name": "Low chant",
-  "brief": "A low drone sung by a group of voices on one held note, somewhere around 55 to 80 Hz, the singers a little out of tune with each other. The fundamental is weak: the sound sits in the low mids, with one strong overtone that moves slowly as the vowel opens and closes. The pitch drifts by less than a semitone over minutes. The voices swell gently every few seconds, and the singers breathe at different times, so the sound dips but never stops. Dark, with nothing bright above it but a struck cymbal now and then, left to ring in a large room, a soft low drum hit or a rare bell, a few hits a minute at most. A dim noise bed may sit underneath. No beat.",
+  "brief": "A low drone sung by a group of voices on one held note, somewhere around 55 to 80 Hz, the singers a little out of tune with each other. The fundamental is weak: the sound sits in the low mids, with one strong overtone that moves slowly as the vowel opens and closes. The pitch drifts by less than a semitone over minutes. The voices swell gently every few seconds, and the singers breathe at different times, so the sound dips but never stops. A rough growl sits under the note, each breath is heard drawn in, and each phrase scoops up into its note and sags at its end. Dark, with nothing bright above it but a struck cymbal now and then, left to ring in a large room, a soft low drum hit or a rare bell, a few hits a minute at most. A dim noise bed may sit underneath. No beat.",
   "constraints": {
     "pulse": "none",
     "duration": {
