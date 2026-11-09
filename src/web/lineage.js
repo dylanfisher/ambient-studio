@@ -4,6 +4,7 @@
 // newest. Rejected candidates show only behind the switch.
 /** @import { Branch } from "./lineage-tree.js" */
 /** @import { SteerControls } from "./steer-controls.js" */
+import { operatorLabel } from "../domain/operator-label.js";
 import { getJson, VIBES_PATH } from "./api.js";
 import { briefJobs, briefQuery, NO_OPEN_SESSION, targetSession } from "./brief-jobs.js";
 import { cloneTemplate } from "./clone-template.js";
@@ -12,7 +13,7 @@ import { mountPlayer } from "./excerpt-player.js";
 import { TONE } from "./job-view.js";
 import { lineageTree } from "./lineage-tree.js";
 import { pageNumbers } from "./numbers-toggle.js";
-import { intentText, operatorLabel, originText, rejectText } from "./origin-text.js";
+import { intentText, originText, rejectText } from "./origin-text.js";
 import { statusLine } from "./status-line.js";
 import { steerControls } from "./steer-controls.js";
 import "./topbar-jobs.js";
