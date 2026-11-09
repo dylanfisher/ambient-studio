@@ -115,7 +115,6 @@ test("a nudge stores its children with their base, renders each, and asks the mo
   expect(result.failedChildren).toEqual([]);
   expect(reports).toEqual([
     { done: 0, total: 2, step: "Rendering the excerpt for nudge 1 of 2" },
-    { done: 1, total: 2, step: null },
     { done: 1, total: 2, step: "Rendering the excerpt for nudge 2 of 2" },
     { done: 2, total: 2, step: null },
   ]);

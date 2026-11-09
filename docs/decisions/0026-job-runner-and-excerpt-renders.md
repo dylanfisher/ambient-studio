@@ -4,6 +4,7 @@
 - **Status:** accepted; provisional: owner to confirm; amended by
   [0036](0036-revision-pass.md) (the candidates job revises after a render) and
   [0048](0048-quick-ab-player-mp3.md) (the cache holds MP3s; capture renders the excerpt again)
+  and [0076](0076-parallel-excerpt-renders.md) (a job renders a batch of excerpts three at a time)
 
 ## Context
 
@@ -141,3 +142,9 @@ normalizing, measuring and writing one excerpt took 1.04–1.09 s for the drone 
   encodes that PCM to the FLAC, so the rated file and its PCM hash are made from the exact
   normalized samples as before. A first capture now takes about as long as the render, 0.8 s
   for the drone golden and 2.3 s for `example.json`, instead of 150 ms.
+- 2026-11-08: from step perf.1 ([0076](0076-parallel-excerpt-renders.md)). Jobs still run one at a time, but the excerpt job,
+  and the search, steer, nudge and fill-control batches, render up to `RENDER_CONCURRENCY` (3)
+  excerpts at once in the job's process, still with no worker thread. A cancel starts no more
+  renders and waits for those in flight. A call for an excerpt that is rendering waits for that
+  render and returns its row as cached, since a second `putRender` would replace the first
+  caller's row.

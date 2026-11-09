@@ -6,7 +6,7 @@
   conflict rule and progress steps), [0032](0032-plain-language-pages.md) (the map page, with
   arrow keys) and [0052](0052-references-in-the-prompt.md) (the `axis` kind's details);
   amended by [0066](0066-material-panel-and-arc-target.md) (the timeline lists the elites and
-  places them as sketches)
+  places them as sketches) and [0076](0076-parallel-excerpt-renders.md) (the control's nudges render three at a time)
 
 ## Context
 
@@ -141,3 +141,6 @@ says so, apart from the reason for too few or alike excerpts.
   listed with its place on each axis in words, from the route's `low`, `high` and `bins`, and
   placing one keeps it as a sketch through the session sketch route before it becomes a section,
   as the map's Keep as sketch does. The archive route is unchanged.
+- 2026-11-08: from step perf.1 ([0076](0076-parallel-excerpt-renders.md)). The fill's own steps stay one at a time. The
+  control's nudges, which don't read each other's places, are stored and rendered up to three
+  at a time, and their timings are each one's share of the batch's wall time.

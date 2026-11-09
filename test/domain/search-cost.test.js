@@ -9,6 +9,7 @@ import {
   searchCostText,
   searchSeconds,
   steerCostText,
+  wallShares,
 } from "../../src/domain/search-cost.js";
 
 test("the estimate is evaluations times the render and embed seconds", () => {
@@ -25,6 +26,19 @@ test("the medians are each step's own, nearest rank", () => {
   ];
   expect(medianTimings(timings)).toEqual({ render: 2, embed: 0.2 });
   expect(() => medianTimings([])).toThrow();
+});
+
+test("evaluations run side by side each get their share of the batch's wall time", () => {
+  const timings = [
+    { render: 3, embed: 1 },
+    { render: 2, embed: 2 },
+  ];
+  // 8 s of renders and embeds that overlapped into 4 s of wall time.
+  expect(wallShares(timings, 4)).toEqual([
+    { render: 1.5, embed: 0.5 },
+    { render: 1, embed: 1 },
+  ]);
+  expect(wallShares([{ render: 0, embed: 0 }], 0)).toEqual([{ render: 0, embed: 0 }]);
 });
 
 test("the confirm says the cost, where its figures come from, and that it uses no omlx", () => {

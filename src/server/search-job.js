@@ -23,7 +23,7 @@ import { performance } from "node:perf_hooks";
 import { nudge } from "../domain/nudge.js";
 import { OPERATOR } from "../domain/operator.js";
 import { PREFERENCE_STATE } from "../domain/preference-text.js";
-import { BENCH_SECONDS, medianTimings } from "../domain/search-cost.js";
+import { BENCH_SECONDS, medianTimings, wallShares } from "../domain/search-cost.js";
 import { searchScore } from "../domain/search-score.js";
 import {
   SEARCH_OPTIMIZER,
@@ -45,6 +45,7 @@ import { getGenome } from "./generation-store.js";
 import { JOB_STEP } from "./job-steps.js";
 import { predictScores } from "./predict-scores.js";
 import { currentModel } from "./preference-summary.js";
+import { renderBatch } from "./render-batch.js";
 import { renderExcerpt } from "./render-excerpt.js";
 import {
   nextRun,
@@ -139,42 +140,50 @@ export function searchRefusal(found) {
  */
 
 /**
- * Renders each candidate's excerpt and embeds it unless it has a row under the embedder, in
- * order. A search and a steer (decision 0056) both score what this returns.
+ * Renders each candidate's excerpt and embeds it unless it has a row under the embedder,
+ * `RENDER_CONCURRENCY` at once (decision 0076), returned in the candidates' order. Each one's
+ * seconds are its share of the batch's wall time, since excerpts in flight together overlap. A
+ * search and a steer (decision 0056) both score what this returns.
  * @param {App} app
  * @param {Embedder} embedder
  * @param {readonly RecordingEntry[]} recordings
  * @returns {(candidates: Candidate[], signal: AbortSignal) => Promise<EmbeddedExcerpt[]>}
  */
 export const renderAndEmbed = (app, embedder, recordings) => async (candidates, signal) => {
-  /** @type {EmbeddedExcerpt[]} */
-  const made = [];
-  for (const candidate of candidates) {
-    signal.throwIfAborted();
-    // A candidate that passed has a genome row, so it has an excerpt to render.
-    const request = /** @type {ExcerptRequest} */ (excerptRequest(app.store, candidate));
-    const started = performance.now();
-    const { render } = await renderExcerpt(app.store, app.paths.renderCache, request, recordings);
-    const rendered = performance.now();
-    signal.throwIfAborted();
-    const source = { ratedAudioId: null, renderId: render.id };
-    const row =
-      findEmbedding(app.store, source, embedder.producer) ??
-      (await embedAudio(app, embedder, source, join(app.paths.renderCache, render.file), signal));
-    const embedded = performance.now();
-    const genome = requireGenome(
-      getGenome(app.store, request.genomeId)?.genome,
-      `genome ${request.genomeId} is invalid`,
-    );
-    // Features are stored as extractFeatures returned them (decision 0023).
-    const measured = /** @type {any} */ (render.features);
-    made.push({
-      embedding: new Float32Array(row.vector.slice().buffer),
-      seconds: { render: (rendered - started) / 1000, embed: (embedded - rendered) / 1000 },
-      item: { source, ...excerptTerms(genome, measured, render.offset, render.duration) },
-    });
-  }
-  return made;
+  const batchStarted = performance.now();
+  const made = await renderBatch(
+    candidates,
+    async (candidate) => {
+      // A candidate that passed has a genome row, so it has an excerpt to render.
+      const request = /** @type {ExcerptRequest} */ (excerptRequest(app.store, candidate));
+      const started = performance.now();
+      const { render } = await renderExcerpt(app.store, app.paths.renderCache, request, recordings);
+      const rendered = performance.now();
+      signal.throwIfAborted();
+      const source = { ratedAudioId: null, renderId: render.id };
+      const row =
+        findEmbedding(app.store, source, embedder.producer) ??
+        (await embedAudio(app, embedder, source, join(app.paths.renderCache, render.file), signal));
+      const embedded = performance.now();
+      const genome = requireGenome(
+        getGenome(app.store, request.genomeId)?.genome,
+        `genome ${request.genomeId} is invalid`,
+      );
+      // Features are stored as extractFeatures returned them (decision 0023).
+      const measured = /** @type {any} */ (render.features);
+      return {
+        embedding: new Float32Array(row.vector.slice().buffer),
+        seconds: { render: (rendered - started) / 1000, embed: (embedded - rendered) / 1000 },
+        item: { source, ...excerptTerms(genome, measured, render.offset, render.duration) },
+      };
+    },
+    { signal },
+  );
+  const shares = wallShares(
+    made.map(({ seconds }) => seconds),
+    (performance.now() - batchStarted) / 1000,
+  );
+  return made.map((each, i) => ({ ...each, seconds: /** @type {StepSeconds} */ (shares[i]) }));
 };
 
 /**

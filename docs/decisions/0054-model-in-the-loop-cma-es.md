@@ -3,7 +3,8 @@
 - **Date:** 2026-11-07
 - **Status:** accepted; provisional: owner to confirm the shown distance and the fold. Amends
   [0031](0031-fewer-waits-after-first-evaluation.md) (the search's conflict rule and progress
-  steps)
+  steps); amended by [0076](0076-parallel-excerpt-renders.md) (a generation renders three at a time, and a point's seconds are its
+  share of the batch)
 
 ## Context
 
@@ -137,3 +138,10 @@ moves the free macros; the route takes `paths` for a later picker.
 - 5g's steer job, 5h's fill job and 5j reuse this job's shape: a budget in points, the estimate
   from the last run's medians, progress per generation, cancel keeping rows, and a control arm.
 - The shown distance is a guess until the owner hears runs: if the 4 sound alike, raise it.
+
+## Amendments
+
+- 2026-11-08: from step perf.1 ([0076](0076-parallel-excerpt-renders.md)). A generation's points, and each chunk of the
+  control, render and embed up to three at a time. A point's measured seconds are its share of
+  its batch's wall time (`wallShares`), so the medians say what a point costs the job.
+  `BENCH_SECONDS` is unchanged.
