@@ -4,7 +4,8 @@
 - **Status:** accepted; provisional: owner to confirm; amended by [0035](0035-locks.md) (the
   `locks` table), [0037](0037-nudge-and-branch.md) (`candidates.sessionId`) and
   [0050](0050-reference-uploads.md) (the reference tables, and `references/` in the backup)
-  and [0061](0061-tracks-and-the-timeline.md) (the track tables)
+  and [0061](0061-tracks-and-the-timeline.md) (the track tables) and
+  [0079](0079-develop-a-section.md) (the `developments` table)
 
 ## Context
 

@@ -35,7 +35,7 @@ export const PROPOSAL_ROUTES = [
       // The arrangement's own checks say what a length and an arc may be.
       const asked = validateArrangement(
         { ...emptyArrangement(), length, arc },
-        arrangementContext(app.store, vibe.id),
+        arrangementContext(app.store, vibe.id, null),
       );
       if (!asked.ok) {
         const list = asked.errors.map((e) => `${e.path}: ${e.message}`).join("; ");

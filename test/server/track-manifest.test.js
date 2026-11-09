@@ -64,9 +64,9 @@ test("text on sections and transitions changes neither the recipe nor its key", 
   const before = {
     ...emptyArrangement(),
     sections: [
-      { sketchId: first, offset: 0, seconds: 20 },
-      { sketchId: first, offset: 30, seconds: 20 },
-      { sketchId: second, offset: 0, seconds: 20 },
+      { sketchId: first, offset: 0, seconds: 20, developmentId: null },
+      { sketchId: first, offset: 30, seconds: 20, developmentId: null },
+      { sketchId: second, offset: 0, seconds: 20, developmentId: null },
     ],
     transitions: [
       { kind: "morph", seconds: 8, curve: "smooth" },
@@ -76,7 +76,11 @@ test("text on sections and transitions changes neither the recipe nor its key", 
   /** @param {(part: object) => string} text */
   const written = (text) => ({
     ...before,
-    sections: before.sections.map((section) => ({ ...section, text: text(section) })),
+    sections: before.sections.map(({ developmentId, ...section }) => ({
+      ...section,
+      text: text(section),
+      developmentId,
+    })),
     transitions: before.transitions.map((transition) => ({
       ...transition,
       text: text(transition),
@@ -85,7 +89,7 @@ test("text on sections and transitions changes neither the recipe nor its key", 
   const { track, revision: old } = createTrack(store, {
     vibeId: vibe.id,
     name: "t",
-    // 0011's shape, as a revision stored before migration 0012.
+    // 0011's shape with no development on a section, as a revision stored before migration 0012.
     arrangement: /** @type {Arrangement} */ (/** @type {unknown} */ (before)),
   });
   const empty = reviseTrack(store, track.id, { arrangement: written(() => ""), note: "" });
@@ -115,9 +119,9 @@ test("text on sections and transitions changes neither the recipe nor its key", 
 const threeSections = (first, second, kind) => ({
   ...emptyArrangement(),
   sections: [
-    { sketchId: first, offset: 0, seconds: 20, text: "" },
-    { sketchId: first, offset: 30, seconds: 20, text: "" },
-    { sketchId: second, offset: 0, seconds: 20, text: "" },
+    { sketchId: first, offset: 0, seconds: 20, text: "", developmentId: null },
+    { sketchId: first, offset: 30, seconds: 20, text: "", developmentId: null },
+    { sketchId: second, offset: 0, seconds: 20, text: "", developmentId: null },
   ],
   transitions: [
     kind === "crossfade"
@@ -148,7 +152,7 @@ test("the recipe names a weave, which with no voice to split renders the morph's
   expect(weave?.sections).toEqual(morph?.sections);
 });
 
-test("a crossfade-only or morph track keeps the recipe key it had before weaves", async () => {
+test("a crossfade-only or morph track keeps the recipe key it had before weaves and developments", async () => {
   const { store, vibe, first, second } = await twoSketches();
   const keys = ["crossfade", "morph"].map((kind) => {
     const { track, revision } = createTrack(store, {

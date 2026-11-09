@@ -23,9 +23,9 @@ import {
 const THREE = Object.freeze({
   ...emptyArrangement(),
   sections: [
-    { sketchId: 1, offset: 0, seconds: 40, text: "" },
-    { sketchId: 2, offset: 10, seconds: 60, text: "the bell comes forward" },
-    { sketchId: 3, offset: 0, seconds: 30, text: "" },
+    { sketchId: 1, offset: 0, seconds: 40, text: "", developmentId: null },
+    { sketchId: 2, offset: 10, seconds: 60, text: "the bell comes forward", developmentId: null },
+    { sketchId: 3, offset: 0, seconds: 30, text: "", developmentId: null },
   ],
   transitions: [
     { kind: "crossfade", seconds: 8, text: "" },
@@ -39,14 +39,20 @@ test("adding a sketch places it after the chosen section, with a default crossfa
   expect(first).toEqual({
     arrangement: {
       ...emptyArrangement(),
-      sections: [{ sketchId: 4, offset: 0, seconds: 120, text: "" }],
+      sections: [{ sketchId: 4, offset: 0, seconds: 120, text: "", developmentId: null }],
     },
     index: 0,
   });
   const { arrangement, index } = addSection(THREE, { id: 5, duration: 12 }, 0);
   expect(index).toBe(1);
   expect(arrangement.sections.map((s) => s.sketchId)).toEqual([1, 5, 2, 3]);
-  expect(arrangement.sections[1]).toEqual({ sketchId: 5, offset: 0, seconds: 12, text: "" });
+  expect(arrangement.sections[1]).toEqual({
+    sketchId: 5,
+    offset: 0,
+    seconds: 12,
+    text: "",
+    developmentId: null,
+  });
   expect(arrangement.transitions[0]).toEqual({ kind: "crossfade", seconds: 6, text: "" });
   // The new crossfade, between sketch 1 and the new section, is at most half the 12 s section.
   // The 8 s one now between the new section and sketch 2 is left as it was.
@@ -77,6 +83,7 @@ test("a section's seconds and offset step, and are set by fields, never under th
     offset: 10,
     seconds: 60 + SECTION_STEP,
     text: "the bell comes forward",
+    developmentId: null,
   });
   expect(stepSection(THREE, 1, "offset", -1).sections[1]?.offset).toBe(0);
   expect(stepSection(THREE, 1, "offset", -2).sections[1]?.offset).toBe(0);
@@ -86,6 +93,7 @@ test("a section's seconds and offset step, and are set by fields, never under th
     offset: 5,
     seconds: 25,
     text: "",
+    developmentId: null,
   });
   expect(THREE).toEqual(frozen);
 });
@@ -96,12 +104,14 @@ test("dragging the end edge changes the seconds; the start edge moves the start 
     offset: 10,
     seconds: 72.5,
     text: "the bell comes forward",
+    developmentId: null,
   });
   expect(dragEdge(THREE, 1, "start", 4).sections[1]).toEqual({
     sketchId: 2,
     offset: 14,
     seconds: 56,
     text: "the bell comes forward",
+    developmentId: null,
   });
   // Back past the sketch's start stops at 0 s.
   expect(dragEdge(THREE, 1, "start", -15).sections[1]).toEqual({
@@ -109,6 +119,7 @@ test("dragging the end edge changes the seconds; the start edge moves the start 
     offset: 0,
     seconds: 70,
     text: "the bell comes forward",
+    developmentId: null,
   });
 });
 

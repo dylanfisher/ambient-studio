@@ -33,6 +33,7 @@ const SHOWN = new Map([
   ["BracketRight", "]"],
   ["Semicolon", ";"],
   ["Quote", "'"],
+  ["Slash", "/"],
 ]);
 
 /**

@@ -6,10 +6,9 @@
 // its generation in `proposal`. Nothing is rendered. It runs only when the owner's route adds it.
 /** @import { MaterialItem, ArcWindow } from "../domain/arrange-prompt.js" */
 /** @import { Arrangement } from "../domain/arrangement-schema.js" */
-/** @import { ProposalAsk, ProposalVerdict } from "../domain/check-proposal.js" */
+/** @import { ProposalAsk } from "../domain/check-proposal.js" */
 /** @import { Features } from "../domain/extract-features.js" */
 /** @import { MacroName } from "../engine/macro-table.js" */
-/** @import { Generation } from "./generation-store.js" */
 /** @import { JobContext } from "./job-runner.js" */
 /** @import { App } from "./routing.js" */
 /** @import { Store } from "./store.js" */
@@ -21,12 +20,9 @@ import {
 } from "../domain/arrange-prompt.js";
 import { ARRANGEMENT_KEY } from "../domain/arrangement-schema.js";
 import { ATTACHMENT_KIND } from "../domain/attachment-kind.js";
-import { quotedErrors } from "../domain/build-repair-prompt.js";
 import { judgeProposal } from "../domain/check-proposal.js";
-import { invalidAfter } from "../domain/judge-answer.js";
 import { macroWindow } from "../domain/macro-window.js";
 import { OPERATOR } from "../domain/operator.js";
-import { estimateTokens, promptText } from "../domain/prompt-tokens.js";
 import { validateArrangement } from "../domain/validate-arrangement.js";
 import { MACROS } from "../engine/genome-schema.js";
 import { requireGenome } from "../engine/validate-genome.js";
@@ -34,12 +30,12 @@ import { listAttachments } from "./attachment-store.js";
 import { currentExcerpt } from "./candidate-excerpt.js";
 import { STREAM_SEEDS } from "./candidate-job.js";
 import {
+  answerWithRepair,
   currentRevision,
   firstSampling,
   GENERATION_STEP,
   requestGroupName,
   requestGroupPattern,
-  sendRequest,
 } from "./generate-candidates.js";
 import { getCandidate, getGenome, listRequestGroup } from "./generation-store.js";
 import { JOB_STEP } from "./job-steps.js";
@@ -289,47 +285,22 @@ export function proposeJob(app, { vibeId, name, length, arc, regionId }) {
           ),
       };
       /** @type {ProposalAsk} */
-      const ask = { context: arrangementContext(store, vibeId), elites: durations, length, arc };
-      /**
-       * @param {import("../domain/prompt-tokens.js").ChatMessage[]} prompt
-       * @param {number | null} repairsId
-       * @returns {Promise<{ generation: Generation, verdict: ProposalVerdict }>}
-       */
-      const send = async (prompt, repairsId) => {
-        const sent = await sendRequest(
-          batch,
-          0,
-          prompt,
-          sampling,
-          repairsId,
-          ARRANGE_RESPONSE_FORMAT,
-        );
-        if (sent.failure !== null) throw sent.failure;
-        const verdict = judgeProposal(sent.completion, config.queue.maxTokens, ask);
-        return { generation: sent.generation, verdict };
+      const ask = {
+        context: arrangementContext(store, vibeId, null),
+        elites: durations,
+        length,
+        arc,
       };
-      let { generation, verdict } = await send(built.messages, null);
-      let repaired = false;
-      if (!verdict.ok && verdict.answer !== null) {
-        const repair = buildArrangeRepair(
-          { messages: built.messages, answer: verdict.answer },
-          verdict.errors,
-        );
-        const tokens = estimateTokens(promptText(repair));
-        if (tokens > config.queue.contextBudgetTokens) {
-          throw new Error(
-            `The proposal was invalid, and its repair prompt is about ${tokens} tokens, over the ${config.queue.contextBudgetTokens}-token budget, so no repair was sent:\n${quotedErrors(verdict.errors).join("\n")}`,
-          );
-        }
-        job.signal.throwIfAborted();
-        ({ generation, verdict } = await send(repair, generation.id));
-        repaired = true;
-      }
-      if (!verdict.ok) {
-        throw new Error(
-          `The model's proposal was ${invalidAfter(repaired)} (generation ${generation.id}):\n${quotedErrors(verdict.errors).join("\n")}`,
-        );
-      }
+      const { generation, verdict, repaired } = await answerWithRepair({
+        batch,
+        messages: built.messages,
+        sampling,
+        responseFormat: ARRANGE_RESPONSE_FORMAT,
+        judge: (completion) => judgeProposal(completion, config.queue.maxTokens, ask),
+        buildRepair: buildArrangeRepair,
+        signal: job.signal,
+        what: "proposal",
+      });
       job.signal.throwIfAborted();
       const valid = verdict;
       const kept = generation;
@@ -347,7 +318,7 @@ export function proposeJob(app, { vibeId, name, length, arc, regionId }) {
           sketchIds.set(candidateId, addSketch(store, { candidateId, notes: "", tags: [] }).id);
         }
         const arrangement = placed(valid.arrangement, valid.elites, sketchIds, kept.id);
-        const checked = validateArrangement(arrangement, arrangementContext(store, vibeId));
+        const checked = validateArrangement(arrangement, arrangementContext(store, vibeId, null));
         if (!checked.ok) {
           throw new Error(
             `the proposal failed its check once its elites were kept: ${JSON.stringify(checked.errors)}`,

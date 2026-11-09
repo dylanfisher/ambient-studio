@@ -4,7 +4,8 @@
 - **Status:** accepted; provisional: owner to confirm the steer's step, saving a steer as a new
   version, the arc as a page choice rather than part of the arrangement, and the keys. Amends
   [0057](0057-map-elites-archive-and-map.md) (the timeline reads the archive and places its
-  elites)
+  elites); amended by [0079](0079-develop-a-section.md) (`steerSwap`'s rules place a finished
+  development too)
 
 ## Context
 

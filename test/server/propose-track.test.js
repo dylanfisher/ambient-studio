@@ -160,7 +160,7 @@ test("one request holds the brief, the arc and every sketch, and a valid answer 
   // The model writes no text; the stored revision has an empty one on each part (0077).
   expect(revisions[0]?.arrangement).toEqual({
     ...given,
-    sections: given.sections.map((section) => ({ ...section, text: "" })),
+    sections: given.sections.map((section) => ({ ...section, text: "", developmentId: null })),
     transitions: given.transitions.map((transition) => ({ ...transition, text: "" })),
     length: 600,
     arc: ARC,

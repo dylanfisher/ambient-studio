@@ -1,7 +1,7 @@
 // The operators a candidate stores, naming how it was made (decisions 0036–0038, 0054–0056,
 // 0058); a first try from a plain request stores null. The server writes them and the pages
-// read them. `arrange` (0067) and `shift` (0075) name a request group instead, as they make no
-// candidate.
+// read them. `arrange` (0067), `shift` (0075), `draft` (0074), `develop` (0079) and `words` (0084)
+// name a request group instead, as they make no candidate.
 export const OPERATOR = Object.freeze({
   /** The model's one revision of a first try whose excerpt missed (0036). */
   revise: "revise",
@@ -34,6 +34,9 @@ export const OPERATOR = Object.freeze({
   /** A saved brief reworked by the model from the owner's words (0074); its generations name it
    * in their request group, since they make no candidate. */
   draft: "draft",
+  /** A section of a track rewritten by the model as its own genome (0079); its generations name
+   * it in their request group, since it makes a development, not a candidate. */
+  develop: "develop",
   /** The model's reading of the owner's words as values for a field set (0084); its
    * generations name it in their request group, since they make no candidate. */
   words: "words",

@@ -8,6 +8,7 @@
 // own window of its sketch, rendered once by an owner-started job through the excerpt player.
 /** @import { Arrangement, Section } from "../domain/arrangement-schema.js" */
 /** @import { ArrangementSketch } from "../domain/validate-arrangement.js" */
+/** @import { SectionGenomes } from "../domain/section-genome.js" */
 /** @import { TimelineAction } from "./timeline-keys.js" */
 /** @import { TrackCost } from "../domain/track-cost.js" */
 /** @import { BlockSketch } from "./timeline-layout.js" */
@@ -21,16 +22,18 @@ import {
   TRANSITION_KIND,
   TRANSITION_SECONDS,
 } from "../domain/arrangement-schema.js";
-import { sectionMorph, sectionThinning } from "../domain/section-genome.js";
+import { developmentKey, sectionMorph, sectionThinning } from "../domain/section-genome.js";
 import { validateArrangement } from "../domain/validate-arrangement.js";
-import { getJson, postJson, trackPath } from "./api.js";
+import { BREED_ESTIMATE_PATH, getJson, postJson, trackPath } from "./api.js";
 import { cloneTemplate } from "./clone-template.js";
+import { developCostText, developedText, developRefusal, developSwap } from "./develop-text.js";
 import { elementsById } from "./element-by-id.js";
 import { clockTime, mountPlayer, playAudio } from "./excerpt-player.js";
 import { formatTime } from "./format-time.js";
 import { jobControl } from "./job-control.js";
 import { keyButtons } from "./key-buttons.js";
 import { lanePanel } from "./lane-panel.js";
+import { SWAP } from "./material-actions.js";
 import { materialCard } from "./material-card.js";
 import { NOT_STARTED } from "./owner-job.js";
 import { unloadGuard } from "./quick-ab-session.js";
@@ -45,6 +48,7 @@ import {
   nextTransitionKind,
   removeSection,
   SECTION_STEP,
+  setDevelopment,
   setSection,
   setSectionText,
   setTransition,
@@ -84,6 +88,8 @@ const page = elementsById({
   transitionTextInput: HTMLTextAreaElement,
   sectionAudio: HTMLAudioElement,
   jobBox: HTMLElement,
+  developedLine: HTMLElement,
+  developJobBox: HTMLElement,
   addHelp: HTMLElement,
   sketchSelect: HTMLSelectElement,
   noSketches: HTMLElement,
@@ -115,6 +121,9 @@ page.transitionTextInput.maxLength = MAX_TEXT_CHARS;
 mountPlayer(page.sectionAudio, status.fail);
 mountPlayer(page.trackAudio, status.fail);
 const playControl = jobControl(buttons.play);
+const developControl = jobControl(buttons.develop);
+/** The develop button's own title, shown while it is on. */
+const DEVELOP_TITLE = buttons.develop.title;
 /** The render, seam and export buttons share one hold: one track job runs at a time. */
 const TRACK_JOB_BUTTONS = /** @type {const} */ ([
   "renderTrack",
@@ -146,6 +155,12 @@ const trackId = Number(idText);
  * @property {{ id: number, arrangement: Arrangement, note: string, length: number, createdAt: number }[]} revisions
  *   oldest first
  * @property {{ id: number, candidateId: number, intent: string | null, notes: string, tags: string[], duration: number, genome: unknown, excerpt: { renderId: number, url: string, offset: number, duration: number } | null }[]} sketches
+ * @property {TrackDevelopment[]} developments the track's live ones, oldest first (0079)
+ */
+
+/**
+ * A development of a sketch, as `GET /api/tracks/:id` lists it (decision 0079).
+ * @typedef {{ id: number, sketchId: number, text: string, offset: number, seconds: number, createdAt: number, genome: unknown }} TrackDevelopment
  */
 
 /** @type {TrackView | null} */
@@ -160,7 +175,7 @@ let openedVersion = 0;
 let openedByHand = 0;
 /** @type {number | null} the section the keys and buttons act on */
 let selected = null;
-/** Each section window's audio once rendered, by its sketch, offset and seconds as JSON. */
+/** Each section window's audio once rendered, by its sketch, development, offset and seconds. */
 const windowAudio = /** @type {Map<string, string>} */ (new Map());
 
 /**
@@ -185,12 +200,15 @@ playhead.hidden = true;
 /** @param {number} id */
 const sketchOf = (id) => view?.sketches.find((sketch) => sketch.id === id);
 
+/** @param {number | null} id */
+const developmentOf = (id) => view?.developments.find((development) => development.id === id);
+
 /** Whether the timeline differs from what was last saved or opened. */
 const unsaved = () => draft !== null && JSON.stringify(draft) !== kept;
 
 /**
- * The arrangement checked as the server will check it. A sketch this page doesn't list is one
- * the server no longer has live; the server's own error names why.
+ * The arrangement checked as the server will check it. A sketch or development this page
+ * doesn't list is one the server no longer has live; the server's own error names why.
  * @param {Arrangement} arrangement
  */
 function checked(arrangement) {
@@ -198,6 +216,7 @@ function checked(arrangement) {
   const vibeId = view.vibe.id;
   return validateArrangement(arrangement, {
     vibeId,
+    trackId,
     sketch: (id) => {
       const sketch = sketchOf(id);
       return (
@@ -207,6 +226,17 @@ function checked(arrangement) {
           removedReason: null,
           duration: sketch.duration,
         })
+      );
+    },
+    development: (id) => {
+      const development = developmentOf(id);
+      return (
+        development && {
+          trackId,
+          sketchId: development.sketchId,
+          removedReason: null,
+          duration: development.seconds,
+        }
       );
     },
   });
@@ -268,7 +298,10 @@ function draw() {
       fades: layout.fades,
       blocks: layout.blocks.map((span, i) => {
         const section = /** @type {Section} */ (sections[i]);
-        return { span, ...blockText(section, sketchOf(section.sketchId)) };
+        return {
+          span,
+          ...blockText(section, sketchOf(section.sketchId), developmentOf(section.developmentId)),
+        };
       }),
     },
     selected,
@@ -295,9 +328,17 @@ function draw() {
   if (playControl.held()) buttons.play.disabled = true;
   if (selected === null) return;
   const section = /** @type {Section} */ (sections[selected]);
-  const text = blockText(section, sketchOf(section.sketchId));
+  const development = developmentOf(section.developmentId);
+  const text = blockText(section, sketchOf(section.sketchId), development);
   page.sectionName.textContent = `Section ${selected + 1} of ${sections.length}: ${text.name}`;
   page.sectionTimes.textContent = `Plays ${text.times}.`;
+  page.developedLine.textContent = developedText(development);
+  if (!developControl.held()) {
+    const refusal = developRefusal(section, unsaved());
+    buttons.develop.disabled = refusal !== null;
+    buttons.develop.title = refusal ?? DEVELOP_TITLE;
+  }
+  buttons.plainSketch.disabled = section.developmentId === null;
   fill(page.offsetInput, section.offset);
   fill(page.secondsInput, section.seconds);
   fill(page.sectionTextInput, section.text);
@@ -326,7 +367,7 @@ function draw() {
     fill(page.transitionTextInput, transition.text);
     page.transitionTextLabel.textContent = `How section ${fade + 1} should become section ${fade + 2}`;
     // A morph is checked against both sketches' genomes only once the timeline is valid.
-    const morph = errors.length === 0 ? sectionMorph(arrangement, fade, sketchGenomes()) : null;
+    const morph = errors.length === 0 ? sectionMorph(arrangement, fade, sectionGenomes()) : null;
     page.fadeLine.textContent = transitionText(fade, transition, morph);
   }
 }
@@ -340,8 +381,18 @@ function label(button, words) {
   button.firstChild?.replaceWith(document.createTextNode(words));
 }
 
-/** Each sketch's genome, by sketch id, as `sectionMorph` reads them. */
-const sketchGenomes = () => new Map((view?.sketches ?? []).map(({ id, genome }) => [id, genome]));
+/**
+ * Each sketch's genome by its id, and each development's by its key, as `sectionMorph` reads
+ * them (0079).
+ * @returns {SectionGenomes}
+ */
+const sectionGenomes = () =>
+  new Map(
+    /** @type {[number | string, unknown][]} */ ([
+      ...(view?.sketches ?? []).map(({ id, genome }) => [id, genome]),
+      ...(view?.developments ?? []).map(({ id, genome }) => [developmentKey(id), genome]),
+    ]),
+  );
 
 /**
  * Puts a new arrangement on the timeline.
@@ -474,8 +525,13 @@ async function playSection() {
   }
   if (playControl.held()) return;
   const section = /** @type {Section} */ (draft.sections[selected]);
-  // The window alone: text doesn't change what the section plays.
-  const key = JSON.stringify([section.sketchId, section.offset, section.seconds]);
+  // The window alone, of the sketch or of its development: text doesn't change what it plays.
+  const key = JSON.stringify([
+    section.sketchId,
+    section.developmentId,
+    section.offset,
+    section.seconds,
+  ]);
   const known = windowAudio.get(key);
   if (known !== undefined) {
     play(known);
@@ -711,6 +767,79 @@ const whenOn = (name, action) => () => {
   if (!buttons[name].disabled) void status.run(action);
 };
 
+/**
+ * Develops the chosen section of the saved version after a confirm stating the requests and
+ * their time (decision 0079). When the job is done, the section takes the development by
+ * `developSwap`, saved as a new version unless the timeline has changes the owner hasn't saved.
+ */
+async function developSection() {
+  if (draft === null || selected === null || buttons.develop.disabled) return;
+  const at = selected;
+  const from = /** @type {Section} */ (draft.sections[at]);
+  if (!confirm(developCostText(at, from.seconds, await getJson(BREED_ESTIMATE_PATH)))) {
+    status.say(NOT_STARTED);
+    return;
+  }
+  const openedThen = openedByHand;
+  try {
+    const finished = await runJob(status, {
+      path: `${trackPath(trackId)}/develop`,
+      body: { revisionId: openedRevisionId(), section: at },
+      controls: [developControl],
+      boxes: page.developJobBox,
+      started: `Developing section ${at + 1}. Leave this page open: the section takes the development when it is done.`,
+    });
+    if (finished === null) return;
+    if (finished.refused) {
+      status.say("That job was for another section. Press Develop again for this one.");
+      return;
+    }
+    /** @type {{ developmentId: number }} */
+    const { developmentId } = finished.result;
+    await readDevelopments();
+    const current = /** @type {Arrangement} */ (draft);
+    const swap = developSwap(
+      { arrangement: current, from, at, openedThen, openedNow: openedByHand, unsaved: unsaved() },
+      developmentId,
+    );
+    if (swap.kind === SWAP.skip) {
+      status.say(
+        `Kept development ${developmentId} but didn't put it in a section: ${swap.reason}. Develop the section again to use it.`,
+      );
+      return;
+    }
+    if (swap.kind === SWAP.edit) {
+      edit(swap.arrangement, swap.index);
+      status.say(`Put development ${developmentId} in section ${swap.index + 1}. Save to keep it.`);
+      return;
+    }
+    draft = swap.arrangement;
+    page.noteInput.value = `Section ${swap.index + 1} developed`;
+    await save();
+  } finally {
+    draw();
+  }
+}
+
+/** Reads the track's developments again, leaving the timeline as it is. */
+async function readDevelopments() {
+  /** @type {TrackView} */
+  const read = await getJson(trackPath(trackId));
+  if (view === null) throw new Error("the developments were read again before the track");
+  view = { ...view, developments: read.developments };
+}
+
+/** Has the chosen section play its plain sketch again, from where its development started. */
+function plainSketch() {
+  onSelected((arrangement, index) => {
+    const { developmentId } = /** @type {Section} */ (arrangement.sections[index]);
+    if (developmentId === null) return arrangement;
+    const development = developmentOf(developmentId);
+    if (!development) throw new Error(`development ${developmentId} isn't this track's`);
+    return setDevelopment(arrangement, index, null, development.offset);
+  });
+}
+
 /** Each action, run by its button and its key. */
 const actions = /** @type {Record<TimelineAction, () => void>} */ ({
   selectPrevious: () => {
@@ -744,6 +873,10 @@ const actions = /** @type {Record<TimelineAction, () => void>} */ ({
   playSeam: whenOn("playSeam", playSeam),
   exportTrack: whenOn("exportTrack", exportTrack),
   exportStems: whenOn("exportStems", exportStems),
+  develop: () => void status.run(developSection),
+  plainSketch: () => {
+    if (!buttons.plainSketch.disabled) plainSketch();
+  },
 });
 for (const [name, action] of Object.entries(actions)) {
   buttons[/** @type {TimelineAction} */ (name)].onclick = () => status.run(action);
@@ -758,7 +891,7 @@ const lanes = lanePanel({
   thinned: () => {
     const arrangement = draft;
     if (arrangement === null || !checked(arrangement).ok) return [];
-    const genomes = sketchGenomes();
+    const genomes = sectionGenomes();
     return arrangement.sections.map((_, i) => sectionThinning(arrangement, i, genomes));
   },
 });

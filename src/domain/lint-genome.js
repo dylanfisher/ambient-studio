@@ -15,6 +15,15 @@ import { lintResult } from "./lint-result.js";
 import { paramName } from "./param-name.js";
 import { valueRange } from "./value-range.js";
 
+/**
+ * The rule of the floor that leaves room for an excerpt between the fades; a development, which
+ * is never excerpted, isn't held to it (0079).
+ */
+export const EXCERPT_LENGTH_RULE = "excerptLength";
+
+/** The path of a genome's duration, as a finding names it. */
+export const DURATION_PATH = "$.duration";
+
 /** A voice whose level stays at or under this while it plays counts as silent. */
 const NEAR_SILENT_DB = -50;
 
@@ -66,8 +75,8 @@ function excerptLength(genome) {
   const between = genome.duration - genome.fadeIn - genome.fadeOut;
   return [
     {
-      path: "$.duration",
-      rule: "excerptLength",
+      path: DURATION_PATH,
+      rule: EXCERPT_LENGTH_RULE,
       message: `leaves ${between} s between fadeIn and fadeOut; a ${EXCERPT_SECONDS} s excerpt needs duration - fadeIn - fadeOut of at least ${EXCERPT_SECONDS} s`,
     },
   ];

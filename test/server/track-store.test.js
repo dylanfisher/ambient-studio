@@ -4,6 +4,7 @@
 import { afterEach, expect, test } from "vitest";
 import {
   emptyArrangement,
+  SECTION_KEY,
   SECTION_KEYS,
   TRANSITION_KEYS,
 } from "../../src/domain/arrangement-schema.js";
@@ -34,7 +35,7 @@ const vibeOf = (store) =>
 
 const ONE = {
   ...emptyArrangement(),
-  sections: [{ sketchId: 1, offset: 0, seconds: 60, text: "" }],
+  sections: [{ sketchId: 1, offset: 0, seconds: 60, text: "", developmentId: null }],
 };
 
 test("saving twice keeps both revisions, the newest last", async () => {
@@ -202,7 +203,7 @@ test("migration 0012 gives every section and transition of every stored revision
   insert.run(JSON.stringify(before), "three");
   old.close();
 
-  const store = openStore(file, { now, migrations });
+  const store = openStore(file, { now, migrations: migrations.slice(0, 12) });
   cleanups.push(async () => store.close());
   const [empty, three] = listTrackRevisions(store, 1);
   expect(empty?.arrangement).toEqual(emptyArrangement());
@@ -214,7 +215,9 @@ test("migration 0012 gives every section and transition of every stored revision
   });
   // Each key in the order a stored one lists them, so a migrated revision reads as a new one.
   for (const section of three?.arrangement.sections ?? []) {
-    expect(Object.keys(section)).toEqual(SECTION_KEYS);
+    expect(Object.keys(section)).toEqual(
+      SECTION_KEYS.filter((key) => key !== SECTION_KEY.developmentId),
+    );
   }
   expect(three?.arrangement.transitions.map((transition) => Object.keys(transition))).toEqual([
     TRANSITION_KEYS.morph,

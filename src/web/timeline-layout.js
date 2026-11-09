@@ -87,23 +87,26 @@ function startOf(text) {
 }
 
 /**
- * A block's name, the part of its sketch it plays, with how far it is extended past the
- * sketch's end, and the start of its text, "" when it has none.
+ * A block's name, the part of its sketch or its development it plays (0079), with how far it is
+ * extended past that genome's end, and the start of its text, "" when it has none.
  * @param {Section} section
  * @param {BlockSketch | undefined} sketch undefined when the sketch is no longer listed
+ * @param {{ seconds: number }} [development] the one the section plays, when it has one
  * @returns {{ name: string, times: string, words: string }}
  */
-export function blockText({ sketchId, offset, seconds, text }, sketch) {
+export function blockText({ sketchId, offset, seconds, text }, sketch, development) {
   const end = offset + seconds;
   const range = `${clockTime(offset)} to ${clockTime(end)}`;
   const words = startOf(text);
   if (!sketch)
     return { name: `Sketch ${sketchId}, no longer kept`, times: `${range}, ${seconds} s`, words };
-  const past = end - sketch.duration;
+  const duration = development?.seconds ?? sketch.duration;
+  const past = end - duration;
   const extended = past > 0 ? `; extended by ${clockTime(past)} past its end` : "";
+  const named = sketch.intent ? `Sketch ${sketchId}: ${sketch.intent}` : `Sketch ${sketchId}`;
   return {
-    name: sketch.intent ? `Sketch ${sketchId}: ${sketch.intent}` : `Sketch ${sketchId}`,
-    times: `${range} of its ${clockTime(sketch.duration)}, ${seconds} s${extended}`,
+    name: development ? `${named}, developed` : named,
+    times: `${range} of its ${development ? "development's " : ""}${clockTime(duration)}, ${seconds} s${extended}`,
     words,
   };
 }

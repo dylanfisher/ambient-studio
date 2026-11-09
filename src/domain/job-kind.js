@@ -22,6 +22,8 @@ export const JOB_KIND = Object.freeze({
   propose: "propose",
   /** The model's draft of a brief from the owner's words, to fill the brief form (0074). */
   draftBrief: "draft-brief",
+  /** The model's development of one section of a track, from the timeline (0079). */
+  developSection: "develop-section",
   /** A field set's new values, read by the model from the owner's words, to fill a page (0084). */
   words: "words",
 });

@@ -25,7 +25,7 @@ import { TARGET_FEATURES } from "./target-schema.js";
 export const SKETCH_READING_TOKENS = 800;
 
 /** The parameter that sets a voice's pitch where its type has one; others follow the key. */
-const PITCH = "root";
+export const PITCH = "root";
 /** Every macro shares one descriptor (0006), whose default is neutral. */
 const MACRO = MACROS.brightness;
 const { level: LEVEL, start: START } = VOICE_PARAMS;

@@ -1,7 +1,8 @@
 // Checks the model's proposed arrangement (decision 0067): the one JSON object in its response,
 // holding only sections, transitions and lanes, filled out with the owner's length and arc and
-// empty text on each section and transition (0077), and checked by `validateArrangement`, then
-// held to the length asked for within `LENGTH_TOLERANCE`; one further off has its sections
+// empty text on each section and transition (0077) and no development on a section (0079), and
+// checked by `validateArrangement`, then held to the length asked for within
+// `LENGTH_TOLERANCE`; one further off has its sections
 // scaled to the length when that is within `LENGTH_FIT_MOST` and still valid. A section may name
 // a listed elite by `eliteId` in place of `sketchId`; it is checked against the elite's duration,
 // and the caller keeps the elite as a sketch before the arrangement is stored.
@@ -100,17 +101,28 @@ function standInSections(sections, { elites, context }, errors) {
 }
 
 /**
- * The parts with "" for text on each object that has none: the prompt doesn't ask the model for
- * text, and text it writes anyway is checked as the owner's is. A list that isn't one, or a part
- * that isn't an object, is left for the validator to report.
+ * The parts with each key of `blank` the object lacks set to its value: "" for text, and no
+ * development on a section (0079). The prompt asks the model for neither, and a value it writes
+ * anyway is checked as the owner's is. A list that isn't one, or a part that isn't an object, is
+ * left for the validator to report.
  * @param {unknown} parts the answer's sections or transitions
+ * @param {Record<string, unknown>} blank
  */
-const withText = (parts) =>
+const filledOut = (parts, blank) =>
   Array.isArray(parts)
     ? parts.map((part) =>
-        isObject(part) && !Object.hasOwn(part, TEXT_KEY) ? { ...part, [TEXT_KEY]: "" } : part,
+        isObject(part)
+          ? {
+              ...part,
+              ...Object.fromEntries(Object.entries(blank).filter(([key]) => !(key in part))),
+            }
+          : part,
       )
     : parts;
+
+/** What a proposed section and transition hold that the answer doesn't write. */
+const SECTION_BLANK = Object.freeze({ [TEXT_KEY]: "", [SECTION_KEY.developmentId]: null });
+const TRANSITION_BLANK = Object.freeze({ [TEXT_KEY]: "" });
 
 /**
  * Checks a parsed answer, every finding with its path and rule.
@@ -138,14 +150,14 @@ export function checkProposal(answer, ask) {
   const given = {
     [ARRANGEMENT_KEY.length]: ask.length,
     [ARRANGEMENT_KEY.arc]: ask.arc,
-    [ARRANGEMENT_KEY.sections]: withText(sections),
-    [ARRANGEMENT_KEY.transitions]: withText(answer[ARRANGEMENT_KEY.transitions]),
+    [ARRANGEMENT_KEY.sections]: filledOut(sections, SECTION_BLANK),
+    [ARRANGEMENT_KEY.transitions]: filledOut(answer[ARRANGEMENT_KEY.transitions], TRANSITION_BLANK),
     [ARRANGEMENT_KEY.lanes]: answer[ARRANGEMENT_KEY.lanes],
     [ARRANGEMENT_KEY.proposal]: null,
   };
   /** @type {ArrangementContext} */
   const context = {
-    vibeId: ask.context.vibeId,
+    ...ask.context,
     sketch: (id) => standIns.get(id) ?? ask.context.sketch(id),
   };
   const checked = validateArrangement(given, context);

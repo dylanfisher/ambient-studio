@@ -11,6 +11,7 @@
 /** @import { Constraints } from "../domain/constraint-schema.js" */
 /** @import { FeatureRanges } from "../domain/target-schema.js" */
 /** @import { Finding, LintResult } from "../domain/lint-result.js" */
+/** @import { QuotedError } from "../domain/build-repair-prompt.js" */
 /** @import { ChatMessage } from "../domain/prompt-tokens.js" */
 /** @import { Proposal } from "../domain/propose-genome.js" */
 /** @import { RejectReason } from "../domain/reject-reason.js" */
@@ -23,8 +24,9 @@
 import { applyLocks } from "../domain/apply-locks.js";
 import { BREED_STAGE, PARENT_NAME } from "../domain/breed-settings.js";
 import { buildPrompt } from "../domain/build-prompt.js";
-import { buildRepairPrompt } from "../domain/build-repair-prompt.js";
+import { buildRepairPrompt, quotedErrors } from "../domain/build-repair-prompt.js";
 import { ANSWER_KEY, extractGenome } from "../domain/extract-genome.js";
+import { invalidAfter } from "../domain/judge-answer.js";
 import { lintGenome } from "../domain/lint-genome.js";
 import { ANSWER_RULE, lintResult, SCHEMA_RULE } from "../domain/lint-result.js";
 import { lockRefusal } from "../domain/nudge.js";
@@ -544,6 +546,76 @@ export async function sendRequest(batch, index, prompt, sampling, repairsId, res
     error: null,
   });
   return { generation, completion, failure: null };
+}
+
+/**
+ * A rejected answer of an operator that writes no candidate, as a proposal's (0067): `answer` is
+ * the parsed object a repair quotes, or null when nothing parsed and there is nothing to repair.
+ * @typedef {{ ok: false, errors: QuotedError[], answer: unknown }} RejectedAnswer
+ */
+
+/**
+ * One request through `sendRequest` and, when its answer parsed with findings, one repair round
+ * quoting them (0024), as an operator that writes no candidate takes it: a proposal (0067) and a
+ * section's development (0079). A request the queue fails is thrown; a repair over the context
+ * budget isn't sent and throws; an answer still invalid throws listing every finding. Every
+ * request stays stored as a generation.
+ * @template {{ ok: boolean }} V a verdict, rejected as a `RejectedAnswer` when not ok
+ * @param {object} ask
+ * @param {RequestBatch} ask.batch
+ * @param {ChatMessage[]} ask.messages the first prompt
+ * @param {Sampling} ask.sampling the same for the repair
+ * @param {{ name: string, schema: object }} ask.responseFormat
+ * @param {(completion: Completion) => V} ask.judge
+ * @param {(previous: { messages: ChatMessage[], answer: unknown }, errors: QuotedError[]) => ChatMessage[]} ask.buildRepair
+ * @param {AbortSignal} ask.signal checked before the repair is sent
+ * @param {string} ask.what the answer in words, as the errors name it
+ * @returns {Promise<{ generation: Generation, verdict: Extract<V, { ok: true }>, repaired: boolean }>}
+ *   the last generation and its valid verdict
+ */
+export async function answerWithRepair({
+  batch,
+  messages,
+  sampling,
+  responseFormat,
+  judge,
+  buildRepair,
+  signal,
+  what,
+}) {
+  /**
+   * @param {ChatMessage[]} prompt
+   * @param {number | null} repairsId
+   */
+  const send = async (prompt, repairsId) => {
+    const sent = await sendRequest(batch, 0, prompt, sampling, repairsId, responseFormat);
+    if (sent.failure !== null) throw sent.failure;
+    return { generation: sent.generation, verdict: judge(sent.completion) };
+  };
+  /** @param {V} verdict */
+  const rejected = (verdict) => /** @type {RejectedAnswer} */ (/** @type {unknown} */ (verdict));
+  const budgetTokens = batch.config.queue.contextBudgetTokens;
+  let { generation, verdict } = await send(messages, null);
+  let repaired = false;
+  const first = rejected(verdict);
+  if (!verdict.ok && first.answer !== null) {
+    const repair = buildRepair({ messages, answer: first.answer }, first.errors);
+    const tokens = estimateTokens(promptText(repair));
+    if (tokens > budgetTokens) {
+      throw new Error(
+        `The ${what} was invalid, and its repair prompt is about ${tokens} tokens, over the ${budgetTokens}-token budget, so no repair was sent:\n${quotedErrors(first.errors).join("\n")}`,
+      );
+    }
+    signal.throwIfAborted();
+    ({ generation, verdict } = await send(repair, generation.id));
+    repaired = true;
+  }
+  if (!verdict.ok) {
+    throw new Error(
+      `The model's ${what} was ${invalidAfter(repaired)} (generation ${generation.id}):\n${quotedErrors(rejected(verdict).errors).join("\n")}`,
+    );
+  }
+  return { generation, verdict: /** @type {Extract<V, { ok: true }>} */ (verdict), repaired };
 }
 
 /**

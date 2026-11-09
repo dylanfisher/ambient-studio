@@ -68,8 +68,8 @@ const withLanes = (arrangement, lanes) => ({ ...arrangement, lanes });
 const TWO = Object.freeze({
   ...emptyArrangement(),
   sections: [
-    { sketchId: 1, offset: 5, seconds: 40, text: "" },
-    { sketchId: 2, offset: 10, seconds: 40, text: "" },
+    { sketchId: 1, offset: 5, seconds: 40, text: "", developmentId: null },
+    { sketchId: 2, offset: 10, seconds: 40, text: "", developmentId: null },
   ],
   transitions: [{ kind: "crossfade", seconds: 6, text: "" }],
 });
@@ -186,7 +186,7 @@ describe("applyLanes through sectionGenome", () => {
     expect(LANE_MOST_POINTS).toBe(MAX_POINTS - 2);
     const one = {
       ...emptyArrangement(),
-      sections: [{ sketchId: 1, offset: 0, seconds: 80, text: "" }],
+      sections: [{ sketchId: 1, offset: 0, seconds: 80, text: "", developmentId: null }],
     };
     const dense = /** @type {Lane} */ ({
       macro: "brightness",
@@ -216,7 +216,7 @@ test("a lane with more than 62 − n breakpoints inside a section thins the sect
   // whole seconds, so none of them is one of its own.
   const one = {
     ...emptyArrangement(),
-    sections: [{ sketchId: 1, offset: 0, seconds: 80, text: "" }],
+    sections: [{ sketchId: 1, offset: 0, seconds: 80, text: "", developmentId: null }],
   };
   /** @param {number} count */
   const lane = (count) =>
@@ -247,8 +247,8 @@ describe("lanes and a morph", () => {
   const morphing = /** @type {Arrangement} */ ({
     ...emptyArrangement(),
     sections: [
-      { sketchId: 1, offset: 0, seconds: 30, text: "" },
-      { sketchId: 2, offset: 10, seconds: 30, text: "" },
+      { sketchId: 1, offset: 0, seconds: 30, text: "", developmentId: null },
+      { sketchId: 2, offset: 10, seconds: 30, text: "", developmentId: null },
     ],
     transitions: [{ kind: "morph", seconds: 12, curve: "smooth", text: "" }],
   });

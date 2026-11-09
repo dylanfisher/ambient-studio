@@ -27,6 +27,8 @@ export const TIMELINE_KEYS = Object.freeze({
   playSeam: "KeyC",
   exportTrack: "KeyE",
   exportStems: "KeyV",
+  develop: "KeyZ",
+  plainSketch: "Slash",
 });
 
 /** @typedef {keyof typeof TIMELINE_KEYS} TimelineAction */

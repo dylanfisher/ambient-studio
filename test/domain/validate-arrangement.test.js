@@ -1,6 +1,7 @@
 // A track's arrangement (decision 0061): a valid one passes, and each malformed one fails with
-// the path of the value it is about. The sketches are given as the server reads them.
-/** @import { ArrangementSketch } from "../../src/domain/validate-arrangement.js" */
+// the path of the value it is about. The sketches and the track's developments (0079) are given
+// as the server reads them.
+/** @import { ArrangementDevelopment, ArrangementSketch } from "../../src/domain/validate-arrangement.js" */
 import { describe, expect, test } from "vitest";
 import { arrangementLength } from "../../src/domain/arrangement-length.js";
 import {
@@ -24,16 +25,42 @@ const SKETCHES = new Map(
     [4, { vibeId: 2, removedReason: null, duration: 60 }],
   ]),
 );
-const context = { vibeId: VIBE, sketch: (/** @type {number} */ id) => SKETCHES.get(id) };
+const TRACK = 7;
+
+/**
+ * Track 7's developments: 1 and 2 of sketch 1, 2 a 30 s one; 3 removed; 4 another track's; 5
+ * of sketch 2.
+ */
+const DEVELOPMENTS = new Map(
+  /** @type {[number, ArrangementDevelopment][]} */ ([
+    [1, { trackId: TRACK, sketchId: 1, removedReason: null, duration: 240 }],
+    [2, { trackId: TRACK, sketchId: 1, removedReason: null, duration: 30 }],
+    [3, { trackId: TRACK, sketchId: 1, removedReason: "removed", duration: 240 }],
+    [4, { trackId: 8, sketchId: 1, removedReason: null, duration: 240 }],
+    [5, { trackId: TRACK, sketchId: 2, removedReason: null, duration: 240 }],
+  ]),
+);
+const context = {
+  vibeId: VIBE,
+  trackId: TRACK,
+  sketch: (/** @type {number} */ id) => SKETCHES.get(id),
+  development: (/** @type {number} */ id) => DEVELOPMENTS.get(id),
+};
 
 /** Three sections with two crossfades: 40 + 200 + 50 less 8 + 10. */
 const VALID = Object.freeze({
   length: null,
   arc: null,
   sections: [
-    { sketchId: 1, offset: 10, seconds: 40, text: "" },
-    { sketchId: 2, offset: 0, seconds: 200, text: "a long slow swell, nothing new comes in" },
-    { sketchId: 1, offset: 0, seconds: 50, text: "" },
+    { sketchId: 1, offset: 10, seconds: 40, text: "", developmentId: null },
+    {
+      sketchId: 2,
+      offset: 0,
+      seconds: 200,
+      text: "a long slow swell, nothing new comes in",
+      developmentId: null,
+    },
+    { sketchId: 1, offset: 0, seconds: 50, text: "", developmentId: null },
   ],
   transitions: [
     { kind: "crossfade", seconds: 8, text: "" },
@@ -128,8 +155,61 @@ describe("validateArrangement", () => {
     expect(arrangementLength(woven)).toBe(arrangementLength(VALID));
   });
 
+  test("a section may play its own track's development of its sketch, its window on the development", () => {
+    // Sketch 1 is 60 s; its development 1 is 240 s, so the window may start past the sketch's end.
+    const developed = changed((a) => {
+      a.sections[0] = { sketchId: 1, offset: 100, seconds: 40, text: "", developmentId: 1 };
+    });
+    expect(validateArrangement(developed, context)).toEqual({ ok: true, arrangement: developed });
+  });
+
   /** @type {[string, (copy: any) => void, string, RegExp][]} */
   const refused = [
+    [
+      "a section without a development key",
+      (a) => delete a.sections[1].developmentId,
+      "$.sections[1].developmentId",
+      /missing/,
+    ],
+    [
+      "a development id that isn't one",
+      (a) => (a.sections[0].developmentId = "1"),
+      "$.sections[0].developmentId",
+      /a development's id, a whole number, or null/,
+    ],
+    [
+      "an unknown development",
+      (a) => (a.sections[0].developmentId = 99),
+      "$.sections[0].developmentId",
+      /there is no development 99/,
+    ],
+    [
+      "a removed development",
+      (a) => (a.sections[0].developmentId = 3),
+      "$.sections[0].developmentId",
+      /development 3 was removed/,
+    ],
+    [
+      "another track's development",
+      (a) => (a.sections[0].developmentId = 4),
+      "$.sections[0].developmentId",
+      /development 4 is track 8's/,
+    ],
+    [
+      "a development of another sketch",
+      (a) => (a.sections[0].developmentId = 5),
+      "$.sections[0].developmentId",
+      /develops sketch 2, not this section's sketch 1/,
+    ],
+    [
+      "an offset past the development's end",
+      (a) => {
+        a.sections[0].developmentId = 2;
+        a.sections[0].offset = 30;
+      },
+      "$.sections[0].offset",
+      /under its development's 30 s/,
+    ],
     [
       "an unknown sketch",
       (a) => (a.sections[1].sketchId = 99),
@@ -376,7 +456,13 @@ describe("validateArrangement", () => {
 
   test("a track over 20 minutes fails at its sections", () => {
     const long = changed((a) => {
-      a.sections = [1, 2, 3].map(() => ({ sketchId: 2, offset: 0, seconds: 450, text: "" }));
+      a.sections = [1, 2, 3].map(() => ({
+        sketchId: 2,
+        offset: 0,
+        seconds: 450,
+        text: "",
+        developmentId: null,
+      }));
       a.transitions = [1, 2].map(() => ({ kind: "crossfade", seconds: 8, text: "" }));
     });
     expect(errorsOf(long)).toEqual([

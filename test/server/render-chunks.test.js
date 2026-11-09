@@ -100,7 +100,7 @@ test("a laned section's chunks join to one render, with the lane crossing each c
   // and 6 s of the window, which are the same seconds of the track.
   const arrangement = /** @type {Arrangement} */ ({
     ...emptyArrangement(),
-    sections: [{ sketchId: 1, offset: window.offset, seconds: 10, text: "" }],
+    sections: [{ sketchId: 1, offset: window.offset, seconds: 10, text: "", developmentId: null }],
     lanes: [
       {
         macro: "brightness",

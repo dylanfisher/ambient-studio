@@ -27,6 +27,7 @@ const TITLE = Object.freeze({
   [JOB_KIND.trackExport]: "Exporting the track",
   [JOB_KIND.propose]: "Proposing a track",
   [JOB_KIND.draftBrief]: "Writing the brief from your words",
+  [JOB_KIND.developSection]: "Developing a section",
   [JOB_KIND.words]: "Reading your words as settings",
 });
 

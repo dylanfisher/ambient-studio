@@ -7,7 +7,8 @@
   request path, `extractObject`, `RETRIEVAL_METHOD.none`); amended by
   [0074](0074-draft-brief-from-words.md) (`judgeProposal`'s parse step shared as `judgeAnswer`)
   and [0077](0077-section-and-transition-text.md) (empty text on each section and transition of
-  the answer before it is checked)
+  the answer before it is checked) and [0079](0079-develop-a-section.md) (the repair round shared
+  as `answerWithRepair`; no development on a proposed section)
 
 ## Context
 

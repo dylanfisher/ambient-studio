@@ -1,6 +1,7 @@
 // Checks a track's arrangement (decision 0061), every error with its JSON path, as
-// `validateConstraints` does for a vibe's rules (0020). The sketches are looked up through the
-// caller, since only the server reads the store; 6h's repair round quotes the errors back.
+// `validateConstraints` does for a vibe's rules (0020). The sketches and the track's
+// developments (0079) are looked up through the caller, since only the server reads the store;
+// 6h's repair round quotes the errors back.
 /** @import { ValidationError } from "../engine/validation-error.js" */
 /** @import { Arrangement, Section } from "./arrangement-schema.js" */
 import { checkValue } from "../engine/descriptor.js";
@@ -17,6 +18,7 @@ import {
   MAX_TRACK_SECONDS,
   morphs,
   SECTION_FIELDS,
+  SECTION_KEY,
   SECTION_KEYS,
   TEXT_KEY,
   TRACK_LENGTH,
@@ -36,9 +38,22 @@ import { checkLanes } from "./validate-lanes.js";
  */
 
 /**
+ * What the validator needs to know of a development a section names (decision 0079).
+ * @typedef {object} ArrangementDevelopment
+ * @property {number} trackId the track it was written for
+ * @property {number} sketchId the sketch it develops
+ * @property {string | null} removedReason null while it is live
+ * @property {number} duration its genome's, in seconds
+ */
+
+/**
  * @typedef {object} ArrangementContext
  * @property {number} vibeId the track's
+ * @property {number | null} trackId the track's; null for an arrangement no track holds yet, as
+ *   a proposal's answer, which can name no development
  * @property {(id: number) => ArrangementSketch | undefined} sketch undefined when there is none
+ * @property {(id: number) => ArrangementDevelopment | undefined} development undefined when
+ *   there is none
  */
 
 /**
@@ -84,6 +99,42 @@ function checkText(given, path, errors) {
 }
 
 /**
+ * The development a section names, when it is live, this track's and of the section's sketch;
+ * null when the section names none; undefined after pushing an error.
+ * @param {unknown} developmentId as given
+ * @param {unknown} sketchId as given
+ * @param {string} path the section's
+ * @param {ArrangementContext} context
+ * @param {ValidationError[]} errors
+ * @returns {ArrangementDevelopment | null | undefined}
+ */
+function checkDevelopment(developmentId, sketchId, path, { trackId, development }, errors) {
+  if (developmentId === null) return null;
+  const at = `${path}.${SECTION_KEY.developmentId}`;
+  if (!isRowId(developmentId)) {
+    errors.push({
+      path: at,
+      message: `must be a development's id, a whole number, or null for the sketch itself, got ${show(developmentId)}`,
+    });
+    return undefined;
+  }
+  const found = development(/** @type {number} */ (developmentId));
+  /** @type {string | null} */
+  let problem = null;
+  if (!found) problem = `there is no development ${developmentId}`;
+  else if (found.removedReason !== null) {
+    problem = `development ${developmentId} was removed (${found.removedReason})`;
+  } else if (found.trackId !== trackId) {
+    problem = `development ${developmentId} is track ${found.trackId}'s; a section plays only its own track's developments`;
+  } else if (found.sketchId !== sketchId) {
+    problem = `development ${developmentId} develops sketch ${found.sketchId}, not this section's sketch ${show(sketchId)}`;
+  }
+  if (problem === null) return found;
+  errors.push({ path: at, message: problem });
+  return undefined;
+}
+
+/**
  * Checks one section, returning it when it passed.
  * @param {unknown} given
  * @param {string} path
@@ -91,7 +142,8 @@ function checkText(given, path, errors) {
  * @param {ValidationError[]} errors
  * @returns {Section | undefined}
  */
-function checkSection(given, path, { vibeId, sketch }, errors) {
+function checkSection(given, path, context, errors) {
+  const { vibeId, sketch } = context;
   if (!isObject(given)) {
     errors.push({ path, message: `must be an object, got ${show(given)}` });
     return undefined;
@@ -130,13 +182,21 @@ function checkSection(given, path, { vibeId, sketch }, errors) {
     if (given[name] !== undefined) checkValue(descriptor, given[name], `${path}.${name}`, errors);
   }
   checkText(given, path, errors);
+  // Read only once the sketch passed, since a development is held to the section's sketch.
+  const developed =
+    errors.length > before || !found || given.developmentId === undefined
+      ? undefined
+      : checkDevelopment(given.developmentId, sketchId, path, context, errors);
   if (errors.length > before) return undefined;
   const section = /** @type {Section} */ (/** @type {unknown} */ (given));
-  if (!found) return undefined;
-  if (section.offset >= found.duration) {
+  if (!found || developed === undefined) return undefined;
+  // A developed section plays its development's genome, so its window is on that timeline.
+  const { duration } = developed ?? found;
+  const played = developed ? "development's" : "sketch's";
+  if (section.offset >= duration) {
     errors.push({
       path: `${path}.offset`,
-      message: `must be under its sketch's ${found.duration} s, got ${section.offset}`,
+      message: `must be under its ${played} ${duration} s, got ${section.offset}`,
     });
     return undefined;
   }
@@ -144,7 +204,7 @@ function checkSection(given, path, { vibeId, sketch }, errors) {
   if (end > MAX_DURATION) {
     errors.push({
       path: `${path}.seconds`,
-      message: `the section ends at ${end} s on its sketch's timeline; past the sketch's ${found.duration} s it is extended, up to ${MAX_DURATION} s`,
+      message: `the section ends at ${end} s on its ${played} timeline; past the ${played} ${duration} s it is extended, up to ${MAX_DURATION} s`,
     });
     return undefined;
   }
