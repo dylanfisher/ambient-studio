@@ -7,6 +7,9 @@ import { removeCancelled } from "./write-mp3.js";
 /** The flac CLI, found on PATH (0012). */
 export const FLAC = "flac";
 
+/** Encoder threads for `flac -j`; flac 1.5 or later. The output is byte-identical to one thread. */
+export const FLAC_THREADS = 4;
+
 /**
  * Encodes a WAV file to FLAC with the `flac` CLI found on PATH (0012). The WAV is streamed to
  * flac's stdin, so a long render isn't held in memory a second time.
@@ -16,10 +19,14 @@ export const FLAC = "flac";
  *   rejecting with its reason
  */
 export async function writeFlac(wavPath, flacPath, cancel) {
-  const child = spawn(FLAC, ["--best", "--silent", "-o", flacPath, "-"], {
-    stdio: ["pipe", "ignore", "pipe"],
-    ...(cancel && { signal: cancel }),
-  });
+  const child = spawn(
+    FLAC,
+    ["--best", "--silent", "-j", String(FLAC_THREADS), "-o", flacPath, "-"],
+    {
+      stdio: ["pipe", "ignore", "pipe"],
+      ...(cancel && { signal: cancel }),
+    },
+  );
   let stderr = "";
   child.stderr.setEncoding("utf8");
   child.stderr.on("data", (chunk) => {

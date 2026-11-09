@@ -15,6 +15,10 @@ for tool in pnpm uv flac lame; do
   command -v "$tool" >/dev/null || { printf "\033[31m✗ %s is required: brew install %s\033[0m\n" "$tool" "$tool" >&2; exit 1; }
 done
 
+# flac 1.5 added -j, the encoder threads (0012).
+flac_version=$(flac --version | awk '{print $2}')
+[ "$(printf '1.5\n%s\n' "$flac_version" | sort -V | head -1)" = "1.5" ] || { printf '\033[31m✗ flac 1.5 or later is required; found %s. brew upgrade flac\033[0m\n' "$flac_version" >&2; exit 1; }
+
 pnpm install --frozen-lockfile
 (cd sidecar && uv sync --frozen)
 

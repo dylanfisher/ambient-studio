@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { encodePcm24 } from "../../src/server/encode-pcm24.js";
-import { flacClosedFirst, writeFlac } from "../../src/server/write-flac.js";
+import { FLAC_THREADS, flacClosedFirst, writeFlac } from "../../src/server/write-flac.js";
 import { writeWav } from "../../src/server/write-wav.js";
 
 const run = promisify(execFile);
@@ -62,6 +62,19 @@ describe("writeFlac", () => {
     expect(decoded.readUInt32LE(24)).toBe(SAMPLE_RATE);
     expect(decoded.readUInt16LE(34)).toBe(24);
     expect(Buffer.compare(dataChunk(decoded), Buffer.from(pcm))).toBe(0);
+  });
+
+  test("encodes on FLAC_THREADS threads", async () => {
+    const bin = join(dir, "bin");
+    const argsPath = join(dir, "args");
+    await mkdir(bin);
+    await writeFile(join(bin, "flac"), `#!/bin/sh\necho "$@" > ${argsPath}\ncat > /dev/null\n`);
+    await chmod(join(bin, "flac"), 0o755);
+    vi.stubEnv("PATH", `${bin}:${process.env.PATH}`);
+    const wavPath = join(dir, "out.wav");
+    await writeWav(wavPath, new Uint8Array(6), { channelCount: 2, sampleRate: SAMPLE_RATE });
+    await writeFlac(wavPath, join(dir, "out.flac"));
+    expect(await readFile(argsPath, "utf8")).toContain(`-j ${FLAC_THREADS} `);
   });
 
   test("throws with flac's stderr when flac fails", async () => {

@@ -67,3 +67,8 @@ bit for bit.
   `writeWav` is one chunk of it, with the same bytes. It also writes 32-bit float WAV for stems
   (format tag 3, an 18-byte fmt chunk and a fact chunk), from `encodeFloat32`, which keeps
   values past full scale and throws on NaN or infinity.
+- 2026-11-08: step perf.2. `writeFlac` adds `-j 4` (`FLAC_THREADS`), which needs flac 1.5 or
+  later; `./scripts/setup` now checks the version. The output is byte-identical to one thread
+  (same md5 on 60 s of stereo through `writeFlac`), so the lossless rule above is unchanged. On
+  mbp2021 a 60 s encode took 0.26 s with one thread and 0.07 s with four. The test puts a `flac`
+  stub on PATH that records its arguments; it failed before the change for lack of `-j 4`.
