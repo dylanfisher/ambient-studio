@@ -69,7 +69,20 @@ run links bash -c '
 both() { local js=0 py=0; bash -c "$1" || js=1; (cd sidecar && bash -c "$2") || py=1; return $((js | py)); }
 run format    both 'node_modules/.bin/biome format .' 'uv run --frozen ruff format --check .'
 run lint      both 'node_modules/.bin/biome check --formatter-enabled=false .' 'uv run --frozen ruff check .'
-run typecheck both 'node_modules/.bin/tsc -p . && echo "tsc: no errors"' 'uv run --frozen pyright'
+# tsc and pyright are the slowest non-test steps and share nothing, so they run at once. Each
+# writes to its own file, printed in turn afterward so the two outputs don't interleave.
+typecheck() {
+  local out; out=$(mktemp -d)
+  bash -c 'node_modules/.bin/tsc -p . && echo "tsc: no errors"' >"$out/js" 2>&1 & local js=$!
+  (cd sidecar && uv run --frozen pyright) >"$out/py" 2>&1 & local py=$!
+  local status=0
+  wait "$js" || status=1
+  wait "$py" || status=1
+  cat "$out/js" "$out/py"
+  rm -rf "$out"
+  return $status
+}
+run typecheck typecheck
 run arch      ./scripts/arch.js
 # Each checker's own test plants every kind of finding, so a checker that stops seeing them
 # fails here instead of passing an empty or broken tree.
