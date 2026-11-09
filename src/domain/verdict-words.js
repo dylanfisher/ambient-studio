@@ -1,6 +1,7 @@
 // The session row's rank and a search point's score as plain verdicts (decision 0085): where
 // each sits among the others, read with place-words.js's thresholds. The rank and the score
 // themselves are behind the numbers toggle.
+import { OPERATOR } from "./operator.js";
 import { PLACE_SIDE, placeOf, shareBelow } from "./place-words.js";
 
 /**
@@ -25,10 +26,11 @@ export function rankWords(rank, total) {
  * A search or steer point's score against the other scored points of its run on the page.
  * @param {number} score
  * @param {readonly number[]} others the run's other points' scores
- * @param {"search" | "steer"} kind
+ * @param {string} operator the point's, a search's (`optimize`) or a steer's
  * @returns {string}
  */
-export function searchScoreWords(score, others, kind) {
+export function searchScoreWords(score, others, operator) {
+  const kind = operator === OPERATOR.steer ? "steer" : "search";
   if (others.length === 0) return `The only point of this ${kind} with a score on this page.`;
   if (others.every((other) => other < score)) return `The best point this ${kind} found.`;
   const { side, degree } = placeOf(shareBelow(score, others));

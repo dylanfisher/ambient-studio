@@ -46,6 +46,7 @@ export const WORDS_SCOPE = Object.freeze({
  * @typedef {object} WordsSet
  * @property {string} subject what the fields set, as the prompt's first line names it
  * @property {WordsScope} scope
+ * @property {string} [label] what the session card's select calls a candidate's set
  * @property {(context: WordsContext) => Readonly<Record<string, Descriptor>>} fields each
  *   field's descriptor by name
  * @property {(context: WordsContext) => WordsContext | null} [narrower] the same fields with
@@ -122,6 +123,7 @@ export const WORDS_SETS = Object.freeze(
       subject:
         "which of this candidate's values the brief keeps exactly as they are in every later candidate: locked keeps it, free lets later candidates change it. A whole voice keeps every parameter of it",
       scope: WORDS_SCOPE.candidate,
+      label: "What it locks",
       fields: lockFields,
       narrower: (context) => {
         const voices = needs(context.genome, "a genome").voices.length;
@@ -133,6 +135,7 @@ export const WORDS_SETS = Object.freeze(
     macros: {
       subject: `what the listener tells the studio this candidate should have less or more of: ${LESS}, ${MORE}, or ${MACRO_NONE} for no choice`,
       scope: WORDS_SCOPE.candidate,
+      label: "Its Less / More choices",
       fields: () =>
         Object.fromEntries(
           Object.keys(MACROS).map((macro) => {
@@ -153,6 +156,7 @@ export const WORDS_SETS = Object.freeze(
       subject:
         "where a steer from this candidate aims on each of the brief's directions, on the brief's own scale: 0 is the brief's least of it so far, 1 its most",
       scope: WORDS_SCOPE.candidate,
+      label: "Where Steer from here aims",
       fields: ({ directions }) =>
         Object.fromEntries(
           needs(directions, "the brief's directions").map(({ id, near, far }) => [

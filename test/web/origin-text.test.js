@@ -50,14 +50,14 @@ describe("originText", () => {
     );
   });
 
-  test("a search point names its base, generation and point, and its score once scored", () => {
+  test("a search point names its base, generation and point, and whether it is shown", () => {
     const point = candidate({
       operator: "optimize",
       parentIds: [3],
       operatorParams: { generation: 2, point: 4 },
     });
     expect(originText({ ...point, search: { shown: true, score: -0.25 } }, nameOf)).toBe(
-      "Point 5 of generation 3 of a search from candidate 3, scored by your taste model with no model request. Shown as one of the search's best: search score -0.25.",
+      "Point 5 of generation 3 of a search from candidate 3, scored by your taste model with no model request. Shown as one of the search's best.",
     );
     expect(originText({ ...point, search: { shown: false, score: null } }, nameOf)).toBe(
       "Point 5 of generation 3 of a search from candidate 3, scored by your taste model with no model request.",
@@ -71,7 +71,7 @@ describe("originText", () => {
       operatorParams: { generation: 0, point: 1 },
     });
     expect(originText({ ...point, search: { shown: true, score: -1.5 } }, nameOf)).toBe(
-      "Point 2 of generation 1 of a steer from candidate 3, scored by where it sits on the sliders and regions chosen, with no model request. Shown as one of the steer's best: steer score -1.50.",
+      "Point 2 of generation 1 of a steer from candidate 3, scored by where it sits on the sliders and regions chosen, with no model request. Shown as one of the steer's best.",
     );
     expect(operatorLabel("steer")).toBe("steered");
     expect(intentText(candidate({ operator: "steer" }))).toBe(

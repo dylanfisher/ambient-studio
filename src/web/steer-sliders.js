@@ -32,7 +32,13 @@ import { NO_SESSION } from "./steer-controls.js";
  * @property {() => boolean} unsent whether a slider was moved or a region ticked and not sent
  * @property {(why: string | null) => void} off turns Steer off with `why` as its title, or back
  *   on with null, unless its job is unfinished
+ * @property {() => Map<number, number>} settings each direction's slider setting now, by id
+ * @property {(settings: ReadonlyMap<number, number>) => SliderSnapshot} fill sets the named
+ *   sliders as moved, as a words answer does (0085), and returns what they held before
+ * @property {(snapshot: SliderSnapshot) => void} restore puts back what `fill` returned
  */
+
+/** @typedef {Map<number, { value: string, moved: boolean }>} SliderSnapshot */
 
 /**
  * @param {object} options
@@ -183,6 +189,27 @@ export function steerSliders({ candidateId, sessionId, start, run }) {
   return {
     root: parts.root,
     show,
+    settings: () => new Map([...sliders].map(([id, { input }]) => [id, Number(input.value)])),
+    fill(settings) {
+      /** @type {SliderSnapshot} */
+      const snapshot = new Map();
+      for (const [id, setting] of settings) {
+        const entry = sliders.get(id);
+        if (!entry) throw new Error(`the card has no slider for direction ${id}`);
+        snapshot.set(id, { value: entry.input.value, moved: entry.moved });
+        entry.input.value = String(setting);
+        entry.moved = true;
+      }
+      return snapshot;
+    },
+    restore(snapshot) {
+      for (const [id, { value, moved }] of snapshot) {
+        const entry = sliders.get(id);
+        if (!entry) continue;
+        entry.input.value = value;
+        entry.moved = moved;
+      }
+    },
     unsent: () =>
       slidersUnsent(
         [...sliders.values()].map(({ moved, input }) => ({ moved, disabled: input.disabled })),

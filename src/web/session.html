@@ -42,8 +42,10 @@
           then rate it with the buttons on its row; Hide moves it to Hidden candidates at the
           bottom, where it can be shown again. The marks beside a row count how often it was
           chosen (▲) and not chosen (▼) in A/B comparisons. Under each row are its Less / More
-          choices, note and sketch, explore and nudge; Show the numbers adds its locks,
-          measurements and the other numbers. Thumbs and the Less / More choices can be changed
+          choices, note and sketch, explore and nudge, and a Change it field: write a change in
+          words, then press Explore from here for variations, or Set from these words to have
+          the model set its locks, its Less / More choices or where Steer aims, which you keep or
+          undo. Show the numbers adds its locks, measurements and the other numbers. Thumbs and the Less / More choices can be changed
           or cleared at any time. The lineage page shows where every candidate of the brief came
           from.
         </p>
@@ -168,6 +170,9 @@
               <span class="badge" data-part="wildcardBadge" hidden>Wildcard</span>
             </div>
             <p class="small muted" data-part="origin"></p>
+            <p class="small" data-part="verdict" hidden></p>
+            <p class="small muted" data-part="score" data-numbers hidden></p>
+            <p class="small" data-part="placeWords" hidden></p>
             <p class="small muted" data-part="positions" data-numbers hidden></p>
             <button class="button outline small" type="button" data-part="pairLink" hidden title="Shows the other version of this candidate in its place.">Show the other version</button>
             <button class="button outline small" type="button" data-part="foldToggle" aria-expanded="false" hidden title="Shows or hides the other points of this search whose sound is nearest this one, nested under it.">Show nearby points</button>
@@ -201,6 +206,7 @@
             <div class="candidate-controls">
               <div class="stack">
                 <p class="small" data-part="intent"></p>
+                <p class="small" data-part="featureWords"></p>
                 <div class="small" data-part="rangesBox" data-numbers hidden>
                   <p data-part="rangesLine"></p>
                   <ul class="ranges" data-part="ranges"></ul>
@@ -224,6 +230,15 @@
 
               <div class="stack">
                 <div data-part="steer"></div>
+                <div class="stack" data-part="wordsJob"></div>
+                <div class="callout stack small" data-part="wordsBox" hidden>
+                  <p data-part="wordsSaid"></p>
+                  <ul class="list" data-part="wordsChanges"></ul>
+                  <div class="row">
+                    <button class="button secondary small" type="button" data-part="wordsKeep" title="Keeps what the model read from your words: saves the locks or the Less / More choices, or leaves the sliders set for Steer from here.">Keep</button>
+                    <button class="button outline small" type="button" data-part="wordsUndo" title="Puts back what this candidate had before the model read your words. Nothing was saved.">Undo</button>
+                  </div>
+                </div>
 
                 <div class="small stack" data-numbers>
                   <strong data-part="lockSummary">Locks</strong>
@@ -271,8 +286,12 @@
     <template id="steer-controls">
       <div class="stack small">
         <div class="row">
-          <input data-part="direction" type="text" size="22" placeholder="A direction, such as slower" title="An optional one-line direction for Explore from here, such as slower or less bell. The model reads it as you wrote it." />
+          <input data-part="direction" type="text" size="22" placeholder="Change it, such as slower" title="A change in one line of words, such as slower or keep the low drone. Explore from here reads it as a direction; Set from these words reads it into the choice beside it." />
           <button class="button outline small" type="button" data-part="explore" title="Asks the model for variations of this candidate, following the direction if you wrote one, and renders an excerpt of each. Takes about 1–2 minutes per variation.">Explore from here</button>
+        </div>
+        <div class="row" data-part="wordsRow" hidden>
+          <select data-part="wordsSet" title="Chooses what Set from these words changes: this candidate's locks, its Less / More choices, or where Steer from here aims."></select>
+          <button class="button outline small" type="button" data-part="words" title="Asks the model to read your words as new values for the choice beside it, and fills them in unsaved. Nothing is saved until you press Keep. Takes about half a minute.">Set from these words</button>
         </div>
         <div class="row">
           <select data-part="stepSize" title="How far Nudge from here moves this candidate's numbers: a small, medium or large step."></select>

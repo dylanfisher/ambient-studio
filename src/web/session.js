@@ -18,12 +18,16 @@
 /** @import { PlayedTracker } from "./played-tracker.js" */
 /** @import { StartJob, SteerControls } from "./steer-controls.js" */
 /** @import { SteeringView, SteerSliders } from "./steer-sliders.js" */
+import { featureWords } from "../domain/feature-words.js";
 import { featuresText } from "../domain/features-text.js";
 import { lockChoices } from "../domain/lock-choices.js";
 import { macroTitles } from "../domain/macro-words.js";
 import { OPERATOR } from "../domain/operator.js";
+import { positionsWords } from "../domain/position-words.js";
 import { MACRO_DIRECTIONS, THUMBS } from "../domain/rating-values.js";
 import { validateTargets } from "../domain/validate-targets.js";
+import { rankWords, searchScoreWords } from "../domain/verdict-words.js";
+import { directionField, WORDS_SCOPE, WORDS_SETS, wordsSet } from "../domain/words-sets.js";
 import { MACROS } from "../engine/genome-schema.js";
 import { abMarks, markText } from "./ab-marks.js";
 import { abView } from "./ab-view.js";
@@ -50,11 +54,21 @@ import { createPlayedTracker } from "./played-tracker.js";
 import { createQuickAbOrder, ORDER_MODES, ratedPairKeys } from "./quick-ab-order.js";
 import { rangesReadout } from "./ranges-readout.js";
 import { rankText } from "./rank-text.js";
+import { runJob } from "./run-job.js";
 import { keepOnClick, scrollMemory } from "./scroll-memory.js";
 import { statusLine } from "./status-line.js";
 import { steerControls } from "./steer-controls.js";
 import { steerSliders } from "./steer-sliders.js";
 import "./topbar-jobs.js";
+import {
+  applyWords,
+  changeLines,
+  lockEdits,
+  lockValues,
+  macroEdits,
+  macroValues,
+  steerEdits,
+} from "./words-edits.js";
 
 const [UP, DOWN] = THUMBS;
 const [MORE, LESS] = MACRO_DIRECTIONS;
@@ -104,6 +118,10 @@ const CARD_PARTS = Object.freeze({
   wildcardBadge: HTMLElement,
   intent: HTMLElement,
   origin: HTMLElement,
+  verdict: HTMLElement,
+  score: HTMLElement,
+  placeWords: HTMLElement,
+  featureWords: HTMLElement,
   positions: HTMLElement,
   rangesBox: HTMLElement,
   rangesLine: HTMLElement,
@@ -137,7 +155,18 @@ const CARD_PARTS = Object.freeze({
   offerNo: HTMLButtonElement,
   locksLine: HTMLElement,
   lockList: HTMLUListElement,
+  wordsJob: HTMLElement,
+  wordsBox: HTMLElement,
+  wordsSaid: HTMLElement,
+  wordsChanges: HTMLUListElement,
+  wordsKeep: HTMLButtonElement,
+  wordsUndo: HTMLButtonElement,
 });
+
+/** The field sets a card's words may set (0085), in the select's order. */
+const CARD_SETS = Object.entries(WORDS_SETS)
+  .filter(([, set]) => set.scope === WORDS_SCOPE.candidate)
+  .map(([name, set]) => ({ set: name, label: String(/** @type {any} */ (set).label) }));
 
 /** @typedef {{ less: HTMLButtonElement, clear: HTMLButtonElement, more: HTMLButtonElement }} MacroButtons */
 
@@ -187,6 +216,15 @@ const CARD_PARTS = Object.freeze({
  * @property {string[]} offered the macro lock paths its lock control offers; none while the
  *   offer is hidden
  * @property {boolean} locking whether a lock change from it is being sent
+ * @property {PendingWords | null} words a words answer filled in and not yet kept or undone
+ */
+
+/**
+ * A words answer on a card (0085): its set, the edit, and what the sliders held before.
+ * @typedef {object} PendingWords
+ * @property {string} set
+ * @property {import("./words-edits.js").WordsEdit} edit
+ * @property {import("./steer-sliders.js").SliderSnapshot | null} snapshot
  */
 
 /** @type {any} */
@@ -218,6 +256,8 @@ let posting = false;
 const openFolds = new Set();
 /** @type {SteeringView} the brief's directions and regions, as last read (decision 0056) */
 let steering = { reason: null, directions: [], regions: [] };
+/** @type {{ renderId: number, features: any }[]} each excerpt of the brief with its features (0085) */
+let excerptFeatures = [];
 
 /** @param {number} fraction */
 const percent = (fraction) => `${Math.round(fraction * 100)}%`;
@@ -296,11 +336,201 @@ function showRank(card) {
   const { rankBadge, wildcardBadge } = card.parts;
   rankBadge.hidden = place === null || ranking === null;
   wildcardBadge.hidden = place === null || ranking === null || !place.wildcard;
+  showVerdict(card);
   if (place === null || ranking === null) return;
   const shown = rankText(place, ranking.renderIds.length);
   rankBadge.textContent = shown.text;
   rankBadge.title = shown.title;
   wildcardBadge.title = shown.wildcard ?? "";
+}
+
+/**
+ * The card's rank and, for a search or steer point shown as one of its run's best, its score, as
+ * verdicts in words (0085); the score itself goes behind the numbers toggle.
+ * @param {Card} card
+ */
+function showVerdict(card) {
+  const { candidate, parts } = card;
+  /** @type {string[]} */
+  const lines = [];
+  const place = candidate.ranking;
+  if (place !== null && ranking !== null) {
+    lines.push(rankWords(place.rank, ranking.renderIds.length));
+  }
+  const score = candidate.search?.shown ? candidate.search.score : null;
+  if (score !== null) {
+    const run = candidate.operatorParams?.run;
+    const others = cards.flatMap((other) => {
+      const theirs = other.candidate;
+      const same =
+        other !== card &&
+        theirs.operator === candidate.operator &&
+        theirs.operatorParams?.run === run;
+      const theirScore = theirs.search?.score ?? null;
+      return same && theirScore !== null ? [theirScore] : [];
+    });
+    lines.push(searchScoreWords(score, others, String(candidate.operator)));
+  }
+  parts.verdict.textContent = lines.join(" ");
+  parts.verdict.hidden = lines.length === 0;
+  parts.score.textContent = score === null ? "" : `Score in its run: ${score.toFixed(2)}.`;
+  parts.score.hidden = score === null;
+}
+
+/** @param {any} features */
+const measuredFeatures = (features) => Boolean(features?.raw);
+
+/**
+ * The card's features against the rest of the brief, in words (0085).
+ * @param {Card} card
+ */
+function showFeatureWords(card) {
+  const { excerpt } = card.candidate;
+  const others = excerptFeatures
+    .filter(
+      ({ renderId, features }) => renderId !== excerpt?.renderId && measuredFeatures(features),
+    )
+    .map(({ features }) => features);
+  card.parts.featureWords.textContent =
+    excerpt && measuredFeatures(excerpt.features) ? featureWords(excerpt.features, others) : "";
+}
+
+/** Reads the features of every excerpt of the brief, which each card's words compare it with. */
+async function loadExcerptFeatures() {
+  ({ excerpts: excerptFeatures } = await getJson(
+    `${VIBES_PATH}/${session.vibeId}/excerpt-features`,
+  ));
+  for (const card of cards) showFeatureWords(card);
+}
+
+/**
+ * The card's values now for one of its field sets.
+ * @param {Card} card
+ * @param {string} name
+ * @returns {Record<string, unknown>}
+ */
+function wordsCurrent(card, name) {
+  const set = wordsSet(name);
+  if (set === WORDS_SETS.locks) return lockValues(lockChoices(card.candidate.genome), locks);
+  if (set === WORDS_SETS.macros) return macroValues(choicesOf(card).macros);
+  if (set === WORDS_SETS.steer) {
+    return Object.fromEntries(
+      [...card.sliders.settings()].map(([id, setting]) => [directionField(id), setting]),
+    );
+  }
+  throw new Error(`the page has no field set ${name}`);
+}
+
+/**
+ * Fills the card's Less / More buttons with a words answer not yet kept, over what the server
+ * last confirmed.
+ * @param {Card} card
+ */
+function showWordsFill(card) {
+  if (card.words === null || wordsSet(card.words.set) !== WORDS_SETS.macros) return;
+  for (const { macro, direction } of macroEdits(card.words.edit.changed)) {
+    const buttons = /** @type {MacroButtons} */ (card.macros[macro]);
+    buttons.less.setAttribute("aria-pressed", String(direction === LESS));
+    buttons.clear.setAttribute("aria-pressed", String(direction === null));
+    buttons.more.setAttribute("aria-pressed", String(direction === MORE));
+  }
+}
+
+/**
+ * Asks the model to read the card's words into one field set, then fills the card unsaved and
+ * shows what changed, with Keep and Undo (0085).
+ * @param {Card} card
+ * @param {string} set
+ * @param {string} words
+ * @param {import("./job-control.js").JobControl} control
+ */
+async function askWords(card, set, words, control) {
+  if (card.words !== null) throw new Error("Keep or undo the last words on this candidate first.");
+  const current = wordsCurrent(card, set);
+  const done = await runJob(status, {
+    path: `${VIBES_PATH}/${session.vibeId}/words`,
+    body: { set, words, current, candidateId: card.candidate.id },
+    controls: [control],
+    boxes: card.parts.wordsJob,
+    started: "The model is reading your words.",
+  });
+  if (done === null) return;
+  if (done.refused !== null) {
+    status.say("That answer was for another words request, so this candidate is left as it was.");
+    return;
+  }
+  const edit = applyWords(current, done.result.changes);
+  const snapshot =
+    wordsSet(set) === WORDS_SETS.steer ? card.sliders.fill(steerEdits(edit.changed)) : null;
+  card.words = { set, edit, snapshot };
+  showWordsFill(card);
+  const { parts } = card;
+  parts.wordsSaid.textContent = `The model read your words as: “${done.result.said}”`;
+  const lines = changeLines(set, edit.changed, {
+    choices: lockChoices(card.candidate.genome),
+    directions: steering.directions,
+  });
+  parts.wordsChanges.replaceChildren(
+    ...(lines.length > 0 ? lines : ["Nothing changes: the values are already so."]).map((line) => {
+      const item = document.createElement("li");
+      item.className = "item";
+      item.textContent = line;
+      return item;
+    }),
+  );
+  parts.wordsKeep.hidden = lines.length === 0;
+  parts.wordsBox.hidden = false;
+  status.say("Filled in from your words, unsaved. Press Keep to keep it or Undo to put it back.");
+}
+
+/**
+ * Keeps the card's words answer: sends the locks or the Less / More choices, or leaves the
+ * sliders set for Steer from here.
+ * @param {Card} card
+ */
+async function keepWords(card) {
+  const pending = card.words;
+  if (pending === null) return;
+  const set = wordsSet(pending.set);
+  const { changed } = pending.edit;
+  closeWords(card);
+  if (set === WORDS_SETS.locks) {
+    const { lock, unlock } = lockEdits(changed, locks);
+    await lockWork(card, async () => {
+      for (const path of lock)
+        await postJson(locksPath(), { candidateId: card.candidate.id, path });
+      for (const held of unlock) await postJson(`${locksPath()}/${held.id}/remove`, {});
+    });
+    status.say(`Kept: ${lock.length} locked and ${unlock.length} unlocked.`);
+  } else if (set === WORDS_SETS.macros) {
+    for (const { macro, direction } of macroEdits(changed)) {
+      await macroChoice(card, macro, direction);
+    }
+    status.say(`Kept the Less / More choices for ${card.label.toLowerCase()}.`);
+  } else {
+    status.say("Kept the sliders. Press Steer from here to steer toward them.");
+  }
+  card.steer.clear();
+}
+
+/**
+ * Puts back what the card had before its words answer. Nothing was saved.
+ * @param {Card} card
+ */
+function undoCardWords(card) {
+  const pending = card.words;
+  if (pending === null) return;
+  if (pending.snapshot !== null) card.sliders.restore(pending.snapshot);
+  closeWords(card);
+  showRated(card);
+  status.say("Put back as it was. Nothing was saved.");
+}
+
+/** @param {Card} card */
+function closeWords(card) {
+  card.words = null;
+  card.parts.wordsBox.hidden = true;
+  showPairs();
 }
 
 /**
@@ -326,6 +556,7 @@ function showRated(card) {
   showRank(card);
   showPlayed(card);
   showMarks(card);
+  showWordsFill(card);
 }
 
 /** @param {Card} card */
@@ -597,6 +828,7 @@ function showExcerpt(card) {
   parts.missing.hidden = Boolean(excerpt);
   parts.played.textContent = "";
   parts.features.textContent = excerpt ? featuresText(excerpt.features) : "";
+  showFeatureWords(card);
   showRanges(card);
   if (excerpt && card.tracker) {
     parts.audio.src = excerpt.url;
@@ -974,6 +1206,7 @@ function makeCard(candidate, number, revised) {
       sessionId: () => sessionId,
       start: startSteer,
       run: status.run,
+      words: { sets: CARD_SETS, ask: (set, words, control) => askWords(card, set, words, control) },
     }),
     sliders: steerSliders({
       candidateId: candidate.id,
@@ -983,7 +1216,10 @@ function makeCard(candidate, number, revised) {
     }),
     offered: [],
     locking: false,
+    words: null,
   };
+  parts.wordsKeep.onclick = () => status.run(() => keepWords(card));
+  parts.wordsUndo.onclick = () => undoCardWords(card);
   parts.heading.textContent = card.label;
   parts.rowId.textContent = `#${candidate.id}`;
   parts.intent.textContent = intentText(candidate);
@@ -1121,6 +1357,7 @@ async function follow(job) {
         ? "The job is done. Play the candidates and rate them."
         : endedText(finished),
     );
+    await loadExcerptFeatures();
     await loadSteering();
   } finally {
     // A failed poll leaves the job unfinished in `jobs`, which would keep the buttons off until
@@ -1195,7 +1432,7 @@ function isEditing(card) {
       tags.value.trim() !== "" ||
       card.steer.unsent() ||
       card.sliders.unsent(),
-    pending: card.busy || card.locking || card.offered.length > 0,
+    pending: card.busy || card.locking || card.offered.length > 0 || card.words !== null,
   });
 }
 
@@ -1307,6 +1544,9 @@ function showSteering(card) {
   const line = positionsLine(steering.directions, renderId);
   card.parts.positions.textContent = line;
   card.parts.positions.hidden = line === "";
+  const words = positionsWords(steering.directions, renderId);
+  card.parts.placeWords.textContent = words;
+  card.parts.placeWords.hidden = words === "";
   card.sliders.show(steering, renderId);
 }
 
@@ -1449,6 +1689,7 @@ status.run(async () => {
   );
   for (const job of unfinished) status.run(() => follow(job));
   showControls();
+  await loadExcerptFeatures();
   // Last, since it may start the sound analysis: a failure there leaves the rest of the page.
   await loadSteering();
 });
