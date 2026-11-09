@@ -4,6 +4,7 @@
 /** @import { JobStatus } from "./job-progress.js" */
 import { cloneTemplate } from "./clone-template.js";
 import { jobProgress } from "./job-progress.js";
+import { showProgress } from "./progress-bar.js";
 
 /** The badge classes in studio.css that color a badge. */
 export const TONE = Object.freeze({ good: "good", bad: "bad", muted: "muted" });
@@ -53,11 +54,7 @@ export function jobBox(onCancel) {
       parts.error.hidden = progress.error === null;
       parts.error.textContent = progress.error ?? "";
       parts.cancel.hidden = progress.finished;
-      const percent = progress.fraction === null ? null : Math.round(progress.fraction * 100);
-      parts.bar.classList.toggle("unknown", percent === null && !progress.finished);
-      parts.fill.style.width = `${progress.finished ? 100 : (percent ?? 0)}%`;
-      if (percent === null) parts.bar.removeAttribute("aria-valuenow");
-      else parts.bar.setAttribute("aria-valuenow", String(percent));
+      showProgress(parts.bar, parts.fill, progress.fraction, progress.finished);
     },
   };
 }

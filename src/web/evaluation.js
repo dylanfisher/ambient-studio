@@ -45,6 +45,7 @@ import {
 import { statusLine } from "./status-line.js";
 import { tasteTestView } from "./taste-test-view.js";
 import { costText } from "./test-cost.js";
+import "./topbar-jobs.js";
 
 const status = statusLine();
 const page = elementsById({

@@ -29,6 +29,7 @@ import { ORDER_MODES } from "./quick-ab-order.js";
 import { createQuickAbSession, nameOf, PHASE, unloadGuard } from "./quick-ab-session.js";
 import { createSpotSession, NO_SPOT_UNDO, SPOT_NAMES } from "./quick-ab-spot.js";
 import { statusLine } from "./status-line.js";
+import "./topbar-jobs.js";
 
 const [, , TIE, SKIP] = OUTCOMES;
 const [CHAMPION, RANDOM, BEST] = ORDER_MODES;

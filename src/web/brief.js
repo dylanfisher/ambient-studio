@@ -71,6 +71,7 @@ import {
   targetValues,
 } from "./target-fields.js";
 import { sectionCount } from "./timeline-layout.js";
+import "./topbar-jobs.js";
 
 const [MORE] = MACRO_DIRECTIONS;
 /** The form controls the constraint fields are made of. */
@@ -326,6 +327,23 @@ function lineItem(text, at) {
   return item.root;
 }
 
+/**
+ * A note for the model, with Remove.
+ * @param {{ id: number, text: string, createdAt: number }} note
+ */
+function noteItem({ id, text, createdAt }) {
+  const item = cloneTemplate("note-item", {
+    line: HTMLElement,
+    time: HTMLElement,
+    remove: HTMLButtonElement,
+  });
+  item.line.textContent = text;
+  item.time.textContent = `· ${formatTime(createdAt)}`;
+  const removeThis = oneAtATime(() => removeNote(id));
+  item.remove.onclick = () => status.run(removeThis);
+  return item.root;
+}
+
 /** @param {number} fraction */
 const percent = (fraction) => `${Math.round(fraction * 100)}%`;
 
@@ -524,9 +542,7 @@ async function load(id) {
       return item.root;
     }),
   );
-  page.noteList.replaceChildren(
-    ...vibe.notes.map((/** @type {any} */ note) => lineItem(note.text, note.createdAt)),
-  );
+  page.noteList.replaceChildren(...vibe.notes.map(noteItem));
   showRatings(ratings);
   showSketches(ratings.sketches);
   void showLiked(id);
@@ -768,6 +784,14 @@ const addNote = oneAtATime(async () => {
   await load(id);
   status.say("Note added.");
 });
+
+/** @param {number} noteId */
+async function removeNote(noteId) {
+  const id = savedId();
+  await postJson(`${VIBES_PATH}/${id}/notes/${noteId}/remove`, {});
+  await load(id);
+  status.say("Removed the note. Later requests for candidates leave it out.");
+}
 
 // Fills the ranges form only; the owner's Save is the one write.
 const setRangesFromRegion = oneAtATime(async () => {

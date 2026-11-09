@@ -53,6 +53,7 @@ import { keepOnClick, scrollMemory } from "./scroll-memory.js";
 import { statusLine } from "./status-line.js";
 import { steerControls } from "./steer-controls.js";
 import { steerSliders } from "./steer-sliders.js";
+import "./topbar-jobs.js";
 
 const [UP, DOWN] = THUMBS;
 const [MORE, LESS] = MACRO_DIRECTIONS;

@@ -1,6 +1,6 @@
-// The vibe routes (decision 0027): create, list, read, edit as a new revision, notes, the vibe's
-// ratings, and starting a session; and the seed vibes, loaded as new vibes (0030). An edit never
-// changes a row: it appends a revision (0021).
+// The vibe routes (decision 0027): create, list, read, edit as a new revision, notes and their
+// removal, the vibe's ratings, and starting a session; and the seed vibes, loaded as new vibes
+// (0030). An edit never changes a row: it appends a revision (0021); a removed note is marked.
 /** @import { Route } from "./routing.js" */
 /** @import { Store } from "./store.js" */
 /** @import { Vibe, VibeDraft } from "./vibe-store.js" */
@@ -16,10 +16,12 @@ import { getSession, listSessions, startSession } from "./session-store.js";
 import {
   addNote,
   createVibe,
+  getNote,
   getVibe,
   listNotes,
   listRevisions,
   listVibes,
+  removeNote,
   reviseVibe,
   VIBE_DRAFT_FIELD,
 } from "./vibe-store.js";
@@ -156,6 +158,22 @@ export const VIBE_ROUTES = [
       const vibe = requireVibe(app.store, params);
       const given = fields(await body(), ["text"]);
       return addNote(app.store, { vibeId: vibe.id, text: text(given, "text", MAX_CHARS.note) });
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/vibes/:vibeId/notes/:noteId/remove",
+    handle: async ({ app, params, body }) => {
+      const vibe = requireVibe(app.store, params);
+      const id = idParam(params, "noteId");
+      fields(await body(), []);
+      const note = getNote(app.store, id);
+      if (note?.vibeId !== vibe.id) throw new HttpError(404, `vibe ${vibe.id} has no note ${id}`);
+      if (note.removedAt !== null) {
+        throw new HttpError(400, `note ${id} was ${note.removedReason} already`);
+      }
+      removeNote(app.store, id);
+      return { note: getNote(app.store, id) };
     },
   },
   {

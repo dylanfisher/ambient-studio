@@ -53,6 +53,7 @@ import { blockText, sectionCount, timelineLayout } from "./timeline-layout.js";
 import { drawTimeline } from "./timeline-view.js";
 import { stemsText, trackRenderText } from "./track-render-text.js";
 import { curveWords, transitionText } from "./transition-text.js";
+import "./topbar-jobs.js";
 
 const status = statusLine();
 const page = elementsById({

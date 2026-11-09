@@ -1,6 +1,6 @@
 // Vibes, their revisions and their notes (decision 0021).
 /** @import { Removable, Store } from "./store.js" */
-import { insertRow, selectRow, selectRows, TABLE, transaction } from "./store.js";
+import { insertRow, markRemoved, selectRow, selectRows, TABLE, transaction } from "./store.js";
 
 /**
  * What the owner edits: every edit appends a revision.
@@ -40,6 +40,9 @@ export const VIBE_DRAFT_FIELD = Object.freeze({
 const VIBES = { json: [] };
 const REVISIONS = { json: [VIBE_DRAFT_FIELD.constraints, VIBE_DRAFT_FIELD.softTargets] };
 const NOTES = { json: [] };
+
+/** Why a note was marked removed: the owner removed it. */
+const NOTE_REMOVED = "removed";
 
 /**
  * @param {Store} store
@@ -144,3 +147,21 @@ export function addNote(store, { vibeId, text }) {
 export function listNotes(store, vibeId) {
   return /** @type {Note[]} */ (selectRows(store, TABLE.notes, NOTES, { vibeId }));
 }
+
+/**
+ * The note, removed or not, or undefined when there is none.
+ * @param {Store} store
+ * @param {number} id
+ * @returns {Note | undefined}
+ */
+export function getNote(store, id) {
+  return selectRow(store, TABLE.notes, NOTES, id);
+}
+
+/**
+ * Marks a live note removed by the owner, so later requests for candidates leave it out.
+ * Throws when it doesn't exist or was removed.
+ * @param {Store} store
+ * @param {number} id
+ */
+export const removeNote = (store, id) => markRemoved(store, TABLE.notes, id, NOTE_REMOVED);

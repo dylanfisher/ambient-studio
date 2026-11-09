@@ -28,6 +28,7 @@ import {
   spanQuery,
 } from "./region-form.js";
 import { statusLine } from "./status-line.js";
+import "./topbar-jobs.js";
 
 /**
  * A kept recording, as the reference routes send it.

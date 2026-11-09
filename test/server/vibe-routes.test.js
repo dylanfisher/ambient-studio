@@ -1,5 +1,5 @@
-// The vibe routes (decision 0027): create, list, read, edit as a new revision, and notes; and
-// loading the seed vibes (0030).
+// The vibe routes (decision 0027): create, list, read, edit as a new revision, and notes and their
+// removal; and loading the seed vibes (0030).
 /** @import { SeedVibe } from "../../src/domain/seed-vibes.js" */
 /** @import { TestServer } from "../support/http-client.js" */
 import { afterEach, expect, test } from "vitest";
@@ -40,6 +40,25 @@ test("a vibe is created, listed and read with its notes and sessions", async () 
     notes: [note],
     sessions: [session],
   });
+});
+
+test("a removed note is marked, not deleted, and the vibe stops listing it", async () => {
+  const { server, ok } = await setup();
+  const vibe = await ok("POST", "/api/vibes", VIBE);
+  const other = await ok("POST", "/api/vibes", VIBE);
+  const kept = await ok("POST", `/api/vibes/${vibe.id}/notes`, { text: "less shimmer" });
+  const gone = await ok("POST", `/api/vibes/${vibe.id}/notes`, { text: "more hiss" });
+  const remove = `/api/vibes/${vibe.id}/notes/${gone.id}/remove`;
+  expect(
+    (await server.api("POST", `/api/vibes/${other.id}/notes/${gone.id}/remove`, {})).status,
+  ).toBe(404);
+  const { note } = await ok("POST", remove, {});
+  expect(note).toMatchObject({ id: gone.id, text: "more hiss", removedReason: "removed" });
+  expect(note.removedAt).toEqual(expect.any(Number));
+  expect((await ok("GET", `/api/vibes/${vibe.id}`)).notes).toEqual([kept]);
+  const again = await server.api("POST", remove, {});
+  expect(again.status).toBe(400);
+  expect(again.json().error).toMatch(/already/);
 });
 
 test("an edit appends a revision and keeps the one before", async () => {

@@ -14,6 +14,7 @@ import { lineageTree } from "./lineage-tree.js";
 import { intentText, operatorLabel, originText, rejectText } from "./origin-text.js";
 import { statusLine } from "./status-line.js";
 import { steerControls } from "./steer-controls.js";
+import "./topbar-jobs.js";
 
 const status = statusLine();
 const page = elementsById({

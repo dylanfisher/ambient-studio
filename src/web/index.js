@@ -8,6 +8,7 @@ import { elementsById } from "./element-by-id.js";
 import { formatTime } from "./format-time.js";
 import { oneAtATime } from "./one-at-a-time.js";
 import { statusLine } from "./status-line.js";
+import "./topbar-jobs.js";
 
 const status = statusLine();
 const page = elementsById({
