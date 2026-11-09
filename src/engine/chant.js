@@ -158,10 +158,15 @@ const PARAMS = Object.freeze({
 /** Harmonics of the snapped root up to this; a bend of +200 cents takes the top one to 3.4 kHz. */
 const TOP_HZ = 3000;
 /**
- * How many half-integer harmonics, 0.5, 1.5 … of `hz`, lie under `TOP_HZ`.
+ * Half-integer harmonics up to this. Above it, at growl 1 and any vowel, they hold 29 to 37 dB
+ * less power than those below, and each costs as much as one below (decision 0088).
+ */
+const HALF_TOP_HZ = 1500;
+/**
+ * How many half-integer harmonics, 0.5, 1.5 … of `hz`, lie under `HALF_TOP_HZ`.
  * @param {number} hz
  */
-const halfHarmonics = (hz) => Math.floor(TOP_HZ / hz + 0.5);
+const halfHarmonics = (hz) => Math.floor(HALF_TOP_HZ / hz + 0.5);
 
 /**
  * The two vowel resonances at vowel 0, 0.5 and 1, a dark "oo", an "oh" and an open "ah" of a low
