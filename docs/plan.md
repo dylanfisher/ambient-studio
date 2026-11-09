@@ -4306,3 +4306,19 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   ratings list left the page-numbers allowlist; only the track page and an earlier version's
   constraints remain on it (0086). `./scripts/check` clean: 2,686 tests. Pending owner check in
   Safari 17.6: each page with the numbers closed and open, and the bands (played 0.3/0.7/0.95).
+- 2026-11-09: retrospective after TD.3, CG.2, WF.2b, TD.5, WF.3 and WF.4 (orchestrator rule 11).
+  - Three of the six first reviews failed (CG.2, TD.5, WF.3), each on a check the builder's own
+    tests didn't reach: a cost timed round-robin in one process, values shown at 3 digits against
+    an exact compare, and a lock order the route reads. Reviewer briefs should name the exact
+    comparison or measurement the change depends on and ask for a test that crosses it.
+  - Prompt budgets are the tightest limit now: the develop prompt has 77 tokens left, the bridge
+    4,071 of 4,096, the locks set about 4,055. Every brief that adds prompt text names the
+    headroom it may use, and a builder that runs out narrows its own text first.
+  - Builders that merged main in partway (TD.3, TD.5) took about 60–100 min against 30–45 for
+    the rest. Starting the next render-path step only after the one before it merges keeps those
+    merges small.
+  - One reviewer resent its report three times and one builder's report never came; the
+    orchestrator stopped the first and read the second's diff. When a builder is quiet, read its
+    branch before asking it.
+  - Wall time: TD.3 98 min, CG.2 with its fix about 70, WF.2b about 35, TD.5 61, WF.3 43, WF.4
+    29; reviews 4–21 min.
