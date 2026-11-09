@@ -5,11 +5,10 @@
 // a drag stops at the point's neighbors and the offset's range, since it moves the one point
 // the owner moved.
 /** @import { Arrangement } from "../domain/arrangement-schema.js" */
-/** @import { Lane, LanePoint } from "../domain/lane-schema.js" */
+/** @import { LanePoint } from "../domain/lane-schema.js" */
 /** @import { MacroName } from "../engine/macro-table.js" */
 /** @import { Curve } from "../engine/trajectory.js" */
-import { LANE_OFFSET, laneOffsetAt } from "../domain/lane-schema.js";
-import { MACROS } from "../engine/genome-schema.js";
+import { LANE_OFFSET, laneOffsetAt, withLanePoints } from "../domain/lane-schema.js";
 import { CURVES, DEFAULT_CURVE } from "../engine/trajectory.js";
 
 /** How far a key or a step button moves a point's offset. */
@@ -26,9 +25,6 @@ const tenths = (value) => Math.round(value * 10) / 10;
 /** @param {number} value */
 const hundredths = (value) => Math.round(value * 100) / 100;
 
-/** @type {readonly string[]} */
-const ORDER = Object.keys(MACROS);
-
 /**
  * The lane's breakpoints; none when the macro has no lane.
  * @param {Arrangement} arrangement
@@ -37,23 +33,6 @@ const ORDER = Object.keys(MACROS);
  */
 export const lanePoints = (arrangement, macro) =>
   arrangement.lanes.find((lane) => lane.macro === macro)?.points ?? [];
-
-/**
- * The arrangement with the macro's lane holding `points`: made when it had none, gone when
- * `points` is empty. The first point never names a curve.
- * @param {Arrangement} arrangement
- * @param {MacroName} macro
- * @param {LanePoint[]} points
- * @returns {Arrangement}
- */
-function withPoints(arrangement, macro, points) {
-  const [first, ...rest] = points;
-  const others = arrangement.lanes.filter((lane) => lane.macro !== macro);
-  /** @type {Lane[]} */
-  const lanes = first ? [...others, { macro, points: [[first[0], first[1]], ...rest] }] : others;
-  lanes.sort((a, b) => ORDER.indexOf(a.macro) - ORDER.indexOf(b.macro));
-  return { ...arrangement, lanes };
-}
 
 /**
  * Adds a point after point `after`, or after the last when null: halfway to the next one, or
@@ -69,7 +48,7 @@ function withPoints(arrangement, macro, points) {
 export function addPoint(arrangement, macro, after, length) {
   const points = lanePoints(arrangement, macro);
   if (points.length === 0)
-    return { arrangement: withPoints(arrangement, macro, [[0, 0]]), index: 0 };
+    return { arrangement: withLanePoints(arrangement, macro, [[0, 0]]), index: 0 };
   const index = after ?? points.length - 1;
   const [time] = /** @type {LanePoint} */ (points[index]);
   const next = points[index + 1];
@@ -78,7 +57,7 @@ export function addPoint(arrangement, macro, after, length) {
   /** @type {LanePoint} */
   const point = [at, hundredths(laneOffsetAt(points, at)), DEFAULT_CURVE];
   return {
-    arrangement: withPoints(arrangement, macro, points.toSpliced(index + 1, 0, point)),
+    arrangement: withLanePoints(arrangement, macro, points.toSpliced(index + 1, 0, point)),
     index: index + 1,
   };
 }
@@ -94,7 +73,7 @@ export function addPoint(arrangement, macro, after, length) {
 export function removePoint(arrangement, macro, index) {
   const points = lanePoints(arrangement, macro).toSpliced(index, 1);
   return {
-    arrangement: withPoints(arrangement, macro, points),
+    arrangement: withLanePoints(arrangement, macro, points),
     index: points.length === 0 ? null : Math.max(0, index - 1),
   };
 }
@@ -113,7 +92,7 @@ export function setPoint(arrangement, macro, index, { time, offset }) {
     const [t, v, ...curve] = point;
     return /** @type {LanePoint} */ ([time ?? t, offset ?? v, ...curve]);
   });
-  return withPoints(arrangement, macro, points);
+  return withLanePoints(arrangement, macro, points);
 }
 
 /**
@@ -155,5 +134,5 @@ export function nextPointCurve(arrangement, macro, index) {
     const at = names.indexOf(/** @type {Curve} */ (curve));
     return /** @type {LanePoint} */ ([time, offset, names[(at + 1) % names.length]]);
   });
-  return withPoints(arrangement, macro, points);
+  return withLanePoints(arrangement, macro, points);
 }
