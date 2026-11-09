@@ -2,7 +2,8 @@
 // its rules, from the arrangement's own descriptors, and a user message with the brief, the
 // length and arc the owner asked for, a reference region's numbers stretched over the track, and
 // one line per piece of material, at most `MAX_MATERIAL_LINES`, with no genomes, so the context
-// stays short. The repair round quotes the errors back as a follow-up turn (0024, 0036).
+// stays short. The answer gives every section and transition a line of text drawn from the arc
+// (0082). The repair round quotes the errors back as a follow-up turn (0024, 0036).
 /** @import { Features } from "./extract-features.js" */
 /** @import { FeatureName } from "./feature-names.js" */
 /** @import { ChatMessage } from "./prompt-tokens.js" */
@@ -14,10 +15,12 @@ import { MAX_DURATION } from "../engine/timeline.js";
 import { CURVES } from "../engine/trajectory.js";
 import {
   ARRANGEMENT_KEY,
+  MAX_TEXT_CHARS,
   MAX_TRACK_SECONDS,
   MORPH_CURVE,
   SECTION_FIELDS,
   SECTION_KEY,
+  TEXT_KEY,
   TRANSITION_KEYS,
   TRANSITION_KIND,
   TRANSITION_SECONDS,
@@ -209,7 +212,9 @@ const [KIND, SECONDS, CURVE] = /** @type {[string, string, string]} */ (
 const [MACRO, POINTS] = /** @type {[string, string]} */ (LANE_FIELDS);
 /** @param {string} key */
 const at = (key) => JSON.stringify(key);
-const ARRANGE_FORMAT = `{${at(ARRANGEMENT_KEY.sections)}: [{${at(SECTION_KEY.sketchId)}: <a sketch's id>, ${at(SECTION_KEY.offset)}: <seconds>, ${at(SECTION_KEY.seconds)}: <seconds>}, …], ${at(ARRANGEMENT_KEY.transitions)}: [{${at(KIND)}: ${at(TRANSITION_KIND.crossfade)}, ${at(SECONDS)}: <seconds>} or {${at(KIND)}: ${at(TRANSITION_KIND.morph)}, ${at(SECONDS)}: <seconds>, ${at(CURVE)}: ${at(MORPH_CURVE)}}, …], ${at(ARRANGEMENT_KEY.lanes)}: [{${at(MACRO)}: "<macro>", ${at(POINTS)}: [[<track seconds>, <offset>], [<track seconds>, <offset>, "<curve>"], …]}, …]}`;
+const SECTION_TEXT = `${at(TEXT_KEY)}: "<what happens here>"`;
+const TRANSITION_TEXT = `${at(TEXT_KEY)}: "<how one becomes the next>"`;
+const ARRANGE_FORMAT = `{${at(ARRANGEMENT_KEY.sections)}: [{${at(SECTION_KEY.sketchId)}: <a sketch's id>, ${at(SECTION_KEY.offset)}: <seconds>, ${at(SECTION_KEY.seconds)}: <seconds>, ${SECTION_TEXT}}, …], ${at(ARRANGEMENT_KEY.transitions)}: [{${at(KIND)}: ${at(TRANSITION_KIND.crossfade)}, ${at(SECONDS)}: <seconds>, ${TRANSITION_TEXT}} or {${at(KIND)}: ${at(TRANSITION_KIND.morph)}, ${at(SECONDS)}: <seconds>, ${at(CURVE)}: ${at(MORPH_CURVE)}, ${TRANSITION_TEXT}}, …], ${at(ARRANGEMENT_KEY.lanes)}: [{${at(MACRO)}: "<macro>", ${at(POINTS)}: [[<track seconds>, <offset>], [<track seconds>, <offset>, "<curve>"], …]}, …]}`;
 
 const { offset, seconds } = SECTION_FIELDS;
 const curves = Object.keys(CURVES).join(", ");
@@ -223,6 +228,7 @@ const SYSTEM = [
   `- "${SECTION_KEY.offset}" is where the section starts on its material's own timeline, from ${offset.min} s and under the material's duration. "${SECTION_KEY.seconds}" is how long it plays, ${seconds.min} to ${seconds.max} s; past the material's end it is extended, but offset plus seconds is at most ${MAX_DURATION} s.`,
   `- Give exactly one transition between each pair of neighboring sections, in order: ${TRANSITION_KIND.crossfade} fades one into the next; ${TRANSITION_KIND.morph} moves the first one's settings into the second's, and is at least ${MORPH_LEAST} s. A transition is ${TRANSITION_SECONDS.min} s or more, and at most half the shorter of its two sections.`,
   `- The track plays ${LENGTH_RULE}, at most ${MAX_TRACK_SECONDS} s.`,
+  `- Give every section and every transition its ${at(TEXT_KEY)}: one short line, at most ${MAX_TEXT_CHARS} characters, drawn from the owner's arc. For a section, what happens there; for a transition, how the section before it becomes the one after. Each section is later developed from its line.`,
   `- Lanes are optional: at most one per macro (${Object.keys(MACROS).join(", ")}), each at most ${LANE_MOST_POINTS} points with track times rising from 0. A point's offset, ${LANE_OFFSET.min} to ${LANE_OFFSET.max}, is added to each section's own macro there. The first point is [seconds, offset]; every later one names the curve into it, one of ${curves}. Give "${ARRANGEMENT_KEY.lanes}": [] for none.`,
 ].join("\n");
 
@@ -250,7 +256,7 @@ function messages({ name, brief, length, arc, reference, material }) {
       `The material, ${material.length === 1 ? "1 line" : `${material.length} lines`}, each with its duration, intent, and the owner's notes and tags. ${MATERIAL_LEGEND}`,
       ...material.map(materialLine),
     ].join("\n"),
-    "Arrange the track: follow the arc over the length asked for.",
+    "Arrange the track: follow the arc over the length asked for, and write each part's line.",
   ].join("\n\n");
   return [
     { role: ROLE.system, content: SYSTEM },

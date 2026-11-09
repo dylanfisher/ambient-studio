@@ -14,15 +14,18 @@ import {
   MAX_MATERIAL_LINES,
   materialLine,
 } from "../../src/domain/arrange-prompt.js";
-import { MAX_ARC_CHARS } from "../../src/domain/arrangement-schema.js";
+import { MAX_ARC_CHARS, MAX_TEXT_CHARS } from "../../src/domain/arrangement-schema.js";
 import { estimateTokens, promptText, ROLE } from "../../src/domain/prompt-tokens.js";
 import { MACROS } from "../../src/engine/genome-schema.js";
 
 /** Half the context budget: the other half is left for the repair round (0024). */
 const BUDGET = example.queue.contextBudgetTokens / 2;
 
-/** The first prompt's stated size with 24 full lines, a 600-character brief and the longest arc. */
-const STATED_TOKENS = 3600;
+/**
+ * The first prompt's stated size with 24 full lines, a 600-character brief, the longest arc and
+ * a 40-window region: 3,661 tokens measured once the answer asks for text (0082).
+ */
+const STATED_TOKENS = 3700;
 
 /** @type {Features} */
 const features = {
@@ -130,6 +133,18 @@ describe("the prompt", () => {
       /over its 200-token budget/,
     );
     expect(() => buildArrangePrompt({ ...ask, material: [] })).toThrow(/at least one/);
+  });
+
+  test("asks for one short line of text on every section and transition, drawn from the arc (0082)", () => {
+    const [system] = buildArrangePrompt({ ...ask, material: [item({})] }).messages;
+    const rules = system?.content ?? "";
+    // The answer format names text on a section and on each kind of transition.
+    const format = rules.split("\n").find((line) => line.startsWith("Answer with")) ?? "";
+    expect(format.match(/"text": "</g)).toHaveLength(3);
+    expect(rules).toContain(
+      `- Give every section and every transition its "text": one short line, at most ${MAX_TEXT_CHARS} characters`,
+    );
+    expect(rules).toMatch(/drawn from the owner's arc/);
   });
 
   test("leaves the reference section out with no region", () => {

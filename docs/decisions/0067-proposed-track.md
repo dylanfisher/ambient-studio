@@ -8,7 +8,9 @@
   [0074](0074-draft-brief-from-words.md) (`judgeProposal`'s parse step shared as `judgeAnswer`)
   and [0077](0077-section-and-transition-text.md) (empty text on each section and transition of
   the answer before it is checked) and [0079](0079-develop-a-section.md) (the repair round shared
-  as `answerWithRepair`; no development on a proposed section)
+  as `answerWithRepair`; no development on a proposed section) and
+  [0082](0082-develop-the-whole-track.md) (the answer holds a line of text on every section and
+  transition; the first prompt's largest is 3,661 tokens, held under 3,700)
 
 ## Context
 
@@ -160,3 +162,6 @@ apart. It is read from the rows, so the owner's run is logged by making it.
   here. Rejected: stating the sum the sections must reach in the prompt, since the repair
   already named the span and the model still missed it; asking for track start times in place
   of seconds, a new answer shape for a problem the server can solve exactly.
+- 2026-11-09: the answer gives every section and transition its `text`, one short line drawn
+  from the arc, and a part without it is a finding (0082). Measured with the new answer format and
+  rule, the largest first prompt is 3,661 tokens, up from 3,544; the test holds it under 3,700.

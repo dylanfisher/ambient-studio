@@ -80,91 +80,116 @@ function sketchOffset({ store }, { offset, developmentId }) {
  */
 export function developJob(app, { track, revisionId, arrangement, index }) {
   return async (job) => {
-    const { store, config } = app;
     const queue = ownedBy(app.queue, job.signal);
     const cancelRequests = () => queue.cancel();
     job.signal.addEventListener("abort", cancelRequests);
     try {
-      job.progress(0, 1, JOB_STEP.readingSection);
-      const section = arrangement.sections[index];
-      if (!section) throw new Error(`there is no section ${index + 1}`);
-      const sketch = getSketch(store, section.sketchId);
-      if (!sketch) throw new Error(`there is no sketch ${section.sketchId}`);
-      const { candidate, genome: stored } = sketchParts(store, sketch);
-      const genome = requireGenome(stored, `sketch ${sketch.id}'s genome`);
-      const readings = sketchReadings(app, candidate, stored);
-      const { genomes } = sectionSources(store, arrangement);
-      const previous = arrangement.sections[index - 1];
-      const next = arrangement.sections[index + 1];
-      const { revision, constraints, ranges } = currentRevision(store, track.vibeId);
-      const offset = sketchOffset(app, section);
-      const built = buildDevelopPrompt({
-        revision: { name: revision.name, brief: revision.brief, constraints, ranges },
-        arc: arrangement.arc,
+      const { development, generationId, repaired, left } = await developSection(app, job, {
+        track,
+        arrangement,
         index,
-        count: arrangement.sections.length,
-        section: { offset, seconds: section.seconds, text: section.text },
-        sketch: { id: sketch.id, genome, reading: readings.sketch, lineage: readings.lineage },
-        before:
-          previous === undefined
-            ? null
-            : meetingState(
-                fittedGenome(arrangement, index - 1, genomes),
-                previous.offset + previous.seconds,
-                MEETING_EDGE.end,
-              ),
-        after:
-          next === undefined
-            ? null
-            : meetingState(
-                fittedGenome(arrangement, index + 1, genomes),
-                next.offset,
-                MEETING_EDGE.start,
-              ),
-        budgetTokens: Math.floor(config.queue.contextBudgetTokens * FIRST_PROMPT_SHARE),
-      });
-      job.signal.throwIfAborted();
-      /** @type {DevelopmentAsk} */
-      const ask = {
-        seconds: section.seconds,
-        constraints,
-        recordings: new Set(recordingRefs(genome).map(({ hash }) => hash)),
-      };
-      const { generation, developed, repaired } = await askDevelopment(app, job, {
-        vibeId: track.vibeId,
-        vibeRevisionId: revision.id,
         queue,
-        messages: built.messages,
-        ask,
         progress: { done: 0, of: 1 },
       });
-      const development = transaction(store, () =>
-        addDevelopment(store, {
-          trackId: track.id,
-          sketchId: sketch.id,
-          text: section.text,
-          offset,
-          seconds: section.seconds,
-          genomeId: putGenome(store, track.vibeId, developed).id,
-          seed: candidate.seed,
-          generationId: generation.id,
-          bridge: false,
-        }),
-      );
       job.progress(1, 1, null);
       return {
         developmentId: development.id,
         trackId: track.id,
         revisionId,
         index,
-        generationId: generation.id,
+        generationId,
         repaired,
-        left: built.left,
+        left,
       };
     } finally {
       job.signal.removeEventListener("abort", cancelRequests);
     }
   };
+}
+
+/**
+ * Develops one section of `arrangement` and stores the development: the prompt read from the
+ * stored rows, the neighbors met as the arrangement plays them (developed or not), one request
+ * and at most one repair. Throws when the answer is still invalid, or when the job was
+ * cancelled, storing nothing. Develop every section (0082) calls it once a section.
+ * @param {App} app
+ * @param {JobContext} job
+ * @param {object} request
+ * @param {{ id: number, vibeId: number }} request.track
+ * @param {Arrangement} request.arrangement valid, its developments stored
+ * @param {number} request.index the section's, from 0
+ * @param {OmlxQueue} request.queue the job's own, `ownedBy` its signal
+ * @param {{ done: number, of: number }} request.progress the job's progress while it asks
+ */
+export async function developSection(app, job, { track, arrangement, index, queue, progress }) {
+  const { store, config } = app;
+  job.progress(progress.done, progress.of, JOB_STEP.readingSection);
+  const section = arrangement.sections[index];
+  if (!section) throw new Error(`there is no section ${index + 1}`);
+  const sketch = getSketch(store, section.sketchId);
+  if (!sketch) throw new Error(`there is no sketch ${section.sketchId}`);
+  const { candidate, genome: stored } = sketchParts(store, sketch);
+  const genome = requireGenome(stored, `sketch ${sketch.id}'s genome`);
+  const readings = sketchReadings(app, candidate, stored);
+  const { genomes } = sectionSources(store, arrangement);
+  const previous = arrangement.sections[index - 1];
+  const next = arrangement.sections[index + 1];
+  const { revision, constraints, ranges } = currentRevision(store, track.vibeId);
+  const offset = sketchOffset(app, section);
+  const built = buildDevelopPrompt({
+    revision: { name: revision.name, brief: revision.brief, constraints, ranges },
+    arc: arrangement.arc,
+    index,
+    count: arrangement.sections.length,
+    section: { offset, seconds: section.seconds, text: section.text },
+    sketch: { id: sketch.id, genome, reading: readings.sketch, lineage: readings.lineage },
+    before:
+      previous === undefined
+        ? null
+        : meetingState(
+            fittedGenome(arrangement, index - 1, genomes),
+            previous.offset + previous.seconds,
+            MEETING_EDGE.end,
+          ),
+    after:
+      next === undefined
+        ? null
+        : meetingState(
+            fittedGenome(arrangement, index + 1, genomes),
+            next.offset,
+            MEETING_EDGE.start,
+          ),
+    budgetTokens: Math.floor(config.queue.contextBudgetTokens * FIRST_PROMPT_SHARE),
+  });
+  job.signal.throwIfAborted();
+  /** @type {DevelopmentAsk} */
+  const ask = {
+    seconds: section.seconds,
+    constraints,
+    recordings: new Set(recordingRefs(genome).map(({ hash }) => hash)),
+  };
+  const { generation, developed, repaired } = await askDevelopment(app, job, {
+    vibeId: track.vibeId,
+    vibeRevisionId: revision.id,
+    queue,
+    messages: built.messages,
+    ask,
+    progress,
+  });
+  const development = transaction(store, () =>
+    addDevelopment(store, {
+      trackId: track.id,
+      sketchId: sketch.id,
+      text: section.text,
+      offset,
+      seconds: section.seconds,
+      genomeId: putGenome(store, track.vibeId, developed).id,
+      seed: candidate.seed,
+      generationId: generation.id,
+      bridge: false,
+    }),
+  );
+  return { development, generationId: generation.id, repaired, left: built.left };
 }
 
 /**

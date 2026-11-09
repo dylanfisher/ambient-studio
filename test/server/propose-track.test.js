@@ -75,7 +75,8 @@ async function setup() {
 }
 
 /**
- * Two sections, the first `first` s and the second 300 s, with an 8 s crossfade.
+ * Two sections, the first `first` s and the second 300 s, with an 8 s crossfade, each part with
+ * its line of text drawn from the arc (0082).
  * @param {number} a the first section's sketch
  * @param {number} b the second's
  * @param {number} first
@@ -83,10 +84,10 @@ async function setup() {
  */
 const answer = (a, b, first, key = "sketchId") => ({
   sections: [
-    { sketchId: a, offset: 0, seconds: first },
-    { [key]: b, offset: 0, seconds: 300 },
+    { sketchId: a, offset: 0, seconds: first, text: "the drone emerges from silence" },
+    { [key]: b, offset: 0, seconds: 300, text: "a plateau, then it dissolves" },
   ],
-  transitions: [{ kind: "crossfade", seconds: 8 }],
+  transitions: [{ kind: "crossfade", seconds: 8, text: "the drone thins as the pad comes in" }],
   lanes: [
     {
       macro: "brightness",
@@ -157,11 +158,11 @@ test("one request holds the brief, the arc and every sketch, and a valid answer 
   const revisions = listTrackRevisions(studio.server.store, trackId);
   expect(revisions.map(({ id }) => id)).toEqual([revisionId]);
   const given = answer(a, b, 308);
-  // The model writes no text; the stored revision has an empty one on each part (0077).
+  // The prompt asks for a line on every part, and the stored revision keeps each (0082).
+  expect(system.content).toContain(`"text": "<what happens here>"`);
   expect(revisions[0]?.arrangement).toEqual({
     ...given,
-    sections: given.sections.map((section) => ({ ...section, text: "", developmentId: null })),
-    transitions: given.transitions.map((transition) => ({ ...transition, text: "" })),
+    sections: given.sections.map((section) => ({ ...section, developmentId: null })),
     length: 600,
     arc: ARC,
     proposal: generationId,
@@ -183,7 +184,7 @@ test("an invalid answer gets one repair quoting its errors, the length among the
   const [a, b] = studio.ids;
   const wrong = {
     ...answer(a, b, 200),
-    transitions: [{ kind: "morph", seconds: 3, curve: "smooth" }],
+    transitions: [{ kind: "morph", seconds: 3, curve: "smooth", text: "" }],
   };
   const finished = await propose(studio, [wrong, answer(a, b, 300)]);
   expect(finished.state).toBe("done");

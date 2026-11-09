@@ -1,14 +1,18 @@
-// The develop routes (decisions 0079, 0081): asking the model to develop one section of a saved
-// version of a track, or to write a bridge for one of its joins, each as an owner-started job,
-// one at a time. The job stores the development; the timeline puts it in place and saves the new
-// version.
+// The develop routes (decisions 0079, 0081, 0082): asking the model to develop one section of a
+// saved version of a track, every section in turn, or a bridge for one of its joins, each as an
+// owner-started job, one at a time. The job stores the developments; the timeline puts them in
+// place and saves the new version.
 /** @import { Arrangement, Section } from "../domain/arrangement-schema.js" */
 /** @import { App, Route } from "./routing.js" */
 import { BRIDGE_SECONDS, bridgePlan } from "../domain/bridge-plan.js";
+import { DEVELOP_PLAN, developPlan } from "../domain/develop-plan.js";
 import { DEVELOP_LEAST } from "../domain/develop-prompt.js";
 import { JOB_KIND } from "../domain/job-kind.js";
+import { show } from "../engine/validation-error.js";
 import { bridgeJob } from "./bridge-section.js";
 import { developJob } from "./develop-section.js";
+import { developTrackJob } from "./develop-track.js";
+import { getDevelopment } from "./development-store.js";
 import { fields, finite, integer, rowId } from "./request-fields.js";
 import { HttpError, refuseUnfinished } from "./routing.js";
 import { sectionSources } from "./track-manifest.js";
@@ -46,9 +50,12 @@ function savedVersion(app, params, given) {
   };
 }
 
+/** The whole track's body: the saved version, and whether developed sections are developed again. */
+const TRACK_FIELD = Object.freeze({ revisionId: "revisionId", again: "again" });
+
 /**
- * Refuses a develop or a bridge job while either is unfinished: both are placed by windows the
- * other may change.
+ * Refuses a develop, a bridge or a whole-track job while any is unfinished: each is placed by
+ * windows another may change.
  * @param {App} app
  */
 function refuseDeveloping(app) {
@@ -62,6 +69,11 @@ function refuseDeveloping(app) {
     app,
     JOB_KIND.bridge,
     (id) => `A bridge is already being written (job ${id}). Wait for it to finish, or cancel it.`,
+  );
+  refuseUnfinished(
+    app,
+    JOB_KIND.developTrack,
+    (id) => `Every section is being developed (job ${id}). Wait for it to finish, or cancel it.`,
   );
 }
 
@@ -87,6 +99,34 @@ export const DEVELOP_ROUTES = [
       }
       refuseDeveloping(app);
       return app.jobs.add(DEVELOP_JOB, developJob(app, { track, revisionId, arrangement, index }));
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/tracks/:trackId/develop-all",
+    handle: async ({ app, params, body }) => {
+      const given = fields(await body(), Object.values(TRACK_FIELD));
+      const { track, revisionId, arrangement } = savedVersion(app, params, given);
+      const { again } = given;
+      if (typeof again !== "boolean") {
+        throw new HttpError(400, `${TRACK_FIELD.again} must be true or false, got ${show(again)}`);
+      }
+      const plan = developPlan(arrangement, again, (id) => {
+        const development = getDevelopment(app.store, id);
+        if (!development) throw new Error(`there is no development ${id}`);
+        return development.bridge;
+      });
+      if (!plan.includes(DEVELOP_PLAN.develop)) {
+        throw new HttpError(
+          409,
+          `No section of this version can be developed: each is already developed, a bridge, or under ${DEVELOP_LEAST} s.${again ? "" : " Ask to develop the developed ones again."}`,
+        );
+      }
+      refuseDeveloping(app);
+      return app.jobs.add(
+        JOB_KIND.developTrack,
+        developTrackJob(app, { track, revisionId, arrangement, plan }),
+      );
     },
   },
   {

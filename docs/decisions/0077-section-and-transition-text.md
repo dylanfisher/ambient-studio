@@ -5,7 +5,8 @@
   one line, and the two fields' place and labels in the chosen section's panel. Amends
   [0061](0061-tracks-and-the-timeline.md) (the arrangement's section and transition keys, the
   timeline's panel and blocks) and [0067](0067-proposed-track.md) (the proposal's answer gets
-  empty text before it is checked)
+  empty text before it is checked); amended by [0082](0082-develop-the-whole-track.md) (the
+  proposal asks for text on every part, and one without it is a finding, not filled)
 
 ## Context
 

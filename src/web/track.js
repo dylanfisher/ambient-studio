@@ -24,6 +24,7 @@ import {
   TRANSITION_SECONDS,
 } from "../domain/arrangement-schema.js";
 import { BRIDGE_SECONDS, bridgePlan } from "../domain/bridge-plan.js";
+import { DEVELOP_PLAN, developPlan } from "../domain/develop-plan.js";
 import { listed } from "../domain/preference-text.js";
 import { developmentKey, sectionMorph, sectionThinning } from "../domain/section-genome.js";
 import { validateArrangement } from "../domain/validate-arrangement.js";
@@ -32,11 +33,19 @@ import { cloneTemplate } from "./clone-template.js";
 import {
   bridgeCostText,
   bridgeRefusal,
+  bridgeSkippedText,
   bridgeSwap,
+  developAllCostText,
+  developAllNote,
+  developAllRefusal,
+  developAllSwap,
   developCostText,
   developedText,
+  developmentLine,
+  developmentName,
   developRefusal,
   developSwap,
+  runDevelopments,
 } from "./develop-text.js";
 import { elementsById } from "./element-by-id.js";
 import { clockTime, mountPlayer, playAudio } from "./excerpt-player.js";
@@ -57,6 +66,7 @@ import {
   moveSection,
   nextCurve,
   nextTransitionKind,
+  placeDevelopment,
   removeSection,
   SECTION_STEP,
   setDevelopment,
@@ -103,6 +113,11 @@ const page = elementsById({
   developJobBox: HTMLElement,
   bridgeField: HTMLElement,
   bridgeSecondsInput: HTMLInputElement,
+  developAgainInput: HTMLInputElement,
+  developAllJobBox: HTMLElement,
+  developmentList: HTMLUListElement,
+  noDevelopments: HTMLElement,
+  developmentSelect: HTMLSelectElement,
   addHelp: HTMLElement,
   sketchSelect: HTMLSelectElement,
   noSketches: HTMLElement,
@@ -143,6 +158,9 @@ const DEVELOP_TITLE = buttons.develop.title;
 const bridgeControl = jobControl(buttons.bridge);
 /** The bridge button's own title, shown while it is on. */
 const BRIDGE_TITLE = buttons.bridge.title;
+const developAllControl = jobControl(buttons.developAll);
+/** The whole track's develop button's own title, shown while it is on. */
+const DEVELOP_ALL_TITLE = buttons.developAll.title;
 /** The render, seam and export buttons share one hold: one track job runs at a time. */
 const TRACK_JOB_BUTTONS = /** @type {const} */ ([
   "renderTrack",
@@ -160,6 +178,7 @@ const VERSION_ACTIONS = new Set([
   "playSeam",
   "exportTrack",
   "exportStems",
+  "developAll",
 ]);
 
 const idText = new URLSearchParams(location.search).get("id");
@@ -345,6 +364,7 @@ function draw() {
   }
   // A render that is running keeps Play off, whatever is chosen.
   if (playControl.held()) buttons.play.disabled = true;
+  drawDevelopments(arrangement, errors.length === 0);
   if (selected === null) return;
   const section = /** @type {Section} */ (sections[selected]);
   const development = developmentOf(section.developmentId);
@@ -398,6 +418,55 @@ function draw() {
         : bridgeRefusal(arrangement, fade, bridgeSeconds(), unsaved(), sectionGenomes());
     buttons.bridge.disabled = refusal !== null;
     buttons.bridge.title = refusal ?? BRIDGE_TITLE;
+  }
+}
+
+/**
+ * What Develop every section would do with each section of `arrangement` (decision 0082).
+ * @param {Arrangement} arrangement
+ */
+const developAllPlan = (arrangement) =>
+  developPlan(
+    arrangement,
+    page.developAgainInput.checked,
+    (id) => developmentOf(id)?.bridge === true,
+  );
+
+/**
+ * Draws the Developments card: every development of the track with the sections that play it
+ * now, the select to place one, and whether Develop every section is on.
+ * @param {Arrangement} arrangement
+ * @param {boolean} valid
+ */
+function drawDevelopments(arrangement, valid) {
+  const developments = view?.developments ?? [];
+  /** @param {number} id */
+  const playedIn = (id) =>
+    arrangement.sections.flatMap(({ developmentId }, i) => (developmentId === id ? [i] : []));
+  page.developmentList.replaceChildren(
+    ...developments.map((development) => {
+      const item = document.createElement("li");
+      item.textContent = developmentLine(development, playedIn(development.id));
+      return item;
+    }),
+  );
+  page.noDevelopments.hidden = developments.length > 0;
+  const chosen = page.developmentSelect.value;
+  page.developmentSelect.replaceChildren(
+    ...developments.map(
+      (development) => new Option(developmentName(development), String(development.id)),
+    ),
+  );
+  if (developments.some(({ id }) => String(id) === chosen)) {
+    page.developmentSelect.value = chosen;
+  }
+  buttons.placeDevelopment.disabled = selected === null || developments.length === 0;
+  if (!developAllControl.held()) {
+    const refusal = valid
+      ? developAllRefusal(developAllPlan(arrangement), unsaved())
+      : "Turned off until the problems listed under the timeline are fixed.";
+    buttons.developAll.disabled = refusal !== null;
+    buttons.developAll.title = refusal ?? DEVELOP_ALL_TITLE;
   }
 }
 
@@ -839,7 +908,7 @@ async function developSection() {
     );
     if (swap.kind === SWAP.skip) {
       status.say(
-        `Kept development ${developmentId} but didn't put it in a section: ${swap.reason}. Develop the section again to use it.`,
+        `Kept development ${developmentId} but didn't put it in a section: ${swap.reason}. It is listed under Developments, to place by hand.`,
       );
       return;
     }
@@ -927,9 +996,7 @@ async function bridgeJoin() {
     );
     const ids = listed(result.developmentIds.map(String));
     if (swap.kind === SWAP.skip) {
-      status.say(
-        `Kept bridge ${ids} but didn't put it in the track: ${swap.reason}. It stays stored with the track's developments; bridge the join again to use one now.`,
-      );
+      status.say(bridgeSkippedText(at, ids, swap.reason));
       return;
     }
     if (swap.kind === SWAP.edit) {
@@ -944,6 +1011,105 @@ async function bridgeJoin() {
   } finally {
     draw();
   }
+}
+
+/**
+ * Develops every section of the saved version in order after a confirm counting the requests
+ * (decision 0082). However the job ends, the developments it stored go into their sections by
+ * `developAllSwap`, saved as one new version unless the timeline has changes not saved.
+ */
+async function developAll() {
+  if (draft === null || buttons.developAll.disabled) return;
+  // Read again first, so the developments listed before the run are every one stored.
+  await readDevelopments();
+  const plan = developAllPlan(draft);
+  const refusal = developAllRefusal(plan, unsaved());
+  if (refusal !== null) throw new Error(refusal);
+  if (!confirm(developAllCostText(plan, await getJson(BREED_ESTIMATE_PATH)))) {
+    status.say(NOT_STARTED);
+    return;
+  }
+  const { sections } = draft;
+  const known = new Set((view?.developments ?? []).map(({ id }) => id));
+  const openedThen = openedByHand;
+  try {
+    const finished = await runJob(status, {
+      path: `${trackPath(trackId)}/develop-all`,
+      body: { revisionId: openedRevisionId(), again: page.developAgainInput.checked },
+      controls: [developAllControl],
+      boxes: page.developAllJobBox,
+      started:
+        "Developing every section in turn. Leave this page open: the sections take their developments when it ends.",
+    });
+    await readDevelopments();
+    if (finished?.refused) {
+      status.say(
+        "That job was started from another page. Its developments are listed under Developments, to place by hand.",
+      );
+      return;
+    }
+    const written = runDevelopments(plan, sections, known, view?.developments ?? []);
+    // A run stopped before its first development: the status line already says how it ended.
+    if (written.length === 0) return;
+    const swap = developAllSwap(
+      {
+        arrangement: /** @type {Arrangement} */ (draft),
+        openedThen,
+        openedNow: openedByHand,
+        unsaved: unsaved(),
+      },
+      written,
+    );
+    const asked = plan.filter((kind) => kind === DEVELOP_PLAN.develop).length;
+    const stopped =
+      finished === null ? `The job ended after ${written.length} of ${asked} sections. ` : "";
+    const skipped = swap.skipped
+      .map(
+        ({ developmentId, reason }) =>
+          `Kept development ${developmentId} but didn't put it in a section: ${reason}. `,
+      )
+      .join("");
+    const placed = `development${swap.placed.length === 1 ? "" : "s"} ${listed(swap.placed.map(({ developmentId }) => String(developmentId)))}`;
+    if (swap.kind === SWAP.skip) {
+      status.say(`${stopped}${skipped}They are listed under Developments, to place by hand.`);
+      return;
+    }
+    if (swap.kind === SWAP.edit) {
+      edit(swap.arrangement);
+      status.say(`${stopped}${skipped}Put ${placed} in place. Save to keep them.`);
+      return;
+    }
+    draft = swap.arrangement;
+    page.noteInput.value = developAllNote(swap.placed);
+    await save();
+    status.say(`${stopped}${skipped}Put ${placed} in place, saved as version ${openedVersion}.`);
+  } finally {
+    draw();
+  }
+}
+
+/**
+ * Has the chosen section play the development chosen in the Developments card, as an unsaved
+ * edit, when the timeline is still valid with it.
+ */
+function placeChosenDevelopment() {
+  if (draft === null || selected === null) return;
+  const development = developmentOf(Number(page.developmentSelect.value));
+  if (!development) {
+    status.say("Choose a development to place first.");
+    return;
+  }
+  const next = placeDevelopment(draft, selected, development);
+  const result = checked(next);
+  if (!result.ok) {
+    const [first] = result.errors;
+    status.say(
+      `Can't place development ${development.id} in section ${selected + 1}: ${first?.path}: ${first?.message}.`,
+    );
+    return;
+  }
+  edit(next);
+  status.say(`Put development ${development.id} in section ${selected + 1}. Save to keep it.`);
 }
 
 /** Each action, run by its button and its key. */
@@ -984,7 +1150,12 @@ const actions = /** @type {Record<TimelineAction, () => void>} */ ({
   plainSketch: () => {
     if (!buttons.plainSketch.disabled) plainSketch();
   },
+  developAll: () => void status.run(developAll),
+  placeDevelopment: () => {
+    if (!buttons.placeDevelopment.disabled) placeChosenDevelopment();
+  },
 });
+page.developAgainInput.onchange = () => draw();
 for (const [name, action] of Object.entries(actions)) {
   buttons[/** @type {TimelineAction} */ (name)].onclick = () => status.run(action);
 }
