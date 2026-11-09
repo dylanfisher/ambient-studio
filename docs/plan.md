@@ -4179,3 +4179,29 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   min at 26.9x, 541 MiB; 10 min within 7.1% (0080). `./scripts/check` and a fresh second run
   agree: 2,504 tests. The fuzz hit morph throws ("times must rise") only at a 1.5 s move, which
   `MORPH_LEAST` 8 s rules out for a stored arrangement.
+- 2026-11-09: CG.1 merged as 98b1149 (Opus: 213k tokens, 119 calls, 38 min; reviewer Sonnet: 62k
+  tokens, 9 calls, 3.6 min, PASS with nits). `growl` (a trajectory) adds half-integer harmonics
+  under the same tilt and resonances, in cosine phase; `rough` swings alternate cycles' level,
+  9.5 dB apart at 1. At growl 1 the strongest half-integer partial in 200–800 Hz is within
+  1.3 dB of the integer one at every vowel tested. The chorus table covers two cycles only on
+  grid steps where growl is above 0 or the voice is rough; the reviewer hashed old against new
+  renders of three growl-free genomes, identical, and every other golden is unchanged. Twelve
+  singers with both on cost 161.9 and fit beside a 15.2 s reverb, about 7 under the budget, so
+  CG.2 and CG.3 need their own room: the first saving is a lower top for the half-integer
+  partials (0088). Schema text is at 3,961 of 4,000 characters, for CG.4. `./scripts/check` and
+  a fresh second run agree: 2,526 tests.
+- 2026-11-09: retrospective after TD.1, WF.1, TD.2, TD.4 and CG.1 (orchestrator rule 11).
+  - Every worktree the harness made started at an old commit, not main, and each builder had to
+    branch again from the sha in its brief. Keep the base sha and that instruction in every
+    parallel brief.
+  - `./scripts/test --changed <base>` found no files in a worktree for two builders, and ran the
+    whole suite for two others (a change under `test/support/` or the voice registry). Briefs now
+    name the fallback: run the touched test directories, server files one at a time under load.
+  - Server tests that render timed out at 30 s while two builders and omlx ran together, three
+    times, and passed alone and in every merged check. Load, not a race; the second run stays.
+  - The one FAIL (TD.4) was edge cases a fuzz found in two minutes. Reviewer briefs for
+    genome-building code should ask for a fuzz over voice starts and ends.
+  - Wall time: TD.1 26 min, WF.1 18, TD.2 56, TD.4 58 with its fix, CG.1 38; reviews 2–4 min.
+  - The harness bases a worktree on `origin/main`, which the owner pushes, so it lags local
+    main. The checkers still skip `tmp/`, `.claude/worktrees/`, `node_modules/` and `.venv/`:
+    each merged check counted the same test files with two worktrees present.
