@@ -1,9 +1,9 @@
 import { expect, test } from "vitest";
+import { lockChoices } from "../../src/domain/lock-choices.js";
 import { lockOn } from "../../src/domain/validate-lock.js";
 import { MACROS } from "../../src/engine/genome-schema.js";
 import pad from "../../src/engine/genomes/pad.json" with { type: "json" };
 import { validateGenome } from "../../src/engine/validate-genome.js";
-import { lockChoices } from "../../src/web/lock-choices.js";
 
 const checked = validateGenome(pad);
 if (!checked.ok) throw new Error("the pad example genome is invalid");
