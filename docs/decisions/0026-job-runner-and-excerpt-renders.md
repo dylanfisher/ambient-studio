@@ -5,6 +5,7 @@
   [0036](0036-revision-pass.md) (the candidates job revises after a render) and
   [0048](0048-quick-ab-player-mp3.md) (the cache holds MP3s; capture renders the excerpt again)
   and [0076](0076-parallel-excerpt-renders.md) (a job renders a batch of excerpts three at a time)
+  and [0092](0092-words-beside-a-job.md) (words jobs run in a second lane, beside the main one)
 
 ## Context
 

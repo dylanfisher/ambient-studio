@@ -26,6 +26,7 @@ import {
 } from "../domain/ear-settings.js";
 import { DEFAULT_EXPLORES, NOT_ONE_LINE } from "../domain/explore-direction.js";
 import { DEFAULT_FILL_BUDGET, MAX_FILL_BUDGET } from "../domain/fill-settings.js";
+import { JOB_KIND } from "../domain/job-kind.js";
 import { DEFAULT_NUDGES, lockRefusal, STEP_SIZE } from "../domain/nudge.js";
 import { OPERATOR } from "../domain/operator.js";
 import { percentiles } from "../domain/percentiles.js";
@@ -37,12 +38,13 @@ import {
 import { MAX_SEARCH_DIMENSIONS, searchSpace } from "../domain/search-space.js";
 import { WORDS_CHARS } from "../domain/words-prompt.js";
 import { isObject } from "../engine/is-object.js";
+import { refuseSecondWords } from "./ask-words.js";
 import { getAttachment } from "./attachment-store.js";
 import { currentExcerpt } from "./candidate-excerpt.js";
 import { candidateJob, DEFAULT_CANDIDATES, excerptJob, MAX_CANDIDATES } from "./candidate-job.js";
 import { candidatePairs } from "./candidate-pair.js";
 import { createEarChannel, earChannel, earSearchJob, setEarChannel } from "./ear-search-job.js";
-import { readShiftWords } from "./ear-shift.js";
+import { shiftWordsJob } from "./ear-shift.js";
 import { fillJob } from "./fill-job.js";
 import { BREED_OPERATOR, currentRevision, EXPLORE_OPERATOR } from "./generate-candidates.js";
 import {
@@ -964,7 +966,9 @@ export const SESSION_ROUTES = [
       if (channel.view().phase === EAR_PHASE.finished) {
         throw new HttpError(409, "This search by ear has ended, so it takes no more steering.");
       }
-      return readShiftWords(app, session, channel, words);
+      const job = shiftWordsJob(app, session, channel, words);
+      refuseSecondWords(app);
+      return app.jobs.add(JOB_KIND.words, job);
     },
   },
   {

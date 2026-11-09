@@ -4,7 +4,9 @@
 - **Status:** accepted; provisional: owner to confirm the prompt's wording, the 300-character
   limit, and the shift's repair round. Amends [0075](0075-steer-search-by-ear.md) (the shift's
   words run on this operator, with one repair) and [0074](0074-draft-brief-from-words.md) (the
-  brief draft stays apart, for the reasons below; its 409 check is shared as `refuseUnfinished`)
+  brief draft stays apart, for the reasons below; its 409 check is shared as `refuseUnfinished`);
+  amended by [0092](0092-words-beside-a-job.md) (the shift's words run as a words job in the
+  runner's words lane, and a words job cancels only its own requests)
 
 ## Context
 

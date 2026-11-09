@@ -18,6 +18,7 @@ import {
   MAX_EAR_DIMENSIONS,
   START_STEERING,
 } from "../../src/domain/ear-settings.js";
+import { JOB_KIND } from "../../src/domain/job-kind.js";
 import { parseLockPath, readLockTarget } from "../../src/domain/lock-path.js";
 import { OPERATOR } from "../../src/domain/operator.js";
 import { REJECT_REASON } from "../../src/domain/reject-reason.js";
@@ -394,7 +395,7 @@ test("steering sent while a pair plays reaches the spec before the next draw, an
   );
 });
 
-test("words for a shift go to the model once and come back as sliders, the search left as it is (0075)", async () => {
+test("words for a shift go to the model once, as a words job beside the search, and come back as sliders, the search left as it is (0075, 0092)", async () => {
   const made = await earApp();
   const { app, sidecar, omlx, start, paths } = made;
   const from = toVector(start, paths);
@@ -411,7 +412,18 @@ test("words for a shift go to the model once and come back as sliders, the searc
       }),
     ],
   });
-  const read = await call(made, "POST", SHIFT_WORDS, { words: "a bit darker" });
+  /** @param {string} words */
+  const askShift = async (words) => {
+    const job = await call(made, "POST", SHIFT_WORDS, { words });
+    // The search holds the main lane, so the words run in their own (0092).
+    expect(job).toMatchObject({ kind: JOB_KIND.words, state: "running" });
+    return job;
+  };
+  const asked = await askShift("a bit darker");
+  await app.jobs.settled(asked.id);
+  expect(app.jobs.get(status.id).state).toBe("running");
+  const read = /** @type {any} */ (app.jobs.get(asked.id).result);
+  expect(Object.keys(read).sort()).toEqual(["generationId", "said", "shift"]);
   expect(read.shift).toEqual({ [`${first}`]: -0.5 });
   expect(read.said).toBe("A little less of the first control.");
   expect(omlx.requests).toHaveLength(1);
@@ -428,14 +440,29 @@ test("words for a shift go to the model once and come back as sliders, the searc
   // An answer naming a path the search doesn't move gets one repair (0084).
   const nowhere = { tokens: [JSON.stringify({ changes: { nowhere: 1 }, said: "Brighter." })] };
   omlx.script(nowhere, nowhere);
-  const brighter = call(made, "POST", SHIFT_WORDS, { words: "brighter" });
-  await expect(driveGaps(made.clock, app.config.queue.minGapMs, brighter)).rejects.toThrow(
+  const brighter = await askShift("brighter");
+  await driveGaps(made.clock, app.config.queue.minGapMs, app.jobs.settled(brighter.id));
+  expect(app.jobs.get(brighter.id)).toMatchObject({ state: "failed" });
+  expect(app.jobs.get(brighter.id).error).toMatch(
     /still invalid after one repair[\s\S]*\$\.changes\.nowhere \(changes\): unknown field/,
   );
   expect(omlx.requests).toHaveLength(3);
   await expect(call(made, "POST", SHIFT_WORDS, { words: "two\nlines" })).rejects.toThrow(
     /one line/,
   );
+
+  // A cancel stops the words job and leaves the search running.
+  app.random = () => 0.5;
+  omlx.script({ tokens: ['{"changes": '], holdAfter: 0 });
+  const held = await askShift("quieter");
+  const again = call(made, "POST", SHIFT_WORDS, { words: "quieter" });
+  await expect(again).rejects.toThrow(/already reading your words/);
+  await driveGaps(made.clock, app.config.queue.minGapMs, omlx.waitForRequests(4));
+  app.jobs.cancel(held.id);
+  await app.jobs.settled(held.id);
+  expect(app.jobs.get(held.id).state).toBe("cancelled");
+  expect(app.jobs.get(status.id).state).toBe("running");
+  expect(omlx.maxInFlight()).toBe(1);
   scriptTell(sidecar);
   await call(made, "POST", ANSWERS, { query: 0, ratingId: rate(made, pair, "skip").id });
   await app.jobs.settled(status.id);

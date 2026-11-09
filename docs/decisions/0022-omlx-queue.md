@@ -1,7 +1,8 @@
 # 0022. One FIFO queue is the only omlx client
 
 - **Date:** 2026-11-06
-- **Status:** accepted
+- **Status:** accepted; amended by [0092](0092-words-beside-a-job.md) (a request carries an
+  owner, and `cancel(owner)` cancels only that owner's requests)
 
 ## Context
 

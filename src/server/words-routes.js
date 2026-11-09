@@ -13,11 +13,11 @@ import { WORDS_SCOPE, WORDS_SETS, wordsSet } from "../domain/words-sets.js";
 import { checkValue } from "../engine/descriptor.js";
 import { isObject } from "../engine/is-object.js";
 import { checkKeys, MISSING, show } from "../engine/validation-error.js";
-import { wordsJob } from "./ask-words.js";
+import { refuseSecondWords, wordsJob } from "./ask-words.js";
 import { FIRST_PROMPT_SHARE } from "./draft-brief-routes.js";
 import { currentRevision } from "./generate-candidates.js";
 import { fields, text } from "./request-fields.js";
-import { HttpError, refuseUnfinished } from "./routing.js";
+import { HttpError } from "./routing.js";
 import { requireVibe } from "./vibe-routes.js";
 
 const WORDS_JOB = JOB_KIND.words;
@@ -90,12 +90,7 @@ export const WORDS_ROUTES = [
       } catch (error) {
         throw new HttpError(400, /** @type {Error} */ (error).message);
       }
-      refuseUnfinished(
-        app,
-        WORDS_JOB,
-        (id) =>
-          `The model is already reading your words (job ${id}). Wait for it to finish, or cancel it.`,
-      );
+      refuseSecondWords(app);
       const request = {
         vibeId: vibe.id,
         sessionId: null,

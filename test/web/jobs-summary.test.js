@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { jobsSummary } from "../../src/web/jobs-summary.js";
+import { JOB_KIND } from "../../src/domain/job-kind.js";
+import { jobsSummary, laneSummaries } from "../../src/web/jobs-summary.js";
 
 /** @param {Record<string, unknown>} rest */
 const job = (rest) => ({
@@ -23,6 +24,7 @@ describe("jobsSummary", () => {
   test("shows the running job with its percent, its step and time in the tooltip", () => {
     const running = job({ progress: { done: 2, total: 5, step: "fitting fold 3 of 5" } });
     expect(jobsSummary([running], 12_000)).toEqual({
+      id: 2,
       text: "Fitting the taste model · 40%",
       title: "Job 2: Fitting fold 3 of 5. Running for 10 s.",
       fraction: 0.4,
@@ -47,6 +49,26 @@ describe("jobsSummary", () => {
       text: "Analyzing the sound · 1 more",
       title:
         "Job 5: Waiting for the job ahead of it to finish. Waiting for 3 s. 1 more job waits behind it.",
+    });
+  });
+});
+
+describe("laneSummaries (0092)", () => {
+  test("lists the main lane's job and the words lane's, each with the id its Cancel sends", () => {
+    const search = job({ id: 3, kind: "optimize-ear" });
+    const render = job({ id: 4, kind: "excerpts", state: "queued", startedAt: null });
+    const words = job({ id: 5, kind: JOB_KIND.words, progress: { done: 0, total: 1, step: null } });
+    const shown = laneSummaries([search, render, words], 2_000);
+    expect(shown.main).toMatchObject({ id: 3, text: "Searching by ear · 1 more" });
+    expect(shown.words).toMatchObject({ id: 5, text: "Reading your words as settings · 0%" });
+  });
+
+  test("leaves a lane with no job empty, and both when every job has finished", () => {
+    const words = job({ id: 5, kind: JOB_KIND.words });
+    expect(laneSummaries([words], 2_000)).toMatchObject({ main: null, words: { id: 5 } });
+    expect(laneSummaries([job({ state: "done", finishedAt: 3_000 })], 5_000)).toEqual({
+      main: null,
+      words: null,
     });
   });
 });

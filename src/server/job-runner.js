@@ -1,7 +1,11 @@
-// The in-process job runner (decision 0026). One job runs at a time, in the order added, so a
-// generation's omlx requests never overlap a render: normalize and feature extraction block the
-// event loop, and would inflate the queue's time-to-first-token reading. A job starts only when
-// a caller adds it; there is no timer and no start-up hook.
+// The in-process job runner (decision 0026). Jobs run in two lanes (0092), each one job at a
+// time in the order added: the main lane runs every job but a words job, so a generation's omlx
+// requests never overlap a render, since normalize and feature extraction block the event loop
+// and would inflate the queue's time-to-first-token reading. The words lane runs only words
+// jobs, beside the main one, so the owner's words are read while a search or a render runs; both
+// lanes send through the one omlx queue, which keeps one request in flight. A job starts only
+// when a caller adds it; there is no timer and no start-up hook.
+import { jobLane } from "../domain/job-kind.js";
 
 /** @typedef {"queued" | "running" | "done" | "failed" | "cancelled"} JobState */
 
@@ -37,14 +41,14 @@
 /**
  * @typedef {object} JobRunner
  * @property {(kind: string, run: (job: JobContext) => Promise<unknown>) => JobStatus} add queues
- *   a job, which starts at once when none is running
+ *   a job in its kind's lane, and starts it at once when none is running there
  * @property {(id: number) => JobStatus} get the job's status with its result
  * @property {() => Omit<JobStatus, "result">[]} list every job since the runner was made, oldest
  *   first, without results, so a list doesn't copy every finished job's output
  * @property {(id: number) => JobStatus} cancel drops a queued job, or aborts a running one's
  *   signal; a finished job is left as it is
  * @property {(id: number) => Promise<void>} settled resolves once the job has finished, however
- * @property {() => Promise<void>} idle resolves once no job is queued or running
+ * @property {() => Promise<void>} idle resolves once no job is queued or running in either lane
  */
 
 /**
@@ -54,7 +58,10 @@
  * @property {AbortController} controller
  * @property {Promise<void>} finished
  * @property {() => void} finish
+ * @property {Lane} lane
  */
+
+/** @typedef {{ waiting: Job[], running: Job | undefined }} Lane */
 
 /**
  * @param {{ now: () => number }} options `now` gives milliseconds since the Unix epoch
@@ -63,11 +70,20 @@
 export function createJobRunner({ now }) {
   /** @type {Map<number, Job>} */
   const jobs = new Map();
-  /** @type {Job[]} */
-  const queue = [];
-  /** @type {Job | undefined} */
-  let running;
+  /** @type {Map<string, Lane>} */
+  const lanes = new Map();
   let nextId = 1;
+
+  /** @param {string} kind */
+  function laneFor(kind) {
+    const name = jobLane(kind);
+    let lane = lanes.get(name);
+    if (!lane) {
+      lane = { waiting: [], running: undefined };
+      lanes.set(name, lane);
+    }
+    return lane;
+  }
 
   /** @param {number} id */
   function job(id) {
@@ -85,9 +101,10 @@ export function createJobRunner({ now }) {
     done.finish();
   }
 
-  function next() {
-    running = queue.shift();
-    if (running) start(running);
+  /** @param {Lane} lane */
+  function next(lane) {
+    lane.running = lane.waiting.shift();
+    if (lane.running) start(lane.running);
   }
 
   /** @param {Job} current */
@@ -109,7 +126,7 @@ export function createJobRunner({ now }) {
       (result) => {
         status.result = result;
         finish(current, "done");
-        next();
+        next(current.lane);
       },
       (error) => {
         if (signal.aborted) {
@@ -118,7 +135,7 @@ export function createJobRunner({ now }) {
           status.error = error instanceof Error ? error.message : String(error);
           finish(current, "failed");
         }
-        next();
+        next(current.lane);
       },
     );
   }
@@ -148,19 +165,21 @@ export function createJobRunner({ now }) {
         controller: new AbortController(),
         finished,
         finish: markFinished,
+        lane: laneFor(kind),
       };
       jobs.set(added.status.id, added);
-      queue.push(added);
-      if (!running) next();
+      added.lane.waiting.push(added);
+      if (!added.lane.running) next(added.lane);
       return structuredClone(added.status);
     },
     get: (id) => structuredClone(job(id).status),
     list: () => [...jobs.values()].map(({ status: { result, ...rest } }) => structuredClone(rest)),
     cancel(id) {
       const found = job(id);
-      const at = queue.indexOf(found);
+      const { waiting, running } = found.lane;
+      const at = waiting.indexOf(found);
       if (at !== -1) {
-        queue.splice(at, 1);
+        waiting.splice(at, 1);
         finish(found, "cancelled");
       } else if (found === running) {
         found.controller.abort(new Error(`job ${id} was cancelled`));
@@ -169,7 +188,11 @@ export function createJobRunner({ now }) {
     },
     settled: (id) => job(id).finished,
     async idle() {
-      while (running) await running.finished;
+      for (;;) {
+        const busy = [...lanes.values()].find((lane) => lane.running);
+        if (!busy?.running) return;
+        await busy.running.finished;
+      }
     },
   };
 }

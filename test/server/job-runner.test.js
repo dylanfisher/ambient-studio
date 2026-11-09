@@ -1,6 +1,7 @@
 // The job runner (decision 0026): one job at a time, in the order added, with status to poll and
 // cancellation. Jobs here are promises the test settles by hand, so nothing waits on real time.
 import { expect, test } from "vitest";
+import { JOB_KIND } from "../../src/domain/job-kind.js";
 import { createJobRunner } from "../../src/server/job-runner.js";
 
 /** A clock that counts, so stored times are the same on every run. */
@@ -161,4 +162,59 @@ test("nothing runs until a job is added", async () => {
   });
   await runner.idle();
   expect(ran).toBe(true);
+});
+
+test("a words job runs beside the main job, words jobs one at a time, and idle waits for both (0092)", async () => {
+  const runner = createJobRunner({ now: countingClock() });
+  const long = deferred();
+  const firstWords = deferred();
+  const main = runner.add("candidates", () => long.promise);
+  const queued = runner.add("render", async () => "after");
+  const words = runner.add(JOB_KIND.words, () => firstWords.promise);
+  const nextWords = runner.add(JOB_KIND.words, async () => "second words");
+  expect(runner.get(main.id).state).toBe("running");
+  expect(runner.get(queued.id).state).toBe("queued");
+  expect(runner.get(words.id).state).toBe("running");
+  expect(runner.get(nextWords.id).state).toBe("queued");
+
+  firstWords.resolve("read");
+  await runner.settled(nextWords.id);
+  expect(runner.get(words.id)).toMatchObject({ state: "done", result: "read" });
+  expect(runner.get(nextWords.id)).toMatchObject({ state: "done", result: "second words" });
+  expect(runner.get(main.id).state).toBe("running");
+  expect(runner.get(queued.id).state).toBe("queued");
+
+  let idle = false;
+  const waiting = runner.idle().then(() => {
+    idle = true;
+  });
+  const lastWords = deferred();
+  const late = runner.add(JOB_KIND.words, () => lastWords.promise);
+  long.resolve(undefined);
+  await runner.settled(queued.id);
+  expect(idle).toBe(false);
+  lastWords.resolve(undefined);
+  await waiting;
+  expect(runner.get(late.id).state).toBe("done");
+});
+
+test("cancelling a words job leaves the main job running, and the other way round (0092)", async () => {
+  const runner = createJobRunner({ now: countingClock() });
+  /** @param {AbortSignal} signal */
+  const untilAborted = (signal) =>
+    new Promise((_, reject) => signal.addEventListener("abort", () => reject(signal.reason)));
+  const main = runner.add("candidates", ({ signal }) => untilAborted(signal));
+  const words = runner.add(JOB_KIND.words, ({ signal }) => untilAborted(signal));
+  runner.cancel(words.id);
+  await runner.settled(words.id);
+  expect(runner.get(words.id).state).toBe("cancelled");
+  expect(runner.get(main.id).state).toBe("running");
+  const next = runner.add(JOB_KIND.words, ({ signal }) => untilAborted(signal));
+  expect(runner.get(next.id).state).toBe("running");
+  runner.cancel(main.id);
+  await runner.settled(main.id);
+  expect(runner.get(main.id).state).toBe("cancelled");
+  expect(runner.get(next.id).state).toBe("running");
+  runner.cancel(next.id);
+  await runner.idle();
 });
