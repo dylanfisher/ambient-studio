@@ -59,7 +59,7 @@ const ARC_FEATURES = Object.values(TARGET_FEATURES).map(({ feature }) => feature
  * @typedef {object} MaterialHost what the timeline page gives the card
  * @property {StatusLine} status
  * @property {number} trackId
- * @property {() => { vibe: { id: number }, sketches: PanelSketch[] } | null} view the track as
+ * @property {() => { vibe: { id: number }, sketches: PanelSketch[], developments: { id: number, offset: number }[] } | null} view the track as
  *   last read
  * @property {() => Arrangement | null} draft the timeline as the owner has it now
  * @property {() => number | null} selected the chosen section
@@ -435,7 +435,7 @@ export function materialCard(host) {
       return;
     }
     const { index } = swap;
-    const swapped = swapSketch(draft, index, kept.id);
+    const swapped = swapSketch(draft, index, kept.id, host.view()?.developments ?? []);
     if (swap.kind === SWAP.edit) {
       host.place({ arrangement: swapped, index });
       status.say(`Put sketch ${kept.id} in section ${index + 1}. Save to keep it.`);

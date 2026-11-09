@@ -122,17 +122,25 @@ export async function keepSteered({ best }, { sessionId, candidates, keep }) {
 
 /**
  * The arrangement with section `index` naming `sketchId`, its window unchanged: a steer moves
- * only macros, so the steered genome keeps its sketch's duration.
+ * only macros, so the steered genome keeps its sketch's duration. A developed section plays the
+ * steered sketch itself, from where its development was written from on the sketch, as Play the
+ * plain sketch puts it (0079): a steer starts from the sketch, not the development.
  * @param {Arrangement} arrangement
  * @param {number} index
  * @param {number} sketchId
+ * @param {readonly { id: number, offset: number }[]} developments the track's
  * @returns {Arrangement}
  */
-export const swapSketch = (arrangement, index, sketchId) => ({
+export const swapSketch = (arrangement, index, sketchId, developments) => ({
   ...arrangement,
-  sections: arrangement.sections.map((section, i) =>
-    i === index ? { ...section, sketchId } : section,
-  ),
+  sections: arrangement.sections.map((section, i) => {
+    if (i !== index) return section;
+    if (section.developmentId === null) return { ...section, sketchId };
+    const development = developments.find(({ id }) => id === section.developmentId);
+    if (!development)
+      throw new Error(`development ${section.developmentId} isn't listed for this track`);
+    return { ...section, sketchId, offset: development.offset, developmentId: null };
+  }),
 });
 
 /** What `steerSwap` does with a steer's sketch. */

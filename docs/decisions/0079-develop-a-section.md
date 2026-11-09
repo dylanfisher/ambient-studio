@@ -54,7 +54,11 @@ seconds, and the section may run past its end up to `MAX_DURATION`, held as 0062
 sketch. A section takes a new development at offset 0, so it plays the whole of it; editing the
 section afterwards moves it on the development's timeline. Going back to the plain sketch (the
 "Play the plain sketch" button, /) sets `developmentId` to null and `offset` to the
-development's stored `offset`.
+development's stored `offset`. Steering a developed section (0066) does the same: a steer starts
+from the section's sketch, so `swapSketch` puts the steered sketch in with no development, from
+the development's stored `offset` on the sketch, and its seconds and words kept. Keeping the
+offset on the development's timeline was rejected: it means nothing on the steered sketch, and
+can pass that sketch's end.
 
 **One genome lookup.** `SectionGenomes` stays one map: each sketch's genome by its id, as before,
 and each development's under `developmentKey(id)`, the string `development <id>`, so it never

@@ -7,6 +7,7 @@
 /** @import { Studio } from "../support/studio.js" */
 import { afterEach, expect, test } from "vitest";
 import { emptyArrangement } from "../../src/domain/arrangement-schema.js";
+import { validateArrangement } from "../../src/domain/validate-arrangement.js";
 import { ENGINE_VERSION } from "../../src/engine/engine-version.js";
 import { addRatedAudio } from "../../src/server/rating-store.js";
 import { getRender } from "../../src/server/render-store.js";
@@ -184,13 +185,50 @@ test("a swap names the steered sketch and keeps the section's window", () => {
     ],
     transitions: [{ kind: "crossfade", seconds: 8, text: "" }],
   };
-  const swapped = swapSketch(arrangement, 1, 7);
+  const swapped = swapSketch(arrangement, 1, 7, []);
   expect(swapped.sections).toEqual([
     { sketchId: 1, offset: 30, seconds: 120, text: "", developmentId: null },
     { sketchId: 7, offset: 0, seconds: 90, text: "brighter toward the end", developmentId: null },
   ]);
   expect(swapped.transitions).toBe(arrangement.transitions);
   expect(arrangement.sections[1]?.sketchId).toBe(2);
+});
+
+test("steering a developed section plays the steered sketch from where its development started (0079)", () => {
+  // Section 2 plays development 4 of sketch 2, written from 20 s on the sketch, at its 0 s.
+  const developed = {
+    sketchId: 2,
+    offset: 0,
+    seconds: 90,
+    text: "rise",
+    developmentId: 4,
+  };
+  const other = { sketchId: 1, offset: 30, seconds: 120, text: "", developmentId: null };
+  const arrangement = {
+    ...emptyArrangement(),
+    sections: [other, developed],
+    transitions: [{ kind: "crossfade", seconds: 8, text: "" }],
+  };
+  const started = { from: developed, at: 1, openedThen: 0 };
+  const swap = steerSwap({ ...started, arrangement, openedNow: 0, unsaved: false });
+  expect(swap).toEqual({ kind: SWAP.save, index: 1 });
+  const swapped = swapSketch(arrangement, 1, 7, [{ id: 4, offset: 20 }]);
+  expect(swapped.sections).toEqual([
+    other,
+    { sketchId: 7, offset: 20, seconds: 90, text: "rise", developmentId: null },
+  ]);
+  // The swap passes the validator a save runs, with sketch 7 as long as sketch 2.
+  const sketch = () => ({ vibeId: 1, removedReason: null, duration: 300 });
+  const checked = validateArrangement(swapped, {
+    vibeId: 1,
+    trackId: 3,
+    sketch,
+    development: () => undefined,
+  });
+  expect(checked.ok).toBe(true);
+  expect(() => swapSketch(arrangement, 1, 7, [])).toThrow(
+    "development 4 isn't listed for this track",
+  );
 });
 
 test("a finished steer swaps in only on the line of versions it started on, and only into its own section", () => {
