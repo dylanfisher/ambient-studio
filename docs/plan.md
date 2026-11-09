@@ -4347,3 +4347,9 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   too full to take an answer is refused before any request. The worst first prompts are about
   2,155, 2,007 and 2,340 of 4,096 (0087). `./scripts/check` clean: 2,748 tests. Phase WF is
   built; its owner checks in Safari 17.6 are pending.
+- 2026-11-09: CG.3 merged as 3b3fdf7 after the owner's answer: they tested growl chants after
+  CG.1, and changing how those render doesn't matter. The engine version stays 2 and 0090 says
+  so. Merged beside TD.6, the bridge's at-cap test went over its cap: the chant's two new fixed
+  settings put a dense chant's compared values alone past 270 tokens, so the state goes over the
+  cap, as 0082 intends. The test now makes a bell, a cymbal, a drone and a drum dense (4ac4275).
+  `./scripts/check` clean: 2,771 tests; the uncached second run is clean too.
