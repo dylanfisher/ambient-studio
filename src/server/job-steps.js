@@ -18,6 +18,7 @@ export const JOB_STEP = Object.freeze({
   readingSection: "Reading the section's sketch, its lineage and its neighbors",
   developing: "Asking the model to develop the section",
   repairingDevelopment: "Asking the model to fix its development",
+  readingBridge: "Reading the two sections' sketches and where they meet",
   draftingBrief: "Asking the model to write the brief from your words",
   repairingBrief: "Asking the model to fix the brief it wrote",
   readingWords: "Asking the model to read your words as settings",

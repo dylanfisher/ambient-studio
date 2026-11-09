@@ -9,6 +9,7 @@
 /** @import { Arrangement, Section } from "../domain/arrangement-schema.js" */
 /** @import { ArrangementSketch } from "../domain/validate-arrangement.js" */
 /** @import { SectionGenomes } from "../domain/section-genome.js" */
+/** @import { BridgePlan } from "../domain/bridge-plan.js" */
 /** @import { TimelineAction } from "./timeline-keys.js" */
 /** @import { TrackCost } from "../domain/track-cost.js" */
 /** @import { BlockSketch } from "./timeline-layout.js" */
@@ -22,11 +23,21 @@ import {
   TRANSITION_KIND,
   TRANSITION_SECONDS,
 } from "../domain/arrangement-schema.js";
+import { BRIDGE_SECONDS, bridgePlan } from "../domain/bridge-plan.js";
+import { listed } from "../domain/preference-text.js";
 import { developmentKey, sectionMorph, sectionThinning } from "../domain/section-genome.js";
 import { validateArrangement } from "../domain/validate-arrangement.js";
 import { BREED_ESTIMATE_PATH, getJson, postJson, trackPath } from "./api.js";
 import { cloneTemplate } from "./clone-template.js";
-import { developCostText, developedText, developRefusal, developSwap } from "./develop-text.js";
+import {
+  bridgeCostText,
+  bridgeRefusal,
+  bridgeSwap,
+  developCostText,
+  developedText,
+  developRefusal,
+  developSwap,
+} from "./develop-text.js";
 import { elementsById } from "./element-by-id.js";
 import { clockTime, mountPlayer, playAudio } from "./excerpt-player.js";
 import { formatTime } from "./format-time.js";
@@ -90,6 +101,8 @@ const page = elementsById({
   jobBox: HTMLElement,
   developedLine: HTMLElement,
   developJobBox: HTMLElement,
+  bridgeField: HTMLElement,
+  bridgeSecondsInput: HTMLInputElement,
   addHelp: HTMLElement,
   sketchSelect: HTMLSelectElement,
   noSketches: HTMLElement,
@@ -118,12 +131,18 @@ page.offsetInput.min = String(SECTION_FIELDS.offset.min);
 page.fadeInput.min = String(TRANSITION_SECONDS.min);
 page.sectionTextInput.maxLength = MAX_TEXT_CHARS;
 page.transitionTextInput.maxLength = MAX_TEXT_CHARS;
+page.bridgeSecondsInput.min = String(BRIDGE_SECONDS.min);
+page.bridgeSecondsInput.max = String(BRIDGE_SECONDS.max);
+page.bridgeSecondsInput.value = String(BRIDGE_SECONDS.default);
 mountPlayer(page.sectionAudio, status.fail);
 mountPlayer(page.trackAudio, status.fail);
 const playControl = jobControl(buttons.play);
 const developControl = jobControl(buttons.develop);
 /** The develop button's own title, shown while it is on. */
 const DEVELOP_TITLE = buttons.develop.title;
+const bridgeControl = jobControl(buttons.bridge);
+/** The bridge button's own title, shown while it is on. */
+const BRIDGE_TITLE = buttons.bridge.title;
 /** The render, seam and export buttons share one hold: one track job runs at a time. */
 const TRACK_JOB_BUTTONS = /** @type {const} */ ([
   "renderTrack",
@@ -160,7 +179,7 @@ const trackId = Number(idText);
 
 /**
  * A development of a sketch, as `GET /api/tracks/:id` lists it (decision 0079).
- * @typedef {{ id: number, sketchId: number, text: string, offset: number, seconds: number, createdAt: number, genome: unknown }} TrackDevelopment
+ * @typedef {{ id: number, sketchId: number, text: string, offset: number, seconds: number, bridge: boolean, createdAt: number, genome: unknown }} TrackDevelopment
  */
 
 /** @type {TrackView | null} */
@@ -370,7 +389,21 @@ function draw() {
     const morph = errors.length === 0 ? sectionMorph(arrangement, fade, sectionGenomes()) : null;
     page.fadeLine.textContent = transitionText(fade, transition, morph);
   }
+  page.bridgeField.hidden = fade === null;
+  label(buttons.bridge, fade === null ? "Bridge" : `Bridge sections ${fade + 1} and ${fade + 2}`);
+  if (!bridgeControl.held()) {
+    const refusal =
+      errors.length > 0
+        ? "Turned off until the problems listed under the timeline are fixed."
+        : bridgeRefusal(arrangement, fade, bridgeSeconds(), unsaved(), sectionGenomes());
+    buttons.bridge.disabled = refusal !== null;
+    buttons.bridge.title = refusal ?? BRIDGE_TITLE;
+  }
 }
+
+/** The bridge's seconds as the owner typed them; NaN when the field holds no number. */
+const bridgeSeconds = () =>
+  page.bridgeSecondsInput.value.trim() === "" ? Number.NaN : Number(page.bridgeSecondsInput.value);
 
 /**
  * Puts `words` on a key button, before the key it shows.
@@ -463,6 +496,8 @@ page.secondsInput.onchange = () =>
     const seconds = fieldNumber(page.secondsInput, "Plays for");
     onSelected((arrangement, index) => setSection(arrangement, index, { seconds }));
   });
+// The bridge's seconds are the page's, not the timeline's: they only turn Bridge on or off.
+page.bridgeSecondsInput.onchange = () => draw();
 page.fadeInput.onchange = () =>
   status.run(() => {
     const seconds = fieldNumber(page.fadeInput, "Crossfade");
@@ -840,6 +875,77 @@ function plainSketch() {
   });
 }
 
+/**
+ * Writes a bridge for the chosen section's transition of the saved version, after a confirm
+ * stating the requests and their time (decision 0081). When the job is done, the bridge goes
+ * between the two sections by `bridgeSwap`, saved as a new version unless the timeline has
+ * changes the owner hasn't saved.
+ */
+async function bridgeJoin() {
+  if (draft === null || selected === null || buttons.bridge.disabled) return;
+  const at = transitionOf(draft, selected);
+  if (at === null) return;
+  const seconds = bridgeSeconds();
+  const plan = bridgePlan(draft, at, seconds, sectionGenomes());
+  if (!plan.ok) throw new Error(`Can't bridge this join: ${plan.reason}.`);
+  if (!confirm(bridgeCostText(at, plan, await getJson(BREED_ESTIMATE_PATH)))) {
+    status.say(NOT_STARTED);
+    return;
+  }
+  const from = /** @type {Section} */ (draft.sections[at]);
+  const into = /** @type {Section} */ (draft.sections[at + 1]);
+  const { text } = /** @type {{ text: string }} */ (draft.transitions[at]);
+  const openedThen = openedByHand;
+  try {
+    const finished = await runJob(status, {
+      path: `${trackPath(trackId)}/bridge`,
+      body: { revisionId: openedRevisionId(), transition: at, seconds },
+      controls: [bridgeControl],
+      boxes: page.developJobBox,
+      started: `Writing a bridge between sections ${at + 1} and ${at + 2}. Leave this page open: it goes between them when it is done.`,
+    });
+    if (finished === null) return;
+    if (finished.refused) {
+      status.say("That job was for another join. Press Bridge again for this one.");
+      return;
+    }
+    /** @type {{ developmentIds: number[], plan: BridgePlan }} */
+    const result = finished.result;
+    await readDevelopments();
+    const swap = bridgeSwap(
+      {
+        arrangement: /** @type {Arrangement} */ (draft),
+        from,
+        into,
+        at,
+        openedThen,
+        openedNow: openedByHand,
+        unsaved: unsaved(),
+      },
+      result,
+      text,
+    );
+    const ids = listed(result.developmentIds.map(String));
+    if (swap.kind === SWAP.skip) {
+      status.say(
+        `Kept bridge ${ids} but didn't put it in the track: ${swap.reason}. It stays stored with the track's developments; bridge the join again to use one now.`,
+      );
+      return;
+    }
+    if (swap.kind === SWAP.edit) {
+      edit(swap.arrangement, swap.index + 1);
+      status.say(`Put bridge ${ids} after section ${swap.index + 1}. Save to keep it.`);
+      return;
+    }
+    draft = swap.arrangement;
+    selected = swap.index + 1;
+    page.noteInput.value = `Bridge between sections ${swap.index + 1} and ${swap.index + 1 + result.developmentIds.length + 1}`;
+    await save();
+  } finally {
+    draw();
+  }
+}
+
 /** Each action, run by its button and its key. */
 const actions = /** @type {Record<TimelineAction, () => void>} */ ({
   selectPrevious: () => {
@@ -874,6 +980,7 @@ const actions = /** @type {Record<TimelineAction, () => void>} */ ({
   exportTrack: whenOn("exportTrack", exportTrack),
   exportStems: whenOn("exportStems", exportStems),
   develop: () => void status.run(developSection),
+  bridge: () => void status.run(bridgeJoin),
   plainSketch: () => {
     if (!buttons.plainSketch.disabled) plainSketch();
   },

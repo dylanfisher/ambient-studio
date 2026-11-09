@@ -29,6 +29,7 @@ export const TIMELINE_KEYS = Object.freeze({
   exportStems: "KeyV",
   develop: "KeyZ",
   plainSketch: "Slash",
+  bridge: "KeyB",
 });
 
 /** @typedef {keyof typeof TIMELINE_KEYS} TimelineAction */

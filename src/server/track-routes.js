@@ -149,9 +149,9 @@ function trackMaterial(app, vibeId) {
 }
 
 /**
- * The track's live developments as the timeline reads them (decision 0079), oldest first, each
- * with its genome, so the page checks a developed section's window and morphs as the server
- * does.
+ * The track's live developments as the timeline reads them (decisions 0079, 0081), oldest first,
+ * each marked whether it is a bridge and with its genome, so the page checks a developed
+ * section's window and morphs as the server does.
  * @param {Store} store
  * @param {number} trackId
  */
@@ -161,8 +161,8 @@ function trackDevelopments(store, trackId) {
     if (!genome) {
       throw new Error(`development ${development.id} names no genome ${development.genomeId}`);
     }
-    const { id, sketchId, text, offset, seconds, createdAt } = development;
-    return { id, sketchId, text, offset, seconds, createdAt, genome };
+    const { id, sketchId, text, offset, seconds, bridge, createdAt } = development;
+    return { id, sketchId, text, offset, seconds, bridge, createdAt, genome };
   });
 }
 

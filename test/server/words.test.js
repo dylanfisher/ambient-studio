@@ -5,9 +5,18 @@
 // now, and a second words job while one runs; and a cancel.
 /** @import { Studio } from "../support/studio.js" */
 import { afterEach, expect, test, vi } from "vitest";
+import { emptyArrangement } from "../../src/domain/arrangement-schema.js";
 import { OPERATOR } from "../../src/domain/operator.js";
 import { ROLE } from "../../src/domain/prompt-tokens.js";
-import { getGeneration, listRequestGroup } from "../../src/server/generation-store.js";
+import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
+import { listDevelopments } from "../../src/server/development-store.js";
+import {
+  addCandidate,
+  getGeneration,
+  listRequestGroup,
+  putGenome,
+} from "../../src/server/generation-store.js";
+import { addSketch } from "../../src/server/rating-store.js";
 import { listRevisions } from "../../src/server/vibe-store.js";
 import { removeStudio, startStudio, VIBE } from "../support/studio.js";
 
@@ -267,6 +276,62 @@ test("cancelling the other job aborts only its request, and the words job's requ
   });
   await server.jobs.settled(draft.id);
   expect(server.jobs.get(draft.id).state).toBe("cancelled");
+  expect(omlx.requests).toHaveLength(2);
+  expect(omlx.maxInFlight()).toBe(1);
+});
+
+test("cancelling a bridge job aborts only its request, and the words job's request goes on (0081)", async () => {
+  const { studio, vibe, path } = await setup();
+  const { server, omlx } = studio;
+  // Two sections of one drone sketch, kept straight in the store, joined by a crossfade.
+  const genome = { ...droneGenome, duration: 120 };
+  const candidate = addCandidate(server.store, {
+    vibeRevisionId: vibe.revision.id,
+    generationId: null,
+    sessionId: null,
+    genomeId: putGenome(server.store, vibe.id, genome).id,
+    seed: 11,
+    source: "llm",
+    parentIds: [],
+    locks: [],
+    operator: null,
+    operatorParams: null,
+    intent: null,
+    rejectReason: null,
+    lint: null,
+    rejectedGenome: null,
+  });
+  const sketch = addSketch(server.store, { candidateId: candidate.id, notes: "", tags: [] });
+  const section = { sketchId: sketch.id, offset: 0, seconds: 100, text: "", developmentId: null };
+  const { track } = await studio.ok("POST", `/api/vibes/${vibe.id}/tracks`, { name: "dusk" });
+  const revision = await studio.ok("POST", `/api/tracks/${track.id}/revisions`, {
+    arrangement: {
+      ...emptyArrangement(),
+      sections: [section, section],
+      transitions: [{ kind: "crossfade", seconds: 8, text: "" }],
+    },
+    note: "two",
+  });
+  omlx.script({ tokens: ['{"duration": '], holdAfter: 0 }, tokens(GOOD));
+  const bridge = await studio.ok("POST", `/api/tracks/${track.id}/bridge`, {
+    revisionId: revision.id,
+    transition: 0,
+    seconds: 60,
+  });
+  await omlx.waitForRequests(1);
+  const words = await studio.ok("POST", path, WORDS_BODY);
+  // Running in its own lane, its request waiting in the queue behind the bridge's.
+  expect(words.state).toBe("running");
+  await studio.ok("POST", `/api/jobs/${bridge.id}/cancel`, {});
+  await omlx.waitForAborted(1);
+  await studio.drive(server.jobs.settled(words.id));
+  expect(await studio.ok("GET", `/api/jobs/${words.id}`)).toMatchObject({
+    state: "done",
+    result: GOOD,
+  });
+  await server.jobs.settled(bridge.id);
+  expect(server.jobs.get(bridge.id).state).toBe("cancelled");
+  expect(listDevelopments(server.store, track.id)).toEqual([]);
   expect(omlx.requests).toHaveLength(2);
   expect(omlx.maxInFlight()).toBe(1);
 });

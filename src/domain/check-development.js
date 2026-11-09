@@ -2,14 +2,16 @@
 // response is the genome, validated (0005), its duration the seconds asked, its recordings the
 // sketch's, linted under the brief (0020) without the brief's duration range or the excerpt's
 // floor, since a development lasts its section and is never excerpted, and held to the engine's
-// cost budget. An answer cut off, with no JSON or with several objects has nothing to repair
-// (0024).
+// cost budget. A bridge's is held to its end rules too (0081). An answer cut off, with no JSON
+// or with several objects has nothing to repair (0024).
+/** @import { BridgeEnds } from "./check-bridge.js" */
 /** @import { Constraints } from "./constraint-schema.js" */
 /** @import { QuotedError } from "./build-repair-prompt.js" */
 /** @import { Genome } from "../engine/genome-schema.js" */
 /** @import { RejectReason } from "./reject-reason.js" */
 import { recordingRefs } from "../engine/recording-refs.js";
 import { validateGenome } from "../engine/validate-genome.js";
+import { checkBridge } from "./check-bridge.js";
 import { judgeAnswer } from "./judge-answer.js";
 import { DURATION_PATH, EXCERPT_LENGTH_RULE, lintGenome } from "./lint-genome.js";
 import { SCHEMA_RULE } from "./lint-result.js";
@@ -23,7 +25,9 @@ export const SECONDS_RULE = "sectionSeconds";
  * @typedef {object} DevelopmentAsk
  * @property {number} seconds the section's, which the genome lasts
  * @property {Constraints} constraints the brief's, as checked when its revision was stored
- * @property {ReadonlySet<string>} recordings the hashes of the recordings the sketch plays
+ * @property {ReadonlySet<string>} recordings the hashes of the recordings the sketch plays; a
+ *   bridge's, those of both sketches it joins
+ * @property {BridgeEnds} [ends] a bridge's, whose end rules the genome is held to as well
  */
 
 /**
@@ -39,7 +43,7 @@ export const SECONDS_RULE = "sectionSeconds";
  * @param {DevelopmentAsk} ask
  * @returns {DevelopmentVerdict}
  */
-export function checkDevelopment(answer, { seconds, constraints, recordings }) {
+export function checkDevelopment(answer, { seconds, constraints, recordings, ends }) {
   const validated = validateGenome(answer);
   if (!validated.ok) {
     const errors = validated.errors.map((error) => ({ ...error, rule: SCHEMA_RULE }));
@@ -72,6 +76,7 @@ export function checkDevelopment(answer, { seconds, constraints, recordings }) {
   const lint = [
     ...lintGenome(genome, held).findings.filter(({ rule }) => rule !== EXCERPT_LENGTH_RULE),
     ...costBudget(genome),
+    ...(ends ? checkBridge(genome, ends) : []),
   ];
   if (lint.length > 0) return { ok: false, reason: REJECT_REASON.lintErrors, errors: lint, answer };
   return { ok: true, genome };

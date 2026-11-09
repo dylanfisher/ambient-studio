@@ -89,8 +89,15 @@ function parts(store) {
     genomeId: genome.id,
     seed: 7,
     generationId: generation.id,
+    bridge: false,
   };
 }
+
+/**
+ * A draft as a store migrated to 0013 or 0014 takes it: before a development could be a bridge.
+ * @param {ReturnType<typeof parts>} draft
+ */
+const before0015 = ({ bridge: _, ...draft }) => draft;
 
 test("developing again keeps the earlier row; rows are append-only and removed by mark", async () => {
   const made = await tempStore();
@@ -130,7 +137,7 @@ test("migration 0013 over a database built with 0001 to 0012 keeps its rows and 
   const store = openStore(file, { now, migrations: migrations.slice(0, 13) });
   cleanups.push(async () => store.close());
   expect(listTrackRevisions(store, draft.trackId)).toHaveLength(1);
-  const development = addDevelopment(store, draft);
+  const development = addDevelopment(store, /** @type {any} */ (before0015(draft)));
   expect(listDevelopments(store, draft.trackId)).toEqual([development]);
   // The append-only triggers cover the new table once migrated from 0012's shape.
   expect(() => store.db.prepare("DELETE FROM developments").run()).toThrow(/append-only/);
@@ -199,4 +206,29 @@ test("migration 0014 gives every section of every stored revision no development
   expect(() => store.db.prepare("UPDATE track_revisions SET note = 'x'").run()).toThrow(
     /append-only/,
   );
+});
+
+test("migration 0015 marks every stored development as no bridge, and a new one may be", async () => {
+  const made = await tempStore();
+  cleanups.push(made.remove);
+  const { paths, store: current } = made;
+  current.close();
+  const file = `${paths.database}-0014`;
+  const migrations = readMigrations();
+  expect(migrations[14]?.name).toBe("0015-development-bridge");
+  const now = () => 0;
+  const old = openStore(file, { now, migrations: migrations.slice(0, 14) });
+  const draft = parts(old);
+  // A row in 0014's shape, with no bridge column.
+  const stored = addDevelopment(old, /** @type {any} */ (before0015(draft)));
+  expect(stored).not.toHaveProperty("bridge");
+  old.close();
+
+  const store = openStore(file, { now, migrations });
+  cleanups.push(async () => store.close());
+  expect(getDevelopment(store, stored.id)).toEqual({ ...stored, bridge: false });
+  const bridge = addDevelopment(store, { ...draft, bridge: true });
+  expect(getDevelopment(store, bridge.id)?.bridge).toBe(true);
+  expect(listDevelopments(store, draft.trackId).map(({ bridge }) => bridge)).toEqual([false, true]);
+  expect(() => store.db.prepare("UPDATE developments SET bridge = 1").run()).toThrow(/append-only/);
 });
