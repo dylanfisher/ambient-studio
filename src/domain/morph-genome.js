@@ -66,8 +66,29 @@ const PITCH = Object.freeze(
   ),
 );
 
+/**
+ * Every global a morph can't move between two values, so two sections that differ in one play
+ * as a crossfade: `PITCH` and the pulse's tempo.
+ */
+export const JOIN_GLOBALS = Object.freeze([
+  ...PITCH,
+  /** @type {keyof Genome} */ (paramName(GLOBAL_PARAMS, GLOBAL_PARAMS.bpm)),
+]);
+
 /** A voice's place on its timeline, not a sound a morph moves. */
 const PLACE = new Set(/** @type {Descriptor[]} */ ([VOICE_PARAMS.start, VOICE_PARAMS.end]));
+
+/**
+ * The parameters of a voice of `type` that can't move, which two voices of one id must hold
+ * equal for a morph to move one into the other: every choice, flag, recording and fixed number,
+ * its start and end aside.
+ * @param {string} type
+ * @returns {string[]}
+ */
+export const fixedParams = (type) =>
+  Object.entries(voiceParams(type))
+    .filter(([, descriptor]) => !PLACE.has(descriptor) && !allowsTrajectory(descriptor))
+    .map(([name]) => name);
 
 /** The curves whose segment, cut anywhere, is the same curve to the cut's value. */
 const SPLITS = new Set([CURVES.linear, CURVES.late]);
@@ -192,10 +213,7 @@ function sameVoice(out, into, { from, to, handover }) {
   if (!(out.start <= from && out.end >= to && into.start <= handover && into.end > handover)) {
     return false;
   }
-  return Object.entries(voiceParams(out.type)).every(
-    ([name, descriptor]) =>
-      PLACE.has(descriptor) || allowsTrajectory(descriptor) || out[name] === into[name],
-  );
+  return fixedParams(out.type).every((name) => out[name] === into[name]);
 }
 
 /**

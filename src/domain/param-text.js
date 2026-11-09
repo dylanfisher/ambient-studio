@@ -26,6 +26,15 @@ const rounded = (value) => String(Number(value.toPrecision(3)));
 export const numberText = (value, unit) => unitText(rounded(value), unit || null);
 
 /**
+ * A number with its unit and every digit it has, as `55.123 Hz`: for a value a check compares
+ * exactly, which the model must copy as written (decision 0081). The digits are `show()`'s, as
+ * a repair message quotes them.
+ * @param {number} value
+ * @param {string} unit "" for none
+ */
+export const exactText = (value, unit) => unitText(String(value), unit || null);
+
+/**
  * A move from one number to another, the unit written once, as `37 → 55 Hz`.
  * @param {number} from
  * @param {number} to

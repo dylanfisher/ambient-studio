@@ -71,13 +71,22 @@ test("a block says its sketch, its intent and the part of the sketch it plays", 
 test("a developed block says so, and plays a part of its development (0079)", () => {
   const sketch = { id: 1, intent: "a slow cold drone", duration: 60 };
   const section = { sketchId: 1, offset: 0, seconds: 240, text: "", developmentId: 3 };
-  expect(blockText(section, sketch, { seconds: 240 })).toEqual({
+  expect(blockText(section, sketch, { seconds: 240, bridge: false })).toEqual({
     name: "Sketch 1: a slow cold drone, developed",
     times: "0:00 to 4:00 of its development's 4:00, 240 s",
     words: "",
   });
-  expect(blockText({ ...section, seconds: 300 }, sketch, { seconds: 240 }).times).toBe(
-    "0:00 to 5:00 of its development's 4:00, 300 s; extended by 1:00 past its end",
+  expect(
+    blockText({ ...section, seconds: 300 }, sketch, { seconds: 240, bridge: false }).times,
+  ).toBe("0:00 to 5:00 of its development's 4:00, 300 s; extended by 1:00 past its end");
+});
+
+test("a bridge's block says it is a bridge (0081)", () => {
+  const sketch = { id: 1, intent: null, duration: 60 };
+  const section = { sketchId: 1, offset: 0, seconds: 120, text: "", developmentId: 3 };
+  expect(blockText(section, sketch, { seconds: 120, bridge: true }).name).toBe("Sketch 1, bridge");
+  expect(blockText(section, sketch, { seconds: 120, bridge: false }).name).toBe(
+    "Sketch 1, developed",
   );
 });
 

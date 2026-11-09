@@ -10,7 +10,10 @@
   renders, the manifest's section, the cost), [0064](0064-morph-transitions.md) (a morph or a
   weave meets the developed genome), [0066](0066-material-panel-and-arc-target.md) (`steerSwap`
   places a development too) and [0067](0067-proposed-track.md) (the repair round shared as
-  `answerWithRepair`; a proposed section has no development)
+  `answerWithRepair`; a proposed section has no development); amended by
+  [0081](0081-bridges.md) (a development may be a bridge, marked in its row; the prompt and the
+  check take a bridge's ends; `askDevelopment` is the request both jobs send; the develop route
+  refuses while a bridge is written)
 
 ## Context
 

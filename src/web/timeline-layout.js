@@ -91,7 +91,8 @@ function startOf(text) {
  * extended past that genome's end, and the start of its text, "" when it has none.
  * @param {Section} section
  * @param {BlockSketch | undefined} sketch undefined when the sketch is no longer listed
- * @param {{ seconds: number }} [development] the one the section plays, when it has one
+ * @param {{ seconds: number, bridge: boolean }} [development] the one the section plays, when it
+ *   has one, which may be a bridge (0081)
  * @returns {{ name: string, times: string, words: string }}
  */
 export function blockText({ sketchId, offset, seconds, text }, sketch, development) {
@@ -105,7 +106,7 @@ export function blockText({ sketchId, offset, seconds, text }, sketch, developme
   const extended = past > 0 ? `; extended by ${clockTime(past)} past its end` : "";
   const named = sketch.intent ? `Sketch ${sketchId}: ${sketch.intent}` : `Sketch ${sketchId}`;
   return {
-    name: development ? `${named}, developed` : named,
+    name: development ? (development.bridge ? `${named}, bridge` : `${named}, developed`) : named,
     times: `${range} of its ${development ? "development's " : ""}${clockTime(duration)}, ${seconds} s${extended}`,
     words,
   };
