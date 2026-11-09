@@ -34,4 +34,7 @@ export const OPERATOR = Object.freeze({
   /** A saved brief reworked by the model from the owner's words (0074); its generations name it
    * in their request group, since they make no candidate. */
   draft: "draft",
+  /** The model's reading of the owner's words as values for a field set (0084); its
+   * generations name it in their request group, since they make no candidate. */
+  words: "words",
 });

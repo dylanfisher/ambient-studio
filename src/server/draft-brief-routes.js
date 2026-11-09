@@ -8,13 +8,13 @@ import { buildDraftBriefPrompt } from "../domain/draft-brief-prompt.js";
 import { JOB_KIND } from "../domain/job-kind.js";
 import { DRAFT_LIMITS, draftBriefJob } from "./draft-brief.js";
 import { fields, MAX_CHARS, text } from "./request-fields.js";
-import { duplicateJob, HttpError } from "./routing.js";
+import { HttpError, refuseUnfinished } from "./routing.js";
 import { readDraft, requireVibe } from "./vibe-routes.js";
 
 const DRAFT_JOB = JOB_KIND.draftBrief;
 
 /** The share of the context budget the first prompt may take; the rest is the repair's (0024). */
-const FIRST_PROMPT_SHARE = 0.5;
+export const FIRST_PROMPT_SHARE = 0.5;
 
 /**
  * Checks the body, builds the first prompt and adds the job.
@@ -38,15 +38,12 @@ function startDraft(app, vibeId, body) {
   } catch (error) {
     throw new HttpError(400, /** @type {Error} */ (error).message);
   }
-  const unfinished = app.jobs
-    .list()
-    .find((job) => job.kind === DRAFT_JOB && job.finishedAt === null);
-  if (unfinished) {
-    throw duplicateJob(
-      `The model is already writing a brief (job ${unfinished.id}). Wait for it to finish, or cancel it.`,
-      unfinished.id,
-    );
-  }
+  refuseUnfinished(
+    app,
+    DRAFT_JOB,
+    (id) =>
+      `The model is already writing a brief (job ${id}). Wait for it to finish, or cancel it.`,
+  );
   return app.jobs.add(DRAFT_JOB, draftBriefJob(app, { vibeId, messages }));
 }
 

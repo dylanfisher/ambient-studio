@@ -35,7 +35,7 @@ import {
   MAX_SEARCH_BUDGET,
 } from "../domain/search-settings.js";
 import { MAX_SEARCH_DIMENSIONS, searchSpace } from "../domain/search-space.js";
-import { SHIFT_WORDS_CHARS } from "../domain/shift-prompt.js";
+import { WORDS_CHARS } from "../domain/words-prompt.js";
 import { isObject } from "../engine/is-object.js";
 import { getAttachment } from "./attachment-store.js";
 import { currentExcerpt } from "./candidate-excerpt.js";
@@ -958,7 +958,7 @@ export const SESSION_ROUTES = [
     handle: async ({ app, params, body }) => {
       const session = requireOpenSession(app, params);
       const given = fields(await body(), ["words"]);
-      const words = text(given, "words", SHIFT_WORDS_CHARS);
+      const words = text(given, "words", WORDS_CHARS);
       if (NOT_ONE_LINE.test(words)) throw new HttpError(400, "words must be one line");
       const channel = requireEarChannel(app, session);
       if (channel.view().phase === EAR_PHASE.finished) {

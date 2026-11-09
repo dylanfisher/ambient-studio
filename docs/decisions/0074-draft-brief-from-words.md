@@ -5,7 +5,8 @@
   sends, that a new brief's requests aren't stored, the 1 000-character limit on the words, and
   that saved targets the form doesn't show are kept as they are. Amends [0024](0024-prompt-parse-repair-generation.md) (a third answer through
   `sendRequest` and the shared parse step, `judgeAnswer`) and [0067](0067-proposed-track.md)
-  (`judgeProposal` now calls `judgeAnswer`)
+  (`judgeProposal` now calls `judgeAnswer`); amended by [0084](0084-words-operator.md) (the draft
+  stays apart from the words operator, and its 409 check is shared as `refuseUnfinished`)
 
 ## Context
 

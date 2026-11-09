@@ -141,6 +141,10 @@ describe("jobProgress", () => {
     );
   });
 
+  test("the words operator's job has a title (0084)", () => {
+    expect(jobProgress(job({ kind: "words" }), 3_000).title).toBe("Reading your words as settings");
+  });
+
   // The top bar shows every job (0073), so a kind the server adds with no title throws there.
   test("every kind of job the server adds has a title", () => {
     for (const kind of [...Object.values(JOB_KIND), OPERATOR.breed]) {

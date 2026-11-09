@@ -2,7 +2,9 @@
 
 - **Date:** 2026-11-08
 - **Status:** accepted; provisional: owner to confirm the four variations and the default.
-  Amends [0055](0055-search-by-ear.md) (the draws' reach, a drift, and a spec rewritten mid-run).
+  Amends [0055](0055-search-by-ear.md) (the draws' reach, a drift, and a spec rewritten mid-run);
+  amended by [0084](0084-words-operator.md) (the shift's words run on the words operator, with
+  one repair round, and its answer is `{changes, said}`)
 
 ## Context
 
