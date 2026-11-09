@@ -2761,6 +2761,143 @@ for these steps.
 
 **Result:**
 
+## Phase WF — Words first
+
+**Goal:** the studio is driven by words. On every page, what a candidate, sketch or track is and
+how to change it is said and asked in words, and the model turns the words into parameter
+values. The numbers are still there, behind one toggle that starts closed.
+
+**Settled by the owner on 2026-11-09:** "in majority of situations the parameters are hidden
+behind a toggle (e.g. collapsed) and we use language in almost all contexts to describe and
+control parameters. the goal is LLM language as the tool."
+
+**What the code holds today** (surveyed at `288f26a`):
+
+- One stylesheet, `src/web/studio.css`. Disclosure is done three ways: native `<details>`
+  (the session's locks, details, hidden and rejected candidates, the brief's versions), a
+  hand-made `hidden` toggle (the session's "More controls", 0049), and sections the code hides.
+  There is no shared widget. Every control has a full-sentence title (0032,
+  `test/web/titles.test.js`).
+- Words the model already reads into values: a brief drafted from words (0074, `draft`), the
+  search's shift sliders from words (0075, `shift`), an explore's direction (0038), the
+  proposal's arc (0067). Words that reach later prompts but change nothing at once: the brief,
+  notes, a candidate's note, region labels and notes.
+- Words describing values: `originText`, `featuresText`, `targetsText`, `constraintsText`,
+  `axisName`, `macroWords`, `transitionText`, `preferenceText` and others under
+  `src/domain` and `src/web` (`rg -l "Text\b|Words\b" src/web src/domain`).
+- Raw numbers always in view: the brief's rules form and ranges (0032's "Advanced" disclosure
+  for ranges was dropped since), the kept targets as JSON, the session's positions line, rank
+  and search score, the map's axis numbers, cell scores and fill budget, every timeline field
+  and lane point, the quick A/B sliders, the references' times and analysis, and the evaluation
+  page's tables.
+- No words route for locks, nudges, lanes, timeline fields or a steer's setting.
+
+**Acceptance, as measurable checks:**
+
+1. **One toggle.** A shared numbers toggle, closed by default, holds every raw parameter
+   control and number on every page; opening it shows them as today, and the page remembers it
+   per page for that browser. A test lists each page's numeric inputs and fails on one outside a
+   toggle, except those an allowlist names with a reason.
+2. **Said in words.** Outside the toggle a candidate, sketch, section and brief are described
+   in words: features relative to the brief's own spread ("brighter than most of this brief"),
+   macros by their less/more words, positions by direction words, scores as plain verdicts.
+   Each description is a pure function with tests, written from templates, never by the model
+   (as 0047).
+3. **Asked in words.** One words operator turns the owner's words into values for a stated set
+   of fields (descriptors with their ranges and choices), checked against those descriptors,
+   with one repair, through the queue. Its answer fills the fields unsaved and says in words
+   what it changed; the owner keeps or undoes it. The brief draft (0074) and the shift (0075)
+   run on it, or the record says why one stays apart.
+4. **Words everywhere a value is set:** a candidate's change, its locks, a steer's setting, a
+   section's length and its transition, and a lane are each asked in words on their page,
+   against the fake omlx in tests.
+5. **No extra model traffic.** A words request starts only from the owner's button, one at a
+   time through the queue, and shows in the top bar's job indicator (0073) with a cancel.
+
+**Gate:** `./scripts/check`; the owner's check of every page on Safari 17.6 (mbp2015).
+
+### Steps
+
+Order: WF.1 and WF.2 in parallel, then WF.3, then WF.4, then WF.5 after TD.3 (the track page is
+TD's until then). WF steps run beside TD steps when they touch different pages; at most two
+builders at once. Records 0083–0087 are reserved for these steps.
+
+#### WF.1 — The numbers toggle
+
+- **Builds:** one disclosure widget in `src/web` with its CSS, closed by default, its state kept
+  per page in `localStorage` (read and written in try/catch, open state only, never data), a
+  full-sentence title, and keyboard access. Every page except the track page moves its raw
+  parameter controls and numbers inside it, replacing the session's "More controls" row and the
+  native `<details>` that hold numbers; disclosures that hold candidates (hidden, rejected) stay
+  as they are. The acceptance 1 test, with the track page on its allowlist until WF.5.
+- **Tiers:** web.
+- **Tests first:** acceptance 1's lister; the toggle's state with storage that throws; titles.
+- **Records:** writes 0083. Amends 0032 and 0049.
+- **Parallel:** with WF.2. Review: the orchestrator reads the diff, and the owner checks pages.
+
+#### WF.2 — The words operator
+
+- **Builds:** `buildWordsPrompt` in `src/domain`: the owner's words, the fields asked about
+  (each descriptor's name, description, range or choices, current value), and short context
+  (the brief, and the reading of what is being changed when there is one); the answer is
+  `{changes: {field: value}, said: "…"}`, checked against the descriptors, with one repair
+  (0024). A `words` job and route that take a field set by name from a registry in `src/domain`
+  (so the route never takes arbitrary fields from the page), owner-started, through the queue,
+  shown in the top bar, cancellable. Moves 0074's draft and 0075's shift onto it if their
+  prompts and checks fit; this is the third occurrence (principle 3).
+- **Tiers:** domain, server.
+- **Tests first:** acceptance 3 against the fake omlx; an answer naming an unknown field or an
+  out-of-range value gets a finding and a repair; the token budget with the largest field set;
+  the draft's and shift's existing tests pass unchanged.
+- **Records:** writes 0084. Amends 0074 and 0075.
+- **Parallel:** with WF.1. Review: yes (omlx boundary).
+
+#### WF.3 — The brief and session pages in words
+
+- **Builds:** on the brief page, the draft from words leads and the rules form and ranges sit
+  in the toggle. On each session candidate, one "Change it" field asks for a change in words:
+  the explore it already is, with its words also offered to the field sets for locks ("keep the
+  low drone"), the macro less/more choices and a steer's setting. `featureWords` and the other
+  acceptance 2 descriptions replace the positions line, rank, search score and features text
+  outside the toggle.
+- **Tiers:** domain (descriptions, field sets), web.
+- **Tests first:** acceptance 2's descriptions; acceptance 4's locks, macros and steer setting
+  through the fake omlx; the page edits.
+- **Records:** writes 0085. Amends 0039 and 0056.
+- **Parallel:** with a TD step. Review: yes.
+
+#### WF.4 — Map, lineage, quick A/B, references and evaluation
+
+- **Builds:** each page opens with what it shows in words: the map's cells by axis words and a
+  verdict, lineage nodes by `originText`, the quick A/B steering by its words field first, a
+  region by its label, note and analysis in words, the evaluation page by its `meaningText`
+  verdicts, with the tables in the toggle. Budgets are said as time ("about 6 minutes").
+- **Tiers:** domain (descriptions), web.
+- **Tests first:** the descriptions; acceptance 1 with these pages off the allowlist.
+- **Records:** writes 0086.
+- **Parallel:** with a TD step. Review: the orchestrator reads the diff.
+
+#### WF.5 — The track page in words
+
+- **Builds:** after TD.3, the timeline leads with each section's and transition's text and its
+  development; the offset, seconds, crossfade and lane fields sit in the toggle. A section's
+  length and transition, and a lane ("darker over the last two minutes"), are asked in words
+  through WF.2, filling the timeline unsaved. The track page leaves the allowlist.
+- **Tiers:** domain (field sets), web.
+- **Tests first:** acceptance 4's section, transition and lane through the fake omlx;
+  acceptance 1 with no allowlist entry for the track page.
+- **Records:** writes 0087. Amends 0061 and 0065.
+- **Parallel:** none. Review: yes.
+
+**Pending owner checks** (after WF.1, WF.3 and WF.5, on Safari 17.6 on mbp2015):
+
+- Use each page with the toggle closed. Is there anything you had to open it for?
+- Ask a candidate, a lock and a lane for a change in words. Did the change match the words, and
+  did the page say clearly what changed?
+- Does a words request on every small change make the live site slower?
+
+**Result:**
+
 ## Phase 7 — Album builder
 
 **Goal:** tracks ordered into an album with an arc. **Acceptance:** ordering; energy, brightness
@@ -3875,3 +4012,8 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   and transition, a reading of each sketch and its lineage, sections developed by the model into
   their own genomes, weave and bridge joins, and developing a whole proposed track. Developments
   belong to the track and never become sketches. Records 0077–0082 are reserved for its steps.
+- 2026-11-09: phase WF written at the owner's request ("the goal is LLM language as the
+  tool"): raw parameters behind one closed toggle on every page, descriptions in words from
+  templates, and one words operator that turns the owner's words into values for a stated set
+  of fields. Records 0083–0087 are reserved for its steps. It runs beside phase TD, two builders
+  at most, with the track page left to TD until TD.3.
