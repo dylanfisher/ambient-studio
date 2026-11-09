@@ -41,7 +41,7 @@ export function shiftWordsJob(app, session, channel, words) {
   const row = getGenome(app.store, best.genomeId);
   if (!row) throw new Error(`the search's best names genome ${best.genomeId}, which has no row`);
   const positions = toVector(row.genome, paths);
-  const fields = Object.entries(SET.fields(paths)).map(([name, descriptor]) => ({
+  const fields = Object.entries(SET.fields({ paths })).map(([name, descriptor]) => ({
     name,
     descriptor,
     current: steering.shift[name] ?? EAR_SHIFT.default,

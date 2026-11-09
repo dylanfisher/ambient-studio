@@ -70,7 +70,7 @@ test("with the largest field set, a full sketch reading and every text at its li
     { length: MAX_EAR_DIMENSIONS },
     (_, i) => `voices.${String(i).padStart(16, "v")}.params.${"p".repeat(MAX_CHARS.lockPath - 31)}`,
   );
-  const fields = Object.entries(WORDS_SETS.shift.fields(paths)).map(([name, descriptor]) => ({
+  const fields = Object.entries(WORDS_SETS.shift.fields({ paths })).map(([name, descriptor]) => ({
     name,
     descriptor,
     current: -0.25,

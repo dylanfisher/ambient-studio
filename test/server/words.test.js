@@ -2,16 +2,29 @@
 // holding the set's fields with the page's values now and the owner's words, its checked
 // changes and sentence returned unsaved; one repair quoting each finding; a cut-off answer
 // rejected with no repair; the route refusing an unknown set, a set it doesn't serve, bad values
-// now, and a second words job while one runs; and a cancel.
+// now, and a second words job while one runs; and a cancel. A candidate's sets (0085) read the
+// candidate the page names: its locks, its Less / More choices and where a steer from it aims.
 /** @import { Studio } from "../support/studio.js" */
 import { afterEach, expect, test, vi } from "vitest";
+import { lockChoices } from "../../src/domain/lock-choices.js";
 import { OPERATOR } from "../../src/domain/operator.js";
 import { ROLE } from "../../src/domain/prompt-tokens.js";
-import { getGeneration, listRequestGroup } from "../../src/server/generation-store.js";
+import { sketchReading } from "../../src/domain/sketch-reading.js";
+import { directionField } from "../../src/domain/words-sets.js";
+import { MACROS } from "../../src/engine/genome-schema.js";
+import { requireGenome } from "../../src/engine/validate-genome.js";
+import {
+  addCandidate,
+  getGeneration,
+  listRequestGroup,
+  putGenome,
+} from "../../src/server/generation-store.js";
+import { markRemoved, TABLE } from "../../src/server/store.js";
 import { listRevisions } from "../../src/server/vibe-store.js";
-import { removeStudio, startStudio, VIBE } from "../support/studio.js";
+import { GENOMES, removeStudio, startStudio, VIBE } from "../support/studio.js";
 
-// No set the page sends values for exists until WF.3, so the test adds one with a number, a
+// Every real set the words route serves is a candidate's, so the test adds one the page sends
+// values for with no candidate: a number, a
 // whole number and a choice.
 vi.mock("../../src/domain/words-sets.js", async (original) => {
   /** @type {any} */
@@ -269,4 +282,154 @@ test("cancelling the other job aborts only its request, and the words job's requ
   expect(server.jobs.get(draft.id).state).toBe("cancelled");
   expect(omlx.requests).toHaveLength(2);
   expect(omlx.maxInFlight()).toBe(1);
+});
+
+/**
+ * A brief, a session and one candidate of it with GENOMES[0], stored with no excerpt.
+ * @param {Studio} studio
+ */
+async function seedCandidate(studio) {
+  const { vibe, session } = await studio.openSession();
+  const { store } = studio.server;
+  const genome = requireGenome(GENOMES[0], "the test genome");
+  const candidate = addCandidate(store, {
+    vibeRevisionId: vibe.revision.id,
+    generationId: null,
+    sessionId: session.id,
+    genomeId: putGenome(store, vibe.id, genome).id,
+    seed: 7,
+    source: "llm",
+    parentIds: [],
+    locks: [],
+    operator: null,
+    operatorParams: null,
+    intent: null,
+    rejectReason: null,
+    lint: null,
+    rejectedGenome: null,
+  });
+  return { vibe, session, candidate, genome, path: `/api/vibes/${vibe.id}/words` };
+}
+
+/**
+ * Asks a candidate's set with the fake omlx answering `answers` in turn; the finished job.
+ * @param {Studio} studio
+ * @param {string} path
+ * @param {Record<string, unknown>} body
+ * @param {object[]} answers
+ */
+async function askSet({ ok, omlx, drive, server }, path, body, answers) {
+  omlx.script(...answers);
+  const job = await ok("POST", path, body);
+  await drive(server.jobs.settled(job.id));
+  return ok("GET", `/api/jobs/${job.id}`);
+}
+
+/** @param {import("../../src/engine/genome-schema.js").Genome} genome */
+const allFree = (genome) =>
+  Object.fromEntries(
+    lockChoices(genome).flatMap(({ choices }) => choices.map(({ path }) => [path, "free"])),
+  );
+
+async function candidateStudio() {
+  const studio = await startStudio();
+  studios.push(studio);
+  return { studio, ...(await seedCandidate(studio)) };
+}
+
+test("the locks set lists the candidate's lockable paths with its reading, and its changes come back", async () => {
+  const { studio, session, candidate, genome, path } = await candidateStudio();
+  const voice = /** @type {{ id: string, type: string }} */ (genome.voices[0]);
+  const good = { changes: { [`voices.${voice.id}`]: "locked" }, said: "Keeps the low drone." };
+  const body = {
+    set: "locks",
+    words: "keep the low drone",
+    current: allFree(genome),
+    candidateId: candidate.id,
+  };
+  const finished = await askSet(studio, path, body, [tokens(good)]);
+  expect(finished.state).toBe("done");
+  expect(finished.result).toMatchObject({ ...good, repaired: false });
+  const [, user] = sent(studio, 0);
+  expect(user.content).toContain(
+    `What is being changed, as it is now:\n${sketchReading(genome, null).join("\n")}`,
+  );
+  expect(user.content).toContain(
+    `- voices.${voice.id}: the whole voice, a ${voice.type}, every parameter; locked|free; now "free"`,
+  );
+  const generation = getGeneration(studio.server.store, finished.result.generationId);
+  expect(generation?.sessionId).toBe(session.id);
+});
+
+test("the macros set repairs a value that isn't one of its choices", async () => {
+  const { studio, candidate, path } = await candidateStudio();
+  const current = Object.fromEntries(Object.keys(MACROS).map((macro) => [macro, "none"]));
+  const wrong = { changes: { brightness: "darker" }, said: "Darker." };
+  const good = { changes: { brightness: "less", space: "more" }, said: "Darker, roomier." };
+  const body = { set: "macros", words: "darker and roomier", current, candidateId: candidate.id };
+  const finished = await askSet(studio, path, body, [tokens(wrong), tokens(good)]);
+  expect(finished.state).toBe("done");
+  expect(finished.result).toMatchObject({ ...good, repaired: true });
+  expect(sent(studio, 0)[1].content).toContain(
+    '- brightness: less is darker, more is brighter; less|none|more; now "none"',
+  );
+  expect(sent(studio, 1)[3].content).toContain(
+    '- $.changes.brightness (changes): must be one of "less", "none", "more", got "darker"',
+  );
+});
+
+test("the steer set has a field per direction, and an out-of-range setting is repaired", async () => {
+  const { studio, vibe, candidate, path } = await candidateStudio();
+  const body = { set: "steer", words: "much wetter", current: {}, candidateId: candidate.id };
+  const none = await studio.server.api("POST", path, body);
+  expect(none.status).toBe(400);
+  expect(none.body.toString()).toContain("the brief has no directions yet");
+  const { attachment } = await studio.ok("POST", `/api/vibes/${vibe.id}/attachments`, {
+    kind: "direction",
+    near: "dry",
+    far: "wet",
+  });
+  const field = directionField(attachment.id);
+  const wrong = { changes: { [field]: 1.4 }, said: "Much wetter." };
+  const good = { changes: { [field]: 0.9 }, said: "Much wetter." };
+  const finished = await askSet(studio, path, { ...body, current: { [field]: 0.5 } }, [
+    tokens(wrong),
+    tokens(good),
+  ]);
+  expect(finished.state).toBe("done");
+  expect(finished.result).toMatchObject({ changes: good.changes, repaired: true });
+  expect(sent(studio, 0)[1].content).toContain(
+    `- ${field}: from “dry” at 0 to “wet” at 1; 0..1; now 0.5`,
+  );
+  expect(sent(studio, 1)[3].content).toContain(
+    `- $.changes.${field} (changes): must be from 0 to 1, got 1.4`,
+  );
+});
+
+test("the route resolves candidateId, refusing one of another brief, a removed one, a missing one, and one a page's set doesn't take", async () => {
+  const { studio, candidate, genome, path } = await candidateStudio();
+  const other = await seedCandidate(studio);
+  const gone = await seedCandidate(studio);
+  markRemoved(studio.server.store, TABLE.candidates, gone.candidate.id, "test");
+  const base = { set: "locks", words: "keep the drone", current: allFree(genome) };
+  /** @type {[Record<string, unknown>, string][]} */
+  const refused = [
+    [{ ...base, candidateId: other.candidate.id }, "is not a candidate of vibe"],
+    [{ ...base, candidateId: gone.candidate.id }, "was removed (test)"],
+    [base, "candidateId"],
+    [
+      { set: "test", words: WORDS, current: CURRENT, candidateId: candidate.id },
+      "takes no candidateId",
+    ],
+    [
+      { ...base, candidateId: candidate.id, current: { ...base.current, "voices.x": "locked" } },
+      "current",
+    ],
+  ];
+  for (const [body, message] of refused) {
+    const answer = await studio.server.api("POST", path, body);
+    expect(answer.status, message).toBe(400);
+    expect(answer.body.toString()).toContain(message);
+  }
+  expect(studio.omlx.requests).toHaveLength(0);
 });

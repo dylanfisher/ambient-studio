@@ -6,6 +6,7 @@
 /** @import { Descriptor } from "../engine/descriptor.js" */
 /** @import { QuotedError } from "./build-repair-prompt.js" */
 /** @import { ChatMessage } from "./prompt-tokens.js" */
+/** @import { WordsContext, WordsSet } from "./words-sets.js" */
 import { valueText } from "../engine/descriptor.js";
 import { show } from "../engine/validation-error.js";
 import { quotedErrors } from "./build-repair-prompt.js";
@@ -87,6 +88,36 @@ export function buildWordsPrompt({ words, subject, fields, brief, reading }, bud
     );
   }
   return built;
+}
+
+/**
+ * The prompt for one set's fields, built from `context` and narrowed by the set (0085) until it
+ * fits `budgetTokens`. Throws when even the narrowest is over it.
+ * @param {Omit<WordsAsk, "subject" | "fields"> & { set: WordsSet, context: WordsContext,
+ *   current: Readonly<Record<string, unknown>> }} ask `current` holds a value for every field of
+ *   the widest set, as the route checked it
+ * @param {number} budgetTokens
+ * @returns {{ messages: ChatMessage[], fields: WordsField[] }}
+ */
+export function fitWordsPrompt({ set, context, current, ...rest }, budgetTokens) {
+  let at = context;
+  for (;;) {
+    const fields = Object.entries(set.fields(at)).map(([name, descriptor]) => ({
+      name,
+      descriptor,
+      current: current[name],
+    }));
+    try {
+      return {
+        messages: buildWordsPrompt({ ...rest, subject: set.subject, fields }, budgetTokens),
+        fields,
+      };
+    } catch (error) {
+      const next = set.narrower?.(at) ?? null;
+      if (next === null) throw error;
+      at = next;
+    }
+  }
 }
 
 /**

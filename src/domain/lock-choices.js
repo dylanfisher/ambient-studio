@@ -5,7 +5,11 @@
 import { GENOME_KEY, GLOBAL_PARAMS, MACROS, VOICE_KEYS } from "../engine/genome-schema.js";
 import { voiceParams } from "../engine/voice-registry.js";
 
-/** @typedef {{ path: string, label: string }} LockChoice */
+/**
+ * A path to lock, its label in the select, and what it is without its name, as the locks words
+ * set describes it (decision 0085).
+ * @typedef {{ path: string, label: string, description: string }} LockChoice
+ */
 /** @typedef {{ label: string, choices: LockChoice[] }} LockGroup */
 
 /**
@@ -17,10 +21,15 @@ export function lockChoices(genome) {
   const values = /** @type {any} */ (genome);
   const piece = Object.entries(GLOBAL_PARAMS)
     .filter(([name]) => values[name] !== undefined)
-    .map(([name, { description }]) => ({ path: name, label: `${name}: ${description}` }));
+    .map(([name, { description }]) => ({
+      path: name,
+      label: `${name}: ${description}`,
+      description,
+    }));
   const macros = Object.keys(MACROS).map((name) => ({
     path: `${GENOME_KEY.macros}.${name}`,
     label: name,
+    description: `the ${name} macro`,
   }));
   const voices = genome.voices.map((voice) => {
     /** @type {Record<string, unknown>} */
@@ -31,10 +40,18 @@ export function lockChoices(genome) {
       .map(([name, { description }]) => ({
         path: `${path}.${name}`,
         label: `${voice.id} ${name}: ${description}`,
+        description,
       }));
     return {
       label: `Voice ${voice.id} (a ${voice.type} voice)`,
-      choices: [{ path, label: `the whole ${voice.id} voice, every parameter` }, ...params],
+      choices: [
+        {
+          path,
+          label: `the whole ${voice.id} voice, every parameter`,
+          description: `the whole voice, a ${voice.type}, every parameter`,
+        },
+        ...params,
+      ],
     };
   });
   return [

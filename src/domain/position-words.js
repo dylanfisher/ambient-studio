@@ -5,7 +5,10 @@ import { AXIS_SOURCE } from "./attachment-kind.js";
 import { axisName, nearText } from "./axis-words.js";
 
 /** Up to this far from an end is "close to" it; up to `leaning`, "leaning toward" it. */
-export const POSITION_BANDS = Object.freeze({ close: 0.2, leaning: 0.4 });
+const POSITION_BANDS = Object.freeze({ close: 0.2, leaning: 0.4 });
+
+/** What a position says when the excerpt has none yet on a direction. */
+export const NOT_PLACED = "not placed yet";
 
 /** @typedef {{ near: string | null, far: string }} DirectionEnds */
 
@@ -15,7 +18,7 @@ export const POSITION_BANDS = Object.freeze({ close: 0.2, leaning: 0.4 });
  * @returns {string}
  */
 export function positionWords({ near, far }, position) {
-  if (position === undefined) return "not placed yet";
+  if (position === undefined) return NOT_PLACED;
   const low = nearText(near);
   const high = `“${far}”`;
   const beyond = "further than any excerpt of this brief so far";

@@ -3,7 +3,10 @@
 // point's score in its run. Written from these thresholds, never by the model (as 0047).
 
 /** At least this share of the others below (or above) is "nearly all"; at least `most`, "most". */
-export const PLACE_SHARES = Object.freeze({ nearlyAll: 0.9, most: 0.7 });
+const PLACE_SHARES = Object.freeze({ nearlyAll: 0.9, most: 0.7 });
+
+/** Which side of the others a value sits on. */
+export const PLACE_SIDE = Object.freeze({ above: "above", below: "below" });
 
 /** The fewest others a feature is compared with: with fewer, one excerpt moves a share by 0.25. */
 export const MIN_OTHERS = 4;
@@ -25,14 +28,14 @@ export function shareBelow(value, others) {
  * The place a share below falls in: above or below most or nearly all of the others, or the
  * middle (both null).
  * @param {number} share from `shareBelow`
- * @returns {{ side: "above" | "below" | null, degree: "most" | "nearly all" | null }}
+ * @returns {{ side: (typeof PLACE_SIDE)[keyof typeof PLACE_SIDE] | null, degree: "most" | "nearly all" | null }}
  */
 export function placeOf(share) {
   const { nearlyAll, most } = PLACE_SHARES;
-  if (share >= nearlyAll) return { side: "above", degree: "nearly all" };
-  if (share >= most) return { side: "above", degree: "most" };
+  if (share >= nearlyAll) return { side: PLACE_SIDE.above, degree: "nearly all" };
+  if (share >= most) return { side: PLACE_SIDE.above, degree: "most" };
   // 1 - share, not share <= 1 - nearlyAll, which is 0.0999… in floating point.
-  if (1 - share >= nearlyAll) return { side: "below", degree: "nearly all" };
-  if (1 - share >= most) return { side: "below", degree: "most" };
+  if (1 - share >= nearlyAll) return { side: PLACE_SIDE.below, degree: "nearly all" };
+  if (1 - share >= most) return { side: PLACE_SIDE.below, degree: "most" };
   return { side: null, degree: null };
 }

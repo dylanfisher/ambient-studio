@@ -25,6 +25,7 @@ test("lists the whole piece's values, the macros, and each voice whole and by pa
   expect(firstVoice?.choices[0]).toEqual({
     path: `voices.${voice.id}`,
     label: `the whole ${voice.id} voice, every parameter`,
+    description: `the whole voice, a ${voice.type}, every parameter`,
   });
   expect(firstVoice?.choices.map((choice) => choice.path)).toContain(`voices.${voice.id}.level`);
 });

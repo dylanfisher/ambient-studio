@@ -1,7 +1,9 @@
 // A vibe's lineage (decision 0039): every candidate made in one of its sessions, with its
 // parents, so the lineage page can draw the tree. Evaluation candidates (no session) and 3h's
 // control-arm revisions are left out, and an unchanged revision is folded into its first try,
-// as the session page leaves it out (0036): a node made from one sits under the first try.
+// as the session page leaves it out (0036): a node made from one sits under the first try. And
+// the features of every live excerpt of the vibe, which the session page compares each
+// candidate with in words (0085).
 /** @import { Candidate } from "./generation-store.js" */
 /** @import { Route } from "./routing.js" */
 import { currentExcerpt } from "./candidate-excerpt.js";
@@ -11,6 +13,7 @@ import { FEEDBACK_KIND, listFeedback, listRatings, listSketches } from "./rating
 import { REVISE_CONTROL } from "./revise-candidate.js";
 import { HttpError } from "./routing.js";
 import { listSessions } from "./session-store.js";
+import { vibeCandidates } from "./vibe-archive.js";
 import { requireVibe } from "./vibe-routes.js";
 
 /** The query parameter that lists rejected candidates too. */
@@ -93,6 +96,22 @@ export const LINEAGE_ROUTES = [
           };
         });
       return { nodes };
+    },
+  },
+  {
+    method: "GET",
+    path: "/api/vibes/:vibeId/excerpt-features",
+    handle: ({ app, params }) => {
+      const vibe = requireVibe(app.store, params);
+      /** @type {Map<number, unknown>} each excerpt's features by render, once */
+      const byRender = new Map();
+      for (const candidate of vibeCandidates(app.store, vibe.id)) {
+        const excerpt = currentExcerpt(app.store, app.paths.renderCache, candidate);
+        if (excerpt) byRender.set(excerpt.id, excerpt.features);
+      }
+      return {
+        excerpts: [...byRender].map(([renderId, features]) => ({ renderId, features })),
+      };
     },
   },
 ];

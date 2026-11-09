@@ -1,7 +1,7 @@
 // The session row's rank and a search point's score as plain verdicts (decision 0085): where
 // each sits among the others, read with place-words.js's thresholds. The rank and the score
 // themselves are behind the numbers toggle.
-import { placeOf, shareBelow } from "./place-words.js";
+import { PLACE_SIDE, placeOf, shareBelow } from "./place-words.js";
 
 /**
  * Where the taste model ranks the excerpt among the session's ranked excerpts (0046).
@@ -18,7 +18,7 @@ export function rankWords(rank, total) {
   if (rank === total) return "Your taste model likes it least in this session.";
   const { side, degree } = placeOf((total - rank) / (total - 1));
   if (side === null) return "Your taste model puts it in the middle of this session.";
-  return `Your taste model likes it ${side === "above" ? "more" : "less"} than ${degree} of this session.`;
+  return `Your taste model likes it ${side === PLACE_SIDE.above ? "more than" : "less than"} ${degree} of this session.`;
 }
 
 /**
@@ -33,5 +33,5 @@ export function searchScoreWords(score, others, kind) {
   if (others.every((other) => other < score)) return `The best point this ${kind} found.`;
   const { side, degree } = placeOf(shareBelow(score, others));
   if (side === null) return `Scores about the middle of this ${kind}'s points.`;
-  return `Scores ${side === "above" ? "higher" : "lower"} than ${degree} of this ${kind}'s points.`;
+  return `Scores ${side === PLACE_SIDE.above ? "higher than" : "lower than"} ${degree} of this ${kind}'s points.`;
 }

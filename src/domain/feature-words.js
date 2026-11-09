@@ -4,7 +4,7 @@
 // read the same to the model tie. Only features above or below most of the others are named.
 /** @import { Features } from "./extract-features.js" */
 import { featureValue } from "./feature-names.js";
-import { MIN_OTHERS, placeOf, shareBelow } from "./place-words.js";
+import { MIN_OTHERS, PLACE_SIDE, placeOf, shareBelow } from "./place-words.js";
 import { TARGET_FEATURES } from "./target-schema.js";
 
 /**
@@ -58,7 +58,8 @@ export function featureWords(features, others) {
     if (value === null || values.length < MIN_OTHERS) continue;
     compared += 1;
     const { side, degree } = placeOf(shareBelow(value, values));
-    if (side !== null) named.push(`${side === "above" ? ways.more : ways.less} than ${degree}`);
+    if (side !== null)
+      named.push(`${side === PLACE_SIDE.above ? ways.more : ways.less} than ${degree}`);
   }
   if (compared === 0) {
     return "This brief has too few other measured excerpts to compare it with yet.";
