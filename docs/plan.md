@@ -4335,3 +4335,15 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   written (0082). `./scripts/check` clean: 2,707 tests. Pending owner checks: a 10-minute track
   proposed then developed throughout, by ear; a cancel mid-run; the Backslash and Backquote
   labels in Safari 17.6.
+- 2026-11-09: WF.5 merged as cefa6b6 (Opus: 409k tokens, 186 calls, 41 min with one fix round;
+  reviewer Sonnet: 119k tokens, 23 calls, 3 min, PASS with one medium finding fixed before merge,
+  the fix read by the orchestrator). The track page leads with each section's and join's words,
+  its development and its place ("Plays 2:00, from 1:32 on the track."); offsets, seconds,
+  crossfade fields, curves and lane points sit in the toggle, and the track page left the
+  page-numbers allowlist. Three track field sets (`length`, `transition`, `lane` on a 30 s grid)
+  take the unsaved arrangement on the words route, checked as Save checks it, and the validator's
+  findings go into the one repair. A lane answer holds the lane exactly outside its times, at the
+  owner's own point when a curve can't be split; a stretch it has to redraw is named, and a lane
+  too full to take an answer is refused before any request. The worst first prompts are about
+  2,155, 2,007 and 2,340 of 4,096 (0087). `./scripts/check` clean: 2,748 tests. Phase WF is
+  built; its owner checks in Safari 17.6 are pending.
