@@ -180,9 +180,10 @@ amendment), and the prompt token checks pass.
 ## Consequences
 
 - Genomes with growl stored since CG.1 render differently above 1.5 kHz, 29 dB or more under the
-  rest of their half-integer harmonics. The engine version stays 2, since the owner's data holds
-  none and both affected goldens are unpushed; one stored since would play its growl a little
-  duller and fail no check.
+  rest of their half-integer harmonics. The owner tested growl chants after CG.1 and said on
+  2026-11-09 that changing how they render doesn't matter and that they may be deleted, so the
+  engine version stays 2 and both affected goldens are rewritten. Each such chant plays its
+  growl a little duller and fails no check.
 - An excerpt with aspiration or breathiness spends about 12 ms building its tables, 6 ms a second
   of a 2 s excerpt.
 - The schema text has 33 characters left under 4,100. CG.4's lines need room found, or a further

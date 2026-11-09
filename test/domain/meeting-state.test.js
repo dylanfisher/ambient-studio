@@ -71,6 +71,22 @@ test("16 voices with every trajectory full stay under the cap, the last named on
 const denseNeighbor = (count) => longSettings(worstGenome(1), count);
 
 /**
+ * The dense neighbor with long settings only on the voices at `indices`. The at-cap case leaves
+ * the chant out: its compared settings alone are over the cap since CG.3 (0090).
+ * @param {number[]} indices
+ */
+const denseVoices = (indices) => {
+  const genome = worstGenome(1);
+  const dense = longSettings(genome, genome.voices.length);
+  return {
+    ...genome,
+    voices: genome.voices.map((voice, i) =>
+      indices.includes(i) ? (dense.voices[i] ?? voice) : voice,
+    ),
+  };
+};
+
+/**
  * Every value `checkBridge` compares exactly for the voices sounding at `at`: each voice's id and
  * type, each fixed setting that isn't its default, at every digit.
  * @param {import("../../src/engine/genome-schema.js").Genome} genome
@@ -95,7 +111,8 @@ const comparedTexts = (genome, at) =>
     });
 
 test("a bridge's state at its cap keeps every value the check compares, cutting the rest first (0082)", () => {
-  const genome = denseNeighbor(2);
+  // A bell, a cymbal, a drone and a drum: their compared settings fill the cap exactly.
+  const genome = denseVoices([0, 2, 3, 4]);
   const full = meetingState(genome, 450, MEETING_EDGE.end, Number.MAX_SAFE_INTEGER, {
     fixed: true,
   });
