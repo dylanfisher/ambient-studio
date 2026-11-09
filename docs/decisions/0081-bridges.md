@@ -73,8 +73,12 @@ when the ask holds `ends`), each a finding with a JSON path the repair quotes (0
 **No tolerance.** Fixed numbers and choices compare exactly, because the morph's matcher compares
 them with `===` and any tolerance would pass a bridge whose voice then splits. Levels and every
 value that may be a trajectory aren't held to the ends: a weave moves every shared value across
-its seconds, so a gap there is a move, not a fallback. The prompt shows the values, so the model
-can aim at them.
+its seconds, so a gap there is a move, not a fallback. The prompt writes every value the check
+compares exactly (each voice's settings that can't move, and the shared fixed globals) with
+every digit it has, as `exactText`, the digits `show()` quotes in a repair, so a model that copies
+the prompt passes the first time, tested with 4.567 and 2.345. Levels and moving values are
+written at three significant digits, as the readings write them (0078), since nothing compares
+them.
 
 **Across a key.** When the two sections differ in a join global, the bridge is two halves, each
 its own development and request: the first in the outgoing section's globals, the second in the
@@ -83,7 +87,10 @@ default). The second request reads the first's answer. When tuning, scale or key
 voices that read none of them (`KEYLESS`: noise, recording, cymbal) may sound over the
 crossfade's span of each half (`bridgeMiddle`), and the second half starts holding exactly the
 voices the first ends with (`bridgeStart`), so what plays across the crossfade is the same voices
-with the same settings. Any other voice type, a new one included, counts as carrying pitch. When
+with the same settings. Any other voice type, a new one included, counts as carrying pitch. The
+first half's prompt asks it to keep one voice with no pitch to its end, but the check doesn't
+require one: with none, the halves cross in silence, which a brief that bans noise and has no
+recording or cymbal leaves as the only way, and the prompt says so. When
 only pulse or bpm differ, no voice reads them, so any voice may cross. Each half's outer join is
 checked to hold as above; the middle is a crossfade, which never falls back.
 
@@ -91,7 +98,7 @@ checked to hold as above; the middle is a crossfade, which never falls back.
 the owner's words for the join, the sketch, its readings, the two states it starts and ends in
 under their headings, the rules its ends are checked by, and the ask. The states are
 `meetingState` with `fixed`, adding each sounding voice's settings that can't move and aren't
-their defaults, capped at `BRIDGE_STATE_TOKENS`, 270 each. At its largest (TD.3's worst parts,
+their defaults, at every digit, capped at `BRIDGE_STATE_TOKENS`, 270 each. At its largest (TD.3's worst parts,
 the second half with every join global differing, five shared globals, both states at their caps
 from `worstGenome`, `field-recording.json` as the sketch) it is 4,071 tokens of 4,096 with the
 lineage's reading left out, tested.
@@ -104,9 +111,13 @@ development, so it never becomes a sketch. Play the plain sketch on a bridge pla
 from its `offset`; Develop on it develops it as a section, without the end rules.
 
 **The job.** Every part is written before any is stored, in one transaction, so a cancel or a
-failure (one still invalid after its repair) stores none. It returns the development ids and the
-plan; the page places them by `bridgeSwap`: `steerSwap`'s rules for the outgoing section, and the
-incoming one must still follow it with its window. Saved as "Bridge between sections N and M".
+failure (one still invalid after its repair) stores no development; the requests are logged as
+generations, as every operator's are. It returns the development ids and the plan; the page
+places them by `bridgeSwap`: `steerSwap`'s rules for the outgoing section, and both neighbors must
+still play the same windows of the same genomes (sketch, offset, seconds and `developmentId`),
+since the ends were checked against them, and the track with the bridge in must still fit
+`MAX_TRACK_SECONDS`. Otherwise the swap is skipped saying why, and the bridge stays stored among
+the track's developments, which TD.6 lists. Saved as "Bridge between sections N and M".
 
 ## Alternatives considered
 

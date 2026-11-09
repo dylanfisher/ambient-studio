@@ -13,7 +13,7 @@ import { valueAt } from "../engine/trajectory.js";
 import { voiceParams } from "../engine/voice-registry.js";
 import { fitReading } from "./fit-reading.js";
 import { fixedParams } from "./morph-genome.js";
-import { numberText } from "./param-text.js";
+import { exactText, numberText } from "./param-text.js";
 import { PITCH } from "./sketch-reading.js";
 
 /**
@@ -63,14 +63,14 @@ export const sounds = ({ start, end }, at, edge) =>
   edge === MEETING_EDGE.end ? start < at && end >= at : start <= at && end > at;
 
 /**
- * A setting that can't move, as the prompt writes it: a number with its unit, anything else as
- * it is.
+ * A setting that can't move, as the prompt writes it: a number with its unit and every digit,
+ * since a bridge's check compares it exactly, and anything else as it is.
  * @param {unknown} value
  * @param {Descriptor} descriptor
  */
 const settingText = (value, descriptor) =>
   isNumeric(descriptor) && typeof value === "number"
-    ? numberText(value, descriptor.unit)
+    ? exactText(value, descriptor.unit)
     : String(value);
 
 /**
@@ -86,22 +86,26 @@ function voiceLine(voice, at, full, fixed) {
   const table = voiceParams(voice.type);
   /** @type {Record<string, unknown>} */
   const held = voice;
+  const exact = fixed ? fixedParams(voice.type) : [];
   const parts = [`level ${valueThere(voice.level, at, LEVEL)}`];
   if (full) {
     const pitch = valueThere(held[PITCH], at, table[PITCH]);
-    if (pitch !== null && !isObject(held[PITCH])) parts.push(`${PITCH} ${pitch}`);
+    // A fixed pitch a bridge must copy is written with the other settings, at every digit.
+    if (pitch !== null && !isObject(held[PITCH]) && !exact.includes(PITCH)) {
+      parts.push(`${PITCH} ${pitch}`);
+    }
     for (const [name, descriptor] of Object.entries(table)) {
       if (descriptor === LEVEL || !isObject(held[name])) continue;
       parts.push(`${name} ${valueThere(held[name], at, descriptor)}`);
     }
   }
-  if (full && fixed) {
-    for (const name of fixedParams(voice.type)) {
+  if (full) {
+    for (const name of exact) {
       const descriptor = /** @type {Descriptor} */ (table[name]);
       const value = held[name];
       // A recording has no default, so its hash is always written.
       const { default: fallback } = /** @type {{ default?: unknown }} */ (descriptor);
-      if (name === PITCH || value === undefined || value === fallback) continue;
+      if (value === undefined || value === fallback) continue;
       parts.push(`${name} ${settingText(value, descriptor)}`);
     }
   }

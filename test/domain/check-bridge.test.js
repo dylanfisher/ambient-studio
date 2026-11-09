@@ -5,9 +5,11 @@
 /** @import { BridgeEnds } from "../../src/domain/check-bridge.js" */
 import { describe, expect, test } from "vitest";
 import { MORPH_CURVE } from "../../src/domain/arrangement-schema.js";
-import { bridgedArrangement, bridgePlan } from "../../src/domain/bridge-plan.js";
+import { BRIDGE_PART, bridgedArrangement, bridgePlan } from "../../src/domain/bridge-plan.js";
 import { BRIDGE_RULE, checkBridge, sharedGlobals } from "../../src/domain/check-bridge.js";
 import { checkDevelopment } from "../../src/domain/check-development.js";
+import { buildDevelopPrompt } from "../../src/domain/develop-prompt.js";
+import { BRIDGE_STATE_TOKENS, MEETING_EDGE, meetingState } from "../../src/domain/meeting-state.js";
 import { developmentKey, sectionMorph } from "../../src/domain/section-genome.js";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
 import { requireGenome } from "../../src/engine/validate-genome.js";
@@ -357,4 +359,57 @@ test("a plan refuses a neighbor too short to weave into, and a track that would 
   });
   // A weave beside a 24 s section is half of it.
   expect(bridgePlan(two(24, 100), 0, 60, genomes)).toMatchObject({ ok: true, into: 12, out: 16 });
+});
+
+test("a bridge copying the prompt's digits for its settings and shared globals passes the first time", () => {
+  // Values with more digits than the readings' three: the check compares them exactly.
+  const out = requireGenome(
+    { ...OUT, reverbDecay: 2.345, voices: [{ ...drone, detune: 4.567 }] },
+    "out",
+  );
+  const into = requireGenome({ ...INTO, reverbDecay: 2.345 }, "into");
+  const start = /** @type {import("../../src/domain/check-bridge.js").BridgeEdge} */ (ends().start);
+  const held = sharedGlobals(out, into);
+  const given = { ...ends(into), start: { ...start, genome: out }, held };
+  const { messages } = buildDevelopPrompt({
+    revision: { name: "dusk", brief: "a slow join", constraints: {}, ranges: {} },
+    arc: null,
+    index: 1,
+    count: 3,
+    section: { offset: 0, seconds: 60, text: "" },
+    sketch: { id: 1, genome: out, reading: [], lineage: [] },
+    before: meetingState(out, 120, MEETING_EDGE.end, BRIDGE_STATE_TOKENS, { fixed: true }),
+    after: meetingState(into, 0, MEETING_EDGE.start, BRIDGE_STATE_TOKENS, { fixed: true }),
+    bridge: {
+      part: BRIDGE_PART.whole,
+      from: 1,
+      to: 3,
+      into: 16,
+      out: 16,
+      middle: null,
+      differs: [],
+      keyless: false,
+      held,
+    },
+    budgetTokens: Number.MAX_SAFE_INTEGER,
+  });
+  const user = /** @type {{ content: string }} */ (messages[1]).content;
+  /** @param {RegExp} pattern */
+  const copied = (pattern) => Number(user.match(pattern)?.[1]);
+  const detune = copied(/Where section 1 ends[\s\S]*?drone \(drone\)[^\n]*detune ([\d.]+) cents/);
+  const reverbDecay = copied(/- Keep [^\n]*reverbDecay ([\d.]+) s/);
+  expect({ detune, reverbDecay }).toEqual({ detune: 4.567, reverbDecay: 2.345 });
+  const answer = {
+    ...BRIDGE,
+    reverbDecay,
+    voices: [{ ...drone, detune, start: 0, end: 60 }, BRIDGE.voices[1]],
+  };
+  expect(check(answer, given)).toEqual([]);
+  // The three digits a reading writes would not pass.
+  expect(check({ ...answer, reverbDecay: 2.35 }, given)).toContainEqual(
+    expect.objectContaining({
+      path: "$.reverbDecay",
+      message: expect.stringMatching(/must be 2.345/),
+    }),
+  );
 });

@@ -21,7 +21,7 @@ import { quotedErrors } from "./build-repair-prompt.js";
 import { KEYLESS } from "./check-bridge.js";
 import { constraintsText } from "./constraints-text.js";
 import { followUp } from "./follow-up.js";
-import { numberText } from "./param-text.js";
+import { exactText } from "./param-text.js";
 import { listed } from "./preference-text.js";
 import { estimateTokens, promptText, ROLE } from "./prompt-tokens.js";
 import { quoted } from "./references-text.js";
@@ -153,7 +153,7 @@ function bridgeParts({ index, count, section, sketch, before, after }, bridge) {
   ];
   const fixed = Object.entries(held).map(
     ([name, value]) =>
-      `${name} ${numberText(/** @type {number} */ (value), /** @type {NumberDescriptor} */ (GLOBAL_PARAMS[/** @type {keyof typeof GLOBAL_PARAMS} */ (name)]).unit)}`,
+      `${name} ${exactText(/** @type {number} */ (value), /** @type {NumberDescriptor} */ (GLOBAL_PARAMS[/** @type {keyof typeof GLOBAL_PARAMS} */ (name)]).unit)}`,
   );
   const only = `only voices with no pitch sound (types ${KEYLESS.join(", ")})`;
   const rules = [
@@ -162,7 +162,7 @@ function bridgeParts({ index, count, section, sketch, before, after }, bridge) {
     ...(part === BRIDGE_PART.first
       ? [
           keyless
-            ? `- From ${seconds - /** @type {number} */ (middle)} s ${only}: end every other voice by then, and keep at least one of them to the end, since the second half starts from them in another key.`
+            ? `- From ${seconds - /** @type {number} */ (middle)} s ${only}: end every other voice by then, since the second half starts from the voices sounding at ${seconds} s, in another key. Keep one of them to the end so the halves cross on sound; with none, they cross in silence.`
             : `- The second half starts from the voices sounding at ${seconds} s, with the same settings.`,
         ]
       : [

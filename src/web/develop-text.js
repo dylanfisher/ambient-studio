@@ -5,6 +5,8 @@
 /** @import { Arrangement, Section } from "../domain/arrangement-schema.js" */
 /** @import { BridgePlan } from "../domain/bridge-plan.js" */
 /** @import { SectionGenomes } from "../domain/section-genome.js" */
+import { arrangementLength } from "../domain/arrangement-length.js";
+import { MAX_TRACK_SECONDS } from "../domain/arrangement-schema.js";
 import { bridgedArrangement, bridgePlan } from "../domain/bridge-plan.js";
 import { DEVELOP_LEAST } from "../domain/develop-prompt.js";
 import { clockTime } from "./excerpt-player.js";
@@ -101,8 +103,9 @@ export function bridgeRefusal(arrangement, transition, seconds, unsaved, genomes
 
 /**
  * What to do with a finished bridge: save it between the two sections it joins, put it on the
- * unsaved timeline, or leave it and say why. The outgoing section is found by `steerSwap`, and
- * the incoming one must still follow it with its window.
+ * unsaved timeline, or leave it and say why. The outgoing section is found by `steerSwap`; it and
+ * the incoming one after it must still play the same windows of the same genomes, and the track
+ * must still fit its longest with the bridge in.
  * @param {Parameters<typeof steerSwap>[0] & { into: Section }} state `from` is the outgoing
  *   section and `at` its place
  * @param {{ developmentIds: number[], plan: BridgePlan }} result the bridge job's
@@ -113,22 +116,30 @@ export function bridgeRefusal(arrangement, transition, seconds, unsaved, genomes
 export function bridgeSwap({ into, ...state }, { developmentIds, plan }, text) {
   const swap = steerSwap(state);
   if (swap.kind === SWAP.skip) return swap;
-  const next = state.arrangement.sections[swap.index + 1];
-  if (
-    !next ||
-    next.sketchId !== into.sketchId ||
-    next.offset !== into.offset ||
-    next.seconds !== into.seconds
-  ) {
+  // The genome too, not only the window: the bridge's ends were checked against what each
+  // neighbor played when it was written.
+  const same = (/** @type {Section | undefined} */ section, /** @type {Section} */ was) =>
+    section !== undefined &&
+    section.sketchId === was.sketchId &&
+    section.offset === was.offset &&
+    section.seconds === was.seconds &&
+    section.developmentId === was.developmentId;
+  const { sections } = state.arrangement;
+  if (!same(sections[swap.index], state.from) || !same(sections[swap.index + 1], into)) {
     return {
       kind: SWAP.skip,
       reason: "the two sections it joins have changed or been parted since",
     };
   }
-  return {
-    ...swap,
-    arrangement: bridgedArrangement(state.arrangement, swap.index, plan, developmentIds, text),
-  };
+  const arrangement = bridgedArrangement(state.arrangement, swap.index, plan, developmentIds, text);
+  const length = arrangementLength(arrangement);
+  if (length > MAX_TRACK_SECONDS) {
+    return {
+      kind: SWAP.skip,
+      reason: `with it the track would now play ${length} s, and a track is at most ${MAX_TRACK_SECONDS} s`,
+    };
+  }
+  return { ...swap, arrangement };
 }
 
 /**

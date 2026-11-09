@@ -205,6 +205,39 @@ describe("a bridge (decision 0081)", () => {
     expect(
       bridgeSwap({ ...started, arrangement, openedNow: 2, unsaved: false }, result, ""),
     ).toEqual({ kind: SWAP.skip, reason: "another version was opened while it ran" });
+    // A neighbor that now plays another genome in the same window, either side: left out, since
+    // the bridge's ends were checked against the genomes they played.
+    for (const sections of [
+      [{ ...out, developmentId: 3 }, into],
+      [out, { ...into, developmentId: 3 }],
+    ]) {
+      expect(
+        bridgeSwap(
+          { ...started, arrangement: { ...arrangement, sections }, openedNow: 1, unsaved: true },
+          result,
+          "",
+        ),
+      ).toEqual({
+        kind: SWAP.skip,
+        reason: "the two sections it joins have changed or been parted since",
+      });
+    }
+    // A section added meanwhile that leaves no room for the bridge under the longest track.
+    const fuller = {
+      ...arrangement,
+      sections: [...arrangement.sections, { ...into, seconds: 900 }, { ...into, seconds: 150 }],
+      transitions: [
+        ...arrangement.transitions,
+        { kind: "crossfade", seconds: 8, text: "" },
+        { kind: "crossfade", seconds: 8, text: "" },
+      ],
+    };
+    expect(
+      bridgeSwap({ ...started, arrangement: fuller, openedNow: 1, unsaved: true }, result, ""),
+    ).toEqual({
+      kind: SWAP.skip,
+      reason: "with it the track would now play 1262 s, and a track is at most 1200 s",
+    });
   });
 
   test("a bridge's section says it is a bridge and the words it was written from", () => {

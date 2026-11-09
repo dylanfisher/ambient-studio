@@ -928,7 +928,7 @@ async function bridgeJoin() {
     const ids = listed(result.developmentIds.map(String));
     if (swap.kind === SWAP.skip) {
       status.say(
-        `Kept bridge ${ids} but didn't put it in the track: ${swap.reason}. Bridge the join again to use it.`,
+        `Kept bridge ${ids} but didn't put it in the track: ${swap.reason}. It stays stored with the track's developments; bridge the join again to use one now.`,
       );
       return;
     }
