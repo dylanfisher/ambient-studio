@@ -16,6 +16,7 @@ import { jobRecordings, STREAM_SEEDS } from "./candidate-job.js";
 import { currentRevision, keep, verdictOf } from "./generate-candidates.js";
 import { JOB_STEP } from "./job-steps.js";
 import { locksInForce } from "./lock-store.js";
+import { renderBatch } from "./render-batch.js";
 import { renderExcerpt } from "./render-excerpt.js";
 
 /** The operator a nudge child stores, and the source its row gives. */
@@ -49,9 +50,9 @@ export const NUDGE_SOURCE = "mutation";
 
 /**
  * The job that nudges `base` into `count` children under the vibe's current revision and live
- * locks, read when it starts. Progress counts children: one is done once its draws are stored
- * and, when one passed, its excerpt is rendered. A cancel during a render stops the job before
- * the next child, with every row before it stored.
+ * locks, read when it starts. Children are rendered `RENDER_CONCURRENCY` at once (decision 0076).
+ * Progress counts children: one is done once its draws are stored and, when one passed, its
+ * excerpt is rendered. A cancel starts no more children, with every row of those started stored.
  * @param {App} app
  * @param {NudgeRequest} request
  * @returns {(job: JobContext) => Promise<NudgeJobResult>}
@@ -83,37 +84,43 @@ export function nudgeJob(app, { vibeId, sessionId, base, genome, stepSize, count
     };
     /** @type {number[]} */
     const candidateIds = [];
-    /** @type {CandidateRender[]} */
-    const excerpts = [];
     /** @type {FailedChild[]} */
     const failedChildren = [];
-    for (const [index, draws] of children.entries()) {
-      /** @type {Candidate | null} */
-      let child = null;
-      for (const draw of draws) {
-        const candidate = keep(batch, null, verdictOf(draw), origin);
-        candidateIds.push(candidate.id);
-        if (draw.genome) child = candidate;
-      }
-      if (child === null) {
-        const last = /** @type {NudgeDraw} */ (draws.at(-1));
-        failedChildren.push({ child: index + 1, findings: last.lint.findings });
-      } else {
+    // Each child's draws are stored before its render's first await, and the batch starts
+    // children in order, so the rows keep the children's order.
+    const rendered = await renderBatch(
+      children,
+      async (draws, index) => {
+        /** @type {Candidate | null} */
+        let child = null;
+        for (const draw of draws) {
+          const candidate = keep(batch, null, verdictOf(draw), origin);
+          candidateIds.push(candidate.id);
+          if (draw.genome) child = candidate;
+        }
+        if (child === null) {
+          const last = /** @type {NudgeDraw} */ (draws.at(-1));
+          failedChildren.push({ child: index + 1, findings: last.lint.findings });
+          return null;
+        }
         // A child that passed has a genome row, so it has an excerpt to render.
         const request = /** @type {ExcerptRequest} */ (excerptRequest(app.store, child));
-        job.progress(index, count, JOB_STEP.renderingNudge(index + 1, count));
-        job.signal.throwIfAborted();
         const { render } = await renderExcerpt(
           app.store,
           app.paths.renderCache,
           request,
           recordings,
         );
-        excerpts.push({ candidateId: child.id, renderId: render.id });
-      }
-      job.progress(index + 1, count, null);
-      job.signal.throwIfAborted();
-    }
+        return { candidateId: child.id, renderId: render.id };
+      },
+      {
+        signal: job.signal,
+        progress: (done) =>
+          job.progress(done, count, done < count ? JOB_STEP.renderingNudge(done + 1, count) : null),
+      },
+    );
+    /** @type {CandidateRender[]} */
+    const excerpts = rendered.filter((each) => each !== null);
     return { seed, candidateIds, excerpts, failedChildren };
   };
 }

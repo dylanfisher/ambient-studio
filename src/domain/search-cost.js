@@ -30,6 +30,21 @@ export function medianTimings(timings) {
   };
 }
 
+/**
+ * Each evaluation's share of a batch that ran them side by side (decision 0076): its own render
+ * and embed seconds scaled so that all of them add up to the batch's wall time. A median of
+ * these, times the evaluations, is then what a batch of them takes.
+ * @param {readonly StepSeconds[]} timings each evaluation's own, timed from its start to its end
+ * @param {number} wall seconds the whole batch took
+ * @returns {StepSeconds[]}
+ */
+export function wallShares(timings, wall) {
+  const total = timings.reduce((sum, { render, embed }) => sum + render + embed, 0);
+  if (total === 0) return timings.map((each) => ({ ...each }));
+  const scale = wall / total;
+  return timings.map(({ render, embed }) => ({ render: render * scale, embed: embed * scale }));
+}
+
 /** @param {number} n @param {string} word */
 const counted = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 

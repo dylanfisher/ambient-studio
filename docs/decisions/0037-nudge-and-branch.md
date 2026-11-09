@@ -7,7 +7,8 @@
   [0027](0027-session-api-and-ratings.md) (the nudge route, and how a session's candidates are
   found) and [0031](0031-fewer-waits-after-first-evaluation.md) (the nudge's row in the
   conflict table and its progress step). Amended by [0053](0053-search-space-ask-tell.md)
-  (the draw's chain and the free-path rule moved out of `nudge`).
+  (the draw's chain and the free-path rule moved out of `nudge`) and [0076](0076-parallel-excerpt-renders.md) (children render
+  three at a time).
 
 ## Context
 
@@ -162,3 +163,6 @@ drawing takes milliseconds and has no step.
   is `searchPaths` in `src/domain/search-paths.js`, and the chain a draw runs (decode, validate,
   lock, repeat check, lint) is `proposeGenome` in `src/domain/propose-genome.js`. `nudge` calls
   both; its draws, seeds and stored rows are unchanged.
+- 2026-11-08: from step perf.1 ([0076](0076-parallel-excerpt-renders.md)). The job renders up to three children at once. Each
+  child's draws are still stored in the children's order. Progress reports after each child
+  finishes, with the step for the next: "Rendering the excerpt for nudge 2 of 8" at 1 done.

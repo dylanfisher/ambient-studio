@@ -6,6 +6,7 @@
 // ends are read once, when the job starts. With the control on, as many medium nudges from the
 // elites that were beside an empty cell at the start follow, stored outside any session, and
 // both coverages are reported. It runs only when the owner's request adds it to the job runner.
+/** @import { NudgeDraw } from "../domain/nudge.js" */
 /** @import { StepSeconds } from "../domain/search-cost.js" */
 /** @import { Candidate } from "./generation-store.js" */
 /** @import { JobContext } from "./job-runner.js" */
@@ -22,6 +23,7 @@ import { archiveCoverage, besideEmpty, buildArchive } from "../domain/build-arch
 import { FILL_STEP_SIZE, isExploreStep } from "../domain/fill-settings.js";
 import { lockRefusal, nudge } from "../domain/nudge.js";
 import { OPERATOR } from "../domain/operator.js";
+import { wallShares } from "../domain/search-cost.js";
 import { drawer } from "../engine/prng.js";
 import { requireGenome } from "../engine/validate-genome.js";
 import { excerptRequest } from "./candidate-excerpt.js";
@@ -33,6 +35,7 @@ import { getCandidate, getGenome } from "./generation-store.js";
 import { JOB_STEP } from "./job-steps.js";
 import { locksInForce } from "./lock-store.js";
 import { NUDGE_SOURCE } from "./nudge-job.js";
+import { renderBatch } from "./render-batch.js";
 import { renderExcerpt } from "./render-excerpt.js";
 import { nextRun, searchRunFolder } from "./search-run.js";
 import { rankSession } from "./session-ranking.js";
@@ -174,10 +177,19 @@ export function fillJob(app, request, { placeExcerpt = renderPlace, explore = ca
     /** @type {Set<number>} elites that can't take the locks */
     const unusable = new Set();
 
+    /** @param {Candidate} candidate */
+    const placed = async (candidate) => {
+      const seconds = await placeExcerpt(app, candidate, context, recordings, signal);
+      return {
+        seconds,
+        entries: (await archiveEntries(app, context, [candidate], signal)).entries,
+      };
+    };
     /** @param {Candidate} candidate @returns {Promise<MapEntry[]>} */
     const place = async (candidate) => {
-      timings.push(await placeExcerpt(app, candidate, context, recordings, signal));
-      return (await archiveEntries(app, context, [candidate], signal)).entries;
+      const { seconds, entries } = await placed(candidate);
+      timings.push(seconds);
+      return entries;
     };
 
     let steps = 0;
@@ -250,11 +262,10 @@ export function fillJob(app, request, { placeExcerpt = renderPlace, explore = ca
       const elites = [...new Set(firstStarts.map(({ eliteId }) => eliteId))]
         .map((id) => nudgeable(app, id, locks))
         .filter((found) => found !== null);
-      /** @type {MapEntry[]} */
-      const controlEntries = [...read.entries];
       /** @type {number[]} */
       const controlIds = [];
-      let made = 0;
+      /** @type {{ draws: NudgeDraw[], origin: Parameters<typeof keep>[3] }[]} */
+      const controlChildren = [];
       for (const [j, { candidate: from, genome }] of elites.entries()) {
         const count = Math.floor(steps / elites.length) + (j < steps % elites.length ? 1 : 0);
         if (count === 0) continue;
@@ -274,17 +285,45 @@ export function fillJob(app, request, { placeExcerpt = renderPlace, explore = ca
           operator: OPERATOR.eliteControl,
           operatorParams: { run, seed, stepSize: FILL_STEP_SIZE },
         };
-        for (const draws of children) {
-          job.progress(budget + made, total, JOB_STEP.fillControl(made + 1, steps));
-          signal.throwIfAborted();
-          for (const each of draws) {
-            const candidate = keep({ ...batch, sessionId: null }, null, verdictOf(each), origin);
-            controlIds.push(candidate.id);
-            if (each.genome) controlEntries.push(...(await place(candidate)));
-          }
-          made += 1;
-        }
+        for (const draws of children) controlChildren.push({ draws, origin });
       }
+      // The control's nudges don't read each other's places, so they render side by side
+      // (decision 0076). Each child's draws are stored before its first await, and the batch
+      // starts children in order, so the rows keep the children's order.
+      const batchStarted = performance.now();
+      const placedChildren = await renderBatch(
+        controlChildren,
+        async ({ draws, origin }) => {
+          /** @type {Awaited<ReturnType<typeof placed>>[]} */
+          const each = [];
+          for (const draw of draws) {
+            const candidate = keep({ ...batch, sessionId: null }, null, verdictOf(draw), origin);
+            controlIds.push(candidate.id);
+            if (draw.genome) each.push(await placed(candidate));
+          }
+          return each;
+        },
+        {
+          signal,
+          progress: (done) =>
+            job.progress(
+              budget + done,
+              total,
+              done < controlChildren.length
+                ? JOB_STEP.fillControl(done + 1, controlChildren.length)
+                : null,
+            ),
+        },
+      );
+      const placedAll = placedChildren.flat();
+      timings.push(
+        ...wallShares(
+          placedAll.map(({ seconds }) => seconds),
+          (performance.now() - batchStarted) / 1000,
+        ),
+      );
+      /** @type {MapEntry[]} */
+      const controlEntries = [...read.entries, ...placedAll.flatMap(({ entries }) => entries)];
       job.progress(total, total, null);
       const controlled = buildArchive(axes, controlEntries);
       controlArm = {

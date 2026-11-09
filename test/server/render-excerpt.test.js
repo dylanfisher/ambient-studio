@@ -19,13 +19,14 @@ import { putGenome } from "../../src/server/generation-store.js";
 import { createJobRunner } from "../../src/server/job-runner.js";
 import { PRODUCER } from "../../src/server/producer.js";
 import { indexRecordings } from "../../src/server/recording-index.js";
+import { RENDER_CONCURRENCY } from "../../src/server/render-batch.js";
 import {
   NORMALIZE_FAILED,
   renderExcerpt,
   renderExcerpts,
   vibeLoudness,
 } from "../../src/server/render-excerpt.js";
-import { putRender } from "../../src/server/render-store.js";
+import { getRender, putRender } from "../../src/server/render-store.js";
 import { createVibe } from "../../src/server/vibe-store.js";
 import { MP3_KBPS } from "../../src/server/write-mp3.js";
 import { FIXTURE_RECORDINGS } from "../support/golden.js";
@@ -196,6 +197,20 @@ describe("renderExcerpt", () => {
     expect((await filesIn(cache)).sort()).toEqual([render.file, other.render.file].sort());
   });
 
+  test("two renders of one excerpt at once share one render and its row (0076)", async () => {
+    const { store, cache, drone } = await setup();
+    const excerpt = { genomeId: drone, seed: SEED, target: TARGET };
+    const window = { offset: 12.5, duration: 2 };
+    const [a, b] = await Promise.all([
+      renderExcerpt(store, cache, excerpt, undefined, window),
+      renderExcerpt(store, cache, excerpt, undefined, window),
+    ]);
+    expect(b.render).toEqual(a.render);
+    expect([a.cached, b.cached].sort()).toEqual([false, true]);
+    expect(getRender(store, a.render.id)).toEqual(a.render);
+    expect(await filesIn(cache)).toEqual([a.render.file]);
+  });
+
   test("a window that isn't inside the genome's duration throws, rendering nothing", async () => {
     const { store, cache, drone } = await setup();
     const excerpt = { genomeId: drone, seed: SEED, target: TARGET };
@@ -317,10 +332,15 @@ describe("renderExcerpts as a job", () => {
     ]);
   });
 
-  test("a cancelled job stops before its next render", async () => {
+  test("a cancelled job starts no render after it, and the renders in flight finish", async () => {
     const { store, cache, drone } = await setup();
     const runner = createJobRunner({ now: () => 0 });
-    const excerpts = [1, 2, 3].map((seed) => ({ genomeId: drone, seed, target: TARGET }));
+    // One more than a batch starts at once, so a cancel after the first leaves the last unstarted.
+    const excerpts = Array.from({ length: RENDER_CONCURRENCY + 1 }, (_, i) => ({
+      genomeId: drone,
+      seed: i + 1,
+      target: TARGET,
+    }));
     const job = runner.add("excerpts", ({ signal, progress }) =>
       renderExcerpts(store, cache, excerpts, {
         signal,
@@ -333,8 +353,8 @@ describe("renderExcerpts as a job", () => {
     await runner.idle();
     expect(runner.get(job.id)).toMatchObject({
       state: "cancelled",
-      progress: { done: 1, total: 3 },
+      progress: { done: RENDER_CONCURRENCY, total: excerpts.length },
     });
-    expect(await filesIn(cache)).toHaveLength(1);
+    expect(await filesIn(cache)).toHaveLength(RENDER_CONCURRENCY);
   });
 });

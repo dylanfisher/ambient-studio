@@ -31,6 +31,7 @@ import { getGenome } from "./generation-store.js";
 import { JOB_STEP } from "./job-steps.js";
 import { loadSamples } from "./load-samples.js";
 import { PRODUCER } from "./producer.js";
+import { renderBatch } from "./render-batch.js";
 import { renderOffline } from "./render-offline.js";
 import { findRender, putRender } from "./render-store.js";
 import { sha256Hex } from "./sha256-hex.js";
@@ -38,6 +39,15 @@ import { MP3_EXTENSION, writeMp3 } from "./write-mp3.js";
 
 /** Hex characters of the producer's hash in a cached file's name. */
 const PRODUCER_NAME_CHARS = 12;
+
+/**
+ * Each excerpt being rendered, by its cached file's path. A second render of the same excerpt
+ * started meanwhile, as a batch can start (decision 0076), waits for the first's row: its own
+ * `putRender` would replace that row, and the first caller would hold a render id that no
+ * longer exists.
+ * @type {Map<string, Promise<Render>>}
+ */
+const inFlight = new Map();
 
 /**
  * @typedef {object} ExcerptRequest
@@ -143,7 +153,8 @@ async function writeCached(folder, file, channels, sampleRate) {
  * was made under this target and producer and its file is there, else rendered and cached. A
  * render normalize throws on is cached as rendered, with no gain, and a failed check says why;
  * the call itself throws only on a fault outside normalize. With `window`, it is that window
- * instead, as a track section's player plays it (decision 0061).
+ * instead, as a track section's player plays it (decision 0061). A call made while the same
+ * excerpt is rendering gets that render, as cached.
  * @param {Store} store
  * @param {string} folder the render-cache folder
  * @param {ExcerptRequest} request
@@ -168,14 +179,25 @@ export async function renderExcerpt(store, folder, { genomeId, seed, target }, r
   const found = findRender(store, key);
   if (found && cachedFile(folder, found)) return { render: found, cached: true };
 
-  const { raw, heard, checks } = await renderHeard(genome, key, recordings);
-  const features = extractFeatures(raw, heard);
   const file = cacheFile({ genomeId, seed, target, offset, duration });
-  await writeCached(folder, file, (heard ?? raw).channels, raw.sampleRate);
-  const { render, replaced } = putRender(store, { ...key, file, features, checks });
-  // force: a replaced row's file may already be gone, which is the state this asks for.
-  if (replaced && replaced.file !== file) await rm(join(folder, replaced.file), { force: true });
-  return { render, cached: false };
+  const path = join(folder, file);
+  const running = inFlight.get(path);
+  if (running) return { render: await running, cached: true };
+  const rendering = (async () => {
+    const { raw, heard, checks } = await renderHeard(genome, key, recordings);
+    const features = extractFeatures(raw, heard);
+    await writeCached(folder, file, (heard ?? raw).channels, raw.sampleRate);
+    const { render, replaced } = putRender(store, { ...key, file, features, checks });
+    // force: a replaced row's file may already be gone, which is the state this asks for.
+    if (replaced && replaced.file !== file) await rm(join(folder, replaced.file), { force: true });
+    return render;
+  })();
+  inFlight.set(path, rendering);
+  try {
+    return { render: await rendering, cached: false };
+  } finally {
+    inFlight.delete(path);
+  }
 }
 
 /**
@@ -205,7 +227,8 @@ export async function renderHeardAgain(store, render, recordings) {
 }
 
 /**
- * Renders each excerpt in turn as a job, checking for a cancel before each one.
+ * Renders the excerpts as a job, `RENDER_CONCURRENCY` at once (decision 0076), starting none
+ * after a cancel.
  * @param {Store} store
  * @param {string} folder the render-cache folder
  * @param {ExcerptRequest[]} requests
@@ -214,14 +237,9 @@ export async function renderHeardAgain(store, render, recordings) {
  * @returns {Promise<Excerpt[]>} in the order asked
  */
 export async function renderExcerpts(store, folder, requests, { signal, progress }, recordings) {
-  /** @type {Excerpt[]} */
-  const done = [];
   const total = requests.length;
-  for (const request of requests) {
-    progress(done.length, total, JOB_STEP.renderingExcerpt(done.length + 1, total));
-    signal.throwIfAborted();
-    done.push(await renderExcerpt(store, folder, request, recordings));
-  }
-  progress(total, total, null);
-  return done;
+  return renderBatch(requests, (request) => renderExcerpt(store, folder, request, recordings), {
+    signal,
+    progress: (n) => progress(n, total, n < total ? JOB_STEP.renderingExcerpt(n + 1, total) : null),
+  });
 }
