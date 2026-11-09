@@ -1,9 +1,9 @@
 # 0074. The model drafts or reworks a brief from the owner's words, filling the form unsaved
 
 - **Date:** 2026-11-08
-- **Status:** accepted; provisional: owner to confirm that the form's unsaved values are what a
-  rework sends, that a new brief's requests aren't stored, and the 1 000-character limit on the
-  words. Amends [0024](0024-prompt-parse-repair-generation.md) (a third answer through
+- **Status:** accepted; the owner confirmed that the form's unsaved values are what a rework
+  sends, that a new brief's requests aren't stored, the 1 000-character limit on the words, and
+  that saved targets the form doesn't show are kept as they are. Amends [0024](0024-prompt-parse-repair-generation.md) (a third answer through
   `sendRequest` and the shared parse step, `judgeAnswer`) and [0067](0067-proposed-track.md)
   (`judgeProposal` now calls `judgeAnswer`)
 
