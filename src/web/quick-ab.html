@@ -57,6 +57,7 @@
           page counts them. About the same and Skip aren't counted as a choice either way. Undo
           is off here.
         </p>
+        <p><button id="numbersToggle" class="button outline small" type="button" aria-expanded="false" title="Shows or hides the numbers on this page: the fields that set values directly, the measurements and the scores. The page remembers your choice in this browser.">Show the numbers</button></p>
         <p id="status" class="status" role="status" aria-live="polite">Loading…</p>
       </div>
 
@@ -138,7 +139,7 @@
           </label>
           <button id="earShiftRead" class="button outline" type="button" title="Asks the model to read your words as the sliders below, and sets them. The search isn't told until you press Use from the next pair. One short model request.">Set the sliders from these words</button>
         </div>
-        <div id="earShifts" class="constraints"></div>
+        <div id="earShifts" class="constraints" data-numbers></div>
         <div class="row">
           <button id="earSteer" class="button secondary" type="button" title="Draws every pair from the next one on with the variation and leanings above. The pair on screen stays, and no model is asked.">Use from the next pair</button>
           <button id="earUnshift" class="button outline" type="button" title="Sets every slider back to the middle, so new variations lean no way. Press Use from the next pair to send it.">Center the sliders</button>

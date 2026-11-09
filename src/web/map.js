@@ -25,11 +25,13 @@ import {
   mapRows,
   openText,
 } from "./map-grid.js";
+import { pageNumbers } from "./numbers-toggle.js";
 import { statusLine } from "./status-line.js";
 import { steerControls } from "./steer-controls.js";
 import "./topbar-jobs.js";
 
 const status = statusLine();
+pageNumbers("map.html");
 const page = elementsById({
   pageTitle: HTMLElement,
   briefLink: HTMLAnchorElement,

@@ -33,18 +33,20 @@
           row is one candidate, and one made from another sits indented under it. Play each one,
           then rate it with the buttons on its row; Hide moves it to Hidden candidates at the
           bottom, where it can be shown again. The marks beside a row count how often it was
-          chosen (▲) and not chosen (▼) in A/B comparisons. More controls opens the row's
-          Less / More choices, note and sketch, locks, explore and nudge. Thumbs and the Less /
-          More choices can be changed or cleared at any time. The lineage page shows where every
-          candidate of the brief came from.
+          chosen (▲) and not chosen (▼) in A/B comparisons. Under each row are its Less / More
+          choices, note and sketch, explore and nudge; Show the numbers adds its locks,
+          measurements and the other numbers. Thumbs and the Less / More choices can be changed
+          or cleared at any time. The lineage page shows where every candidate of the brief came
+          from.
         </p>
+        <p><button id="numbersToggle" class="button outline small" type="button" aria-expanded="false" title="Shows or hides the numbers on this page: the fields that set values directly, the measurements and the scores. The page remembers your choice in this browser.">Show the numbers</button></p>
         <p id="status" class="status" role="status" aria-live="polite">Loading…</p>
       </div>
 
       <section class="card stack" aria-labelledby="ask-heading">
         <h2 id="ask-heading">Candidates</h2>
         <div class="row">
-          <label class="small"
+          <label class="small" data-numbers
             >How many
             <input id="countInput" type="number" min="1" max="32" step="1" placeholder="8" size="4" title="How many candidates to ask the model for. Empty asks for 8. Each takes about a minute or two." />
           </label>
@@ -154,11 +156,11 @@
               <span class="muted small" data-part="rowId"></span>
               <span class="badge" data-part="thumbsBadge" hidden>thumbs</span>
               <span class="badge" data-part="sketchBadge" hidden>Kept as sketch</span>
-              <span class="badge" data-part="rankBadge" hidden></span>
+              <span class="badge" data-part="rankBadge" data-numbers hidden></span>
               <span class="badge" data-part="wildcardBadge" hidden>Wildcard</span>
             </div>
             <p class="small muted" data-part="origin"></p>
-            <p class="small muted" data-part="positions" hidden></p>
+            <p class="small muted" data-part="positions" data-numbers hidden></p>
             <button class="button outline small" type="button" data-part="pairLink" hidden title="Shows the other version of this candidate in its place.">Show the other version</button>
             <button class="button outline small" type="button" data-part="foldToggle" aria-expanded="false" hidden title="Shows or hides the other points of this search whose sound is nearest this one, nested under it.">Show nearby points</button>
           </td>
@@ -183,16 +185,15 @@
               </div>
               <button class="button outline small" type="button" data-part="compare" title="Marks this candidate to compare with another. Then press Compare on a second candidate to hear the two side by side.">Compare</button>
               <button class="button outline small" type="button" data-part="hide" title="Hides this candidate: it moves to Hidden candidates at the bottom of the page and leaves Quick A/B. Its ratings are kept, and the lineage page still shows it.">Hide</button>
-              <button class="button outline small" type="button" data-part="expand" aria-expanded="false" title="Opens or closes this candidate's other controls: the Less / More choices, a note and Keep as sketch, explore and nudge, locks and the measurements.">More controls</button>
             </div>
           </td>
         </tr>
-        <tr class="candidate-more" data-part="moreRow" hidden>
+        <tr class="candidate-more">
           <td colspan="4">
             <div class="candidate-controls">
               <div class="stack">
                 <p class="small" data-part="intent"></p>
-                <div class="small" data-part="rangesBox" hidden>
+                <div class="small" data-part="rangesBox" data-numbers hidden>
                   <p data-part="rangesLine"></p>
                   <ul class="ranges" data-part="ranges"></ul>
                 </div>
@@ -216,8 +217,8 @@
               <div class="stack">
                 <div data-part="steer"></div>
 
-                <details class="small stack" data-part="lockBox">
-                  <summary data-part="lockSummary" title="Shows or hides the brief's locks: values every later candidate, explore and nudge of this brief keeps as they are.">Locks</summary>
+                <div class="small stack" data-numbers>
+                  <strong data-part="lockSummary">Locks</strong>
                   <p class="muted">
                     A lock keeps one value as this candidate has it in every later candidate of the
                     brief. The macros still move a locked value, so locking one offers to lock them too.
@@ -235,14 +236,14 @@
                   </div>
                   <p class="muted" data-part="locksLine"></p>
                   <ul class="list" data-part="lockList"></ul>
-                </details>
+                </div>
 
-                <details class="small">
-                  <summary title="Shows or hides the measurements and rule checks of this excerpt.">Details</summary>
+                <div class="small stack" data-numbers>
+                  <strong>Details</strong>
                   <p class="muted" data-part="features"></p>
                   <p data-part="lint"></p>
                   <ul class="findings" data-part="findings"></ul>
-                </details>
+                </div>
               </div>
             </div>
           </td>
@@ -270,27 +271,27 @@
           <button class="button outline small" type="button" data-part="nudge" title="Makes children of this candidate by moving its numbers a step, with no model request, and renders an excerpt of each. Takes a few seconds per child.">Nudge from here</button>
         </div>
         <div class="row">
-          <input data-part="budget" type="number" step="1" size="5" title="How many points Search from here tries, from 1 to 400. Each one renders an excerpt and is scored by your taste model." />
-          <label class="row small"><input data-part="control" type="checkbox" title="Also makes as many medium nudges of this candidate after the search, scored the same way and never shown, to test whether the search beats nudging." /> With a control</label>
+          <input data-part="budget" type="number" step="1" size="5" data-numbers title="How many points Search from here tries, from 1 to 400. Each one renders an excerpt and is scored by your taste model." />
+          <label class="row small" data-numbers><input data-part="control" type="checkbox" title="Also makes as many medium nudges of this candidate after the search, scored the same way and never shown, to test whether the search beats nudging." /> With a control</label>
           <button class="button outline small" type="button" data-part="search" title="Searches near this candidate, scoring each point by your taste model with no model request. Asks first, with the time it takes.">Search from here</button>
         </div>
         <div class="row">
-          <input data-part="queries" type="number" step="1" size="5" title="How many pairs Search by ear asks you, from 1 to 60." />
+          <input data-part="queries" type="number" step="1" size="5" data-numbers title="How many pairs Search by ear asks you, from 1 to 60." />
           <button class="button outline small" type="button" data-part="ear" title="Searches near this candidate by your ear, on the Quick A/B page.">Search by ear</button>
         </div>
       </div>
     </template>
     <template id="steer-sliders">
       <div class="stack small" hidden>
-        <p class="muted">
+        <p class="muted" data-numbers>
           Move a slider toward where you want this candidate to go, or tick a region, then press
           Steer from here. Each slider runs from the brief's least to its most of that direction
           among its excerpts so far; only the sliders you moved are sent.
         </p>
-        <div class="stack" data-part="sliders"></div>
+        <div class="stack" data-part="sliders" data-numbers></div>
         <div class="stack" data-part="regions"></div>
         <div class="row">
-          <input data-part="budget" type="number" step="1" size="5" title="How many points Steer from here tries, from 1 to 400. Each one renders an excerpt and has its sound analyzed." />
+          <input data-part="budget" type="number" step="1" size="5" data-numbers title="How many points Steer from here tries, from 1 to 400. Each one renders an excerpt and has its sound analyzed." />
           <button class="button outline small" type="button" data-part="steer" title="Searches near this candidate for sounds that sit where the sliders you moved point and near the regions you ticked, with a little weight on your taste model when the brief has one. No model request. Asks first, with the time it takes.">Steer from here</button>
         </div>
       </div>

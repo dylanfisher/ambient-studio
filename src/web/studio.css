@@ -581,7 +581,7 @@ legend {
 }
 
 /* Candidates: the session table (decision 0049). Each candidate is a tbody of two rows, the
-   row itself and its More controls, and one made from another is indented under it by its
+   row itself and its other controls, and one made from another is indented under it by its
    depth. Below 720px each row stacks its cells. */
 
 .candidates {
@@ -799,6 +799,12 @@ audio[hidden] + .player {
 
 /* Last, so it wins over a class that sets display at the same specificity. */
 [hidden] {
+  display: none;
+}
+
+/* The numbers toggle (0083): until the page's Show the numbers sets the attribute on the root,
+   every part marked data-numbers is out of view, those cloned from templates included. */
+:root:not([data-numbers-open]) [data-numbers] {
   display: none;
 }
 

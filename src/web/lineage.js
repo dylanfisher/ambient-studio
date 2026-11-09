@@ -11,12 +11,14 @@ import { elementsById } from "./element-by-id.js";
 import { mountPlayer } from "./excerpt-player.js";
 import { TONE } from "./job-view.js";
 import { lineageTree } from "./lineage-tree.js";
+import { pageNumbers } from "./numbers-toggle.js";
 import { intentText, operatorLabel, originText, rejectText } from "./origin-text.js";
 import { statusLine } from "./status-line.js";
 import { steerControls } from "./steer-controls.js";
 import "./topbar-jobs.js";
 
 const status = statusLine();
+pageNumbers("lineage.html");
 const page = elementsById({
   pageTitle: HTMLElement,
   briefLink: HTMLAnchorElement,

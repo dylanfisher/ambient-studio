@@ -30,6 +30,7 @@
           model for candidates and renders an excerpt of each, and you listen and rate them on
           the session page. Your ratings and sketches are listed further down.
         </p>
+        <p><button id="numbersToggle" class="button outline small" type="button" aria-expanded="false" title="Shows or hides the numbers on this page: the fields that set values directly, the measurements and the scores. The page remembers your choice in this browser.">Show the numbers</button></p>
         <p id="status" class="status" role="status" aria-live="polite">Loading…</p>
       </div>
 
@@ -55,12 +56,12 @@
           </label>
           <label class="field" for="briefDescription">Description</label>
           <textarea id="briefDescription" name="brief" rows="6" title="Describe the music in plain sentences: mood, sounds, how it moves. The model reads this with every request for candidates."></textarea>
-          <fieldset class="stack">
+          <fieldset class="stack" data-numbers>
             <legend>Rules every candidate must follow (leave a field empty to leave it free)</legend>
             <div id="constraintBox" class="constraints"></div>
           </fieldset>
           <p class="small muted" id="constraintsText"></p>
-          <fieldset class="stack">
+          <fieldset class="stack" data-numbers>
             <legend>Ranges to aim for (leave both ends empty for no range)</legend>
             <p class="small muted">
               The studio measures each excerpt. The model is told these ranges and aims inside
@@ -69,7 +70,7 @@
             <div id="targetBox" class="constraints"></div>
           </fieldset>
           <p class="small muted" id="targetsText"></p>
-          <div id="regionBox" class="stack" hidden>
+          <div id="regionBox" class="stack" data-numbers hidden>
             <div class="row">
               <label class="field"
                 >Set ranges from a region
@@ -82,7 +83,7 @@
               The fields show what is saved now beside them. Nothing is saved until you press Save.
             </p>
           </div>
-          <div id="keptBox" class="stack" hidden>
+          <div id="keptBox" class="stack" data-numbers hidden>
             <p class="small muted">Other saved targets, kept as they are when you save:</p>
             <pre id="keptTargets" class="small"></pre>
           </div>
@@ -206,7 +207,7 @@
               version, to reorder, resize and retime before you render it.
             </p>
             <div class="row">
-              <label class="field"
+              <label class="field" data-numbers
                 >Minutes
                 <input id="proposeMinutes" type="number" min="3" max="20" step="1" value="10" title="How long the proposed track plays, from 3 to 20 minutes. The model's proposal must land within 5% of it." />
               </label>

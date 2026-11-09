@@ -1,5 +1,5 @@
 // The session page (decisions 0028 and 0032): the candidate table, one row per candidate with
-// its excerpt, its rating controls and, behind More controls, the rest; the A/B view; and the
+// its excerpt, its rating controls and, on a second row, the rest; the A/B view; and the
 // session's jobs, each with its progress, followed until they finish. A candidate's row sits
 // under the one it was made from, carries its A/B marks, and can be hidden into the hidden
 // panel, and the page keeps its scroll across a trip to Quick A/B or the A/B view (0049). Of a
@@ -9,7 +9,7 @@
 // In a session ranked by the brief's taste model, the rows follow the ranking with each score,
 // and Best question opens the pair the model is least sure of (0046).
 // Played fraction and time taken are measured here as decision 0027 defines them. A "card" in
-// this file is one candidate's row and its More controls, a `<tbody>` of the table.
+// this file is one candidate's two rows, a `<tbody>` of the table.
 /** @import { FeatureRanges } from "../domain/target-schema.js" */
 /** @import { LintResult } from "../domain/lint-result.js" */
 /** @import { AbCandidate } from "./ab-view.js" */
@@ -42,6 +42,7 @@ import { endedText, JOB_STATE } from "./job-progress.js";
 import { jobBox, TONE } from "./job-view.js";
 import { lockChoices } from "./lock-choices.js";
 import { macroOffer } from "./macro-offer.js";
+import { pageNumbers } from "./numbers-toggle.js";
 import { oneAtATime } from "./one-at-a-time.js";
 import { intentText, originText, rejectText } from "./origin-text.js";
 import { createPairSwap } from "./pair-swap.js";
@@ -61,6 +62,7 @@ const [, , BEST] = ORDER_MODES;
 const MACRO_NAMES = Object.keys(MACROS);
 
 const status = statusLine();
+pageNumbers("session.html");
 const page = elementsById({
   pageTitle: HTMLElement,
   briefLink: HTMLAnchorElement,
@@ -113,8 +115,6 @@ const CARD_PARTS = Object.freeze({
   down: HTMLButtonElement,
   compare: HTMLButtonElement,
   hide: HTMLButtonElement,
-  expand: HTMLButtonElement,
-  moreRow: HTMLElement,
   abBadge: HTMLElement,
   wins: HTMLElement,
   losses: HTMLElement,
@@ -1036,12 +1036,6 @@ function makeCard(candidate, number, revised) {
   const compareOnce = oneAtATime(() => compare(card));
   parts.compare.onclick = () => status.run(compareOnce);
   parts.hide.onclick = () => status.run(() => toggleHidden(card));
-  parts.expand.onclick = () => {
-    const open = parts.moreRow.hidden;
-    parts.moreRow.hidden = !open;
-    parts.expand.setAttribute("aria-expanded", String(open));
-    parts.expand.textContent = open ? "Fewer controls" : "More controls";
-  };
   parts.pairLink.onclick = () => showOther(card);
   parts.foldToggle.onclick = () => {
     const { id } = card.candidate;

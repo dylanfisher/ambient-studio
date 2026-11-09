@@ -34,6 +34,7 @@
           explore or nudge from one to go back to an earlier branch; the new candidates go to the
           session named below and appear here as they are ready. Rate them on the session page.
         </p>
+        <p><button id="numbersToggle" class="button outline small" type="button" aria-expanded="false" title="Shows or hides the numbers on this page: the fields that set values directly, the measurements and the scores. The page remembers your choice in this browser.">Show the numbers</button></p>
         <p id="status" class="status" role="status" aria-live="polite">Loading…</p>
       </div>
 
@@ -105,12 +106,12 @@
           <button class="button outline small" type="button" data-part="nudge" title="Makes children of this candidate by moving its numbers a step, with no model request, and renders an excerpt of each. Takes a few seconds per child.">Nudge from here</button>
         </div>
         <div class="row">
-          <input data-part="budget" type="number" step="1" size="5" title="How many points Search from here tries, from 1 to 400. Each one renders an excerpt and is scored by your taste model." />
-          <label class="row small"><input data-part="control" type="checkbox" title="Also makes as many medium nudges of this candidate after the search, scored the same way and never shown, to test whether the search beats nudging." /> With a control</label>
+          <input data-part="budget" type="number" step="1" size="5" data-numbers title="How many points Search from here tries, from 1 to 400. Each one renders an excerpt and is scored by your taste model." />
+          <label class="row small" data-numbers><input data-part="control" type="checkbox" title="Also makes as many medium nudges of this candidate after the search, scored the same way and never shown, to test whether the search beats nudging." /> With a control</label>
           <button class="button outline small" type="button" data-part="search" title="Searches near this candidate, scoring each point by your taste model with no model request. Asks first, with the time it takes.">Search from here</button>
         </div>
         <div class="row">
-          <input data-part="queries" type="number" step="1" size="5" title="How many pairs Search by ear asks you, from 1 to 60." />
+          <input data-part="queries" type="number" step="1" size="5" data-numbers title="How many pairs Search by ear asks you, from 1 to 60." />
           <button class="button outline small" type="button" data-part="ear" title="Searches near this candidate by your ear, on the Quick A/B page.">Search by ear</button>
         </div>
       </div>

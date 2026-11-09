@@ -5,8 +5,9 @@
   [0039](0039-lineage-and-steering-controls.md) (the lineage page, and each session card's
   ranges, locks, explore and nudge), [0048](0048-quick-ab-player-mp3.md) (keys on the Quick
   A/B page, and the excerpt player), [0057](0057-map-elites-archive-and-map.md) (the map
-  page and its arrow keys) and [0061](0061-tracks-and-the-timeline.md) (the timeline page and
-  its keys)
+  page and its arrow keys), [0061](0061-tracks-and-the-timeline.md) (the timeline page and
+  its keys) and [0083](0083-numbers-toggle.md) (raw numbers behind one toggle per page, which
+  replaces the session's Details)
 
 ## Context
 
