@@ -4233,3 +4233,24 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   words now edit the sliders instead of replacing them, which the orchestrator added to 0084,
   and confirmed that a words job waits behind any running job and that the queue's cancel is
   global. WF.2b is added before WF.3 to fix that, with record 0092.
+- 2026-11-09: TD.3 merged as 124f987 (Opus: 568k tokens, 383 calls, 98 min with a main merge and
+  one fix; reviewer Sonnet: 131k tokens, 56 calls, 21 min, PASS with one bug fixed before
+  merge). A `developments` table (0013) and each section's `developmentId` (0014), both
+  migrated over the previous shape. "Develop this section" (Z) sends one `develop` request and
+  at most one repair: the brief, the arc, the section's text, `conciseGenome`, both readings and
+  the neighbors' meeting states, at most 4,033 of 4,096 tokens; a 6–10 voice sketch's genome is
+  213–314 tokens, under the 420 left. The section plays the development, morphs and weaves into
+  it, and re-renders from its manifest to the same hash; a track without developments keeps
+  its key. "Play the plain sketch" (/) goes back. Sections under 60 s can't be developed. The
+  review found a steered developed section kept its development; fixed in 003cce2 (0079). An
+  unplaced development can't yet be placed from the page: TD.6 lists them. `./scripts/check`
+  clean, 2,575 tests.
+- 2026-11-09: CG.2 merged as a5a5b02 (Opus: 317k tokens, 167 calls, 57 min with two fix rounds;
+  reviewers Sonnet: 86k and 58k tokens, 8.7 and 2.1 min, FAIL then PASS). `flutter` and
+  `shimmer` give each singer seven seeded wanders from 1 to 7.8 Hz with 1/√f amplitudes: 5 cents
+  and 0.7 dB RMS at 1, pairwise correlation under 0.18 over 30 s. The first review timed the
+  wanders one mode per process at 10–16× the stated cost; the fix gave them one typed-array
+  path at 100 points a second, which times faster than the plain path, so the weights are an
+  upper bound. Twelve singers at 65 Hz with all four of CG.1's and CG.2's settings cost 164.3,
+  4.7 under the budget beside a 15 s reverb. Schema text trimmed to 3,997 of 4,000; CG.3 and
+  CG.4 have no room left (0089). `./scripts/check` and a fresh second run agree: 2,598 tests.
