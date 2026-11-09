@@ -35,12 +35,14 @@ import {
   MAX_SEARCH_BUDGET,
 } from "../domain/search-settings.js";
 import { MAX_SEARCH_DIMENSIONS, searchSpace } from "../domain/search-space.js";
+import { SHIFT_WORDS_CHARS } from "../domain/shift-prompt.js";
 import { isObject } from "../engine/is-object.js";
 import { getAttachment } from "./attachment-store.js";
 import { currentExcerpt } from "./candidate-excerpt.js";
 import { candidateJob, DEFAULT_CANDIDATES, excerptJob, MAX_CANDIDATES } from "./candidate-job.js";
 import { candidatePairs } from "./candidate-pair.js";
 import { createEarChannel, earChannel, earSearchJob, setEarChannel } from "./ear-search-job.js";
+import { readShiftWords } from "./ear-shift.js";
 import { fillJob } from "./fill-job.js";
 import { BREED_OPERATOR, currentRevision, EXPLORE_OPERATOR } from "./generate-candidates.js";
 import {
@@ -948,6 +950,21 @@ export const SESSION_ROUTES = [
       if (!checked.ok) throw new HttpError(400, checked.error);
       channel.steer(checked.steering);
       return channel.view();
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/sessions/:sessionId/ear-search/shift-words",
+    handle: async ({ app, params, body }) => {
+      const session = requireOpenSession(app, params);
+      const given = fields(await body(), ["words"]);
+      const words = text(given, "words", SHIFT_WORDS_CHARS);
+      if (NOT_ONE_LINE.test(words)) throw new HttpError(400, "words must be one line");
+      const channel = requireEarChannel(app, session);
+      if (channel.view().phase === EAR_PHASE.finished) {
+        throw new HttpError(409, "This search by ear has ended, so it takes no more steering.");
+      }
+      return readShiftWords(app, session, channel, words);
     },
   },
   {

@@ -131,6 +131,13 @@
           >How different each new variation is
           <select id="earVariation" title="Chooses how far each new variation may sit from the best so far: Subtle is a small step, Very wide a large one. Used from the next pair once you press Use from the next pair."></select>
         </label>
+        <div class="row">
+          <label class="field"
+            >Or describe a shift
+            <input id="earShiftWords" type="text" size="40" maxlength="300" placeholder="darker and more spacious, a little less busy" title="Your words for how new variations should lean. Set the sliders from these words asks the model to read them as the sliders below." />
+          </label>
+          <button id="earShiftRead" class="button outline" type="button" title="Asks the model to read your words as the sliders below, and sets them. The search isn't told until you press Use from the next pair. One short model request.">Set the sliders from these words</button>
+        </div>
         <div id="earShifts" class="constraints"></div>
         <div class="row">
           <button id="earSteer" class="button secondary" type="button" title="Draws every pair from the next one on with the variation and leanings above. The pair on screen stays, and no model is asked.">Use from the next pair</button>
