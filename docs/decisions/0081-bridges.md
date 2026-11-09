@@ -8,8 +8,9 @@
   develop route refuses while a bridge is written) and [0080](0080-weave-transitions.md) (a
   bridge's joins are weaves of a stated length, checked to hold before the bridge is stored);
   amended by [0082](0082-develop-the-whole-track.md) (a bridge's state at its cap keeps every
-  value the check compares and may pass the cap for them; a skipped bridge names its join; the
-  bridge route refuses while every section is developed; the worst prompt is 4,077 tokens)
+  value the check compares and may pass the cap for them; a bridge whose prompt can't fit is
+  refused by the route before any request, naming its join; a skipped bridge names its join;
+  the bridge route refuses while every section is developed; the worst prompt is 4,077 tokens)
 
 ## Context
 

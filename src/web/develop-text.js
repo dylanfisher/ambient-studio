@@ -253,6 +253,28 @@ export function runDevelopments(plan, sections, known, developments) {
 }
 
 /**
+ * The developments a run wrote: the finished job's own ids, each with its section, or, when it
+ * was cancelled or failed and has no result, the rows `runDevelopments` reads. The ids win
+ * because a develop job started in another tab may store a row of the same sketch between the
+ * page reading `known` and the run's first request.
+ * @param {readonly DevelopPlan[]} plan the run's
+ * @param {readonly Section[]} sections the version's it ran on
+ * @param {{ developed: { index: number, developmentId: number }[] } | null} result the job's
+ *   once done, else null
+ * @param {ReadonlySet<number>} known the development ids listed just before the run
+ * @param {readonly { id: number, sketchId: number }[]} developments listed now, oldest first
+ * @returns {RunDevelopment[]}
+ */
+export function runWritten(plan, sections, result, known, developments) {
+  if (result === null) return runDevelopments(plan, sections, known, developments);
+  return result.developed.map(({ index, developmentId }) => {
+    const from = sections[index];
+    if (!from) throw new Error(`the run developed section ${index + 1}, which this version lacks`);
+    return { at: index, from, developmentId };
+  });
+}
+
+/**
  * Where a run's developments go: each into its section by `developSwap`'s rules, one after
  * another on the same timeline, saved as one version or put on the unsaved timeline; one whose
  * section changed is left out with its reason, and opening another version leaves out all.

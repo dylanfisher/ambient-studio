@@ -11,11 +11,10 @@ import {
 import { fixedParams } from "../../src/domain/morph-genome.js";
 import { exactText } from "../../src/domain/param-text.js";
 import { estimateTokens } from "../../src/domain/prompt-tokens.js";
-import { isNumeric } from "../../src/engine/descriptor.js";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
 import { requireGenome } from "../../src/engine/validate-genome.js";
 import { voiceParams } from "../../src/engine/voice-registry.js";
-import { worstGenome } from "../support/worst-genome.js";
+import { longSettings, worstGenome } from "../support/worst-genome.js";
 
 /** The drone, a pad that leaves at 40 s and a bell that enters at 40 s, brightness rising. */
 const genome = requireGenome(
@@ -68,32 +67,8 @@ test("16 voices with every trajectory full stay under the cap, the last named on
   expect(lines.at(-1)).toMatch(/; and [a-z0-9-]+/);
 });
 
-/**
- * The largest genome with 17-digit fixed settings on its first `count` voices: every number
- * `fixedParams` names, at a value no reading's three digits would write as it is.
- * @param {number} count
- */
-function denseNeighbor(count) {
-  const genome = worstGenome(1);
-  return requireGenome(
-    {
-      ...genome,
-      voices: genome.voices.map((voice, i) => {
-        if (i >= count) return voice;
-        const table = /** @type {Record<string, any>} */ (voiceParams(voice.type));
-        const settings = fixedParams(voice.type)
-          .filter((name) => isNumeric(table[name]))
-          .map((name) => {
-            const { min, max, kind } = table[name];
-            const value = min + (max - min) * 0.123456789012345;
-            return [name, kind === "int" ? Math.round(value) : value];
-          });
-        return { ...voice, ...Object.fromEntries(settings) };
-      }),
-    },
-    "dense neighbor",
-  );
-}
+/** @param {number} count */
+const denseNeighbor = (count) => longSettings(worstGenome(1), count);
 
 /**
  * Every value `checkBridge` compares exactly for the voices sounding at `at`: each voice's id and

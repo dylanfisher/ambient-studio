@@ -240,3 +240,24 @@ test("the route refuses a version with nothing to develop, and a second develop 
   await studio.drive(server.jobs.settled(job.id));
   studio.omlx.release();
 });
+
+test("developing every section is refused while one section is being developed", async () => {
+  const studio = await setup();
+  const { server, ok, track, revision } = studio;
+  studio.omlx.script({ tokens: ['{"duration": '], holdAfter: 0 });
+  const single = await ok("POST", `/api/tracks/${track.id}/develop`, {
+    revisionId: revision.id,
+    section: 0,
+  });
+  await studio.omlx.waitForRequests(1);
+  const refused = await server.api("POST", `/api/tracks/${track.id}/develop-all`, {
+    revisionId: revision.id,
+    again: false,
+  });
+  expect(refused.status).toBe(409);
+  expect(refused.json().error).toContain("A section is already being developed");
+  expect(studio.omlx.requests).toHaveLength(1);
+  await ok("POST", `/api/jobs/${single.id}/cancel`, {});
+  await studio.drive(server.jobs.settled(single.id));
+  studio.omlx.release();
+});

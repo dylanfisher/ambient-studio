@@ -71,10 +71,13 @@ sections after it aren't asked, so a run that fails on section 3 of 10 costs no 
 the owner runs it again, and the sections developed so far are kept by the plan.
 
 **One revision at the end.** The job writes no revision, as 0079 keeps that to the page. When
-the job ends, however it ends, the page reads the developments again and takes the run's: those
-not listed before it started, oldest first, paired in order with the sections the plan develops
-(`runDevelopments`), stopping at one of another sketch than its section's. A cancelled job has no
-result, so the page reads the rows, which are the same whether the job finished or not. Then
+the job ends the page reads the developments again and takes the run's (`runWritten`): a
+finished job's result names each section and its development, and those are used. A cancelled
+or failed job has no result, so then the page takes those not listed just before the run
+started, oldest first, paired in order with the sections the plan develops (`runDevelopments`),
+stopping at one of another sketch than its section's. The page reads that list after the
+confirm, right before the request, since a develop job from another tab can store a row of the
+same sketch while the confirm is open; the result's ids come first for the same reason. Then
 `developAllSwap` places each by `developSwap`'s rules (0066's `steerSwap`) on one timeline in
 turn: a section changed or removed during the run is left out with its reason and the others
 are placed; opening another version by hand leaves out all. With nothing unsaved the timeline is
@@ -106,12 +109,27 @@ of it or hold its end, both valid.
 take each voice, last first, to its level and its settings that can't move, then to those
 settings alone with its id and type, which the check compares. Past the cap the state is those
 values alone, longer than 270 tokens, and the develop prompt's own budget leaves out the
-lineage's reading and then the sketch's for the room, or refuses the bridge saying so. The join
-globals in its first line were already written as the check compares them; the shared fixed
-globals are written in the bridge's rules, outside the cap. Measured on the largest genome: the
-state with default settings is 268 tokens; with 17-digit settings on 2, 4, 8 and 16 voices it
-is at most 270, then 328, 422 and 694. The worst bridge prompt of 0081 is now 4,077 tokens (4,068
-before this change) of 4,096.
+lineage's reading and then the sketch's for the room. Stored settings are never rounded to make
+room, since the check compares them at every digit. The join globals in its first line were
+already written as the check compares them; the shared fixed globals are written in the
+bridge's rules, outside the cap. Measured on the largest genome: the state with default
+settings is 268 tokens; with 17-digit settings on 2, 4, 8 and 16 voices it is at most 270, then
+328, 422 and 694. The worst bridge prompt of 0081 is now 4,077 tokens (4,068 before this change)
+of 4,096.
+
+**The limit, refused before any request.** A bridge whose prompt doesn't fit with both readings
+left out can't be written. With 8 voices of 17-digit settings a side at the largest genome's
+join it still fits; with 16 a side it is about 4,117 tokens and doesn't (both tested in
+`develop-prompt.test.js`). `buildDevelopPrompt` throws `DevelopPromptTooLong`, and the bridge
+route builds every part's first prompt (`bridgeRoom`) before it adds the job, so such a join is
+a 409 with no request sent: "Can't bridge the join between sections 1 and 2: the two sections'
+settings that can't move are too long to quote exactly in one request, …", or "its prompt is too
+long for one request" when no state is over its cap. The second half starts where the first
+half ends, which isn't written yet; the outgoing section's end stands in, since the first half
+starts holding exactly those voices, so a first half that ends with longer settings than it
+started with can still fail the job after its request, with the same message. Develop every
+section never writes a bridge, and its states are `MEETING_STATE_TOKENS`' 180 without `fixed`,
+which cut to names, so it has no such limit.
 
 **A skipped bridge** says "Kept bridge 7 for the join between sections 2 and 3 but didn't put it
 in the track: … It is listed under Developments, to place by hand." (`bridgeSkippedText`); a
@@ -145,6 +163,6 @@ skipped development says the same of the list.
   list, the bridge's status), `test/web/timeline-edits.test.js` (placing).
 - A run whose page is closed stores its developments and places none; the list shows them, to
   place by hand.
-- A bridge between two neighbors with 16 voices sounding, long settings on every one and the
-  largest readings can't be written: its two states take about 1,400 tokens, and the prompt
-  refuses saying so rather than drop a compared value.
+- A bridge between two neighbors with 16 voices sounding and long settings on every one can't be
+  written: its two states take about 1,400 tokens, and the route refuses it before any request
+  rather than drop or round a compared value (`bridge-section.test.js`).

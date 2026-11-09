@@ -45,7 +45,7 @@ import {
   developmentName,
   developRefusal,
   developSwap,
-  runDevelopments,
+  runWritten,
 } from "./develop-text.js";
 import { elementsById } from "./element-by-id.js";
 import { clockTime, mountPlayer, playAudio } from "./excerpt-player.js";
@@ -1020,8 +1020,6 @@ async function bridgeJoin() {
  */
 async function developAll() {
   if (draft === null || buttons.developAll.disabled) return;
-  // Read again first, so the developments listed before the run are every one stored.
-  await readDevelopments();
   const plan = developAllPlan(draft);
   const refusal = developAllRefusal(plan, unsaved());
   if (refusal !== null) throw new Error(refusal);
@@ -1029,7 +1027,10 @@ async function developAll() {
     status.say(NOT_STARTED);
     return;
   }
-  const { sections } = draft;
+  const { sections } = /** @type {Arrangement} */ (draft);
+  // Read right before the run, so a row another tab's job stores while the confirm is open
+  // isn't taken for the run's when it is cancelled and has no result.
+  await readDevelopments();
   const known = new Set((view?.developments ?? []).map(({ id }) => id));
   const openedThen = openedByHand;
   try {
@@ -1048,7 +1049,13 @@ async function developAll() {
       );
       return;
     }
-    const written = runDevelopments(plan, sections, known, view?.developments ?? []);
+    const written = runWritten(
+      plan,
+      sections,
+      finished === null ? null : finished.result,
+      known,
+      view?.developments ?? [],
+    );
     // A run stopped before its first development: the status line already says how it ended.
     if (written.length === 0) return;
     const swap = developAllSwap(

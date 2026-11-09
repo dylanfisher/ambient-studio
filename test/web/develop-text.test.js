@@ -20,6 +20,7 @@ import {
   developRefusal,
   developSwap,
   runDevelopments,
+  runWritten,
 } from "../../src/web/develop-text.js";
 import { SWAP } from "../../src/web/material-actions.js";
 
@@ -332,6 +333,32 @@ describe("developing every section (decision 0082)", () => {
     ]);
     // A new development of another sketch than the section's isn't the run's.
     expect(runDevelopments(fourPlan, sections, known, [listedDevelopment(8, 2)])).toEqual([]);
+  });
+
+  test("a finished run's own ids win over a row another job wrote meanwhile", () => {
+    // Development 8, of section 1's sketch, came from a develop job in another tab after the
+    // page read `known`; the run wrote 9 and 10.
+    const read = [
+      listedDevelopment(4, 2),
+      listedDevelopment(8, 1),
+      listedDevelopment(9, 1),
+      listedDevelopment(10, 2),
+    ];
+    const result = {
+      developed: [
+        { index: 0, developmentId: 9 },
+        { index: 3, developmentId: 10 },
+      ],
+    };
+    expect(runWritten(fourPlan, sections, result, new Set([4]), read)).toEqual([
+      { at: 0, from: sections[0], developmentId: 9 },
+      { at: 3, from: sections[3], developmentId: 10 },
+    ]);
+    // Cancelled or failed, with no result: the rows are all there is.
+    expect(runWritten(fourPlan, sections, null, new Set([4, 8]), read)).toEqual([
+      { at: 0, from: sections[0], developmentId: 9 },
+      { at: 3, from: sections[3], developmentId: 10 },
+    ]);
   });
 
   test("every development the run wrote is placed in one version, by steerSwap's rules", () => {

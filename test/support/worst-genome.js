@@ -4,6 +4,7 @@
 // every trajectory, as a long chain of nudges would.
 /** @import { Descriptor } from "../../src/engine/descriptor.js" */
 /** @import { Genome } from "../../src/engine/genome-schema.js" */
+import { fixedParams } from "../../src/domain/morph-genome.js";
 import { allowsTrajectory, isNumeric } from "../../src/engine/descriptor.js";
 import { GLOBAL_PARAMS, MACROS, MAX_VOICES } from "../../src/engine/genome-schema.js";
 import { MAX_DURATION } from "../../src/engine/timeline.js";
@@ -49,6 +50,35 @@ const trajectories = (table, variant) =>
       .filter(([, descriptor]) => allowsTrajectory(descriptor))
       .map(([name, descriptor]) => [name, fullTrajectory(descriptor, variant)]),
   );
+
+/**
+ * `genome` with 17-digit fixed settings on its first `count` voices: every number
+ * `fixedParams` names, at a value no reading's three digits would write as it is, as a long
+ * chain of nudges leaves them. A bridge's check compares these exactly (decision 0082).
+ * @param {Genome} genome
+ * @param {number} count
+ * @returns {Genome}
+ */
+export function longSettings(genome, count) {
+  return requireGenome(
+    {
+      ...genome,
+      voices: genome.voices.map((voice, i) => {
+        if (i >= count) return voice;
+        const table = /** @type {Record<string, any>} */ (voiceParams(voice.type));
+        const settings = fixedParams(voice.type)
+          .filter((name) => isNumeric(table[name]))
+          .map((name) => {
+            const { min, max, kind } = table[name];
+            const value = min + (max - min) * 0.123456789012345;
+            return [name, kind === "int" ? Math.round(value) : value];
+          });
+        return { ...voice, ...Object.fromEntries(settings) };
+      }),
+    },
+    "long settings",
+  );
+}
 
 /**
  * @param {number} [variant] 0 or more

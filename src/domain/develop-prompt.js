@@ -250,9 +250,29 @@ export function buildDevelopPrompt({ budgetTokens, ...ask }) {
     if (estimateTokens(promptText(built)) <= budgetTokens) return { messages: built, left };
   }
   const tokens = estimateTokens(promptText(messages(ask, left)));
-  throw new Error(
+  throw new DevelopPromptTooLong(
     `the develop prompt is about ${tokens} tokens with both readings left out, over its ${budgetTokens}-token budget; the sketch's genome is about ${estimateTokens(conciseGenome(ask.sketch.genome))} of them`,
+    tokens,
+    budgetTokens,
   );
+}
+
+/**
+ * A develop prompt that doesn't fit its budget with both readings left out, so the bridge route
+ * can refuse it before any request (decision 0082).
+ */
+export class DevelopPromptTooLong extends Error {
+  /**
+   * @param {string} message
+   * @param {number} tokens the prompt's, with both readings left out
+   * @param {number} budgetTokens
+   */
+  constructor(message, tokens, budgetTokens) {
+    super(message);
+    this.name = "DevelopPromptTooLong";
+    this.tokens = tokens;
+    this.budgetTokens = budgetTokens;
+  }
 }
 
 /**

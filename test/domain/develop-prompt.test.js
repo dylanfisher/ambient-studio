@@ -13,6 +13,7 @@ import {
   buildDevelopPrompt,
   buildDevelopRepair,
   DEVELOP_TRIM,
+  DevelopPromptTooLong,
 } from "../../src/domain/develop-prompt.js";
 import { lineageReading } from "../../src/domain/lineage-reading.js";
 import { BRIDGE_STATE_TOKENS, MEETING_EDGE, meetingState } from "../../src/domain/meeting-state.js";
@@ -23,7 +24,7 @@ import { conciseGenome } from "../../src/engine/canonical-genome.js";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
 import { schemaText } from "../../src/engine/schema-text.js";
 import { requireGenome } from "../../src/engine/validate-genome.js";
-import { worstGenome } from "../support/worst-genome.js";
+import { longSettings, worstGenome } from "../support/worst-genome.js";
 
 const FIRST_PROMPT = example.queue.contextBudgetTokens / 2;
 
@@ -290,12 +291,18 @@ describe("a bridge (decision 0081)", () => {
     }
   });
 
-  test("at its largest a bridge's first prompt fits half the context with the lineage left out", () => {
+  /**
+   * A bridge's ask at its largest, TD.3's worst parts with the second half's bridge, between
+   * `out` and `into` at their 450 s.
+   * @param {import("../../src/engine/genome-schema.js").Genome} out
+   * @param {import("../../src/engine/genome-schema.js").Genome} into
+   */
+  const largestBridge = (out, into) => {
     const largest = requireGenome(
       JSON.parse(readFileSync("src/engine/genomes/field-recording.json", "utf8")),
       "largest",
     );
-    const built = buildDevelopPrompt({
+    return /** @type {import("../../src/domain/develop-prompt.js").DevelopAsk} */ ({
       revision: {
         name: "cold dorian drone and pad",
         brief: "b".repeat(600),
@@ -335,15 +342,39 @@ describe("a bridge (decision 0081)", () => {
         keyless: true,
         held: { width: -3, reverbDecay: 12.5, delayTime: 1.25, loudness: -18, ceiling: -1 },
       },
-      before: meetingState(worstGenome(1), 450, MEETING_EDGE.end, BRIDGE_STATE_TOKENS, {
-        fixed: true,
-      }),
-      after: meetingState(worstGenome(2), 450, MEETING_EDGE.start, BRIDGE_STATE_TOKENS, {
-        fixed: true,
-      }),
+      before: meetingState(out, 450, MEETING_EDGE.end, BRIDGE_STATE_TOKENS, { fixed: true }),
+      after: meetingState(into, 450, MEETING_EDGE.start, BRIDGE_STATE_TOKENS, { fixed: true }),
       budgetTokens: FIRST_PROMPT,
     });
+  };
+
+  test("at its largest a bridge's first prompt fits half the context with the lineage left out", () => {
+    const built = buildDevelopPrompt(largestBridge(worstGenome(1), worstGenome(2)));
     expect(built.left).toEqual([DEVELOP_TRIM.lineage]);
     expect(estimateTokens(promptText(built.messages))).toBeLessThanOrEqual(FIRST_PROMPT);
+  });
+
+  test("neighbors with long settings on every voice are refused loudly, not rounded (0082)", () => {
+    // Each state keeps every value its check compares, past its cap: 694 tokens a side.
+    const ask = largestBridge(longSettings(worstGenome(1), 16), longSettings(worstGenome(2), 16));
+    const refused = /** @type {any} */ (
+      (() => {
+        try {
+          buildDevelopPrompt(ask);
+        } catch (error) {
+          return error;
+        }
+        throw new Error("the prompt was built");
+      })()
+    );
+    expect(refused).toBeInstanceOf(DevelopPromptTooLong);
+    expect(refused).toMatchObject({ budgetTokens: FIRST_PROMPT });
+    expect(refused.tokens).toBeGreaterThan(FIRST_PROMPT);
+    expect(refused.message).toMatch(/over its 4096-token budget/);
+    // With 8 such voices a side it still fits, leaving both readings out at most.
+    const eight = largestBridge(longSettings(worstGenome(1), 8), longSettings(worstGenome(2), 8));
+    expect(estimateTokens(promptText(buildDevelopPrompt(eight).messages))).toBeLessThanOrEqual(
+      FIRST_PROMPT,
+    );
   });
 });

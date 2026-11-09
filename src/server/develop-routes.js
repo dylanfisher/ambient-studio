@@ -6,10 +6,10 @@
 /** @import { App, Route } from "./routing.js" */
 import { BRIDGE_SECONDS, bridgePlan } from "../domain/bridge-plan.js";
 import { DEVELOP_PLAN, developPlan } from "../domain/develop-plan.js";
-import { DEVELOP_LEAST } from "../domain/develop-prompt.js";
+import { DEVELOP_LEAST, DevelopPromptTooLong } from "../domain/develop-prompt.js";
 import { JOB_KIND } from "../domain/job-kind.js";
 import { show } from "../engine/validation-error.js";
-import { bridgeJob } from "./bridge-section.js";
+import { bridgeJob, bridgeRoom } from "./bridge-section.js";
 import { developJob } from "./develop-section.js";
 import { developTrackJob } from "./develop-track.js";
 import { getDevelopment } from "./development-store.js";
@@ -153,10 +153,14 @@ export const DEVELOP_ROUTES = [
       if (!plan.ok) throw new HttpError(409, `Can't bridge this join: ${plan.reason}.`);
       refuseDeveloping(app);
       const { ok: _, ...laid } = plan;
-      return app.jobs.add(
-        JOB_KIND.bridge,
-        bridgeJob(app, { track, revisionId, arrangement, index, plan: laid }),
-      );
+      const request = { track, revisionId, arrangement, index, plan: laid };
+      try {
+        bridgeRoom(app, request);
+      } catch (error) {
+        if (error instanceof DevelopPromptTooLong) throw new HttpError(409, `${error.message}.`);
+        throw error;
+      }
+      return app.jobs.add(JOB_KIND.bridge, bridgeJob(app, request));
     },
   },
 ];
