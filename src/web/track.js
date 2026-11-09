@@ -85,6 +85,7 @@ import {
 import { bindTimelineKeys, TIMELINE_KEYS } from "./timeline-keys.js";
 import {
   blockText,
+  placeWords,
   playedName,
   playsWords,
   sectionCount,
@@ -395,7 +396,7 @@ function draw() {
   const development = developmentOf(section.developmentId);
   const text = blockText(section, sketchOf(section.sketchId), development);
   page.sectionName.textContent = `Section ${selected + 1} of ${sections.length}: ${text.name}`;
-  page.sectionPlays.textContent = playsWords(section, sketchOf(section.sketchId), development);
+  page.sectionPlays.textContent = `${placeWords(arrangement, selected)} ${playsWords(section, sketchOf(section.sketchId), development)}`;
   page.sectionTimes.textContent = `Plays ${text.times}.`;
   // A developed section plays its development's own timeline, from 0 when it was placed (0079).
   page.offsetLabel.textContent = `Starts at, in seconds of ${playedName(development)}`;

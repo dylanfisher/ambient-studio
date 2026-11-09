@@ -8,7 +8,7 @@ import { laneField } from "../../src/domain/track-words.js";
 import { WORDS_SETS } from "../../src/domain/words-sets.js";
 import { developedText } from "../../src/web/develop-text.js";
 import { laneWords } from "../../src/web/lane-layout.js";
-import { playsWords } from "../../src/web/timeline-layout.js";
+import { placeWords, playsWords } from "../../src/web/timeline-layout.js";
 import { timelineWords, trackChangeLines } from "../../src/web/track-words-text.js";
 import { transitionWords } from "../../src/web/transition-text.js";
 
@@ -38,9 +38,9 @@ test("the timeline leads with each section's words and development, and each joi
     (id) => developments.find((development) => development.id === id),
   );
   expect(items).toEqual([
-    "Section 1: Sketch 1: low drone. Your words: “dark start”. It plays its sketch as it is.",
+    "Section 1: Sketch 1: low drone. Plays 2:00, from 0:00 on the track. Your words: “dark start”. It plays its sketch as it is.",
     "Then section 1 morphs into section 2, easing in and out. Your words: “melt”.",
-    `Section 2: Sketch 2, developed. No words for it yet. ${developedText(/** @type {any} */ (developments[0]))}`,
+    `Section 2: Sketch 2, developed. Plays 2:00, from 1:40 on the track. No words for it yet. ${developedText(/** @type {any} */ (developments[0]))}`,
   ]);
 });
 
@@ -116,6 +116,31 @@ test("each answer's change is said in words", () => {
     "Replaces your point at 1:40.",
     "Replaces your point at 2:10.",
   ]);
+  const curved = {
+    ...TRACK,
+    lanes: [
+      {
+        macro: /** @type {const} */ ("brightness"),
+        points: /** @type {any} */ ([
+          [0, 0],
+          [200, 0.4, "smooth"],
+        ]),
+      },
+    ],
+  };
+  const redrawn = WORDS_SETS.lane.apply(
+    { arrangement: curved, target: "brightness" },
+    { [laneField(120)]: 0.3 },
+  );
+  expect(trackChangeLines("lane", curved, "brightness", redrawn).slice(1)).toEqual([
+    "Redraws your lane from 0:00 to 1:30 to join the change: its curve there can't be cut and keep its shape.",
+    "Redraws your lane from 2:30 to 3:20 to join the change: its curve there can't be cut and keep its shape.",
+  ]);
   const same = WORDS_SETS.length.apply({ arrangement: TRACK, target: 0 }, {});
   expect(trackChangeLines("length", TRACK, 0, same)).toEqual([]);
+});
+
+test("a section's place is said as its clock length and where it starts on the track", () => {
+  expect(placeWords(TRACK, 0)).toBe("Plays 2:00, from 0:00 on the track.");
+  expect(placeWords(TRACK, 1)).toBe("Plays 2:00, from 1:40 on the track.");
 });

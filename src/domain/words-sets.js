@@ -26,6 +26,7 @@ import {
   laneGrid,
   laneNarrower,
   laneReading,
+  laneRoom,
   lengthCurrent,
   lengthReading,
   TRACK_TARGET,
@@ -86,6 +87,8 @@ export const WORDS_SCOPE = Object.freeze({
  *   [apply] a track set's checked answer applied to the arrangement
  * @property {(context: TrackContext) => string[]} [reading] a track set's reading, which the
  *   prompt holds in place of the one the route is given
+ * @property {(context: TrackContext) => string | null} [refusal] why a track set can't be asked
+ *   of this part of the track at all, before any request, or null when it can
  */
 
 /** A lock field's two values: locked keeps the value as the candidate has it. */
@@ -266,6 +269,7 @@ export const WORDS_SETS = Object.freeze(
       apply: applyLane,
       reading: laneReading,
       narrower: (context) => laneNarrower(track(context)),
+      refusal: laneRoom,
     },
   }),
 );

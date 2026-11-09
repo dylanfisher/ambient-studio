@@ -2,7 +2,7 @@
 // a share of the track's length, each crossfade the overlap of two blocks, and the words a block
 // shows. `timeline-view.js` draws it.
 /** @import { Arrangement, Section } from "../domain/arrangement-schema.js" */
-import { arrangementLength } from "../domain/arrangement-length.js";
+import { arrangementLength, sectionStarts } from "../domain/arrangement-length.js";
 import { clockTime } from "./excerpt-player.js";
 
 /**
@@ -84,6 +84,18 @@ function startOf(text) {
   const cut = line.slice(0, BLOCK_WORDS + 1);
   const space = cut.lastIndexOf(" ");
   return `${(space > 0 ? cut.slice(0, space) : cut.slice(0, BLOCK_WORDS)).trimEnd()}…`;
+}
+
+/**
+ * A section's place on the track in words (0087): how long it plays and where it starts, as
+ * clock times.
+ * @param {Arrangement} arrangement
+ * @param {number} index the section's, from 0
+ */
+export function placeWords(arrangement, index) {
+  const { seconds } = /** @type {Section} */ (arrangement.sections[index]);
+  const start = /** @type {number} */ (sectionStarts(arrangement)[index]);
+  return `Plays ${clockTime(seconds)}, from ${clockTime(start)} on the track.`;
 }
 
 /**

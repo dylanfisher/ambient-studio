@@ -3,12 +3,13 @@
 // owner-started job in the words lane. The page sends the timeline as it is and names the part;
 // the answer is applied with the set's own `apply`, checked by the arrangement validator, and
 // fills the timeline unsaved with Keep and Undo, as a session card's does (0085). One answer is
-// open at a time; an edit of the timeline while one is open keeps it.
+// open at a time; an edit of the timeline while one is open keeps it. `wordsController` holds
+// that behavior with no DOM, so it is tested with a fake host; `trackWords` gives it the page.
 /** @import { Arrangement } from "../domain/arrangement-schema.js" */
 /** @import { ValidationError } from "../engine/validation-error.js" */
 /** @import { MacroName } from "../engine/macro-table.js" */
-/** @import { StatusLine } from "./status-line.js" */
-import { TRACK_TARGET } from "../domain/track-words.js";
+/** @import { JobControl } from "./job-control.js" */
+import { laneRoom, TRACK_TARGET } from "../domain/track-words.js";
 import { WORDS_SETS, wordsSet } from "../domain/words-sets.js";
 import { VIBES_PATH } from "./api.js";
 import { cloneTemplate } from "./clone-template.js";
@@ -39,68 +40,57 @@ if (wordsSet(LANE_SET) === undefined) throw new Error("the field sets have no la
 /** Why a button that reads the timeline is off while the timeline has errors. */
 export const FIX_FIRST = "Turned off until the problems listed under the timeline are fixed.";
 
+/** The two places the page asks in words. */
+const AREA = Object.freeze({ section: "section", lane: "lane" });
+
+/** @typedef {(typeof AREA)[keyof typeof AREA]} Area */
+
 /**
- * @typedef {object} WordsArea
- * @property {HTMLInputElement} input
- * @property {HTMLButtonElement} button
- * @property {HTMLElement} job
- * @property {HTMLElement} answer
- * @property {string} idle the button's own title
+ * A words field and its button, as the controller reads and writes them.
+ * @typedef {{ input: { value: string }, button: { disabled: boolean, title: string,
+ *   onclick: ((event?: any) => unknown) | null } }} AreaParts
  */
 
 /**
- * An answer filled in and not yet kept or undone.
- * @typedef {{ area: WordsArea, before: Arrangement, after: Arrangement }} Pending
- */
-
-/**
- * Mounts the words fields on the track page.
- * @param {object} host
- * @param {StatusLine} host.status
- * @param {number} host.trackId
- * @param {() => number | null} host.vibeId null until the track is read
- * @param {() => Arrangement | null} host.draft the timeline as the owner has it now
- * @param {() => number | null} host.selected the chosen section
- * @param {() => MacroName} host.lane the chosen lane
- * @param {(next: Arrangement) => void} host.edit puts a new arrangement on the timeline
- * @param {(arrangement: Arrangement) => { ok: true } | { ok: false, errors: ValidationError[] }} host.checked
+ * What the controller needs of the page.
+ * @typedef {object} WordsHost
+ * @property {{ run: (action: () => unknown) => unknown, say: (text: string) => void }} status
+ * @property {number} trackId
+ * @property {() => number | null} vibeId null until the track is read
+ * @property {() => Arrangement | null} draft the timeline as the owner has it now
+ * @property {() => number | null} selected the chosen section
+ * @property {() => MacroName} lane the chosen lane
+ * @property {(next: Arrangement) => void} edit puts a new arrangement on the timeline
+ * @property {(arrangement: Arrangement) => { ok: true } | { ok: false, errors: ValidationError[] }} checked
  *   the page's arrangement validator
- * @param {() => void} host.draw draws the page again
+ * @property {() => void} draw draws the page again
  */
-export function trackWords(host) {
-  const parts = elementsById({
-    sectionWordsInput: HTMLInputElement,
-    sectionWordsSet: HTMLSelectElement,
-    sectionWords: HTMLButtonElement,
-    sectionWordsJob: HTMLElement,
-    sectionWordsAnswer: HTMLElement,
-    laneWordsInput: HTMLInputElement,
-    laneWords: HTMLButtonElement,
-    laneWordsJob: HTMLElement,
-    laneWordsAnswer: HTMLElement,
-  });
-  /** @type {WordsArea} */
-  const section = {
-    input: parts.sectionWordsInput,
-    button: parts.sectionWords,
-    job: parts.sectionWordsJob,
-    answer: parts.sectionWordsAnswer,
-    idle: parts.sectionWords.title,
-  };
-  /** @type {WordsArea} */
-  const lane = {
-    input: parts.laneWordsInput,
-    button: parts.laneWords,
-    job: parts.laneWordsJob,
-    answer: parts.laneWordsAnswer,
-    idle: parts.laneWords.title,
-  };
-  const controls = [jobControl(section.button), jobControl(lane.button)];
-  /** @type {Pending | null} */
-  let pending = null;
 
-  /** @param {WordsArea} area */
-  const close = (area) => area.answer.replaceChildren();
+/**
+ * What the controller does on the page.
+ * @typedef {object} WordsIo
+ * @property {(area: Area, body: Record<string, unknown>, controls: readonly JobControl[]) =>
+ *   Promise<{ result: any, refused: string | null } | null>} run runs the words job
+ * @property {(area: Area, said: string, lines: readonly string[],
+ *   actions: { keep: () => void, undo: () => void }) => void} show shows an answer's box
+ * @property {(area: Area) => void} close takes it away
+ * @property {(choices: readonly { value: string, label: string }[]) => void} options fills the
+ *   section's select
+ */
+
+/**
+ * The words fields' behavior, with no DOM.
+ * @param {WordsHost} host
+ * @param {{ section: AreaParts, lane: AreaParts, select: { value: string } }} parts
+ * @param {WordsIo} io
+ */
+export function wordsController(host, parts, io) {
+  const idle = { section: parts.section.button.title, lane: parts.lane.button.title };
+  const controls = [jobControl(parts.section.button), jobControl(parts.lane.button)];
+  /** @type {{ area: Area, before: Arrangement, after: Arrangement } | null} */
+  let pending = null;
+  /** The select's choices as last filled, so a draw changes it only when they change. */
+  let offeredKey = "";
 
   /**
    * What `set` changes on the timeline now, or null when there is none to change.
@@ -119,7 +109,7 @@ export function trackWords(host) {
   /**
    * Asks the model to read the area's words into `set`, then fills the timeline unsaved and says
    * what changed, with Keep and Undo.
-   * @param {WordsArea} area
+   * @param {Area} area
    * @param {string} set
    */
   async function ask(area, set) {
@@ -131,17 +121,15 @@ export function trackWords(host) {
     if (arrangement === null || vibeId === null) throw new Error("The track isn't loaded yet.");
     const target = targetOf(set, arrangement);
     if (target === null) throw new Error("Choose a section first.");
-    const words = area.input.value.trim();
+    const words = parts[area].input.value.trim();
     if (words.length === 0) throw new Error(WORDS_SAY.empty);
     const sent = JSON.stringify(arrangement);
     try {
-      const done = await runJob(host.status, {
-        path: `${VIBES_PATH}/${vibeId}/words`,
-        body: { set, words, trackId: host.trackId, arrangement, target },
+      const done = await io.run(
+        area,
+        { set, words, trackId: host.trackId, arrangement, target },
         controls,
-        boxes: area.job,
-        started: WORDS_SAY.reading,
-      });
+      );
       if (done === null) return;
       if (done.refused !== null) {
         host.status.say(
@@ -158,8 +146,7 @@ export function trackWords(host) {
       }
       /** @type {{ changes: Record<string, unknown>, said: string }} */
       const { changes, said } = done.result;
-      const context = { arrangement, target };
-      const edit = named.apply(context, changes);
+      const edit = named.apply({ arrangement, target }, changes);
       const result = host.checked(edit.arrangement);
       if (!result.ok) {
         const list = result.errors.map(({ path, message }) => `${path}: ${message}`).join("; ");
@@ -177,38 +164,11 @@ export function trackWords(host) {
       }
       pending = { area, before: arrangement, after: edit.arrangement };
       host.edit(edit.arrangement);
-      show(area, said, lines);
+      io.show(area, said, lines, { keep, undo });
       host.status.say(WORDS_SAY.filled);
     } finally {
       host.draw();
     }
-  }
-
-  /**
-   * Shows an answer's box in its area.
-   * @param {WordsArea} area
-   * @param {string} said
-   * @param {readonly string[]} lines
-   */
-  function show(area, said, lines) {
-    const box = cloneTemplate("words-answer", {
-      said: HTMLElement,
-      changes: HTMLUListElement,
-      keep: HTMLButtonElement,
-      undo: HTMLButtonElement,
-    });
-    box.said.textContent = `The model read your words as: “${said}”`;
-    box.changes.replaceChildren(
-      ...lines.map((line) => {
-        const item = document.createElement("li");
-        item.className = "item";
-        item.textContent = line;
-        return item;
-      }),
-    );
-    box.keep.onclick = () => keep();
-    box.undo.onclick = () => undo();
-    area.answer.replaceChildren(box.root);
   }
 
   /** Keeps the answer on the timeline, still unsaved. */
@@ -216,8 +176,8 @@ export function trackWords(host) {
     if (pending === null) return;
     const { area } = pending;
     pending = null;
-    close(area);
-    area.input.value = "";
+    io.close(area);
+    parts[area].input.value = "";
     host.status.say("Kept on the timeline, unsaved. Save to keep it as a new version.");
     host.draw();
   }
@@ -227,53 +187,62 @@ export function trackWords(host) {
     if (pending === null) return;
     const { area, before } = pending;
     pending = null;
-    close(area);
+    io.close(area);
     host.edit(before);
     host.status.say(WORDS_SAY.undone);
   }
 
-  section.button.onclick = () => host.status.run(() => ask(section, parts.sectionWordsSet.value));
-  lane.button.onclick = () => host.status.run(() => ask(lane, LANE_SET));
+  parts.section.button.onclick = () => host.status.run(() => ask(AREA.section, parts.select.value));
+  parts.lane.button.onclick = () => host.status.run(() => ask(AREA.lane, LANE_SET));
 
   /**
    * Turns a words button on, or off with why as its title.
-   * @param {WordsArea} area
+   * @param {Area} area
    * @param {string | null} why
    */
   function offWhen(area, why) {
     if (controls.some((control) => control.held())) return;
-    area.button.disabled = why !== null;
-    area.button.title = why ?? area.idle;
+    parts[area].button.disabled = why !== null;
+    parts[area].button.title = why ?? idle[area];
   }
 
   return {
     /**
-     * Draws the select and turns the buttons on or off.
+     * Fills the select when its choices change, and turns the buttons on or off.
      * @param {boolean} valid whether the timeline has no errors
      */
     draw(valid) {
       const arrangement = host.draft();
       const at = host.selected();
-      const chosen = parts.sectionWordsSet.value;
       const offered = SECTION_SETS.filter(
         (set) =>
           wordsSet(set)?.target !== TRACK_TARGET.transition ||
           (arrangement !== null && at !== null && transitionOf(arrangement, at) !== null),
       );
-      parts.sectionWordsSet.replaceChildren(
-        ...offered.map((set) => new Option(String(wordsSet(set)?.label), set)),
-      );
-      if (offered.some((set) => set === chosen)) parts.sectionWordsSet.value = chosen;
+      // A draw runs on every edit, a drag's included; filling the select each time would close
+      // it while it is open.
+      const key = offered.join(" ");
+      if (key !== offeredKey) {
+        const chosen = parts.select.value;
+        offeredKey = key;
+        io.options(offered.map((set) => ({ value: set, label: String(wordsSet(set)?.label) })));
+        if (offered.includes(chosen)) parts.select.value = chosen;
+      }
       const why =
         pending !== null
           ? "Turned off until you keep or undo the last words."
           : valid
             ? null
             : FIX_FIRST;
-      offWhen(section, why ?? (at === null ? NO_SECTION : null));
+      offWhen(AREA.section, why ?? (at === null ? NO_SECTION : null));
+      const full =
+        arrangement !== null && valid ? laneRoom({ arrangement, target: host.lane() }) : null;
       offWhen(
-        lane,
-        why ?? (arrangement?.sections.length ? null : "Turned off: the track has no sections yet."),
+        AREA.lane,
+        why ??
+          (arrangement?.sections.length
+            ? full && `Turned off: ${full}.`
+            : "Turned off: the track has no sections yet."),
       );
     },
     /**
@@ -284,14 +253,80 @@ export function trackWords(host) {
       if (pending === null || next === pending.after) return;
       const { area } = pending;
       pending = null;
-      close(area);
+      io.close(area);
       host.status.say("Kept the words' change, with your edit on top. Save to keep both.");
     },
     /** Closes an open answer as kept, when another version is opened or saved. */
     clear() {
       if (pending === null) return;
-      close(pending.area);
+      io.close(pending.area);
       pending = null;
     },
   };
+}
+
+/**
+ * Mounts the words fields on the track page.
+ * @param {WordsHost} host
+ */
+export function trackWords(host) {
+  const page = elementsById({
+    sectionWordsInput: HTMLInputElement,
+    sectionWordsSet: HTMLSelectElement,
+    sectionWords: HTMLButtonElement,
+    sectionWordsJob: HTMLElement,
+    sectionWordsAnswer: HTMLElement,
+    laneWordsInput: HTMLInputElement,
+    laneWords: HTMLButtonElement,
+    laneWordsJob: HTMLElement,
+    laneWordsAnswer: HTMLElement,
+  });
+  const boxes = {
+    section: { job: page.sectionWordsJob, answer: page.sectionWordsAnswer },
+    lane: { job: page.laneWordsJob, answer: page.laneWordsAnswer },
+  };
+  const vibeId = host.vibeId;
+  return wordsController(
+    host,
+    {
+      section: { input: page.sectionWordsInput, button: page.sectionWords },
+      lane: { input: page.laneWordsInput, button: page.laneWords },
+      select: page.sectionWordsSet,
+    },
+    {
+      run: (area, body, controls) =>
+        runJob(/** @type {import("./status-line.js").StatusLine} */ (host.status), {
+          path: `${VIBES_PATH}/${vibeId()}/words`,
+          body,
+          controls,
+          boxes: boxes[area].job,
+          started: WORDS_SAY.reading,
+        }),
+      show(area, said, lines, { keep, undo }) {
+        const box = cloneTemplate("words-answer", {
+          said: HTMLElement,
+          changes: HTMLUListElement,
+          keep: HTMLButtonElement,
+          undo: HTMLButtonElement,
+        });
+        box.said.textContent = `The model read your words as: “${said}”`;
+        box.changes.replaceChildren(
+          ...lines.map((line) => {
+            const item = document.createElement("li");
+            item.className = "item";
+            item.textContent = line;
+            return item;
+          }),
+        );
+        box.keep.onclick = keep;
+        box.undo.onclick = undo;
+        boxes[area].answer.replaceChildren(box.root);
+      },
+      close: (area) => boxes[area].answer.replaceChildren(),
+      options: (choices) =>
+        page.sectionWordsSet.replaceChildren(
+          ...choices.map(({ value, label }) => new Option(label, value)),
+        ),
+    },
+  );
 }

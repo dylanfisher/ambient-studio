@@ -11,7 +11,7 @@ import { developedText } from "./develop-text.js";
 import { clockTime } from "./excerpt-player.js";
 import { lanePoints } from "./lane-edits.js";
 import { laneWords } from "./lane-layout.js";
-import { blockText } from "./timeline-layout.js";
+import { blockText, placeWords } from "./timeline-layout.js";
 import { transitionWords } from "./transition-text.js";
 
 /** A kind as "instead of …" says it. */
@@ -45,7 +45,9 @@ export function timelineWords(arrangement, sketchOf, developmentOf) {
       section.developmentId === null ? undefined : developmentOf(section.developmentId);
     const { name } = blockText(section, sketchOf(section.sketchId), development);
     const words = section.text === "" ? "No words for it yet." : yours(section.text);
-    const lines = [`Section ${i + 1}: ${name}. ${words} ${developedText(development)}`];
+    const lines = [
+      `Section ${i + 1}: ${name}. ${placeWords(arrangement, i)} ${words} ${developedText(development)}`,
+    ];
     const transition = arrangement.transitions[i];
     if (transition !== undefined) {
       const join = transition.text === "" ? "No words for this join yet." : yours(transition.text);
@@ -63,7 +65,7 @@ export function timelineWords(arrangement, sketchOf, developmentOf) {
  * @param {TrackEdit} edit the answer applied
  * @returns {string[]}
  */
-export function trackChangeLines(set, before, target, { arrangement, removed }) {
+export function trackChangeLines(set, before, target, { arrangement, removed, redrawn }) {
   const named = wordsSet(set);
   if (named === WORDS_SETS.length) {
     const at = /** @type {number} */ (target);
@@ -93,6 +95,10 @@ export function trackChangeLines(set, before, target, { arrangement, removed }) 
     return [
       laneWords(macro, lanePoints(arrangement, macro)),
       ...removed.map(([time]) => `Replaces your point at ${clockTime(time)}.`),
+      ...redrawn.map(
+        ([from, to]) =>
+          `Redraws your lane from ${clockTime(from)} to ${clockTime(to)} to join the change: its curve there can't be cut and keep its shape.`,
+      ),
     ];
   }
   throw new Error(`the track page has no words for the field set ${set}`);

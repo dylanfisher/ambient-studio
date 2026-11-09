@@ -15,12 +15,13 @@ import {
   SECTION_FIELDS,
   TRANSITION_SECONDS,
 } from "../../src/domain/arrangement-schema.js";
-import { LANE_OFFSET } from "../../src/domain/lane-schema.js";
+import { LANE_MOST_POINTS, LANE_OFFSET, laneOffsetAt } from "../../src/domain/lane-schema.js";
 import { estimateTokens, promptText } from "../../src/domain/prompt-tokens.js";
 import {
   LANE_GRID_SECONDS,
   laneField,
   laneGrid,
+  laneRoom,
   sectionNames,
   TRACK_TARGET,
   trackTargets,
@@ -186,35 +187,143 @@ describe("the lane set", () => {
     expect(validateArrangement(arrangement, anySketch).ok).toBe(true);
   });
 
-  test("the owner's points between the held grid times are replaced and named; those outside keep their curves", () => {
-    const laned = {
-      ...TRACK,
-      lanes: [
-        {
-          macro: /** @type {const} */ ("density"),
-          points: /** @type {any} */ ([
-            [10, 0.1],
-            [100, 0.2, "smooth"],
-            [130, 0.4, "early"],
-            [400, 0, "late"],
-          ]),
-        },
-      ],
-    };
-    const context = { arrangement: laned, target: "density" };
-    const before = set.current(context);
-    const { arrangement, removed } = set.apply(context, { [laneField(120)]: -0.2 });
-    expect(removed).toEqual([
-      [100, 0.2, "smooth"],
-      [130, 0.4, "early"],
+  /**
+   * The track with one lane of `points`.
+   * @param {any[]} points
+   */
+  const laned = (points) => ({
+    ...TRACK,
+    lanes: [{ macro: /** @type {const} */ ("density"), points }],
+  });
+
+  /**
+   * The times from `start` to `end`, every tenth of a second.
+   * @param {number} start
+   * @param {number} end
+   */
+  const times = (start, end) =>
+    Array.from({ length: Math.round((end - start) * 10) + 1 }, (_, i) => start + i / 10);
+
+  /**
+   * Expects the two lanes to read exactly the same at each time.
+   * @param {any} was
+   * @param {any} now
+   * @param {number[]} at
+   */
+  function same(was, now, at) {
+    for (const time of at) {
+      expect(laneOffsetAt(now, time), `at ${time} s`).toBe(laneOffsetAt(was, time));
+    }
+  }
+
+  test("a curved segment into the held time ends at the owner's point, so the lane before it reads as it did", () => {
+    const points = [
+      [0, 0],
+      [50, 0.4, "smooth"],
+    ];
+    const { arrangement, removed, redrawn } = set.apply(
+      { arrangement: laned(points), target: "density" },
+      { [laneField(60)]: 0.1 },
+    );
+    const now = arrangement.lanes[0]?.points;
+    expect(now).toEqual([
+      [0, 0],
+      [50, 0.4, "smooth"],
+      [60, 0.1, "linear"],
+      [90, 0.4, "linear"],
     ]);
-    expect(arrangement.lanes[0]?.points).toEqual([
+    same(points, now, [...times(0, 50), ...times(90, 570)]);
+    expect(removed).toEqual([]);
+    expect(redrawn).toEqual([]);
+  });
+
+  test("the owner's points between the holds are replaced and named; the lane outside reads as it did", () => {
+    const points = [
       [10, 0.1],
-      [90, before[laneField(90)], "linear"],
+      [100, 0.2, "smooth"],
+      [105, 0.3, "linear"],
+      [115, 0.1, "early"],
+      [130, 0.4, "early"],
+      [400, 0, "late"],
+    ];
+    const { arrangement, removed, redrawn } = set.apply(
+      { arrangement: laned(points), target: "density" },
+      { [laneField(120)]: -0.2 },
+    );
+    expect(removed).toEqual([
+      [105, 0.3, "linear"],
+      [115, 0.1, "early"],
+    ]);
+    expect(redrawn).toEqual([]);
+    const now = arrangement.lanes[0]?.points;
+    expect(now).toEqual([
+      [10, 0.1],
+      [100, 0.2, "smooth"],
       [120, -0.2, "linear"],
-      [150, before[laneField(150)], "linear"],
+      [130, 0.4, "early"],
       [400, 0, "late"],
     ]);
+    same(points, now, [...times(0, 100), ...times(130, 570)]);
+  });
+
+  test("a curved segment across the answer's times can't be split, so the stretch redrawn outside them is named", () => {
+    const points = [
+      [0, 0],
+      [300, 0.4, "smooth"],
+    ];
+    const { arrangement, redrawn } = set.apply(
+      { arrangement: laned(points), target: "density" },
+      { [laneField(120)]: 0.3 },
+    );
+    const now = arrangement.lanes[0]?.points;
+    expect(now).toEqual([
+      [0, 0],
+      [120, 0.3, "linear"],
+      [300, 0.4, "smooth"],
+    ]);
+    expect(redrawn).toEqual([
+      [0, 90],
+      [150, 300],
+    ]);
+    same(points, now, [0, ...times(300, 570)]);
+  });
+
+  test("an even segment is split at the held time, which takes the value the lane has there", () => {
+    const points = [
+      [0, 0],
+      [200, 0.4, "linear"],
+    ];
+    const { arrangement, redrawn } = set.apply(
+      { arrangement: laned(points), target: "density" },
+      { [laneField(120)]: 0.3 },
+    );
+    const now = /** @type {any} */ (arrangement.lanes[0]?.points);
+    expect(now).toEqual([
+      [0, 0],
+      [90, laneOffsetAt(/** @type {any} */ (points), 90), "linear"],
+      [120, 0.3, "linear"],
+      [150, laneOffsetAt(/** @type {any} */ (points), 150), "linear"],
+      [200, 0.4, "linear"],
+    ]);
+    expect(redrawn).toEqual([]);
+    same(points, now, [0, 90, 150, ...times(200, 570)]);
+    // Inside a split even segment the two read alike to the last bits a division leaves.
+    for (const time of [...times(0, 90), ...times(150, 200)]) {
+      expect(laneOffsetAt(now, time), `at ${time} s`).toBeCloseTo(
+        laneOffsetAt(/** @type {any} */ (points), time),
+        12,
+      );
+    }
+  });
+
+  test("a lane too full for the smallest answer is refused before anything is asked", () => {
+    const full = (/** @type {number} */ count) =>
+      laned(Array.from({ length: count }, (_, i) => (i === 0 ? [0, 0] : [i, 0, "linear"])));
+    expect(laneRoom({ arrangement: full(LANE_MOST_POINTS - 3), target: "density" })).toBeNull();
+    expect(laneRoom({ arrangement: full(LANE_MOST_POINTS - 2), target: "density" })).toBe(
+      `the density lane has ${LANE_MOST_POINTS - 2} points, and a lane holds at most ${LANE_MOST_POINTS}, so even the smallest change in words, 3 points, wouldn't fit; remove some points first`,
+    );
+    expect(WORDS_SETS.lane.refusal).toBe(laneRoom);
   });
 
   test("an answer that changes nothing leaves the arrangement as it was", () => {

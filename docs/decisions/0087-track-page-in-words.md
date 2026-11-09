@@ -32,7 +32,8 @@ field still said "Starts at, in seconds of its sketch".
 name, the owner's words for it (or that there are none yet) and `developedText`'s line for its
 development, and after it the join into the next by kind and curve ("Then section 1 morphs
 into section 2, easing in and out.") with the owner's words for the join. The chosen section's
-card says what it plays (`playsWords`: its sketch, development or bridge, from the start or
+card says its place as clock times (`placeWords`: "Plays 2:00, from 1:32 on the track.", also
+in the list) and what it plays (`playsWords`: its sketch, development or bridge, from the start or
 partway in, and whether it runs past that end) and its join in the same words. The seconds,
 offsets, crossfade seconds, curve names and `transitionText` line, the step buttons (Shorter,
 Start earlier, Crossfade longer, Curve) and the bridge's seconds move behind the toggle; Move,
@@ -72,14 +73,29 @@ transition's kind and seconds, and a curve on a crossfade has no value now to se
 
 **A lane answer.** The model gives the offset at each grid time where a change starts, turns
 and ends. Those times become points, joined by even (linear) segments. Before the first and
-after the last the lane stays as it was: a point at the grid time on either side holds the
-lane's value there, exact, unless one of the owner's points is already at that time. The
-owner's points between those two held times are replaced, and the change lines name each one
+after the last the lane stays as it was, held at the grid time on either side (`hold`), and it
+reads the same as before at every time past the hold:
+- At one of the owner's points, before the first or after the last (one value), the hold is
+  that point, or a new point with that exact value.
+- Inside an even segment, a new point takes the value the lane has there (`laneOffsetAt`, not
+  rounded); splitting an even segment keeps its shape, to the last bits a division leaves.
+- Inside a curved segment (smooth, early, late), a new point would change the curve's shape
+  before it, since those curves can't be cut and keep their shape. The hold moves to the
+  owner's own point at the segment's end toward the answer when that lies outside the answer's
+  times, and the lane reads exactly as before up to it (before) or from it (after). When the
+  curve spans the answer's times, the hold moves to the segment's far end, and the stretch
+  between it and the grid time is redrawn; the change lines name it ("Redraws your lane from
+  0:00 to 1:30 to join the change: its curve there can't be cut and keep its shape.").
+
+The owner's points between the two holds are replaced, and the change lines name each one
 ("Replaces your point at 1:40."); the others keep their curves. An answer that gives every time
-its value now changes nothing. A segment the held point splits keeps both ends, but a curved
-one is drawn again over the shorter span, so it moves a little between them; the values at the
-grid times are kept exactly. The grid is 30 s, at most 41 fields on a 20-minute track: a
+its value now changes nothing. The grid is 30 s, at most 41 fields on a 20-minute track: a
 minute was too coarse for "the last 30 seconds", and the model reads times better than shares.
+
+**A full lane is refused up front.** An answer adds at least 3 points (one time and a hold on
+each side) and can't remove a point it doesn't replace, so a lane with more than
+`LANE_MOST_POINTS` (62) less 3 is refused before any request, with a 400 naming the limit
+(`laneRoom`, the set's `refusal`); the page turns its button off with the same words.
 
 **The arrangement validator checks every answer.** On the server, a request may carry a
 `check` of its own; for a track set it applies the answer and runs `validateArrangement` with
@@ -99,7 +115,11 @@ answer fills the timeline unsaved, and a box lists each change in words from tem
 (`trackChangeLines`) under the model's `said`, with Keep (closes the box; Save still keeps a
 version) and Undo (puts the timeline back). Any other edit while the box is open keeps the
 answer and closes the box, so Undo never throws away an edit the owner made after it; opening
-or saving a version closes it too.
+or saving a version closes it too. The select is filled again only when its choices change, so
+a draw during a drag doesn't close it while open. `wordsController` holds this with no DOM,
+tested with a fake host; `trackWords` gives it the page's fields, job boxes and template. Add a
+point, Remove the point and the lane's words field stay outside the toggle, so a lane can be
+built with the numbers closed.
 
 **Sizes**, with a 4 000-character brief, 300 characters of words and every text at 300
 characters, on the longest track the validator allows (133 sections of 10 s, 1 198 s, each
@@ -133,7 +153,7 @@ used only here, is gone.
 
 - The track page has no entry in 0083's allowlist. What remains there is an earlier brief
   version's rules and ranges.
-- A new track set is a registry entry with a `target`, `current`, `apply` and `reading`, and
+- A new track set is a registry entry with a `target`, `current`, `apply`, `reading` and, when needed, a `refusal`, and
   its words in `trackChangeLines`.
 - A track words request sends the whole arrangement, at most a few tens of kilobytes on the
   longest track.

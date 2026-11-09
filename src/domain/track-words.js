@@ -10,7 +10,7 @@ import { MACROS } from "../engine/genome-schema.js";
 import { DEFAULT_CURVE } from "../engine/trajectory.js";
 import { arrangementLength, sectionStarts } from "./arrangement-length.js";
 import { MORPH_CURVE, morphs } from "./arrangement-schema.js";
-import { laneOffsetAt, withLanePoints } from "./lane-schema.js";
+import { LANE_MOST_POINTS, laneOffsetAt, withLanePoints } from "./lane-schema.js";
 import { macroWords } from "./macro-words.js";
 import { exactText } from "./param-text.js";
 import { quoted } from "./references-text.js";
@@ -46,8 +46,9 @@ const TRACK_DETAIL = Object.freeze({ full: 0, places: 1, none: 2 });
  */
 
 /**
- * An answer applied: the new arrangement, and the owner's lane points it replaced.
- * @typedef {{ arrangement: Arrangement, removed: LanePoint[] }} TrackEdit
+ * An answer applied: the new arrangement, the owner's lane points it replaced, and the stretches
+ * of the lane outside the answer's times it had to redraw, in track seconds.
+ * @typedef {{ arrangement: Arrangement, removed: LanePoint[], redrawn: [number, number][] }} TrackEdit
  */
 
 /**
@@ -192,12 +193,12 @@ export const lengthCurrent = (context) => ({
 export function applyLength(context, changes) {
   const at = index(context);
   const { arrangement } = context;
-  if (changes.seconds === undefined) return { arrangement, removed: [] };
+  if (changes.seconds === undefined) return { arrangement, removed: [], redrawn: [] };
   const seconds = /** @type {number} */ (changes.seconds);
   const sections = arrangement.sections.map((section, i) =>
     i === at ? { ...section, seconds } : section,
   );
-  return { arrangement: { ...arrangement, sections }, removed: [] };
+  return { arrangement: { ...arrangement, sections }, removed: [], redrawn: [] };
 }
 
 /**
@@ -244,7 +245,7 @@ export function applyTransition(context, changes) {
     ? { kind, seconds, curve, text: was.text }
     : { kind, seconds, text: was.text };
   const transitions = arrangement.transitions.map((each, i) => (i === at ? transition : each));
-  return { arrangement: { ...arrangement, transitions }, removed: [] };
+  return { arrangement: { ...arrangement, transitions }, removed: [], redrawn: [] };
 }
 
 /**
@@ -307,11 +308,67 @@ export function laneCurrent(context) {
 }
 
 /**
+ * Where the lane is held on one side of an answer's times, so that past the hold it reads as it
+ * did at every time. Before the owner's first point or after the last the lane holds one value,
+ * and a new point there takes it; inside an even segment a new point there takes the value the
+ * lane has, and splitting the segment keeps its shape. A curved segment can't be split and keep
+ * its shape, so the hold moves to the owner's own point at that segment's end toward the answer
+ * when it lies outside the answer's times, or else to its far end, and the stretch between is
+ * redrawn and returned to be named.
+ * @param {readonly LanePoint[]} points the owner's
+ * @param {number} time the grid time next to the answer's times
+ * @param {number} bound the answer's nearest time on that side
+ * @param {-1 | 1} side -1 before the answer's times, 1 after them
+ * @returns {{ at: number, point: LanePoint | null, redrawn: [number, number] | null }} `at`: the
+ *   lane is kept as it was up to it (before) or from it (after); `point`: a new point at `at`, or
+ *   null when the owner has one there
+ */
+function hold(points, time, bound, side) {
+  if (points.some(([at]) => at === time)) return { at: time, point: null, redrawn: null };
+  const next = points.findIndex(([at]) => at > time);
+  if (next <= 0) {
+    const edge = next === 0 ? points[0] : points.at(-1);
+    return {
+      at: time,
+      point: [time, edge === undefined ? 0 : edge[1], DEFAULT_CURVE],
+      redrawn: null,
+    };
+  }
+  const start = /** @type {LanePoint} */ (points[next - 1]);
+  const end = /** @type {LanePoint} */ (points[next]);
+  if (end[2] === DEFAULT_CURVE) {
+    return { at: time, point: [time, laneOffsetAt(points, time), DEFAULT_CURVE], redrawn: null };
+  }
+  const [near, far] = side < 0 ? [end, start] : [start, end];
+  if (side < 0 ? near[0] < bound : near[0] > bound) {
+    return { at: near[0], point: null, redrawn: null };
+  }
+  return { at: far[0], point: null, redrawn: side < 0 ? [far[0], time] : [time, far[0]] };
+}
+
+/** The fewest points a lane answer adds: one time and a held point on either side. */
+const LEAST_ADDED = 3;
+
+/**
+ * Why the lane set can't be asked of this lane, or null when it can: the lane holds so many of
+ * the owner's points that even the smallest answer would take it past `LANE_MOST_POINTS`, and
+ * the answer can't remove a point it doesn't replace.
+ * @param {TrackContext} context
+ * @returns {string | null}
+ */
+export function laneRoom(context) {
+  const macro = macroOf(context);
+  const count = pointsOf(context.arrangement, macro).length;
+  if (count + LEAST_ADDED <= LANE_MOST_POINTS) return null;
+  return `the ${macro} lane has ${count} points, and a lane holds at most ${LANE_MOST_POINTS}, so even the smallest change in words, ${LEAST_ADDED} points, wouldn't fit; remove some points first`;
+}
+
+/**
  * The lane with the answer's times as its points. The answer's times are breakpoints, moved
- * between evenly; before the first and after the last the lane stays as it was, held by a point
- * at the grid time on either side at its value there. The owner's points between those two held
- * times are replaced, and returned so the page names them; the rest stay with their curves. An
- * answer that gives every time its value now changes nothing.
+ * between evenly; before the first and after the last the lane stays as it was, held at the grid
+ * time on either side by `hold`. The owner's points between the two holds are replaced, and
+ * returned with any stretch `hold` redraws, so the page names them; the rest stay with their
+ * curves. An answer that gives every time its value now changes nothing.
  * @param {TrackContext} context
  * @param {Readonly<Record<string, unknown>>} changes
  * @returns {TrackEdit}
@@ -321,51 +378,33 @@ export function applyLane(context, changes) {
   const { arrangement } = context;
   const now = laneCurrent(context);
   const grid = laneGrid(arrangementLength(arrangement));
-  const given = grid.flatMap((time, i) => (changes[laneField(time)] === undefined ? [] : [i]));
-  if (
-    given.every(
-      (i) =>
-        changes[laneField(/** @type {number} */ (grid[i]))] ===
-        now[laneField(/** @type {number} */ (grid[i]))],
-    )
-  ) {
-    return { arrangement, removed: [] };
+  const given = grid.filter((time) => changes[laneField(time)] !== undefined);
+  if (given.every((time) => changes[laneField(time)] === now[laneField(time)])) {
+    return { arrangement, removed: [], redrawn: [] };
   }
-  const first = /** @type {number} */ (given[0]);
-  const last = /** @type {number} */ (given.at(-1));
-  const before = first > 0 ? /** @type {number} */ (grid[first - 1]) : null;
-  const after = last < grid.length - 1 ? /** @type {number} */ (grid[last + 1]) : null;
-  const from = /** @type {number} */ (grid[first]);
-  const to = /** @type {number} */ (grid[last]);
+  const from = /** @type {number} */ (given[0]);
+  const to = /** @type {number} */ (given.at(-1));
+  const before = grid[grid.indexOf(from) - 1];
+  const after = grid[grid.indexOf(to) + 1];
+  const points = pointsOf(arrangement, macro);
+  const low = before === undefined ? null : hold(points, before, from, -1);
+  const high = after === undefined ? null : hold(points, after, to, 1);
   /** @param {number} time */
   const replaced = (time) =>
-    (before === null ? time >= from : time > before) &&
-    (after === null ? time <= to : time < after);
-  const points = pointsOf(arrangement, macro);
+    (low === null ? time >= from : time > low.at) && (high === null ? time <= to : time < high.at);
   const removed = points.filter(([time]) => replaced(time));
   const kept = points.filter(([time]) => !replaced(time));
-  /** @param {number | null} time */
-  const held = (time) =>
-    time === null || kept.some(([at]) => at === time)
-      ? []
-      : [
-          /** @type {LanePoint} */ ([
-            time,
-            /** @type {number} */ (now[laneField(time)]),
-            DEFAULT_CURVE,
-          ]),
-        ];
   const added = [
-    ...held(before),
-    ...given.map((i) => {
-      const time = /** @type {number} */ (grid[i]);
-      return /** @type {LanePoint} */ ([
-        time,
-        /** @type {number} */ (changes[laneField(time)]),
-        DEFAULT_CURVE,
-      ]);
-    }),
-    ...held(after),
+    ...(low?.point ? [low.point] : []),
+    ...given.map(
+      (time) =>
+        /** @type {LanePoint} */ ([
+          time,
+          /** @type {number} */ (changes[laneField(time)]),
+          DEFAULT_CURVE,
+        ]),
+    ),
+    ...(high?.point ? [high.point] : []),
   ];
   // A point of the owner's that was first and no longer is names the curve into it, as every
   // point after the first does: an even one, which keeps the lane held before it as it was.
@@ -374,5 +413,6 @@ export function applyLane(context, changes) {
     .map(
       (point) => /** @type {LanePoint} */ (point.length === 2 ? [...point, DEFAULT_CURVE] : point),
     );
-  return { arrangement: withLanePoints(arrangement, macro, merged), removed };
+  const redrawn = [low?.redrawn, high?.redrawn].filter((span) => span != null);
+  return { arrangement: withLanePoints(arrangement, macro, merged), removed, redrawn };
 }

@@ -9,6 +9,7 @@
 /** @import { Studio } from "../support/studio.js" */
 import { afterEach, expect, test, vi } from "vitest";
 import { emptyArrangement } from "../../src/domain/arrangement-schema.js";
+import { LANE_MOST_POINTS } from "../../src/domain/lane-schema.js";
 import { lockChoices } from "../../src/domain/lock-choices.js";
 import { OPERATOR } from "../../src/domain/operator.js";
 import { ROLE } from "../../src/domain/prompt-tokens.js";
@@ -711,4 +712,23 @@ test("a second words job for a track's set is a 409 naming the first", async () 
   studio.omlx.release();
   await studio.drive(studio.server.jobs.settled(first.id));
   expect(studio.omlx.requests).toHaveLength(1);
+});
+
+test("the lane set refuses a lane too full for the smallest answer, naming the limit, and asks nothing", async () => {
+  const { studio, track, arrangement, path } = await trackStudio();
+  const points = Array.from({ length: LANE_MOST_POINTS - 2 }, (_, i) =>
+    i === 0 ? [0, 0] : [i * 4, 0, "linear"],
+  );
+  const full = { ...arrangement, lanes: [{ macro: "brightness", points }] };
+  const body = {
+    set: "lane",
+    words: "darker",
+    trackId: track.id,
+    arrangement: full,
+    target: "brightness",
+  };
+  const answer = await studio.server.api("POST", path, body);
+  expect(answer.status).toBe(400);
+  expect(answer.json().error).toContain(`a lane holds at most ${LANE_MOST_POINTS}`);
+  expect(studio.omlx.requests).toHaveLength(0);
 });

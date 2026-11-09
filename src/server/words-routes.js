@@ -122,6 +122,8 @@ function readTrack(app, vibeId, set, given) {
   if (!trackTargets(kind, arrangement).includes(target)) {
     throw new HttpError(400, `the track has no ${kind} ${show(target)}`);
   }
+  const refusal = set.refusal?.({ arrangement, target }) ?? null;
+  if (refusal !== null) throw new HttpError(400, refusal);
   const names = sectionNames(arrangement, (id) => getDevelopment(store, id)?.bridge === true);
   const context = { arrangement, target, names };
   const validated = arrangementContext(store, vibeId, track.id);

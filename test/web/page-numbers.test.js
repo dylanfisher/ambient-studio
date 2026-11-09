@@ -232,3 +232,11 @@ describe.each(PAGES)("%s", (page) => {
     expect(readFileSync(`src/web/${entry}`, "utf8")).toContain(`pageNumbers("${page}")`);
   });
 });
+
+test("the track page's lane points can be added and removed with the toggle closed", () => {
+  const all = parts(html("track.html"));
+  for (const key of ["addPoint", "removePoint", "laneWords"]) {
+    const part = all.find((each) => each.key === key);
+    expect(part?.marked, key).toBe(false);
+  }
+});
