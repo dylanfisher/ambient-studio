@@ -4314,7 +4314,7 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   - Prompt budgets are the tightest limit now: the develop prompt has 77 tokens left, the bridge
     4,071 of 4,096, the locks set about 4,055. Every brief that adds prompt text names the
     headroom it may use, and a builder that runs out narrows its own text first.
-  - Builders that merged main in partway (TD.3, TD.5) took about 60–100 min against 30–45 for
+  - Builders that merged main in partway (TD.3, TD.5) took 61 and 98 min against 29–57 for
     the rest. Starting the next render-path step only after the one before it merges keeps those
     merges small.
   - One reviewer resent its report three times and one builder's report never came; the
