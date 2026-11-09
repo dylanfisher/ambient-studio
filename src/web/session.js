@@ -68,6 +68,7 @@ import {
   macroEdits,
   macroValues,
   steerEdits,
+  WORDS_SAY,
 } from "./words-edits.js";
 
 const [UP, DOWN] = THUMBS;
@@ -460,7 +461,7 @@ async function askWords(card, set, words, control) {
     body: { set, words, current, candidateId: card.candidate.id },
     controls: [control],
     boxes: card.parts.wordsJob,
-    started: "The model is reading your words.",
+    started: WORDS_SAY.reading,
   });
   if (done === null) return;
   if (done.refused !== null) {
@@ -490,7 +491,7 @@ async function askWords(card, set, words, control) {
   parts.wordsKeep.hidden = lines.length === 0;
   parts.wordsError.hidden = true;
   parts.wordsBox.hidden = false;
-  status.say("Filled in from your words, unsaved. Press Keep to keep it or Undo to put it back.");
+  status.say(WORDS_SAY.filled);
 }
 
 /**
@@ -554,7 +555,7 @@ function undoCardWords(card) {
   if (pending.snapshot !== null) card.sliders.restore(pending.snapshot);
   closeWords(card);
   showRated(card);
-  status.say("Put back as it was. Nothing was saved.");
+  status.say(WORDS_SAY.undone);
 }
 
 /** @param {Card} card */

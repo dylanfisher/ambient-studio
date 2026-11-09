@@ -9,11 +9,6 @@ import { NUMBERS_LABEL, NUMBERS_TITLE } from "../../src/web/numbers-toggle.js";
 
 const PAGES = readdirSync("src/web").filter((name) => name.endsWith(".html"));
 
-/** Pages left out whole, with why. */
-const PAGES_ALLOWED = {
-  "track.html": "The track page is phase TD's until step WF.5 moves its numbers.",
-};
-
 /**
  * Parts that show a number though they aren't number fields, by id or `data-part`, beside every
  * `input[type=number]`, `input[type=range]` and `<pre>`, which are listed on every page.
@@ -70,6 +65,7 @@ const SHOWS_NUMBERS = {
     "control",
     "position",
   ],
+  "track.html": ["sectionTimes", "fadeLine", "pointLine", "renderLoudness", "eliteNumbers"],
 };
 
 /**
@@ -198,7 +194,7 @@ const outside = (page) => {
     .map((part) => part.key ?? `<${part.tag}${part.attributes}>`);
 };
 
-describe.each(PAGES.filter((page) => !(page in PAGES_ALLOWED)))("%s", (page) => {
+describe.each(PAGES)("%s", (page) => {
   test("shows no number outside the numbers toggle but those allowed", () => {
     const allowed = Object.keys(ALLOWED[/** @type {keyof typeof ALLOWED} */ (page)] ?? {});
     expect(outside(page).filter((key) => !allowed.includes(key))).toEqual([]);
@@ -235,8 +231,4 @@ describe.each(PAGES.filter((page) => !(page in PAGES_ALLOWED)))("%s", (page) => 
     const entry = /<script\s+type="module"\s+src="\.\/([^"]+)"/.exec(html(page))?.[1] ?? "";
     expect(readFileSync(`src/web/${entry}`, "utf8")).toContain(`pageNumbers("${page}")`);
   });
-});
-
-test("the track page has no toggle until WF.5", () => {
-  expect(html("track.html")).not.toMatch(/data-numbers|numbersToggle/);
 });

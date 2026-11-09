@@ -79,6 +79,29 @@ export function laneText(macro, points) {
   return `${named(macro)}: ${count}, from ${signed(Math.min(...offsets))} to ${signed(Math.max(...offsets))}.`;
 }
 
+/** An offset at most this far from 0 is "by a little"; one at least `MUCH` "by a lot". */
+const LITTLE = 0.15;
+const MUCH = 0.35;
+
+/**
+ * A lane in words (0087): each point's time on the track and which way it moves the macro, by a
+ * little or a lot, with no offsets.
+ * @param {string} macro
+ * @param {readonly LanePoint[]} points
+ */
+export function laneWords(macro, points) {
+  if (points.length === 0) return `${named(macro)}: each section plays its own ${macro}.`;
+  const { more, less } = macroWords(macro);
+  const said = points.map(([time, offset]) => {
+    const at = clockTime(time);
+    if (offset === 0) return `as each section has it at ${at}`;
+    const size = Math.abs(offset);
+    const by = size <= LITTLE ? " by a little" : size >= MUCH ? " by a lot" : "";
+    return `${offset > 0 ? more : less}${by} at ${at}`;
+  });
+  return `${named(macro)}: ${said.join(", ")}.`;
+}
+
 /** @param {number} offset */
 const signed = (offset) => `${offset > 0 ? "+" : ""}${offset.toFixed(2)}`;
 

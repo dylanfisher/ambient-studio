@@ -123,21 +123,6 @@ export function openWords(cell, { place, verdict }) {
 }
 
 /**
- * A cell's line with its score, as the track page's material panel lists the map's elites.
- * @param {MapCell} cell
- * @param {boolean} model
- * @returns {string}
- */
-export function openText(cell, model) {
-  const { about } = described(cell);
-  const how =
-    model && cell.score !== null
-      ? `search score ${cell.score.toFixed(2)} by your taste model`
-      : `missing ${cell.misses} of the brief's ranges`;
-  return `${about.charAt(0).toUpperCase()}${about.slice(1)}, ${how}.`;
-}
-
-/**
  * The open cell's score, or the ranges it misses, for the numbers toggle.
  * @param {MapCell} cell
  * @param {boolean} model

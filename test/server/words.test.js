@@ -4,6 +4,8 @@
 // rejected with no repair; the route refusing an unknown set, a set it doesn't serve, bad values
 // now, and a second words job while one runs; and a cancel. A candidate's sets (0085) read the
 // candidate the page names: its locks, its Less / More choices and where a steer from it aims.
+// A track's sets (0087) read the timeline the page sends: a section's length, a transition and a
+// lane.
 /** @import { Studio } from "../support/studio.js" */
 import { afterEach, expect, test, vi } from "vitest";
 import { emptyArrangement } from "../../src/domain/arrangement-schema.js";
@@ -24,6 +26,7 @@ import {
 } from "../../src/server/generation-store.js";
 import { addSketch } from "../../src/server/rating-store.js";
 import { markRemoved, TABLE } from "../../src/server/store.js";
+import { listTrackRevisions } from "../../src/server/track-store.js";
 import { listRevisions } from "../../src/server/vibe-store.js";
 import { GENOMES, removeStudio, startStudio, VIBE } from "../support/studio.js";
 
@@ -547,6 +550,161 @@ test("a second words job for a candidate's set is a 409 naming the first", async
     set: "macros",
     current: Object.fromEntries(Object.keys(MACROS).map((macro) => [macro, "none"])),
   });
+  expect(second.status).toBe(409);
+  expect(second.json().jobId).toBe(first.id);
+  await studio.omlx.waitForRequests(1);
+  studio.omlx.release();
+  await studio.drive(studio.server.jobs.settled(first.id));
+  expect(studio.omlx.requests).toHaveLength(1);
+});
+
+// The track's sets (0087): the page sends the timeline as it is, unsaved, with the part the
+// fields change; the route checks the arrangement and reads the values now and the reading from
+// it, and the answer is checked by the arrangement validator before it comes back.
+
+/**
+ * A brief, a track and a sketch of a 120 s drone, stored straight; three sections of it joined
+ * by 8 s crossfades, as the page would send them.
+ * @param {Studio} studio
+ */
+async function seedTrack(studio) {
+  const vibe = await studio.ok("POST", "/api/vibes", VIBE);
+  const { store } = studio.server;
+  const candidate = addCandidate(store, {
+    vibeRevisionId: vibe.revision.id,
+    generationId: null,
+    sessionId: null,
+    genomeId: putGenome(store, vibe.id, { ...droneGenome, duration: 120 }).id,
+    seed: 11,
+    source: "llm",
+    parentIds: [],
+    locks: [],
+    operator: null,
+    operatorParams: null,
+    intent: null,
+    rejectReason: null,
+    lint: null,
+    rejectedGenome: null,
+  });
+  const sketch = addSketch(store, { candidateId: candidate.id, notes: "", tags: [] });
+  const { track } = await studio.ok("POST", `/api/vibes/${vibe.id}/tracks`, { name: "dusk" });
+  const section = (/** @type {string} */ text) => ({
+    sketchId: sketch.id,
+    offset: 0,
+    seconds: 100,
+    text,
+    developmentId: null,
+  });
+  const arrangement = {
+    ...emptyArrangement(),
+    sections: [section("dark start"), section("the middle swells"), section("fade out")],
+    transitions: [
+      { kind: "crossfade", seconds: 8, text: "" },
+      { kind: "crossfade", seconds: 8, text: "melt into the end" },
+    ],
+  };
+  return { vibe, track, sketch, arrangement, path: `/api/vibes/${vibe.id}/words` };
+}
+
+async function trackStudio() {
+  const studio = await startStudio();
+  studios.push(studio);
+  return { studio, ...(await seedTrack(studio)) };
+}
+
+test("the length set reads the chosen section from the timeline sent, and its new seconds come back unsaved", async () => {
+  const { studio, track, arrangement, path } = await trackStudio();
+  const good = { changes: { seconds: 180 }, said: "Section 2 plays for three minutes." };
+  const body = {
+    set: "length",
+    words: "make the middle three minutes",
+    trackId: track.id,
+    arrangement,
+    target: 1,
+  };
+  const finished = await askSet(studio, path, body, [tokens(good)]);
+  expect(finished.state).toBe("done");
+  expect(finished.result).toMatchObject({ ...good, repaired: false });
+  const [, user] = sent(studio, 0);
+  expect(user.content).toContain("The fields set how long one section of a track plays");
+  expect(user.content).toContain("- seconds: how long the section plays; 10..900 s; now 100");
+  expect(user.content).toContain(
+    'Section 2, the one being changed: sketch 1, from 92 s to 192 s of the track, 100 s long; the owner\'s words for it: "the middle swells"',
+  );
+  expect(listTrackRevisions(studio.server.store, track.id)).toHaveLength(1);
+});
+
+test("the transition set's answer that breaks the timeline gets the validator's finding and one repair", async () => {
+  const { studio, track, arrangement, path } = await trackStudio();
+  const body = {
+    set: "transition",
+    words: "a long slow morph into the end",
+    trackId: track.id,
+    arrangement,
+    target: 1,
+  };
+  const long = { changes: { kind: "morph", seconds: 70 }, said: "A long morph." };
+  const good = { changes: { kind: "morph", seconds: 40 }, said: "A long morph." };
+  const finished = await askSet(studio, path, body, [tokens(long), tokens(good)]);
+  expect(finished.state).toBe("done");
+  expect(finished.result).toMatchObject({ ...good, repaired: true });
+  expect(sent(studio, 0)[1].content).toContain("- kind: crossfade: one fades out");
+  expect(sent(studio, 0)[1].content).toContain('now "crossfade"');
+  expect(sent(studio, 1)[3].content).toContain(
+    "- $.changes (timeline): with these changes the timeline is invalid at $.transitions[1].seconds: must be at most half the shorter of its two sections, 50 s, got 70",
+  );
+});
+
+test("the lane set lists the lane at every 30 s of the track, and the new offsets come back", async () => {
+  const { studio, track, arrangement, path } = await trackStudio();
+  const good = { changes: { at180: 0, at284: -0.3 }, said: "Darker over the last two minutes." };
+  const body = {
+    set: "lane",
+    words: "darker over the last two minutes",
+    trackId: track.id,
+    arrangement,
+    target: "brightness",
+  };
+  const finished = await askSet(studio, path, body, [tokens(good)]);
+  expect(finished.state).toBe("done");
+  expect(finished.result).toMatchObject({ ...good, repaired: false });
+  const [, user] = sent(studio, 0);
+  expect(user.content).toContain("The track plays 284 s, in 3 sections.");
+  expect(user.content).toContain("The lane is the brightness macro's: below 0 is");
+  expect(user.content).toContain("- at270: the offset 270 s into the track; -0.5..0.5; now 0");
+  expect(user.content).toContain("- at284: the offset 284 s into the track; -0.5..0.5; now 0");
+});
+
+test("the route refuses a track set with a track of another brief, a timeline that doesn't check, a target it lacks, or values now, and a page's set with a track", async () => {
+  const { studio, track, arrangement, path } = await trackStudio();
+  const other = await seedTrack(studio);
+  const base = { set: "length", words: "longer", trackId: track.id, arrangement, target: 0 };
+  /** @type {[Record<string, unknown>, string][]} */
+  const refused = [
+    [{ ...base, trackId: other.track.id }, `is not a track of vibe`],
+    [{ ...base, trackId: 999 }, "there is no track 999"],
+    [{ ...base, arrangement: { ...arrangement, transitions: [] } }, "the arrangement is invalid"],
+    [{ ...base, target: 3 }, "the track has no section index 3"],
+    [{ ...base, set: "transition", target: 2 }, "the track has no transition index 2"],
+    [{ ...base, set: "lane", target: "loudness" }, "the track has no macro name"],
+    [{ ...base, current: { seconds: 100 } }, "reads its values now from the arrangement"],
+    [{ ...base, arrangement: undefined }, "arrangement"],
+    [{ set: "test", words: WORDS, current: CURRENT, trackId: track.id }, "takes no trackId"],
+  ];
+  for (const [body, message] of refused) {
+    const answer = await studio.server.api("POST", path, body);
+    expect(answer.status, message).toBe(400);
+    expect(answer.body.toString()).toContain(message);
+  }
+  expect(studio.omlx.requests).toHaveLength(0);
+});
+
+test("a second words job for a track's set is a 409 naming the first", async () => {
+  const { studio, track, arrangement, path } = await trackStudio();
+  const body = { set: "lane", words: "brighter", trackId: track.id, arrangement, target: "space" };
+  studio.omlx.script({ ...tokens({ changes: {}, said: "Nothing." }), holdAfter: 0 });
+  const first = await studio.ok("POST", path, body);
+  const second = await studio.server.api("POST", path, { ...body, set: "length", target: 0 });
   expect(second.status).toBe(409);
   expect(second.json().jobId).toBe(first.id);
   await studio.omlx.waitForRequests(1);

@@ -8,7 +8,9 @@
   amended by [0092](0092-words-beside-a-job.md) (the shift's words run as a words job in the
   runner's words lane, and a words job cancels only its own requests) and by
   [0085](0085-session-and-brief-in-words.md) (a `candidate` scope, the route's `candidateId`, and
-  sets that narrow to fit)
+  sets that narrow to fit) and by [0087](0087-track-page-in-words.md) (a `track` scope, the
+  route's `trackId`, `arrangement` and `target`, a set's own reading, and a request's own check
+  joining the repair)
 
 ## Context
 

@@ -1,9 +1,11 @@
 // The words operator's request (decision 0084): one model request through the queue for the
-// owner's words, its answer checked against the fields asked about, and one repair round for an
+// owner's words, its answer checked against the fields asked about and, when the request has a
+// check of its own, by that (a track's arrangement validator, 0087), and one repair round for an
 // answer that parsed. Each request is stored as a generation of the brief's current revision, in
 // a request group naming the operator. Nothing else is written: the caller fills the page with
 // the changes, unsaved. It runs as a words job, which the job runner runs in its words lane,
 // beside whatever the main lane runs (0092): the words route's, and a search by ear's shift.
+/** @import { QuotedError } from "../domain/build-repair-prompt.js" */
 /** @import { WordsVerdict } from "../domain/check-words.js" */
 /** @import { ChatMessage } from "../domain/prompt-tokens.js" */
 /** @import { WordsField } from "../domain/words-prompt.js" */
@@ -15,7 +17,8 @@ import { judgeWords } from "../domain/check-words.js";
 import { JOB_KIND } from "../domain/job-kind.js";
 import { invalidAfter } from "../domain/judge-answer.js";
 import { estimateTokens, promptText } from "../domain/prompt-tokens.js";
-import { buildWordsRepair, WORDS_RESPONSE_FORMAT } from "../domain/words-prompt.js";
+import { REJECT_REASON } from "../domain/reject-reason.js";
+import { buildWordsRepair, WORDS_KEY, WORDS_RESPONSE_FORMAT } from "../domain/words-prompt.js";
 import { STREAM_SEEDS } from "./candidate-job.js";
 import {
   currentRevision,
@@ -44,6 +47,8 @@ const STEP = Object.freeze({
  * @property {string} operator named in the request group
  * @property {ChatMessage[]} messages the first prompt, built by the route
  * @property {readonly WordsField[]} fields the fields the answer is checked against
+ * @property {(changes: Record<string, unknown>) => QuotedError[]} [check] findings on changes
+ *   the fields allow, quoted in the repair as the fields' are
  */
 
 /**
@@ -60,7 +65,7 @@ const STEP = Object.freeze({
  *   step as a sentence
  * @returns {Promise<WordsAnswer>}
  */
-async function askWords(app, { vibeId, sessionId, operator, messages, fields }, hooks) {
+async function askWords(app, { vibeId, sessionId, operator, messages, fields, check }, hooks) {
   const { store, config } = app;
   const { queue, signal, onStep } = hooks;
   const seed = Math.floor(app.random() * STREAM_SEEDS);
@@ -93,7 +98,18 @@ async function askWords(app, { vibeId, sessionId, operator, messages, fields }, 
     if (sent.failure !== null) {
       return { ok: false, error: `The model couldn't be asked: ${sent.failure.message}` };
     }
-    const verdict = judgeWords(sent.completion, config.queue.maxTokens, fields);
+    const judged = judgeWords(sent.completion, config.queue.maxTokens, fields);
+    const errors = judged.ok && check ? check(judged.changes) : [];
+    /** @type {WordsVerdict} */
+    const verdict =
+      judged.ok && errors.length > 0
+        ? {
+            ok: false,
+            reason: REJECT_REASON.schemaErrors,
+            errors,
+            answer: { [WORDS_KEY.changes]: judged.changes, [WORDS_KEY.said]: judged.said },
+          }
+        : judged;
     return { ok: true, verdict, generationId: sent.generation.id };
   };
   const first = await send(messages, null);

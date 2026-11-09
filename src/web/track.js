@@ -6,6 +6,8 @@
 // is checked as it changes by the same validator the server runs, and Save appends a revision.
 // Earlier revisions are listed, and one opened can be saved as the newest. A section plays its
 // own window of its sketch, rendered once by an owner-started job through the excerpt player.
+// The page leads with words (0087): the timeline in words, a section's length and transition and
+// a lane asked in words, and the seconds, offsets and lane values behind the numbers toggle.
 /** @import { Arrangement, Section } from "../domain/arrangement-schema.js" */
 /** @import { ArrangementSketch } from "../domain/validate-arrangement.js" */
 /** @import { SectionGenomes } from "../domain/section-genome.js" */
@@ -55,6 +57,7 @@ import { keyButtons } from "./key-buttons.js";
 import { lanePanel } from "./lane-panel.js";
 import { SWAP } from "./material-actions.js";
 import { materialCard } from "./material-card.js";
+import { pageNumbers } from "./numbers-toggle.js";
 import { NOT_STARTED } from "./owner-job.js";
 import { unloadGuard } from "./quick-ab-session.js";
 import { runJob } from "./run-job.js";
@@ -80,12 +83,21 @@ import {
   transitionOf,
 } from "./timeline-edits.js";
 import { bindTimelineKeys, TIMELINE_KEYS } from "./timeline-keys.js";
-import { blockText, sectionCount, timelineLayout } from "./timeline-layout.js";
+import {
+  blockText,
+  playedName,
+  playsWords,
+  sectionCount,
+  timelineLayout,
+} from "./timeline-layout.js";
 import { drawTimeline } from "./timeline-view.js";
 import { stemsText, trackRenderText } from "./track-render-text.js";
-import { curveWords, kindButtonWords, transitionText } from "./transition-text.js";
+import { FIX_FIRST, trackWords } from "./track-words.js";
+import { timelineWords } from "./track-words-text.js";
+import { curveWords, kindButtonWords, transitionText, transitionWords } from "./transition-text.js";
 import "./topbar-jobs.js";
 
+pageNumbers("track.html");
 const status = statusLine();
 const page = elementsById({
   pageTitle: HTMLElement,
@@ -93,16 +105,20 @@ const page = elementsById({
   trackLine: HTMLElement,
   timeline: HTMLElement,
   noSections: HTMLElement,
+  timelineWords: HTMLOListElement,
   arrangementErrors: HTMLUListElement,
   noteInput: HTMLInputElement,
   sectionBox: HTMLElement,
   sectionName: HTMLElement,
+  sectionPlays: HTMLElement,
   sectionTimes: HTMLElement,
+  offsetLabel: HTMLElement,
   offsetInput: HTMLInputElement,
   secondsInput: HTMLInputElement,
   fadeField: HTMLElement,
   fadeInput: HTMLInputElement,
   fadeLine: HTMLElement,
+  transitionWordsLine: HTMLElement,
   sectionTextInput: HTMLTextAreaElement,
   transitionTextField: HTMLElement,
   transitionTextLabel: HTMLElement,
@@ -123,6 +139,7 @@ const page = elementsById({
   noSketches: HTMLElement,
   revisionList: HTMLUListElement,
   renderLine: HTMLElement,
+  renderLoudness: HTMLElement,
   trackAudio: HTMLAudioElement,
   exportList: HTMLUListElement,
   renderJobBox: HTMLElement,
@@ -310,7 +327,7 @@ function draw() {
   buttons.save.disabled = errors.length > 0;
   buttons.save.title =
     errors.length > 0
-      ? "Turned off until the problems listed under the timeline are fixed."
+      ? FIX_FIRST
       : "Saves the timeline as a new version of this track. Earlier versions stay as they were. Nothing is rendered.";
 
   const asked = [
@@ -352,7 +369,15 @@ function draw() {
     },
   );
   page.noSections.hidden = sections.length > 0;
+  page.timelineWords.replaceChildren(
+    ...timelineWords(arrangement, sketchOf, developmentOf).map((line) => {
+      const item = document.createElement("li");
+      item.textContent = line;
+      return item;
+    }),
+  );
   lanes.draw();
+  words.draw(errors.length === 0);
   material.draw(errors.length === 0);
 
   page.sectionBox.hidden = selected === null;
@@ -370,7 +395,10 @@ function draw() {
   const development = developmentOf(section.developmentId);
   const text = blockText(section, sketchOf(section.sketchId), development);
   page.sectionName.textContent = `Section ${selected + 1} of ${sections.length}: ${text.name}`;
+  page.sectionPlays.textContent = playsWords(section, sketchOf(section.sketchId), development);
   page.sectionTimes.textContent = `Plays ${text.times}.`;
+  // A developed section plays its development's own timeline, from 0 when it was placed (0079).
+  page.offsetLabel.textContent = `Starts at, in seconds of ${playedName(development)}`;
   page.developedLine.textContent = developedText(development);
   if (!developControl.held()) {
     const refusal = developRefusal(section, unsaved());
@@ -401,7 +429,10 @@ function draw() {
   );
   if (fade === null || transition === undefined) {
     page.fadeLine.textContent = "No crossfade: the track has one section.";
+    page.transitionWordsLine.textContent = "The track has one section, so no join.";
   } else {
+    const join = transitionWords(fade, transition);
+    page.transitionWordsLine.textContent = `${join.charAt(0).toUpperCase()}${join.slice(1)}.`;
     fill(page.fadeInput, transition.seconds);
     fill(page.transitionTextInput, transition.text);
     page.transitionTextLabel.textContent = `How section ${fade + 1} should become section ${fade + 2}`;
@@ -414,7 +445,7 @@ function draw() {
   if (!bridgeControl.held()) {
     const refusal =
       errors.length > 0
-        ? "Turned off until the problems listed under the timeline are fixed."
+        ? FIX_FIRST
         : bridgeRefusal(arrangement, fade, bridgeSeconds(), unsaved(), sectionGenomes());
     buttons.bridge.disabled = refusal !== null;
     buttons.bridge.title = refusal ?? BRIDGE_TITLE;
@@ -462,9 +493,7 @@ function drawDevelopments(arrangement, valid) {
   }
   buttons.placeDevelopment.disabled = selected === null || developments.length === 0;
   if (!developAllControl.held()) {
-    const refusal = valid
-      ? developAllRefusal(developAllPlan(arrangement), unsaved())
-      : "Turned off until the problems listed under the timeline are fixed.";
+    const refusal = valid ? developAllRefusal(developAllPlan(arrangement), unsaved()) : FIX_FIRST;
     buttons.developAll.disabled = refusal !== null;
     buttons.developAll.title = refusal ?? DEVELOP_ALL_TITLE;
   }
@@ -502,6 +531,7 @@ const sectionGenomes = () =>
  * @param {number | null} [choose] the section to choose, or the same one when omitted
  */
 function edit(next, choose) {
+  words.edited(next);
   draft = next;
   if (choose !== undefined) selected = choose;
   draw();
@@ -711,6 +741,7 @@ function drawRender() {
   for (const [name, on] of ready) {
     buttons[/** @type {TimelineAction} */ (name)].disabled = !(on && saved);
   }
+  page.renderLoudness.textContent = "";
   if (draft === null || draft.sections.length === 0) {
     page.renderLine.textContent = "Add a section and save to render the track.";
   } else if (unsaved()) {
@@ -721,7 +752,8 @@ function drawRender() {
     page.renderLine.textContent = `Version ${openedVersion} isn't rendered yet.`;
   } else {
     const { seconds, loudness } = rendered.preview;
-    page.renderLine.textContent = `Version ${openedVersion} is rendered: ${clockTime(seconds)} at ${loudness.integrated.toFixed(1)} LUFS, its peak ${loudness.truePeak.toFixed(1)} dBTP.`;
+    page.renderLine.textContent = `Version ${openedVersion} is rendered: ${clockTime(seconds)}, at the brief's loudness.`;
+    page.renderLoudness.textContent = `${loudness.integrated.toFixed(1)} LUFS, its peak ${loudness.truePeak.toFixed(1)} dBTP.`;
   }
   page.exportList.replaceChildren(
     ...(rendered?.exports ?? []).map(({ kind, folder, createdAt }) => {
@@ -1194,6 +1226,7 @@ function openRevision(index) {
   page.trackAudio.pause();
   page.trackAudio.removeAttribute("src");
   playhead.hidden = true;
+  words.clear();
   draft = structuredClone(revision.arrangement);
   kept = JSON.stringify(draft);
   openedVersion = index + 1;
@@ -1263,6 +1296,19 @@ const material = materialCard({
 
 // What the model reads of the chosen section's sketch (decision 0078) keeps to its own module.
 const reading = sketchReadingCard(status);
+
+// A section's length and transition, and a lane, asked in words (decision 0087).
+const words = trackWords({
+  status,
+  trackId,
+  vibeId: () => view?.vibe.id ?? null,
+  draft: () => draft,
+  selected: () => selected,
+  lane: () => lanes.macro(),
+  edit: (next) => edit(next),
+  checked: (arrangement) => checked(arrangement),
+  draw: () => draw(),
+});
 
 /** Lists the revisions, newest first, each with Open. */
 function showRevisions() {

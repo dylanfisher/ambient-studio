@@ -94,6 +94,9 @@ export const steerBody = (candidateId, { directionId, position }, toward) => ({
   directions: [{ id: directionId, setting: steerSetting(position, toward) }],
 });
 
+/** Why a button that acts on the chosen section is off when none is chosen. */
+export const NO_SECTION = "Turned off: choose a section first.";
+
 /**
  * Keeps a finished steer's best point as a sketch, by its excerpt.
  * @param {{ best: { candidateId: number, score: number } | null }} result the steer job's

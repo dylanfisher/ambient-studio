@@ -35,6 +35,7 @@ import { keyButtons } from "./key-buttons.js";
 import { latestOnly } from "./latest-only.js";
 import {
   keepSteered,
+  NO_SECTION,
   placeElite,
   STEER_LEAVE,
   SWAP,
@@ -84,6 +85,7 @@ export function materialCard(host) {
     eliteLine: HTMLElement,
     eliteSelect: HTMLSelectElement,
     eliteAbout: HTMLElement,
+    eliteNumbers: HTMLElement,
     steerLine: HTMLElement,
     directionSelect: HTMLSelectElement,
     steerJobBox: HTMLElement,
@@ -216,14 +218,19 @@ export function materialCard(host) {
     panel = materialPanel({ sketches: view.sketches, archive, steering, regions });
 
     page.materialSketches.replaceChildren(
-      ...panel.sketches.map(({ name, line }) => {
+      ...panel.sketches.map(({ name, words, line }) => {
         const item = document.createElement("li");
         item.className = "item";
         item.textContent = name;
-        if (line !== "") {
+        for (const [text, numbers] of /** @type {const} */ ([
+          [words, false],
+          [line, true],
+        ])) {
+          if (text === "") continue;
           const where = document.createElement("p");
           where.className = "small muted";
-          where.textContent = line;
+          where.textContent = text;
+          if (numbers) where.dataset.numbers = "";
           item.append(where);
         }
         return item;
@@ -237,6 +244,7 @@ export function materialCard(host) {
     );
     const elite = chosenElite();
     page.eliteAbout.textContent = elite ? elite.about : "";
+    page.eliteNumbers.textContent = elite ? elite.numbers : "";
     offWhen(
       buttons.placeElite,
       elite === undefined
@@ -259,7 +267,7 @@ export function materialCard(host) {
         : direction.reason !== null
           ? `Turned off: this direction can't be steered along yet: ${direction.reason}`
           : selected === null
-            ? "Turned off: choose a section first."
+            ? NO_SECTION
             : host.unsaved()
               ? "Turned off until the timeline is saved: the steered sketch is saved as a new version."
               : sessionId === null

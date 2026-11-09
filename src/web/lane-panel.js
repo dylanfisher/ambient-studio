@@ -28,6 +28,7 @@ import {
   dragOffset,
   laneLayout,
   laneText,
+  laneWords,
   offsetTop,
   pointText,
   thinningText,
@@ -45,11 +46,12 @@ const MACRO_NAMES = /** @type {MacroName[]} */ (Object.keys(MACROS));
  * @param {StatusLine} page.status
  * @param {() => string[][]} page.thinned each section's macros whose own breakpoints the lanes
  *   thin (`sectionThinning`); none while the timeline has errors
- * @returns {{ draw: () => void }}
+ * @returns {{ draw: () => void, macro: () => MacroName }} `macro` is the chosen lane's
  */
 export function lanePanel({ draft, edit, status, thinned }) {
   const parts = elementsById({
     lanes: HTMLElement,
+    laneWordsLine: HTMLElement,
     pointLine: HTMLElement,
     laneThinning: HTMLElement,
     pointTimeInput: HTMLInputElement,
@@ -189,6 +191,7 @@ export function lanePanel({ draft, edit, status, thinned }) {
     if (chosen !== null && chosen >= points.length) chosen = points.length - 1;
     if (chosen === null && points.length > 0) chosen = 0;
     if (points.length === 0) chosen = null;
+    parts.laneWordsLine.textContent = laneWords(macro, points);
     const thinning = thinningText(thinned());
     parts.laneThinning.hidden = thinning === null;
     parts.laneThinning.textContent = thinning ?? "";
@@ -339,7 +342,7 @@ export function lanePanel({ draft, edit, status, thinned }) {
     return button;
   }
 
-  return { draw };
+  return { draw, macro: () => macro };
 }
 
 /** Writes a number into a field unless the owner is typing in it. */

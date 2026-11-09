@@ -17,6 +17,14 @@ import {
 } from "../domain/words-sets.js";
 import { GENOME_KEY, MACROS } from "../engine/genome-schema.js";
 
+/** What the status line says of a words answer, on every page that fills one in. */
+export const WORDS_SAY = Object.freeze({
+  reading: "The model is reading your words.",
+  filled: "Filled in from your words, unsaved. Press Keep to keep it or Undo to put it back.",
+  undone: "Put back as it was. Nothing was saved.",
+  empty: "Write the change in words first.",
+});
+
 /** @typedef {{ field: string, from: unknown, to: unknown }} WordsChange */
 
 /**

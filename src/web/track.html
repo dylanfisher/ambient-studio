@@ -37,9 +37,12 @@
         <h1 id="pageTitle">Track</h1>
         <p class="help muted">
           A track plays sketches of one brief one after another, each for a part of its own
-          timeline, with a crossfade or a morph from one to the next. Add sketches, then choose a
-          section to move it, set where it starts in its sketch and how long it plays, and set its
-          crossfade or morph. Drag a block's edges, use the fields, or use the keys shown on each button.
+          timeline, with a crossfade, a morph or a weave from one to the next. Add sketches, then
+          choose a section and write what should happen in it and how it becomes the next. To
+          change its length or its transition, write the change in words and press Set from these
+          words; a macro lane is changed the same way. The model's answer fills the timeline,
+          unsaved, for you to keep or undo. Drag a block's edges or use the keys shown on each
+          button, and Show the numbers for the seconds, the offsets and the lanes' values.
           Play a section to hear its part of the sketch. Save keeps a new version and leaves the
           earlier ones as they were. Render a saved version to play the whole track, hear one
           crossfade on its own, and export it as WAV and FLAC, with a stem for each voice if you
@@ -47,6 +50,7 @@
           the track's length, beside each section you have played; Material places the best
           candidates of the brief's map and steers a section along one of its directions.
         </p>
+        <p><button id="numbersToggle" class="button outline small" type="button" aria-expanded="false" title="Shows or hides the numbers on this page: the fields that set values directly, the measurements and the scores. The page remembers your choice in this browser.">Show the numbers</button></p>
         <p id="status" class="status" role="status" aria-live="polite">Loading…</p>
       </div>
 
@@ -55,6 +59,7 @@
         <p id="trackLine" class="small"></p>
         <div id="timeline" class="timeline"></div>
         <p id="noSections" class="muted small" hidden>No sections yet. Choose a sketch below and add it.</p>
+        <ol id="timelineWords" class="list small"></ol>
         <ul id="arrangementErrors" class="errors small" hidden></ul>
         <div class="stack">
           <div class="row">
@@ -89,14 +94,25 @@
         <h2 id="lanes-heading">Macro lanes</h2>
         <p class="small muted">
           A lane moves one macro across the whole track, on top of what each section's sketch
-          does with it: each point adds to or takes from the sketch's own value, from −0.5 to 0.5,
-          and 0 changes nothing. Choose a lane, then add points and move them by the fields, the
-          buttons and their keys, or by dragging a point across in time or up and down.
+          does with it: above its middle line it adds to the sketch's own value, below it takes
+          away. Choose a lane and write how it should move, such as darker over the last two
+          minutes, then press Set the lane from these words. Points can also be added and moved by
+          the buttons and their keys, or by dragging a point across in time or up and down.
         </p>
         <div id="lanes" class="lanes"></div>
-        <p id="pointLine" class="small"></p>
-        <p id="laneThinning" class="small muted" hidden></p>
+        <p id="laneWordsLine" class="small"></p>
         <div class="row">
+          <label class="field small"
+            >Change the chosen lane in words
+            <input id="laneWordsInput" type="text" size="32" placeholder="such as darker over the last two minutes" title="How the chosen lane should move across the track, in one line of words, such as darker over the last two minutes. Set the lane from these words reads it." />
+          </label>
+          <button id="laneWords" class="button outline small" type="button" title="Asks the model to read your words as the chosen lane's points, and fills them in on the timeline unsaved. Nothing is saved until you press Save. Takes about half a minute.">Set the lane from these words</button>
+        </div>
+        <div id="laneWordsJob" class="stack"></div>
+        <div id="laneWordsAnswer"></div>
+        <p id="pointLine" class="small" data-numbers></p>
+        <p id="laneThinning" class="small muted" hidden></p>
+        <div class="row" data-numbers>
           <label class="field small"
             >Point at, in seconds of the track
             <input id="pointTimeInput" type="number" step="1" min="0" size="6" title="Where the chosen point is on the track, in seconds from its start. Points must be in order, earliest first." />
@@ -114,7 +130,7 @@
           <button id="addPoint" class="button outline small" type="button" title="Adds a point after the chosen one, halfway to the next or a little after the last, at the lane's value there, so nothing sounds different until you move it.">Add a point</button>
           <button id="removePoint" class="button outline small" type="button" title="Takes the chosen point out of the lane. A lane with no points changes nothing.">Remove the point</button>
         </div>
-        <div class="row">
+        <div class="row" data-numbers>
           <button id="pointEarlier" class="button outline small" type="button" title="Moves the chosen point one step earlier on the track, the seconds on the button, stopping before the point ahead of it.">Earlier</button>
           <button id="pointLater" class="button outline small" type="button" title="Moves the chosen point one step later on the track, the seconds on the button, stopping before the point after it.">Later</button>
           <button id="offsetLower" class="button outline small" type="button" title="Lowers the chosen point's offset by the step on the button, down to -0.5.">Lower</button>
@@ -126,11 +142,31 @@
       <section id="sectionBox" class="card stack" aria-labelledby="section-heading" hidden>
         <h2 id="section-heading">The chosen section</h2>
         <p id="sectionName"></p>
-        <p id="sectionTimes" class="small muted"></p>
+        <p id="sectionPlays" class="small"></p>
+        <p id="sectionTimes" class="small muted" data-numbers></p>
+        <label class="field small"
+          >What should happen in this section
+          <textarea id="sectionTextInput" rows="2" title="Your words for what should happen in this section, such as what comes in, what fades or how it should feel. Saved with the track; later steps show them to the model. They don't change how it sounds."></textarea>
+        </label>
+        <p id="transitionWordsLine" class="small"></p>
+        <label id="transitionTextField" class="field small"
+          ><span id="transitionTextLabel">How this section should become the next</span>
+          <textarea id="transitionTextInput" rows="2" title="Your words for how one section should become the next across this crossfade or morph. Saved with the track; later steps show them to the model. They don't change how it sounds."></textarea>
+        </label>
         <div class="row">
           <label class="field small"
-            >Starts at, in seconds of its sketch
-            <input id="offsetInput" type="number" step="1" min="0" size="6" title="Where the section starts on its sketch's own timeline, in seconds. It must be before the sketch ends." />
+            >Change it in words
+            <input id="sectionWordsInput" type="text" size="32" placeholder="such as twice as long, or a slow morph into the next" title="A change to the chosen section in one line of words, such as twice as long or a slow morph into the next. Set from these words reads it into the choice beside it." />
+          </label>
+          <select id="sectionWordsSet" title="Chooses what Set from these words changes: the chosen section's length, or how it becomes the next section."></select>
+          <button id="sectionWords" class="button outline small" type="button" title="Asks the model to read your words as new values for the choice beside it, and fills them in on the timeline unsaved. Nothing is saved until you press Save. Takes about half a minute.">Set from these words</button>
+        </div>
+        <div id="sectionWordsJob" class="stack"></div>
+        <div id="sectionWordsAnswer"></div>
+        <div class="row" data-numbers>
+          <label class="field small"
+            ><span id="offsetLabel">Starts at, in seconds of its sketch</span>
+            <input id="offsetInput" type="number" step="1" min="0" size="6" title="Where the section starts on its sketch's own timeline, or on its development's when it plays one, in seconds. It must be before that timeline ends." />
           </label>
           <label class="field small"
             >Plays for, in seconds
@@ -141,27 +177,21 @@
             <input id="fadeInput" type="number" step="1" size="5" title="How long this section and its neighbor overlap as one fades out and the other in, or as one morphs into the other, in seconds: at most half the shorter of the two." />
           </label>
         </div>
-        <label class="field small"
-          >What should happen in this section
-          <textarea id="sectionTextInput" rows="2" title="Your words for what should happen in this section, such as what comes in, what fades or how it should feel. Saved with the track; later steps show them to the model. They don't change how it sounds."></textarea>
-        </label>
-        <p id="fadeLine" class="small muted"></p>
-        <label id="transitionTextField" class="field small"
-          ><span id="transitionTextLabel">How this section should become the next</span>
-          <textarea id="transitionTextInput" rows="2" title="Your words for how one section should become the next across this crossfade or morph. Saved with the track; later steps show them to the model. They don't change how it sounds."></textarea>
-        </label>
+        <p id="fadeLine" class="small muted" data-numbers></p>
         <div class="row">
           <button id="moveLeft" class="button outline small" type="button" title="Moves the chosen section one place earlier in the track. The crossfades stay where they are.">Move earlier</button>
           <button id="moveRight" class="button outline small" type="button" title="Moves the chosen section one place later in the track. The crossfades stay where they are.">Move later</button>
+          <button id="morph" class="button outline small" type="button" title="Steps the chosen section's crossfade to a morph, where the first section's sounds move toward the next one's before it takes over, then to a weave, a morph whose sounds that can't move hand over one at a time, then back to a crossfade.">Make it a morph</button>
+          <button id="remove" class="button outline small" type="button" title="Takes the chosen section out of the timeline, with its crossfade. Save to keep the change; earlier versions still have it.">Remove</button>
+        </div>
+        <div class="row" data-numbers>
           <button id="shorter" class="button outline small" type="button" title="Makes the chosen section play one step less, the seconds on the button, down to its shortest.">Shorter</button>
           <button id="longer" class="button outline small" type="button" title="Makes the chosen section play one step more, the seconds on the button; past its sketch's end the sketch is extended.">Longer</button>
           <button id="startEarlier" class="button outline small" type="button" title="Starts the chosen section one step earlier in its sketch, the seconds on the button, down to the sketch's start.">Start earlier</button>
           <button id="startLater" class="button outline small" type="button" title="Starts the chosen section one step later in its sketch, the seconds on the button.">Start later</button>
           <button id="fadeShorter" class="button outline small" type="button" title="Makes the chosen section's crossfade one step shorter, the seconds on the button, down to its shortest.">Shorter crossfade</button>
           <button id="fadeLonger" class="button outline small" type="button" title="Makes the chosen section's crossfade one step longer, the seconds on the button, up to half the shorter of its two sections.">Longer crossfade</button>
-          <button id="morph" class="button outline small" type="button" title="Steps the chosen section's crossfade to a morph, where the first section's sounds move toward the next one's before it takes over, then to a weave, a morph whose sounds that can't move hand over one at a time, then back to a crossfade.">Make it a morph</button>
           <button id="curve" class="button outline small" type="button" title="Changes how the chosen morph or weave moves: evenly, easing in and out, mostly near the start, or mostly near the end. A crossfade has no curve.">Curve</button>
-          <button id="remove" class="button outline small" type="button" title="Takes the chosen section out of the timeline, with its crossfade. Save to keep the change; earlier versions still have it.">Remove</button>
         </div>
         <div class="row">
           <button id="play" class="button secondary small" type="button" title="Renders the chosen section's part of its sketch, once, and plays it; a part past the sketch's end isn't played yet. Takes about a tenth of the section's length.">Play this section</button>
@@ -175,7 +205,7 @@
           <button id="plainSketch" class="button outline small" type="button" title="Has the chosen section play its sketch again instead of its development, from where it started in the sketch. The development is kept, and earlier versions still play it. Save to keep the change.">Play the plain sketch</button>
         </div>
         <div class="row">
-          <label id="bridgeField" class="field small"
+          <label id="bridgeField" class="field small" data-numbers
             >Bridge, in seconds
             <input id="bridgeSecondsInput" type="number" step="1" size="5" title="How long a bridge between this section and the next plays, in seconds: at least a minute, or two when the two sketches are in different keys, tunings or tempos, since it is then written as two halves." />
           </label>
@@ -214,6 +244,7 @@
       <section class="card stack" aria-labelledby="render-heading">
         <h2 id="render-heading">Render and export</h2>
         <p id="renderLine" class="small"></p>
+        <p id="renderLoudness" class="small muted" data-numbers></p>
         <div class="row">
           <button id="renderTrack" class="button primary" type="button" title="Renders the whole of the version on the timeline, normalized to the brief's loudness, after a confirm that says how long it takes. Nothing renders until you press it.">Render the track</button>
           <button id="playTrack" class="button secondary" type="button" title="Plays the version's rendered track from where it was stopped, with the place it has reached marked on the timeline; press again to pause.">Play the track</button>
@@ -249,6 +280,7 @@
           <button id="placeElite" class="button outline" type="button" title="Keeps the chosen cell's best candidate as a sketch of this brief, if it isn't one yet, and adds it as a new section after the chosen one. Save to keep the section.">Place after the chosen section</button>
         </div>
         <p id="eliteAbout" class="small muted"></p>
+        <p id="eliteNumbers" class="small muted" data-numbers></p>
         <h3>Steer a section</h3>
         <div class="row">
           <select id="directionSelect" title="Chooses which of the brief's directions the chosen section is steered along."></select>
@@ -275,6 +307,18 @@
         </div>
         <p class="small muted" data-part="note"></p>
       </li>
+    </template>
+
+    <template id="words-answer">
+      <div class="callout stack small">
+        <p data-part="said"></p>
+        <ul class="list" data-part="changes"></ul>
+        <p class="errors" data-part="error" hidden></p>
+        <div class="row">
+          <button class="button secondary small" type="button" data-part="keep" title="Keeps what the model read from your words on the timeline. It is still unsaved: press Save to keep it as a new version.">Keep</button>
+          <button class="button outline small" type="button" data-part="undo" title="Puts the timeline back as it was before the model read your words. Nothing was saved.">Undo</button>
+        </div>
+      </div>
     </template>
 
     <template id="job-progress">

@@ -10,7 +10,6 @@ import {
   coverageText,
   mapRows,
   openScore,
-  openText,
   openWords,
 } from "../../src/web/map-grid.js";
 
@@ -94,10 +93,6 @@ test("a cell plays its elite's excerpt, and the open cell says what it holds in 
   expect(cellAudio(cell([1, 1], { url: "/audio/42" }))).toBe("/audio/42");
   expect(openWords(cell([1, 1], { score: 1.5 }), words)).toBe(
     "The candidate here: “low and still”. A lower spectral centroid; midway on “dry” to “wet”. The best cell on the map by your taste model.",
-  );
-  // The track page's material panel lists the elites with their score, as before (0066).
-  expect(openText(cell([1, 1], { score: 1.5 }), true)).toBe(
-    "The candidate here: “low and still”, search score 1.50 by your taste model.",
   );
   expect(openScore(cell([1, 1], { score: 1.5 }), true)).toBe(
     "Search score 1.50 by your taste model.",

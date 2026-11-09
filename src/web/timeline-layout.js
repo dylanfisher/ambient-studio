@@ -87,6 +87,33 @@ function startOf(text) {
 }
 
 /**
+ * What a section plays, as "its …" says it: its sketch, its development, or its bridge (0079,
+ * 0081), whose own timeline its offset is on.
+ * @param {{ bridge: boolean }} [development] the one it plays, if any
+ */
+export const playedName = (development) =>
+  development ? (development.bridge ? "its bridge" : "its development") : "its sketch";
+
+/**
+ * Where a section plays from, in words (0087): the start of what it plays or partway in, and
+ * whether it runs past the end of that genome. The offset and seconds are behind the numbers
+ * toggle.
+ * @param {Section} section
+ * @param {BlockSketch | undefined} sketch
+ * @param {{ seconds: number, bridge: boolean }} [development]
+ */
+export function playsWords({ offset, seconds }, sketch, development) {
+  const what = playedName(development);
+  const from = offset === 0 ? "from the start" : "from partway in";
+  const duration = development?.seconds ?? sketch?.duration;
+  const past =
+    duration !== undefined && offset + seconds > duration
+      ? ", and runs past its end, which extends it"
+      : "";
+  return `It plays ${what} ${from}${past}.`;
+}
+
+/**
  * A block's name, the part of its sketch or its development it plays (0079), with how far it is
  * extended past that genome's end, and the start of its text, "" when it has none.
  * @param {Section} section
