@@ -2,15 +2,17 @@
 // owner's words, its answer checked against the fields asked about, and one repair round for an
 // answer that parsed. Each request is stored as a generation of the brief's current revision, in
 // a request group naming the operator. Nothing else is written: the caller fills the page with
-// the changes, unsaved. The words job runs it when the owner's route adds it; a search by ear's
-// shift runs it from its own route, since the search holds the job runner (0075).
+// the changes, unsaved. It runs as a words job, which the job runner runs in its words lane,
+// beside whatever the main lane runs (0092): the words route's, and a search by ear's shift.
 /** @import { WordsVerdict } from "../domain/check-words.js" */
 /** @import { ChatMessage } from "../domain/prompt-tokens.js" */
 /** @import { WordsField } from "../domain/words-prompt.js" */
 /** @import { JobContext } from "./job-runner.js" */
+/** @import { OmlxQueue } from "./omlx-queue.js" */
 /** @import { App } from "./routing.js" */
 import { quotedErrors } from "../domain/build-repair-prompt.js";
 import { judgeWords } from "../domain/check-words.js";
+import { JOB_KIND } from "../domain/job-kind.js";
 import { invalidAfter } from "../domain/judge-answer.js";
 import { estimateTokens, promptText } from "../domain/prompt-tokens.js";
 import { buildWordsRepair, WORDS_RESPONSE_FORMAT } from "../domain/words-prompt.js";
@@ -24,7 +26,9 @@ import {
 } from "./generate-candidates.js";
 import { listRequestGroup } from "./generation-store.js";
 import { JOB_STEP } from "./job-steps.js";
+import { ownedBy } from "./omlx-queue.js";
 import { RETRIEVAL_METHOD } from "./retrieve-examples.js";
+import { refuseUnfinished } from "./routing.js";
 
 /** Each step of a request as the job tells the owner. */
 const STEP = Object.freeze({
@@ -51,13 +55,14 @@ const STEP = Object.freeze({
 /**
  * @param {App} app
  * @param {WordsRequest} request
- * @param {{ signal?: AbortSignal, onStep?: (step: string) => void }} [hooks] `signal` stops
- *   before the repair once aborted; `onStep` hears each step as a sentence
+ * @param {{ queue: OmlxQueue, signal: AbortSignal, onStep: (step: string) => void }} hooks
+ *   `queue` is the job's own; `signal` stops before the repair once aborted; `onStep` hears each
+ *   step as a sentence
  * @returns {Promise<WordsAnswer>}
  */
-export async function askWords(app, { vibeId, sessionId, operator, messages, fields }, hooks = {}) {
-  const { store, config, queue } = app;
-  const { signal, onStep } = hooks;
+async function askWords(app, { vibeId, sessionId, operator, messages, fields }, hooks) {
+  const { store, config } = app;
+  const { queue, signal, onStep } = hooks;
   const seed = Math.floor(app.random() * STREAM_SEEDS);
   const requestGroup = requestGroupName(vibeId, seed, operator);
   if (listRequestGroup(store, requestGroup).length > 0) {
@@ -74,7 +79,7 @@ export async function askWords(app, { vibeId, sessionId, operator, messages, fie
     attachmentIds: [],
     retrievalMethod: RETRIEVAL_METHOD.none,
     /** @param {{ kind: string }} step */
-    onStep: ({ kind }) => onStep?.(STEP[/** @type {keyof typeof STEP} */ (kind)]),
+    onStep: ({ kind }) => onStep(STEP[/** @type {keyof typeof STEP} */ (kind)]),
   };
   const sampling = firstSampling(seed);
   /**
@@ -105,7 +110,7 @@ export async function askWords(app, { vibeId, sessionId, operator, messages, fie
         error: `The model's reading of your words was invalid, and its repair prompt is about ${tokens} tokens, over the ${config.queue.contextBudgetTokens}-token budget, so no repair was sent:\n${findings}`,
       };
     }
-    signal?.throwIfAborted();
+    signal.throwIfAborted();
     const second = await send(repair, generationId);
     if (!second.ok) return second;
     ({ verdict, generationId } = second);
@@ -121,27 +126,55 @@ export async function askWords(app, { vibeId, sessionId, operator, messages, fie
 }
 
 /**
- * The words job: `askWords` with the job's progress and cancel. A cancel cancels the omlx
- * queue, as a drafted brief's does: the runner runs one job at a time, so the queue holds only
- * this job's requests.
+ * Refuses a second words job while one is unfinished, from either route that adds one: the
+ * words lane runs one at a time, and the owner waits on the one already asked (0084, 0092).
+ * @param {App} app
+ */
+export function refuseSecondWords(app) {
+  refuseUnfinished(
+    app,
+    JOB_KIND.words,
+    (id) =>
+      `The model is already reading your words (job ${id}). Wait for it to finish, or cancel it.`,
+  );
+}
+
+/**
+ * What a words job returns before its caller shapes it.
+ * @typedef {{ changes: Record<string, unknown>, said: string, repaired: boolean,
+ *   generationId: number }} WordsResult
+ */
+
+/**
+ * The words job: `askWords` with the job's progress and cancel. A cancel cancels only this
+ * job's omlx requests (decision 0092), since a main-lane job may have its own in the queue.
+ * @template [T=WordsResult]
  * @param {App} app
  * @param {WordsRequest} request
- * @returns {(job: JobContext) => Promise<{ changes: Record<string, unknown>, said: string,
- *   repaired: boolean, generationId: number }>}
+ * @param {(answer: WordsResult) => T} [shape] turns the checked answer into the job's result;
+ *   the answer as it is when omitted
+ * @returns {(job: JobContext) => Promise<T>}
  */
-export function wordsJob(app, request) {
+export function wordsJob(
+  app,
+  request,
+  shape = (answer) => /** @type {T} */ (/** @type {unknown} */ (answer)),
+) {
   return async (job) => {
-    const cancelRequests = () => app.queue.cancel();
+    const queue = ownedBy(app.queue, job.signal);
+    const cancelRequests = () => queue.cancel();
     job.signal.addEventListener("abort", cancelRequests);
     try {
       const answer = await askWords(app, request, {
+        queue,
         signal: job.signal,
         onStep: (step) => job.progress(0, 1, step),
       });
       if (!answer.ok) throw new Error(answer.error);
-      job.progress(1, 1, null);
       const { changes, said, repaired, generationId } = answer;
-      return { changes, said, repaired, generationId };
+      const result = shape({ changes, said, repaired, generationId });
+      job.progress(1, 1, null);
+      return result;
     } finally {
       job.signal.removeEventListener("abort", cancelRequests);
     }

@@ -2,7 +2,9 @@
 
 - **Date:** 2026-11-08
 - **Status:** accepted. Amends [0032](0032-plain-language-pages.md) (the top bar) and
-  [0021](0021-store-tables-and-append-only.md) (a note can be marked removed).
+  [0021](0021-store-tables-and-append-only.md) (a note can be marked removed). Amended by
+  [0092](0092-words-beside-a-job.md) (an entry for each lane of the job runner, each with a
+  Cancel).
 
 ## Context
 

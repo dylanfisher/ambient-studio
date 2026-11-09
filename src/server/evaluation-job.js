@@ -2,8 +2,8 @@
 // generation, with one stream seed for every vibe, and stores the report in `evaluations`. In
 // revision mode (0040) it also renders each valid first try and revises one that misses twice,
 // the treatment and the control, and renders both. It runs only when the owner's request adds it
-// to the job runner, which runs one job at a time, so it shares the one omlx queue with nothing
-// else.
+// to the job runner, which runs it in the main lane; a words job may share the omlx queue
+// beside it, and each cancels only its own requests (decision 0092).
 /** @import { ArmOutcome, ResponseFormatResult, Timing, VibeRun } from "../domain/evaluation-report.js" */
 /** @import { Features } from "../domain/extract-features.js" */
 /** @import { Finding, LintResult } from "../domain/lint-result.js" */
@@ -31,7 +31,7 @@ import {
 } from "./generate-candidates.js";
 import { listRequestGroup } from "./generation-store.js";
 import { JOB_STEP } from "./job-steps.js";
-import { RESPONSE_FORMAT_REFUSED } from "./omlx-queue.js";
+import { ownedBy, RESPONSE_FORMAT_REFUSED } from "./omlx-queue.js";
 import { renderExcerpt } from "./render-excerpt.js";
 import { isUnchanged, reviseCandidate } from "./revise-candidate.js";
 import { getRevision, getVibe } from "./vibe-store.js";
@@ -140,7 +140,7 @@ async function reviseBoth(context, firstTry, at) {
   for (const arm of order) {
     const control = arm === "control";
     job.signal.throwIfAborted();
-    made[arm] = await reviseCandidate(app.store, app.queue, firstTry, {
+    made[arm] = await reviseCandidate(app.store, ownedBy(app.queue, job.signal), firstTry, {
       config: app.config,
       sessionId: null,
       requestGroup: control ? controlGroupName(requestGroup) : revisedGroupName(requestGroup),
@@ -188,8 +188,8 @@ async function reviseBoth(context, firstTry, at) {
  * run: a request that fails in the queue (busy past the wait, a timeout, a refused
  * `response_format`, a cancel), a cancel between requests, or a fault in a render or a prompt.
  * The report of what was made is stored, saying why it stopped, and the job then fails with the
- * error. Cancelling the job cancels the omlx queue, which is the
- * job's alone while it runs. With `revise`, a first try is counted done once it is measured and,
+ * error. Cancelling the job cancels its own omlx requests
+ * (decision 0092). With `revise`, a first try is counted done once it is measured and,
  * when it missed, both its revisions are measured; a pair left unfinished is left out of the
  * report.
  * @param {App} app
@@ -237,7 +237,8 @@ export function evaluationJob(app, { vibeIds, count, revise }) {
         revision: revise ? { firstTries: [], timings: { treatment: [], control: [] } } : null,
       });
     }
-    const cancelRequests = () => app.queue.cancel();
+    const queue = ownedBy(app.queue, job.signal);
+    const cancelRequests = () => queue.cancel();
     job.signal.addEventListener("abort", cancelRequests);
     try {
       // A cancel while the folder was indexed fired before the listener was added.
@@ -256,7 +257,7 @@ export function evaluationJob(app, { vibeIds, count, revise }) {
           say: (step) => job.progress(done, total, step),
         };
         try {
-          await generateCandidates(vibeId, count, store, app.queue, {
+          await generateCandidates(vibeId, count, store, queue, {
             config,
             seed: params.seed,
             sessionId: null,

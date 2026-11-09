@@ -9,6 +9,7 @@
 /** @import { DevelopmentAsk } from "../domain/check-development.js" */
 /** @import { ChatMessage } from "../domain/prompt-tokens.js" */
 /** @import { JobContext } from "./job-runner.js" */
+/** @import { OmlxQueue } from "./omlx-queue.js" */
 /** @import { App } from "./routing.js" */
 import { judgeDevelopment } from "../domain/check-development.js";
 import { buildDevelopPrompt, buildDevelopRepair } from "../domain/develop-prompt.js";
@@ -28,6 +29,7 @@ import {
 } from "./generate-candidates.js";
 import { listRequestGroup, putGenome } from "./generation-store.js";
 import { JOB_STEP } from "./job-steps.js";
+import { ownedBy } from "./omlx-queue.js";
 import { sketchReadings } from "./rating-routes.js";
 import { getSketch } from "./rating-store.js";
 import { RETRIEVAL_METHOD } from "./retrieve-examples.js";
@@ -68,9 +70,8 @@ function sketchOffset({ store }, { offset, developmentId }) {
 /**
  * The job that develops a section and stores the development. When the answer is still invalid
  * after its one repair, or can't be repaired, the job fails listing every finding and stores no
- * development; every request stays stored as a generation. Cancelling the job cancels the omlx
- * queue: the runner runs one job at a time, so while this one runs the queue holds only its
- * requests.
+ * development; every request stays stored as a generation. Cancelling the job cancels its own omlx
+ * requests (decision 0092).
  * @param {App} app
  * @param {DevelopRequest} request
  * @returns {(job: JobContext) => Promise<{ developmentId: number, trackId: number,
@@ -80,7 +81,8 @@ function sketchOffset({ store }, { offset, developmentId }) {
 export function developJob(app, { track, revisionId, arrangement, index }) {
   return async (job) => {
     const { store, config } = app;
-    const cancelRequests = () => app.queue.cancel();
+    const queue = ownedBy(app.queue, job.signal);
+    const cancelRequests = () => queue.cancel();
     job.signal.addEventListener("abort", cancelRequests);
     try {
       job.progress(0, 1, JOB_STEP.readingSection);
@@ -131,6 +133,7 @@ export function developJob(app, { track, revisionId, arrangement, index }) {
       const { generation, developed, repaired } = await askDevelopment(app, job, {
         vibeId: track.vibeId,
         vibeRevisionId: revision.id,
+        queue,
         messages: built.messages,
         ask,
         progress: { done: 0, of: 1 },
@@ -174,6 +177,7 @@ export function developJob(app, { track, revisionId, arrangement, index }) {
  * @param {object} request
  * @param {number} request.vibeId
  * @param {number} request.vibeRevisionId the brief's revision the prompt was written from
+ * @param {OmlxQueue} request.queue the job's own, `ownedBy` its signal, which it cancels on abort
  * @param {ChatMessage[]} request.messages
  * @param {DevelopmentAsk} request.ask
  * @param {{ done: number, of: number }} request.progress the job's progress while it asks
@@ -181,7 +185,7 @@ export function developJob(app, { track, revisionId, arrangement, index }) {
 export async function askDevelopment(
   app,
   job,
-  { vibeId, vibeRevisionId, messages, ask, progress },
+  { vibeId, vibeRevisionId, queue, messages, ask, progress },
 ) {
   const { store, config } = app;
   const seed = Math.floor(app.random() * STREAM_SEEDS);
@@ -192,7 +196,7 @@ export async function askDevelopment(
   const sampling = firstSampling(seed);
   const batch = {
     store,
-    queue: app.queue,
+    queue,
     config,
     vibeRevisionId,
     sessionId: null,

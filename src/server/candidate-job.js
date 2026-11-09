@@ -38,6 +38,7 @@ import {
 import { getGenome } from "./generation-store.js";
 import { JOB_STEP } from "./job-steps.js";
 import { locksInForce } from "./lock-store.js";
+import { ownedBy } from "./omlx-queue.js";
 import { promptReferences } from "./prompt-references.js";
 import { indexRecordings } from "./recording-index.js";
 import { renderExcerpt, renderExcerpts } from "./render-excerpt.js";
@@ -138,8 +139,8 @@ export function generationStepText({ index, kind }, offset, total, asking = JOB_
  * before the next first try. Between requests nothing is in flight at omlx, so a render never
  * shares the event loop with a request's first-token timer. Progress counts first tries: one is
  * done once it is stored and, when valid, rendered, measured and revised. Cancelling the job
- * cancels the omlx queue too, which is the job's alone while it runs, since the runner runs one
- * job at a time, and a cancel during a render stops the job before its next request. With
+ * cancels its own omlx requests too (decision 0092), and a cancel during a render stops the job
+ * before its next request. With
  * `explore`, the candidates are explore children of its base (decision 0038), revised like any
  * first try. With `breed`, they are crossover children of its two parents (0058), revised like
  * any first try, and then each valid one, its revision when that changed it, is nudged once at
@@ -166,7 +167,8 @@ export function candidateJob(app, { vibeId, sessionId, count, explore, breed }) 
     let embedder;
     /** @type {string | null} */
     let notEmbedded = null;
-    const cancelRequests = () => app.queue.cancel();
+    const queue = ownedBy(app.queue, job.signal);
+    const cancelRequests = () => queue.cancel();
     job.signal.addEventListener("abort", cancelRequests);
 
     /**
@@ -237,7 +239,7 @@ export function candidateJob(app, { vibeId, sessionId, count, explore, breed }) 
         if (misses.length === 0) return firstTry;
         job.signal.throwIfAborted();
         let carried = firstTry;
-        await reviseCandidate(app.store, app.queue, firstTry, {
+        await reviseCandidate(app.store, queue, firstTry, {
           config: app.config,
           sessionId,
           requestGroup: revisions,
@@ -319,7 +321,7 @@ export function candidateJob(app, { vibeId, sessionId, count, explore, breed }) 
                 return vector;
               },
             };
-      const generated = await generateCandidates(vibeId, count, app.store, app.queue, {
+      const generated = await generateCandidates(vibeId, count, app.store, queue, {
         config: app.config,
         seed,
         sessionId,

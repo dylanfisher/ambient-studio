@@ -29,3 +29,17 @@ export const JOB_KIND = Object.freeze({
   /** A field set's new values, read by the model from the owner's words, to fill a page (0084). */
   words: "words",
 });
+
+/** The job runner's lanes (decision 0092). Each runs one job at a time, in the order added. */
+export const JOB_LANE = Object.freeze({
+  /** Every job but a words job, as the runner ran all jobs before 0092 (0026). */
+  main: "main",
+  /** Words jobs only: one model request and its repair, beside whatever the main lane runs. */
+  words: "words",
+});
+
+/**
+ * @param {string} kind
+ * @returns {(typeof JOB_LANE)[keyof typeof JOB_LANE]} the lane a job of this kind runs in
+ */
+export const jobLane = (kind) => (kind === JOB_KIND.words ? JOB_LANE.words : JOB_LANE.main);

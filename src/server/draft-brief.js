@@ -26,6 +26,7 @@ import {
 } from "./generate-candidates.js";
 import { listRequestGroup } from "./generation-store.js";
 import { JOB_STEP } from "./job-steps.js";
+import { ownedBy } from "./omlx-queue.js";
 import { MAX_CHARS } from "./request-fields.js";
 import { RETRIEVAL_METHOD } from "./retrieve-examples.js";
 
@@ -61,7 +62,8 @@ export const DRAFT_LIMITS = Object.freeze({ name: MAX_CHARS.name, brief: MAX_CHA
  */
 export function draftBriefJob(app, { vibeId, messages }) {
   return async (job) => {
-    const { store, config, queue } = app;
+    const { store, config } = app;
+    const queue = ownedBy(app.queue, job.signal);
     const cancelRequests = () => queue.cancel();
     job.signal.addEventListener("abort", cancelRequests);
     try {
