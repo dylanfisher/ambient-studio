@@ -191,12 +191,12 @@ test("an invalid answer gets one repair quoting its errors, the length among the
     "- $.transitions[0].seconds (arrangement): a morph must be at least 8 s",
   );
 
-  // A valid shape off the length is named too.
-  const short = await propose(studio, [answer(a, b, 200), answer(a, b, 200)]);
+  // A valid shape too far off the length to scale is named too.
+  const short = await propose(studio, [answer(a, b, 100), answer(a, b, 100)]);
   expect(short.state).toBe("failed");
   const lengthRepair = sent(studio, 3);
   expect(lengthRepair[3].content).toContain(
-    "- $.sections (length): the track plays 492 s (every section's seconds less every transition's); the owner asked for 600 s, so it must play from 570 to 630 s",
+    "- $.sections (length): the track plays 392 s (every section's seconds less every transition's); the owner asked for 600 s, so it must play from 570 to 630 s",
   );
   expect(short.error).toMatch(/still invalid after one repair/);
   expect(short.error).toContain("(length)");
@@ -215,6 +215,22 @@ test("an invalid answer gets one repair quoting its errors, the length among the
 
   const share = await studio.ok("GET", `/api/vibes/${studio.vibe.id}/proposals`);
   expect(share).toEqual({ asked: 2, valid: 1, firstTry: 0, invalid: 1, failed: 0 });
+});
+
+test("an answer off the length but near it is scaled to it, with no repair, and says so", async () => {
+  const studio = await setup();
+  const [a, b] = studio.ids;
+  // 200 + 300 less an 8 s crossfade plays 492 s of the 600 asked for.
+  const finished = await propose(studio, [answer(a, b, 200)]);
+  expect(finished.state).toBe("done");
+  expect(studio.omlx.requests).toHaveLength(1);
+  const [revision] = listTrackRevisions(studio.server.store, finished.result.trackId);
+  expect(revision?.note).toBe(
+    "Proposed by the model; its sections scaled from 492 s to play 600 s",
+  );
+  expect(revision?.arrangement.sections.map((/** @type {any} */ s) => s.seconds)).toEqual([
+    243, 365,
+  ]);
 });
 
 test("an answer with nothing to repair gets no repair, and the share counts it invalid", async () => {

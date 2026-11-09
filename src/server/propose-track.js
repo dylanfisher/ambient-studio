@@ -194,6 +194,21 @@ export function arcRegion(store, vibeId, regionId) {
 }
 
 /**
+ * The first revision's note: whether the proposal took a repair, and what it played when its
+ * sections were scaled to the length.
+ * @param {boolean} repaired
+ * @param {number | null} fittedFrom
+ * @param {number} length
+ */
+const proposalNote = (repaired, fittedFrom, length) =>
+  [
+    repaired ? "Proposed by the model, after one repair" : "Proposed by the model",
+    ...(fittedFrom === null
+      ? []
+      : [`its sections scaled from ${fittedFrom} s to play ${length} s`]),
+  ].join("; ");
+
+/**
  * The arrangement with each elite's section naming the sketch kept of it, and the proposal's
  * generation.
  * @param {Arrangement} arrangement as `checkProposal` passed it
@@ -342,7 +357,7 @@ export function proposeJob(app, { vibeId, name, length, arc, regionId }) {
           vibeId,
           name,
           arrangement: checked.arrangement,
-          note: repaired ? "Proposed by the model, after one repair" : "Proposed by the model",
+          note: proposalNote(repaired, valid.fittedFrom, ask.length),
         });
         return { ...made, sketchIds };
       });

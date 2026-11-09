@@ -139,3 +139,21 @@ apart. It is read from the rows, so the owner's run is logged by making it.
 - A share over the owner's run reads only rows; a deleted track revision would lower it, but
   revisions are never deleted.
 - The material's order, the cap and the 5% wording are guesses until the owner's run.
+
+## Amendments
+
+- 2026-11-08: the owner's first three proposals failed after their repair. Two played 280 s of
+  the 300 s asked for: the sections added to 300 s and the crossfades' overlap was never taken
+  off, and the repair round made the same mistake. A proposal that validates but plays more than
+  `LENGTH_TOLERANCE` from the length now has its sections scaled by one factor to play the
+  length exactly (`fitArrangementLength` in `src/domain/fit-arrangement-length.js`). Each
+  section is rounded to whole seconds, with the remainder on the last. The transitions stay as
+  the model gave them, and each lane's times scale with the track. The result is checked by
+  `validateArrangement` again. The `length` finding, and the repair, remain for an answer whose
+  sections would scale by more than `LENGTH_FIT_MOST` (25%) either way, and for one the
+  validator refuses once scaled, such as a section pushed under 10 s. The track's first note
+  says so: "its sections scaled from 280 s to play 300 s". This doesn't hide a missing value.
+  The model chose the material, order, proportions and transitions; only the subtraction is done
+  here. Rejected: stating the sum the sections must reach in the prompt, since the repair
+  already named the span and the model still missed it; asking for track start times in place
+  of seconds, a new answer shape for a problem the server can solve exactly.

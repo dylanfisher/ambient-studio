@@ -1,7 +1,8 @@
 // Checks the model's proposed arrangement (decision 0067): the one JSON object in its response,
 // holding only sections, transitions and lanes, filled out with the owner's length and arc and
 // checked by `validateArrangement`, then held to the length asked for within
-// `LENGTH_TOLERANCE`. A section may name a listed elite by `eliteId` in place of `sketchId`; it
+// `LENGTH_TOLERANCE`; one further off has its sections scaled to the length when that is within
+// `LENGTH_FIT_MOST` and still valid. A section may name a listed elite by `eliteId` in place of `sketchId`; it
 // is checked against the elite's duration, and the caller keeps the elite as a sketch before the
 // arrangement is stored.
 /** @import { Arrangement } from "./arrangement-schema.js" */
@@ -13,6 +14,7 @@ import { show } from "../engine/validation-error.js";
 import { ANSWER_KEYS, ELITE_KEY, LENGTH_RULE, LENGTH_TOLERANCE } from "./arrange-prompt.js";
 import { arrangementLength } from "./arrangement-length.js";
 import { ARRANGEMENT_KEY, SECTION_KEY } from "./arrangement-schema.js";
+import { fitArrangementLength } from "./fit-arrangement-length.js";
 import { judgeAnswer } from "./judge-answer.js";
 import { ANSWER_RULE } from "./lint-result.js";
 import { REJECT_REASON } from "./reject-reason.js";
@@ -29,10 +31,11 @@ export const PROPOSAL_RULE = Object.freeze({
 });
 
 /**
- * `elites` maps each section that names an elite, by index, to the elite's candidate id. A
- * rejected answer that parsed keeps `answer`, for the repair to quote; one that never parsed has
- * null, and gets no repair (0024).
- * @typedef {{ ok: true, arrangement: Arrangement, elites: Map<number, number> }
+ * `elites` maps each section that names an elite, by index, to the elite's candidate id.
+ * `fittedFrom` is what the answer played when its sections were scaled to the length, else
+ * null. A rejected answer that parsed keeps `answer`, for the repair to quote; one that never
+ * parsed has null, and gets no repair (0024).
+ * @typedef {{ ok: true, arrangement: Arrangement, elites: Map<number, number>, fittedFrom: number | null }
  *   | { ok: false, reason: RejectReason, errors: QuotedError[], answer: Record<string, unknown> | null }} ProposalVerdict
  */
 
@@ -127,16 +130,23 @@ export function checkProposal(answer, ask) {
     [ARRANGEMENT_KEY.lanes]: answer[ARRANGEMENT_KEY.lanes],
     [ARRANGEMENT_KEY.proposal]: null,
   };
-  const checked = validateArrangement(given, {
+  /** @type {ArrangementContext} */
+  const context = {
     vibeId: ask.context.vibeId,
     sketch: (id) => standIns.get(id) ?? ask.context.sketch(id),
-  });
+  };
+  const checked = validateArrangement(given, context);
   if (!checked.ok) {
     errors.push(...checked.errors.map((error) => ({ ...error, rule: PROPOSAL_RULE.arrangement })));
   } else {
     const played = arrangementLength(checked.arrangement);
     const spread = ask.length * LENGTH_TOLERANCE;
     if (Math.abs(played - ask.length) > spread) {
+      const fitted = fitArrangementLength(checked.arrangement, ask.length);
+      const refit = fitted && validateArrangement(fitted, context);
+      if (refit?.ok) {
+        return { ok: true, arrangement: refit.arrangement, elites: named, fittedFrom: played };
+      }
       errors.push({
         path: `$.${ARRANGEMENT_KEY.sections}`,
         rule: PROPOSAL_RULE.length,
@@ -147,7 +157,7 @@ export function checkProposal(answer, ask) {
   if (errors.length > 0 || !checked.ok) {
     return { ok: false, reason: REJECT_REASON.schemaErrors, errors, answer };
   }
-  return { ok: true, arrangement: checked.arrangement, elites: named };
+  return { ok: true, arrangement: checked.arrangement, elites: named, fittedFrom: null };
 }
 
 /**

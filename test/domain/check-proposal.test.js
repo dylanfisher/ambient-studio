@@ -33,14 +33,35 @@ describe("the length rule", () => {
       ok: true,
       arrangement: { ...answer(278), length: 600, arc: ask.arc, proposal: null },
       elites: new Map(),
+      fittedFrom: null,
     });
     // 570 s, above, and 630 s are the edges: 5% either side of 600.
-    expect(checkProposal(answer(338), ask).ok).toBe(true);
-    expect(checkProposal(answer(339), ask).ok).toBe(false);
+    expect(checkProposal(answer(338), ask)).toMatchObject({ ok: true, fittedFrom: null });
+    expect(checkProposal(answer(339), ask)).toMatchObject({ ok: true, fittedFrom: 631 });
   });
 
-  test("more than 5% off is a finding naming what it plays and the span asked for", () => {
+  test("further off but within 25% has its sections scaled to play the length", () => {
     const checked = checkProposal(answer(277), ask);
+    expect(checked).toMatchObject({ ok: true, fittedFrom: 569 });
+    if (!checked.ok) throw new Error("failed");
+    expect(checked.arrangement.sections.map(({ seconds }) => seconds)).toEqual([292, 316]);
+  });
+
+  test("a scaled answer the validator refuses keeps the length finding", () => {
+    // 10 + 700 less 5 plays 705 s; scaled to 600 s, the 10 s section drops under the least.
+    const tiny = {
+      sections: [
+        { sketchId: 7, offset: 0, seconds: 10 },
+        { sketchId: 7, offset: 0, seconds: 700 },
+      ],
+      transitions: [{ kind: "crossfade", seconds: 5 }],
+      lanes: [],
+    };
+    expect(checkProposal(tiny, ask)).toMatchObject({ ok: false });
+  });
+
+  test("more than 25% off is a finding naming what it plays and the span asked for", () => {
+    const checked = checkProposal(answer(150), ask);
     expect(checked).toMatchObject({ ok: false, reason: REJECT_REASON.schemaErrors });
     if (checked.ok) throw new Error("passed");
     expect(checked.errors).toEqual([
@@ -48,10 +69,10 @@ describe("the length rule", () => {
         path: "$.sections",
         rule: PROPOSAL_RULE.length,
         message:
-          "the track plays 569 s (every section's seconds less every transition's); the owner asked for 600 s, so it must play from 570 to 630 s",
+          "the track plays 442 s (every section's seconds less every transition's); the owner asked for 600 s, so it must play from 570 to 630 s",
       },
     ]);
-    expect(checked.answer).toEqual(answer(277));
+    expect(checked.answer).toEqual(answer(150));
   });
 });
 
