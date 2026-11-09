@@ -9,6 +9,7 @@ import {
   moveSection,
   nextCurve,
   nextTransitionKind,
+  placeDevelopment,
   removeSection,
   SECTION_STEP,
   setSection,
@@ -192,5 +193,18 @@ test("a section's text and its transition's text are set as typed, and change no
     { kind: "crossfade", seconds: 5, text: "let the bell ring out over the start" },
   ]);
   expect(joined.sections).toBe(THREE.sections);
+  expect(THREE).toEqual(frozen);
+});
+
+test("placing a development puts its sketch and it in the section, from its start (0082)", () => {
+  const placed = placeDevelopment(THREE, 1, { id: 7, sketchId: 3 });
+  expect(placed.sections[1]).toEqual({
+    sketchId: 3,
+    offset: 0,
+    seconds: 60,
+    text: "the bell comes forward",
+    developmentId: 7,
+  });
+  expect(placed.sections[0]).toBe(THREE.sections[0]);
   expect(THREE).toEqual(frozen);
 });

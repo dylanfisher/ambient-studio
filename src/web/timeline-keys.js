@@ -30,6 +30,9 @@ export const TIMELINE_KEYS = Object.freeze({
   develop: "KeyZ",
   plainSketch: "Slash",
   bridge: "KeyB",
+  // Every letter is taken by the track page's tables (0082).
+  developAll: "Backslash",
+  placeDevelopment: "Backquote",
 });
 
 /** @typedef {keyof typeof TIMELINE_KEYS} TimelineAction */

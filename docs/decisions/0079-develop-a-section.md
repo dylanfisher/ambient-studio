@@ -13,7 +13,10 @@
   `answerWithRepair`; a proposed section has no development); amended by
   [0081](0081-bridges.md) (a development may be a bridge, marked in its row; the prompt and the
   check take a bridge's ends; `askDevelopment` is the request both jobs send; the develop route
-  refuses while a bridge is written)
+  refuses while a bridge is written) and [0082](0082-develop-the-whole-track.md)
+  (`developSection` is the one section's request, repair and store both develop jobs run; the
+  develop route refuses while every section is developed; a skipped swap points at the track's
+  list of developments, where it can be placed by hand)
 
 ## Context
 

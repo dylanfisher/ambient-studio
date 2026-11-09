@@ -2,7 +2,8 @@
 // section's genome at its end, or the next one's at its start, as the develop prompt reads it.
 // What a morph or a weave needs to match is first: tuning, scale, key, pulse and bpm, then the
 // macros and each voice sounding there with its values at that moment. Over its cap the last
-// voices lose their values first, then are named only.
+// voices lose their values first, then are named only; a bridge's state keeps each voice's id,
+// type and settings that can't move instead, which its check compares (0082).
 /** @import { Genome, Voice } from "../engine/genome-schema.js" */
 /** @import { Trajectory } from "../engine/trajectory.js" */
 /** @import { Descriptor } from "../engine/descriptor.js" */
@@ -14,6 +15,7 @@ import { voiceParams } from "../engine/voice-registry.js";
 import { fitReading } from "./fit-reading.js";
 import { fixedParams } from "./morph-genome.js";
 import { exactText, numberText } from "./param-text.js";
+import { estimateTokens } from "./prompt-tokens.js";
 import { PITCH } from "./sketch-reading.js";
 
 /**
@@ -24,7 +26,8 @@ export const MEETING_STATE_TOKENS = 180;
 
 /**
  * The most tokens one end of a bridge's state takes, with each voice's settings that can't move
- * (decision 0081): a bridge's prompt can leave out the lineage's reading for the room.
+ * (decision 0081): a bridge's prompt can leave out the lineage's reading for the room. The
+ * values its check compares alone may take more (0082).
  */
 export const BRIDGE_STATE_TOKENS = 270;
 
@@ -36,8 +39,12 @@ export const MEETING_EDGE = Object.freeze(/** @type {const} */ ({ end: "end", st
 const MACRO = MACROS.brightness;
 const { level: LEVEL } = VOICE_PARAMS;
 
-/** A voice's level of detail: its values, its level alone, or its id among those left out. */
-const DETAIL = Object.freeze({ full: 0, level: 1, named: 2 });
+/**
+ * A voice's level of detail: its values, its level alone, or its id among those left out. With
+ * `fixed`, a voice is never named only: `level` keeps its settings that can't move beside its
+ * level, and `exact` keeps only those, its id and its type, which a bridge's check compares.
+ */
+const DETAIL = Object.freeze({ full: 0, level: 1, named: 2, exact: 3 });
 
 /**
  * A value as it stands at `at`: a trajectory read there on its scale, a number as it is.
@@ -76,18 +83,20 @@ const settingText = (value, descriptor) =>
 /**
  * One voice at `at`: its id and type, its level, and in full its pitch and every parameter that
  * moves, each as it stands there, and with `fixed` every setting that can't move and isn't its
- * default.
+ * default, at every level of detail but named.
  * @param {Voice} voice
  * @param {number} at
- * @param {boolean} full
+ * @param {number} detail a `DETAIL`, not `named`
  * @param {boolean} fixed
  */
-function voiceLine(voice, at, full, fixed) {
+function voiceLine(voice, at, detail, fixed) {
   const table = voiceParams(voice.type);
   /** @type {Record<string, unknown>} */
   const held = voice;
   const exact = fixed ? fixedParams(voice.type) : [];
-  const parts = [`level ${valueThere(voice.level, at, LEVEL)}`];
+  const full = detail === DETAIL.full;
+  /** @type {string[]} */
+  const parts = detail === DETAIL.exact ? [] : [`level ${valueThere(voice.level, at, LEVEL)}`];
   if (full) {
     const pitch = valueThere(held[PITCH], at, table[PITCH]);
     // A fixed pitch a bridge must copy is written with the other settings, at every digit.
@@ -99,17 +108,16 @@ function voiceLine(voice, at, full, fixed) {
       parts.push(`${name} ${valueThere(held[name], at, descriptor)}`);
     }
   }
-  if (full) {
-    for (const name of exact) {
-      const descriptor = /** @type {Descriptor} */ (table[name]);
-      const value = held[name];
-      // A recording has no default, so its hash is always written.
-      const { default: fallback } = /** @type {{ default?: unknown }} */ (descriptor);
-      if (value === undefined || value === fallback) continue;
-      parts.push(`${name} ${settingText(value, descriptor)}`);
-    }
+  for (const name of exact) {
+    const descriptor = /** @type {Descriptor} */ (table[name]);
+    const value = held[name];
+    // A recording has no default, so its hash is always written.
+    const { default: fallback } = /** @type {{ default?: unknown }} */ (descriptor);
+    if (value === undefined || value === fallback) continue;
+    parts.push(`${name} ${settingText(value, descriptor)}`);
   }
-  return `${voice.id} (${voice.type}): ${parts.join(", ")}`;
+  const name = `${voice.id} (${voice.type})`;
+  return parts.length === 0 ? name : `${name}: ${parts.join(", ")}`;
 }
 
 /**
@@ -151,19 +159,25 @@ export function meetingState(
   /** @param {readonly number[]} levels */
   const write = (levels) => {
     const named = voices.filter((_, i) => levels[i] === DETAIL.named).map(({ id }) => id);
-    const lines = voices.flatMap((voice, i) =>
-      levels[i] === DETAIL.named ? [] : [voiceLine(voice, at, levels[i] === DETAIL.full, fixed)],
-    );
+    const lines = voices.flatMap((voice, i) => {
+      const level = /** @type {number} */ (levels[i]);
+      return level === DETAIL.named ? [] : [voiceLine(voice, at, level, fixed)];
+    });
     return [
       ...head,
       `Voices sounding: ${lines.join("; ")}${named.length === 0 ? "" : `; and ${named.join(", ")}`}.`,
     ];
   };
   const lastFirst = voices.map((_, i) => voices.length - 1 - i);
+  // A bridge's check compares each voice's id, type and settings that can't move exactly, so
+  // with `fixed` a voice's cuts stop at those values: past the cap the state is them alone, and
+  // the prompt's own budget leaves out a reading for the room (decision 0082).
+  const last = fixed ? DETAIL.exact : DETAIL.named;
   /** @type {[number, number][]} */
   const cuts = [
     ...lastFirst.map((i) => /** @type {[number, number]} */ ([i, DETAIL.level])),
-    ...lastFirst.map((i) => /** @type {[number, number]} */ ([i, DETAIL.named])),
+    ...lastFirst.map((i) => /** @type {[number, number]} */ ([i, last])),
   ];
-  return fitReading(voices.length, write, cuts, budgetTokens);
+  const floor = fixed ? estimateTokens(write(voices.map(() => DETAIL.exact)).join("\n")) : 0;
+  return fitReading(voices.length, write, cuts, Math.max(budgetTokens, floor));
 }

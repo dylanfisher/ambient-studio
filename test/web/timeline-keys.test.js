@@ -60,6 +60,8 @@ test("every action has its own key, shown on its button", () => {
     "develop",
     "plainSketch",
     "bridge",
+    "developAll",
+    "placeDevelopment",
   ]);
   expect(keys.map(keyLabel)).toEqual([
     "←",
@@ -86,6 +88,8 @@ test("every action has its own key, shown on its button", () => {
     "Z",
     "/",
     "B",
+    "\\",
+    "`",
   ]);
 });
 

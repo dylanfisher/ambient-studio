@@ -3,15 +3,24 @@
 // another version was opened during the run (0066's rules).
 import { describe, expect, test } from "vitest";
 import { emptyArrangement } from "../../src/domain/arrangement-schema.js";
+import { DEVELOP_PLAN } from "../../src/domain/develop-plan.js";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
 import {
   bridgeCostText,
   bridgeRefusal,
+  bridgeSkippedText,
   bridgeSwap,
+  developAllCostText,
+  developAllNote,
+  developAllRefusal,
+  developAllSwap,
   developCostText,
   developedText,
+  developmentLine,
   developRefusal,
   developSwap,
+  runDevelopments,
+  runWritten,
 } from "../../src/web/develop-text.js";
 import { SWAP } from "../../src/web/material-actions.js";
 
@@ -243,6 +252,179 @@ describe("a bridge (decision 0081)", () => {
   test("a bridge's section says it is a bridge and the words it was written from", () => {
     expect(developedText({ id: 4, text: "rise", createdAt: 0, bridge: true })).toMatch(
       /^It plays bridge 4, written .* from your words for the join “rise”\.$/,
+    );
+  });
+});
+
+describe("developing every section (decision 0082)", () => {
+  const plan = [
+    DEVELOP_PLAN.develop,
+    DEVELOP_PLAN.kept,
+    DEVELOP_PLAN.short,
+    DEVELOP_PLAN.develop,
+    DEVELOP_PLAN.bridge,
+    DEVELOP_PLAN.develop,
+  ];
+
+  test("the confirm counts the requests, names what it keeps and skips, and says the time", () => {
+    const text = developAllCostText(plan, { seconds: 50, timed: 20 });
+    expect(text).toMatch(/^Ask the model to develop every section of this version, in order\?/);
+    expect(text).toContain("the section before it as it was just developed");
+    expect(text).toContain(
+      "It develops sections 1, 4, and 6: 3 to 6 requests to the model, one a section and another for each answer that needs fixing.",
+    );
+    expect(text).toContain("It keeps bridge 5 and section 2, which is developed already.");
+    expect(text).toContain("It skips section 3, which is under 1:00.");
+    expect(text).toContain("a cancel keeps the sections already developed");
+    // 3 to 6 requests at 50 s each.
+    expect(text).toContain("about 3 to 5 minutes");
+    const one = developAllCostText([DEVELOP_PLAN.develop], { seconds: null, timed: 0 });
+    expect(one).toContain("It develops section 1: 1 or 2 requests to the model");
+    expect(one).not.toMatch(/It keeps|It skips/);
+    expect(one).toMatch(/can't be estimated/);
+  });
+
+  test("the button is off on an unsaved timeline or with nothing to develop, and says why", () => {
+    expect(developAllRefusal(plan, false)).toBeNull();
+    expect(developAllRefusal(plan, true)).toMatch(/only a saved version is developed/);
+    expect(developAllRefusal([DEVELOP_PLAN.kept, DEVELOP_PLAN.short], false)).toBe(
+      "Turned off: every section is developed already, a bridge, or under 1:00. Tick Develop the developed ones again to write them again.",
+    );
+  });
+
+  const sections = [
+    { sketchId: 1, offset: 10, seconds: 90, text: "rise", developmentId: null },
+    { sketchId: 2, offset: 0, seconds: 120, text: "", developmentId: 4 },
+    { sketchId: 1, offset: 0, seconds: 30, text: "", developmentId: null },
+    { sketchId: 2, offset: 30, seconds: 60, text: "fall", developmentId: null },
+  ];
+  const fourPlan = [
+    DEVELOP_PLAN.develop,
+    DEVELOP_PLAN.kept,
+    DEVELOP_PLAN.short,
+    DEVELOP_PLAN.develop,
+  ];
+  const listedDevelopment = (/** @type {number} */ id, /** @type {number} */ sketchId) => ({
+    id,
+    sketchId,
+    text: "",
+    offset: 0,
+    seconds: 60,
+    bridge: false,
+    createdAt: 0,
+  });
+
+  test("the developments the run wrote are the new ones, in the order of its sections", () => {
+    const known = new Set([4]);
+    const read = [
+      listedDevelopment(4, 2),
+      listedDevelopment(8, 1),
+      listedDevelopment(9, 2),
+      listedDevelopment(12, 1),
+    ];
+    // Development 12 came after the run's two, which is all it had to write.
+    expect(runDevelopments(fourPlan, sections, known, read)).toEqual([
+      { at: 0, from: sections[0], developmentId: 8 },
+      { at: 3, from: sections[3], developmentId: 9 },
+    ]);
+    // Cancelled after the first: one written.
+    expect(runDevelopments(fourPlan, sections, known, read.slice(0, 2))).toEqual([
+      { at: 0, from: sections[0], developmentId: 8 },
+    ]);
+    // A new development of another sketch than the section's isn't the run's.
+    expect(runDevelopments(fourPlan, sections, known, [listedDevelopment(8, 2)])).toEqual([]);
+  });
+
+  test("a finished run's own ids win over a row another job wrote meanwhile", () => {
+    // Development 8, of section 1's sketch, came from a develop job in another tab after the
+    // page read `known`; the run wrote 9 and 10.
+    const read = [
+      listedDevelopment(4, 2),
+      listedDevelopment(8, 1),
+      listedDevelopment(9, 1),
+      listedDevelopment(10, 2),
+    ];
+    const result = {
+      developed: [
+        { index: 0, developmentId: 9 },
+        { index: 3, developmentId: 10 },
+      ],
+    };
+    expect(runWritten(fourPlan, sections, result, new Set([4]), read)).toEqual([
+      { at: 0, from: sections[0], developmentId: 9 },
+      { at: 3, from: sections[3], developmentId: 10 },
+    ]);
+    // Cancelled or failed, with no result: the rows are all there is.
+    expect(runWritten(fourPlan, sections, null, new Set([4, 8]), read)).toEqual([
+      { at: 0, from: sections[0], developmentId: 9 },
+      { at: 3, from: sections[3], developmentId: 10 },
+    ]);
+  });
+
+  test("every development the run wrote is placed in one version, by steerSwap's rules", () => {
+    const arrangement = {
+      ...emptyArrangement(),
+      sections,
+      transitions: Array.from({ length: 3 }, () => ({ kind: "crossfade", seconds: 8, text: "" })),
+    };
+    const written = [
+      { at: 0, from: sections[0], developmentId: 8 },
+      { at: 3, from: sections[3], developmentId: 9 },
+    ];
+    const state = { arrangement, openedThen: 1, openedNow: 1, unsaved: false };
+    const swap = developAllSwap(state, /** @type {any} */ (written));
+    expect(swap).toMatchObject({
+      kind: SWAP.save,
+      placed: [
+        { index: 0, developmentId: 8 },
+        { index: 3, developmentId: 9 },
+      ],
+      skipped: [],
+    });
+    expect(
+      swap.arrangement.sections.map(({ developmentId, offset }) => [developmentId, offset]),
+    ).toEqual([
+      [8, 0],
+      [4, 0],
+      [null, 0],
+      [9, 0],
+    ]);
+    expect(developAllNote(swap.placed)).toBe("Sections 1 and 4 developed");
+    // One section changed meanwhile, unsaved: the other is still put on the timeline.
+    const changed = {
+      ...arrangement,
+      sections: arrangement.sections.map((section, i) =>
+        i === 3 ? { ...section, seconds: 50 } : section,
+      ),
+    };
+    const partly = developAllSwap(
+      { ...state, arrangement: changed, unsaved: true },
+      /** @type {any} */ (written),
+    );
+    expect(partly).toMatchObject({
+      kind: SWAP.edit,
+      placed: [{ index: 0, developmentId: 8 }],
+      skipped: [{ developmentId: 9, reason: "its section has changed or been removed since" }],
+    });
+    // Another version opened by hand: none is placed.
+    const none = developAllSwap({ ...state, openedNow: 2 }, /** @type {any} */ (written));
+    expect(none).toMatchObject({ kind: SWAP.skip, placed: [] });
+    expect(none.skipped).toHaveLength(2);
+  });
+
+  test("a skipped bridge's status names the join it was for", () => {
+    expect(bridgeSkippedText(1, "7 and 8", "another version was opened while it ran")).toBe(
+      "Kept bridge 7 and 8 for the join between sections 2 and 3 but didn't put it in the track: another version was opened while it ran. It is listed under Developments, to place by hand.",
+    );
+  });
+
+  test("each development is listed with its sketch, words, length, kind and where it plays", () => {
+    const development = { ...listedDevelopment(8, 1), text: "rise", seconds: 240 };
+    expect(developmentLine(development, [0, 2])).toBe(
+      "Development 8 of sketch 1, 4:00, from your words “rise”: plays in sections 1 and 3.",
+    );
+    expect(developmentLine({ ...development, bridge: true, text: "" }, [])).toBe(
+      "Bridge 8 of sketch 1, 4:00, with no words: not in this version.",
     );
   });
 });

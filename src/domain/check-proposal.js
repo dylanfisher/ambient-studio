@@ -1,6 +1,6 @@
 // Checks the model's proposed arrangement (decision 0067): the one JSON object in its response,
-// holding only sections, transitions and lanes, filled out with the owner's length and arc and
-// empty text on each section and transition (0077) and no development on a section (0079), and
+// holding only sections, transitions and lanes, each section and transition with its line of
+// text (0082), filled out with the owner's length and arc and no development on a section (0079), and
 // checked by `validateArrangement`, then held to the length asked for within
 // `LENGTH_TOLERANCE`; one further off has its sections
 // scaled to the length when that is within `LENGTH_FIT_MOST` and still valid. A section may name
@@ -14,7 +14,7 @@ import { isObject } from "../engine/is-object.js";
 import { show } from "../engine/validation-error.js";
 import { ANSWER_KEYS, ELITE_KEY, LENGTH_RULE, LENGTH_TOLERANCE } from "./arrange-prompt.js";
 import { arrangementLength } from "./arrangement-length.js";
-import { ARRANGEMENT_KEY, SECTION_KEY, TEXT_KEY } from "./arrangement-schema.js";
+import { ARRANGEMENT_KEY, SECTION_KEY } from "./arrangement-schema.js";
 import { fitArrangementLength } from "./fit-arrangement-length.js";
 import { judgeAnswer } from "./judge-answer.js";
 import { ANSWER_RULE } from "./lint-result.js";
@@ -101,11 +101,12 @@ function standInSections(sections, { elites, context }, errors) {
 }
 
 /**
- * The parts with each key of `blank` the object lacks set to its value: "" for text, and no
- * development on a section (0079). The prompt asks the model for neither, and a value it writes
- * anyway is checked as the owner's is. A list that isn't one, or a part that isn't an object, is
- * left for the validator to report.
- * @param {unknown} parts the answer's sections or transitions
+ * The parts with each key of `blank` the object lacks set to its value: no development on a
+ * section (0079). The prompt doesn't ask for one, and a value the model writes anyway is checked
+ * as the owner's is. Text is asked for on every part (0082), so a part without it is the
+ * validator's finding. A list that isn't one, or a part that isn't an object, is left for the
+ * validator to report.
+ * @param {unknown} parts the answer's sections
  * @param {Record<string, unknown>} blank
  */
 const filledOut = (parts, blank) =>
@@ -120,9 +121,8 @@ const filledOut = (parts, blank) =>
       )
     : parts;
 
-/** What a proposed section and transition hold that the answer doesn't write. */
-const SECTION_BLANK = Object.freeze({ [TEXT_KEY]: "", [SECTION_KEY.developmentId]: null });
-const TRANSITION_BLANK = Object.freeze({ [TEXT_KEY]: "" });
+/** What a proposed section holds that the answer doesn't write. */
+const SECTION_BLANK = Object.freeze({ [SECTION_KEY.developmentId]: null });
 
 /**
  * Checks a parsed answer, every finding with its path and rule.
@@ -151,7 +151,7 @@ export function checkProposal(answer, ask) {
     [ARRANGEMENT_KEY.length]: ask.length,
     [ARRANGEMENT_KEY.arc]: ask.arc,
     [ARRANGEMENT_KEY.sections]: filledOut(sections, SECTION_BLANK),
-    [ARRANGEMENT_KEY.transitions]: filledOut(answer[ARRANGEMENT_KEY.transitions], TRANSITION_BLANK),
+    [ARRANGEMENT_KEY.transitions]: answer[ARRANGEMENT_KEY.transitions],
     [ARRANGEMENT_KEY.lanes]: answer[ARRANGEMENT_KEY.lanes],
     [ARRANGEMENT_KEY.proposal]: null,
   };

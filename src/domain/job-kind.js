@@ -26,6 +26,8 @@ export const JOB_KIND = Object.freeze({
   developSection: "develop-section",
   /** The model's bridge for one join of a track, written between its two sections (0081). */
   bridge: "bridge-join",
+  /** The model's development of every section of a track, one after another (0082). */
+  developTrack: "develop-track",
   /** A field set's new values, read by the model from the owner's words, to fill a page (0084). */
   words: "words",
 });

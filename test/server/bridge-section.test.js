@@ -12,11 +12,12 @@ import { sectionMorph } from "../../src/domain/section-genome.js";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
 import { requireGenome } from "../../src/engine/validate-genome.js";
 import { getDevelopment, listDevelopments } from "../../src/server/development-store.js";
-import { addCandidate, getGenome, putGenome } from "../../src/server/generation-store.js";
-import { addSketch } from "../../src/server/rating-store.js";
+import { getGenome } from "../../src/server/generation-store.js";
 import { TABLE } from "../../src/server/store.js";
 import { sectionSources } from "../../src/server/track-manifest.js";
+import { SKETCH_SEED, seedSketch } from "../support/seed-sketch.js";
 import { removeStudio, startStudio, VIBE } from "../support/studio.js";
+import { longSettings } from "../support/worst-genome.js";
 
 /** @type {Studio[]} */
 const studios = [];
@@ -24,7 +25,7 @@ afterEach(async () => {
   for (const studio of studios.splice(0)) await removeStudio(studio);
 });
 
-const SEED = 11;
+const SEED = SKETCH_SEED;
 const [drone] = droneGenome.voices;
 const base = { ...droneGenome, fadeIn: 0, fadeOut: 0 };
 /** The outgoing sketch: the drone. */
@@ -41,40 +42,15 @@ const INTO = {
 const WORDS = "the drone holds while the pad rises under it";
 
 /**
- * A kept sketch of `genome`, written straight to the store, at seed 11.
- * @param {Studio} studio
- * @param {any} vibe as the vibe route returns it
- * @param {object} genome
- */
-function seedSketch({ server }, vibe, genome) {
-  const candidate = addCandidate(server.store, {
-    vibeRevisionId: vibe.revision.id,
-    generationId: null,
-    sessionId: null,
-    genomeId: putGenome(server.store, vibe.id, genome).id,
-    seed: SEED,
-    source: "llm",
-    parentIds: [],
-    locks: [],
-    operator: null,
-    operatorParams: null,
-    intent: null,
-    rejectReason: null,
-    lint: null,
-    rejectedGenome: null,
-  });
-  return addSketch(server.store, { candidateId: candidate.id, notes: "", tags: [] });
-}
-
-/**
- * Two 100 s sections, the outgoing sketch then `into`, joined by an 8 s crossfade with words.
+ * Two 100 s sections, `outgoing` then `into`, joined by an 8 s crossfade with words.
  * @param {object} [into]
+ * @param {object} [outgoing]
  */
-async function setup(into = INTO) {
+async function setup(into = INTO, outgoing = OUT) {
   const studio = await startStudio();
   studios.push(studio);
   const vibe = await studio.ok("POST", "/api/vibes", VIBE);
-  const out = seedSketch(studio, vibe, OUT);
+  const out = seedSketch(studio, vibe, outgoing);
   const incoming = seedSketch(studio, vibe, into);
   const { track } = await studio.ok("POST", `/api/vibes/${vibe.id}/tracks`, { name: "dusk" });
   const arrangement = {
@@ -306,6 +282,58 @@ test("the route refuses a transition that isn't one, a length out of range, and 
   });
   expect(second.status).toBe(409);
   expect(second.json().error).toContain("already being written");
+  await studio.ok("POST", `/api/jobs/${job.id}/cancel`, {});
+  await studio.drive(server.jobs.settled(job.id));
+  studio.omlx.release();
+});
+
+/** Sixteen drones, every setting that can't move at 17 digits, as a long chain leaves them. */
+const DENSE = longSettings(
+  requireGenome(
+    {
+      ...base,
+      duration: 120,
+      voices: Array.from({ length: 16 }, (_, i) => ({ ...drone, id: `drone-${i + 1}` })),
+    },
+    "sixteen drones",
+  ),
+  16,
+);
+
+test("neighbors whose settings are too long to quote exactly are refused before any request (0082)", async () => {
+  const studio = await setup(DENSE, DENSE);
+  const { server, track, revision } = studio;
+  const refused = await server.api("POST", `/api/tracks/${track.id}/bridge`, {
+    revisionId: revision.id,
+    transition: 0,
+    seconds: 120,
+  });
+  expect(refused.status).toBe(409);
+  expect(refused.json().error).toMatch(
+    /^Can't bridge the join between sections 1 and 2: the two sections' settings that can't move are too long to quote exactly in one request/,
+  );
+  expect(studio.omlx.requests).toHaveLength(0);
+  expect(server.jobs.list()).toEqual([]);
+  expect(listDevelopments(server.store, track.id)).toEqual([]);
+});
+
+test("a bridge is refused while every section is being developed", async () => {
+  const studio = await setup();
+  const { server, track, revision } = studio;
+  studio.omlx.script({ tokens: ['{"duration": '], holdAfter: 0 });
+  const job = await studio.ok("POST", `/api/tracks/${track.id}/develop-all`, {
+    revisionId: revision.id,
+    again: false,
+  });
+  await studio.omlx.waitForRequests(1);
+  const refused = await server.api("POST", `/api/tracks/${track.id}/bridge`, {
+    revisionId: revision.id,
+    transition: 0,
+    seconds: 120,
+  });
+  expect(refused.status).toBe(409);
+  expect(refused.json().error).toContain("Every section is being developed");
+  expect(studio.omlx.requests).toHaveLength(1);
   await studio.ok("POST", `/api/jobs/${job.id}/cancel`, {});
   await studio.drive(server.jobs.settled(job.id));
   studio.omlx.release();

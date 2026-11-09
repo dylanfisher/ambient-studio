@@ -34,6 +34,8 @@ const SHOWN = new Map([
   ["Semicolon", ";"],
   ["Quote", "'"],
   ["Slash", "/"],
+  ["Backslash", "\\"],
+  ["Backquote", "`"],
 ]);
 
 /**

@@ -16,15 +16,16 @@ const elites = new Map([[40, 240]]);
 const ask = { context, elites, length: 600, arc: "emerge, plateau, dissolve" };
 
 /**
- * Two sections of sketch 7 and an 8 s crossfade, playing `first` + 300 − 8 seconds.
+ * Two sections of sketch 7 and an 8 s crossfade, playing `first` + 300 − 8 seconds, each part
+ * with its line of text (0082).
  * @param {number} first the first section's seconds
  */
 const answer = (first) => ({
   sections: [
-    { sketchId: 7, offset: 0, seconds: first },
-    { sketchId: 7, offset: 0, seconds: 300 },
+    { sketchId: 7, offset: 0, seconds: first, text: "the drone alone, very low" },
+    { sketchId: 7, offset: 0, seconds: 300, text: "it brightens, then thins out" },
   ],
-  transitions: [{ kind: "crossfade", seconds: 8 }],
+  transitions: [{ kind: "crossfade", seconds: 8, text: "a slow fade" }],
   lanes: [],
 });
 
@@ -36,8 +37,8 @@ describe("the length rule", () => {
       ok: true,
       arrangement: {
         ...given,
-        sections: given.sections.map((section) => ({ ...section, text: "", developmentId: null })),
-        transitions: [{ kind: "crossfade", seconds: 8, text: "" }],
+        sections: given.sections.map((section) => ({ ...section, developmentId: null })),
+        transitions: given.transitions,
         length: 600,
         arc: ask.arc,
         proposal: null,
@@ -61,10 +62,10 @@ describe("the length rule", () => {
     // 10 + 700 less 5 plays 705 s; scaled to 600 s, the 10 s section drops under the least.
     const tiny = {
       sections: [
-        { sketchId: 7, offset: 0, seconds: 10 },
-        { sketchId: 7, offset: 0, seconds: 700 },
+        { sketchId: 7, offset: 0, seconds: 10, text: "" },
+        { sketchId: 7, offset: 0, seconds: 700, text: "" },
       ],
-      transitions: [{ kind: "crossfade", seconds: 5 }],
+      transitions: [{ kind: "crossfade", seconds: 5, text: "" }],
       lanes: [],
     };
     expect(checkProposal(tiny, ask)).toMatchObject({ ok: false });
@@ -86,30 +87,40 @@ describe("the length rule", () => {
   });
 });
 
-test("each section and transition gets empty text, and text the model gave is checked", () => {
+test("every section and transition must hold its text, checked as the owner's is (0082)", () => {
   const given = answer(278);
   const checked = checkProposal(given, ask);
   if (!checked.ok) throw new Error(JSON.stringify(checked.errors));
-  expect(checked.arrangement.sections.map(({ text }) => text)).toEqual(["", ""]);
-  expect(checked.arrangement.transitions.map(({ text }) => text)).toEqual([""]);
+  expect(checked.arrangement.sections.map(({ text }) => text)).toEqual([
+    "the drone alone, very low",
+    "it brightens, then thins out",
+  ]);
+  expect(checked.arrangement.transitions.map(({ text }) => text)).toEqual(["a slow fade"]);
   // The answer itself is left as the model wrote it, for a repair to quote.
   expect(given).toEqual(answer(278));
+  // A part with no text is a finding for the repair, not filled with "".
+  const { text: _, ...bare } = /** @type {Record<string, unknown>} */ (given.transitions[0]);
+  const missing = checkProposal({ ...given, transitions: [bare] }, ask);
+  if (missing.ok) throw new Error("passed");
+  expect(missing.errors).toEqual([
+    { path: "$.transitions[0].text", rule: PROPOSAL_RULE.arrangement, message: "missing" },
+  ]);
   const written = answer(278);
-  Object.assign(written.transitions[0] ?? {}, { text: "slowly" });
-  const kept = checkProposal(written, ask);
-  if (!kept.ok) throw new Error(JSON.stringify(kept.errors));
-  expect(kept.arrangement.transitions[0]?.text).toBe("slowly");
-  Object.assign(written.sections[0] ?? {}, { text: 4 });
+  Object.assign(written.sections[0] ?? {}, { text: "t".repeat(301) });
   const refused = checkProposal(written, ask);
   if (refused.ok) throw new Error("passed");
   expect(refused.errors).toEqual([
-    expect.objectContaining({ path: "$.sections[0].text", rule: PROPOSAL_RULE.arrangement }),
+    {
+      path: "$.sections[0].text",
+      rule: PROPOSAL_RULE.arrangement,
+      message: "must be at most 300 characters, got 301",
+    },
   ]);
 });
 
 test("the validator's errors and the answer's own are findings with their rules", () => {
   const given = { ...answer(278), length: 600 };
-  given.sections[1] = { sketchId: 9, offset: 0, seconds: 300 };
+  given.sections[1] = { sketchId: 9, offset: 0, seconds: 300, text: "" };
   const checked = checkProposal(given, ask);
   if (checked.ok) throw new Error("passed");
   expect(checked.errors).toEqual([
@@ -125,12 +136,12 @@ test("the validator's errors and the answer's own are findings with their rules"
 describe("elites", () => {
   test("a listed elite stands in for a sketch, checked against its own duration", () => {
     const given = answer(278);
-    given.sections[1] = /** @type {any} */ ({ eliteId: 40, offset: 0, seconds: 300 });
+    given.sections[1] = /** @type {any} */ ({ eliteId: 40, offset: 0, seconds: 300, text: "" });
     const checked = checkProposal(given, ask);
     if (!checked.ok) throw new Error(JSON.stringify(checked.errors));
     expect(checked.elites).toEqual(new Map([[1, 40]]));
     const late = answer(278);
-    late.sections[1] = /** @type {any} */ ({ eliteId: 40, offset: 250, seconds: 300 });
+    late.sections[1] = /** @type {any} */ ({ eliteId: 40, offset: 250, seconds: 300, text: "" });
     const refused = checkProposal(late, ask);
     if (refused.ok) throw new Error("passed");
     expect(refused.errors).toEqual([
@@ -143,8 +154,14 @@ describe("elites", () => {
 
   test("an unlisted elite, or a section naming both, is refused", () => {
     const given = answer(278);
-    given.sections[0] = /** @type {any} */ ({ eliteId: 41, offset: 0, seconds: 278 });
-    given.sections[1] = /** @type {any} */ ({ eliteId: 40, sketchId: 7, offset: 0, seconds: 300 });
+    given.sections[0] = /** @type {any} */ ({ eliteId: 41, offset: 0, seconds: 278, text: "" });
+    given.sections[1] = /** @type {any} */ ({
+      eliteId: 40,
+      sketchId: 7,
+      offset: 0,
+      seconds: 300,
+      text: "",
+    });
     const checked = checkProposal(given, ask);
     if (checked.ok) throw new Error("passed");
     expect(checked.errors).toEqual([

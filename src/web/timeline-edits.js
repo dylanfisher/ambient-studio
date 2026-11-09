@@ -144,6 +144,23 @@ export const setDevelopment = (arrangement, index, developmentId, offset) =>
   changeSection(arrangement, index, (section) => ({ ...section, offset, developmentId }));
 
 /**
+ * Has a section play a development the owner chose from the track's list (decision 0082), with
+ * the development's sketch, from its start. Its seconds and text stay, as a finished
+ * development's swap leaves them.
+ * @param {Arrangement} arrangement
+ * @param {number} index
+ * @param {{ id: number, sketchId: number }} development
+ * @returns {Arrangement}
+ */
+export const placeDevelopment = (arrangement, index, { id, sketchId }) =>
+  changeSection(arrangement, index, (section) => ({
+    ...section,
+    sketchId,
+    offset: 0,
+    developmentId: id,
+  }));
+
+/**
  * Moves a section's offset or seconds by `steps` of `SECTION_STEP`, never under the field's
  * least.
  * @param {Arrangement} arrangement

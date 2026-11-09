@@ -193,6 +193,24 @@
         <ul id="readingLineage" class="list small"></ul>
       </section>
 
+      <section class="card stack" aria-labelledby="developments-heading">
+        <h2 id="developments-heading">Developments</h2>
+        <p class="small muted">Every section the model has developed for this track and every bridge it has written, oldest first, whether a section plays it now or not. Develop every section asks for each section in turn, the one before it read as just developed, and saves them as one new version.</p>
+        <div class="row">
+          <label class="field small"
+            ><input id="developAgainInput" type="checkbox" title="Develops the sections that play a development already, writing a new one for each from its sketch. Bridges are always kept. Left off, those sections are kept as they are." /> Develop the developed ones again</label
+          >
+          <button id="developAll" class="button secondary small" type="button" title="Asks the model to develop every section of the saved version in order, each reading the section before it as just developed, after a confirm that counts the requests and says how long they take. Sections under a minute are skipped. Each development is stored as it is written, so a cancel keeps those finished, and they are saved as one new version of this track.">Develop every section</button>
+        </div>
+        <div id="developAllJobBox" class="stack"></div>
+        <ul id="developmentList" class="list small"></ul>
+        <p id="noDevelopments" class="muted small" hidden>No section of this track has been developed yet.</p>
+        <div class="row">
+          <select id="developmentSelect" title="Chooses which of this track's developments to place in the chosen section."></select>
+          <button id="placeDevelopment" class="button outline small" type="button" title="Has the chosen section play the chosen development, from its start, with the development's sketch; its seconds and words stay. Save to keep it.">Place in the chosen section</button>
+        </div>
+      </section>
+
       <section class="card stack" aria-labelledby="render-heading">
         <h2 id="render-heading">Render and export</h2>
         <p id="renderLine" class="small"></p>

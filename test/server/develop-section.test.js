@@ -16,17 +16,12 @@ import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json
 import { requireGenome } from "../../src/engine/validate-genome.js";
 import { getDevelopment, listDevelopments } from "../../src/server/development-store.js";
 import { requestGroupPattern } from "../../src/server/generate-candidates.js";
-import {
-  addCandidate,
-  getGeneration,
-  getGenome,
-  putGenome,
-} from "../../src/server/generation-store.js";
+import { getGeneration, getGenome } from "../../src/server/generation-store.js";
 import { genomeHash } from "../../src/server/genome-hash.js";
-import { addSketch } from "../../src/server/rating-store.js";
 import { rerenderTrack } from "../../src/server/render-track.js";
 import { TABLE } from "../../src/server/store.js";
 import { listTrackRevisions } from "../../src/server/track-store.js";
+import { SKETCH_SEED, seedSketch as seedDrone } from "../support/seed-sketch.js";
 import { removeStudio, startStudio, VIBE } from "../support/studio.js";
 
 /** @type {Studio[]} */
@@ -35,33 +30,15 @@ afterEach(async () => {
   for (const studio of studios.splice(0)) await removeStudio(studio);
 });
 
-const SEED = 11;
+const SEED = SKETCH_SEED;
 
 /**
- * A kept sketch of `genome`, written straight to the store, at seed 11.
+ * A kept sketch of `genome` with an intent, as the readings quote it.
  * @param {Studio} studio
  * @param {any} vibe as the vibe route returns it
  * @param {object} genome
  */
-function seedSketch({ server }, vibe, genome) {
-  const candidate = addCandidate(server.store, {
-    vibeRevisionId: vibe.revision.id,
-    generationId: null,
-    sessionId: null,
-    genomeId: putGenome(server.store, vibe.id, genome).id,
-    seed: SEED,
-    source: "llm",
-    parentIds: [],
-    locks: [],
-    operator: null,
-    operatorParams: null,
-    intent: "a cold drone",
-    rejectReason: null,
-    lint: null,
-    rejectedGenome: null,
-  });
-  return addSketch(server.store, { candidateId: candidate.id, notes: "", tags: [] });
-}
+const seedSketch = (studio, vibe, genome) => seedDrone(studio, vibe, genome, "a cold drone");
 
 const WORDS = "a pad comes in halfway and the drone thins out";
 
