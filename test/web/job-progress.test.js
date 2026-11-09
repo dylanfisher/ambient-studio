@@ -1,4 +1,6 @@
 import { describe, expect, test } from "vitest";
+import { JOB_KIND } from "../../src/domain/job-kind.js";
+import { OPERATOR } from "../../src/domain/operator.js";
 import { durationText, jobProgress } from "../../src/web/job-progress.js";
 
 /** @param {Record<string, unknown>} rest */
@@ -137,6 +139,13 @@ describe("jobProgress", () => {
     expect(jobProgress(job({ kind: "draft-brief" }), 3_000).title).toBe(
       "Writing the brief from your words",
     );
+  });
+
+  // The top bar shows every job (0073), so a kind the server adds with no title throws there.
+  test("every kind of job the server adds has a title", () => {
+    for (const kind of [...Object.values(JOB_KIND), OPERATOR.breed]) {
+      expect(jobProgress(job({ kind }), 3_000).title).toMatch(/\w/);
+    }
   });
 
   test("a kind the page doesn't know is an error, not a blank title", () => {

@@ -16,10 +16,16 @@ const TITLE = Object.freeze({
   [OPERATOR.optimizeEar]: "Searching by ear",
   [OPERATOR.steer]: "Steering by the sliders",
   [OPERATOR.elite]: "Filling the map",
+  [OPERATOR.breed]: "Breeding sketches",
   [JOB_KIND.analyze]: "Analyzing a region",
   [JOB_KIND.embed]: "Analyzing the sound",
   [JOB_KIND.fit]: "Fitting the taste model",
+  [JOB_KIND.optimizerTest]: "Optimizer test",
   [JOB_KIND.sectionAudio]: "Rendering a section to play",
+  [JOB_KIND.trackRender]: "Rendering the track",
+  [JOB_KIND.seamPreview]: "Rendering a crossfade to play",
+  [JOB_KIND.trackExport]: "Exporting the track",
+  [JOB_KIND.propose]: "Proposing a track",
   [JOB_KIND.draftBrief]: "Writing the brief from your words",
 });
 
