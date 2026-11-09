@@ -6,7 +6,7 @@
 /** @import { TestApp } from "../support/test-app.js" */
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { ATTACHMENT_KIND } from "../../src/domain/attachment-kind.js";
 import { featuresText } from "../../src/domain/features-text.js";
 import { estimateTokens, promptText } from "../../src/domain/prompt-tokens.js";
@@ -50,6 +50,12 @@ import { createVibe } from "../../src/server/vibe-store.js";
 import { driveGaps } from "../support/fake-clock.js";
 import { GENOMES, VIBE } from "../support/studio.js";
 import { testApp } from "../support/test-app.js";
+
+// The tests share a few genomes and seeds and check the job's bookkeeping, so each distinct
+// window is rendered once for real and later tests get a copy of those samples.
+vi.mock("../../src/server/render-offline.js", async (original) =>
+  (await import("../support/memo-render.js")).memoRenderOffline(await original()),
+);
 
 /** @type {TestApp[]} */
 const apps = [];

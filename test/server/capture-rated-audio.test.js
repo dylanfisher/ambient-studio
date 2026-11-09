@@ -21,6 +21,11 @@ import { sha256Hex } from "../../src/server/sha256-hex.js";
 import { createVibe } from "../../src/server/vibe-store.js";
 import { tempStore } from "../support/temp-store.js";
 
+// Each distinct window renders once for real; later tests get a copy of those samples.
+vi.mock("../../src/server/render-offline.js", async (original) =>
+  (await import("../support/memo-render.js")).memoRenderOffline(await original()),
+);
+
 /** Set by a test to make removing a capture's temp folder fail, as a full disk can. */
 const cleanup = vi.hoisted(() => ({ fails: false }));
 vi.mock("node:fs/promises", async (original) => {

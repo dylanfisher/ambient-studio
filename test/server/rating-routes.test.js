@@ -5,7 +5,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from "vitest";
 import { AB_ORDER_SEEDS, abOrder } from "../../src/domain/ab-order.js";
 import { ENGINE_VERSION } from "../../src/engine/engine-version.js";
 import { addFeedback, listRatedAudio, listRatedGenomes } from "../../src/server/rating-store.js";
@@ -15,6 +15,11 @@ import { MAX_CHARS, MAX_TAGS } from "../../src/server/request-fields.js";
 import { abRatingBody, chosenOutcome } from "../../src/web/ab-rating.js";
 import { seedExcerpts } from "../support/seed-excerpts.js";
 import { GENOMES, removeStudio, startStudio } from "../support/studio.js";
+
+// Each distinct window renders once for real; later tests get a copy of those samples.
+vi.mock("../../src/server/render-offline.js", async (original) =>
+  (await import("../support/memo-render.js")).memoRenderOffline(await original()),
+);
 
 /** @type {Studio[]} */
 const studios = [];

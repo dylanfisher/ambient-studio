@@ -57,7 +57,9 @@ and write down why when a rule comes from something that went wrong.
 11. Render an excerpt in a test only when the render is what the test checks. To give a test a
     candidate row, seed it in the store, and let a model answer with no genome when its child
     isn't checked. An excerpt costs 4–10 s under `--low`, and in phase 3 server tests that
-    rendered only to make rows passed the 30 s timeout three times.
+    rendered only to make rows passed the 30 s timeout three times. A test that must run a job
+    over a real excerpt mocks `render-offline.js` with `test/support/memo-render.js`, which renders
+    each distinct window once per file.
 
 ## Reviewers
 

@@ -19,6 +19,11 @@ import { seedExcerpts } from "../support/seed-excerpts.js";
 import { SEED_GENOMES } from "../support/seed-genomes.js";
 import { GENOMES, removeStudio, startStudio } from "../support/studio.js";
 
+// Each distinct window renders once for real; later tests get a copy of those samples.
+vi.mock("../../src/server/render-offline.js", async (original) =>
+  (await import("../support/memo-render.js")).memoRenderOffline(await original()),
+);
+
 /** @type {Studio[]} */
 const studios = [];
 /** @type {(() => Promise<void>)[]} */
