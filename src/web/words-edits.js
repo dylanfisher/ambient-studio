@@ -15,7 +15,7 @@ import {
   WORDS_SETS,
   wordsSet,
 } from "../domain/words-sets.js";
-import { MACROS } from "../engine/genome-schema.js";
+import { GENOME_KEY, MACROS } from "../engine/genome-schema.js";
 
 /** @typedef {{ field: string, from: unknown, to: unknown }} WordsChange */
 
@@ -68,18 +68,48 @@ export const macroValues = (choices) =>
   );
 
 /**
- * The lock requests a Keep sends: a lock per path set locked, an unlock per live lock set free.
+ * The voice a lock path names and whether it names the whole voice, or a null voice for a path
+ * outside the voices.
+ * @param {string} path
+ */
+function voiceOf(path) {
+  const [head, voice, ...rest] = path.split(".");
+  if (head !== GENOME_KEY.voices || voice === undefined) return { voice: null, whole: false };
+  return { voice, whole: rest.length === 0 };
+}
+
+/**
+ * The lock requests a Keep sends, in the order the lock route takes them (0035): every unlock
+ * first, then whole voices, then the other paths. A parameter of a voice that stays or becomes
+ * locked whole is dropped, since the route refuses a lock inside a voice locked whole and the
+ * voice's lock already keeps it.
  * @template {{ path: string }} L
  * @param {readonly WordsChange[]} changed
  * @param {readonly L[]} locks the brief's live locks
- * @returns {{ lock: string[], unlock: L[] }}
+ * @returns {{ unlock: L[], lock: string[], dropped: { path: string, voice: string }[] }}
  */
 export function lockEdits(changed, locks) {
-  const lock = changed.filter(({ to }) => to === LOCK_STATE.locked).map(({ field }) => field);
   const unlock = changed
     .filter(({ to }) => to === LOCK_STATE.free)
     .flatMap(({ field }) => locks.filter((held) => held.path === field));
-  return { lock, unlock };
+  const asked = changed.filter(({ to }) => to === LOCK_STATE.locked).map(({ field }) => field);
+  const wholes = asked.filter((path) => voiceOf(path).whole);
+  const kept = new Set(
+    [...locks.filter((held) => !unlock.includes(held)).map(({ path }) => path), ...wholes]
+      .filter((path) => voiceOf(path).whole)
+      .map((path) => voiceOf(path).voice),
+  );
+  /** @type {{ path: string, voice: string }[]} */
+  const dropped = [];
+  /** @type {string[]} */
+  const rest = [];
+  for (const path of asked) {
+    const { voice, whole } = voiceOf(path);
+    if (whole) continue;
+    if (voice !== null && kept.has(voice)) dropped.push({ path, voice });
+    else rest.push(path);
+  }
+  return { unlock, lock: [...wholes, ...rest], dropped };
 }
 
 /**
@@ -113,20 +143,28 @@ export function steerEdits(changed) {
  * Each change in words, for the card's words box, written from templates (as 0047).
  * @param {string} set the field set's name
  * @param {readonly WordsChange[]} changed
- * @param {{ choices: readonly LockGroup[], directions: readonly WordsDirection[] }} context
- *   the card's lock choices and the brief's directions
+ * @param {{ choices: readonly LockGroup[], directions: readonly WordsDirection[],
+ *   locks: readonly { path: string }[] }} context the card's lock choices, the brief's
+ *   directions and its live locks
  * @returns {string[]}
  */
-export function changeLines(set, changed, { choices, directions }) {
+export function changeLines(set, changed, { choices, directions, locks }) {
   const named = wordsSet(set);
   if (named === WORDS_SETS.locks) {
     const labels = new Map(
       choices.flatMap((group) => group.choices.map(({ path, label }) => [path, label])),
     );
-    return changed.map(
-      ({ field, to }) =>
-        `${to === LOCK_STATE.locked ? "Lock" : "Unlock"} ${labels.get(field) ?? field}`,
-    );
+    const { unlock, lock, dropped } = lockEdits(changed, locks);
+    /** @param {string} path */
+    const label = (path) => labels.get(path) ?? path;
+    return [
+      ...unlock.map(({ path }) => `Unlock ${label(path)}`),
+      ...lock.map((path) => `Lock ${label(path)}`),
+      ...dropped.map(
+        ({ path, voice }) =>
+          `Leave ${voice} ${path.split(".").at(-1)} as it is: the whole ${voice} voice is locked, which keeps it`,
+      ),
+    ];
   }
   if (named === WORDS_SETS.macros) {
     return changed.map(({ field, to }) => {

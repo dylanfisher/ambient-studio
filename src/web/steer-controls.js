@@ -58,6 +58,8 @@ export const NO_SESSION = "There is no open session to send this to.";
  * @property {HTMLElement} root
  * @property {() => boolean} unsent whether the direction field holds text not yet sent
  * @property {() => void} clear empties the field, once its words were kept
+ * @property {(set: string, why: string | null) => void} setOff turns one field set's choice
+ *   off with `why` as its title, or back on with null
  * @property {(why: string | null) => void} off turns both buttons off with `why` as their
  *   title, or back on with null, unless a job of theirs is unfinished
  */
@@ -151,6 +153,8 @@ export function steerControls({ candidateId, sessionId, start, run, words }) {
         if (line.trim() === "") {
           throw new Error("Write the change in words first.");
         }
+        const chosen = parts.wordsSet.selectedOptions[0];
+        if (chosen?.disabled) throw new Error(chosen.title);
         await words.ask(parts.wordsSet.value, line, control);
       });
   }
@@ -210,6 +214,16 @@ export function steerControls({ candidateId, sessionId, start, run, words }) {
     unsent: () => parts.direction.value.trim() !== "",
     clear: () => {
       parts.direction.value = "";
+    },
+    setOff(set, why) {
+      const option = [...parts.wordsSet.options].find(({ value }) => value === set);
+      if (!option) throw new Error(`the card offers no field set ${set}`);
+      option.disabled = why !== null;
+      option.title = why ?? "";
+      if (option.selected && why !== null) {
+        const free = [...parts.wordsSet.options].find((other) => !other.disabled);
+        if (free) free.selected = true;
+      }
     },
     off(why) {
       for (const [control, button] of /** @type {const} */ ([

@@ -159,6 +159,7 @@ const CARD_PARTS = Object.freeze({
   wordsBox: HTMLElement,
   wordsSaid: HTMLElement,
   wordsChanges: HTMLUListElement,
+  wordsError: HTMLElement,
   wordsKeep: HTMLButtonElement,
   wordsUndo: HTMLButtonElement,
 });
@@ -166,7 +167,14 @@ const CARD_PARTS = Object.freeze({
 /** The field sets a card's words may set (0085), in the select's order. */
 const CARD_SETS = Object.entries(WORDS_SETS)
   .filter(([, set]) => set.scope === WORDS_SCOPE.candidate)
-  .map(([name, set]) => ({ set: name, label: String(/** @type {any} */ (set).label) }));
+  .map(([name, set]) => {
+    const { label } = /** @type {{ label?: string }} */ (set);
+    if (label === undefined) throw new Error(`the field set ${name} has no label for the card`);
+    return { set: name, label };
+  });
+
+/** The steer set's name, which a card turns off while it has nowhere to steer from. */
+const STEER_SET = CARD_SETS.find(({ set }) => wordsSet(set) === WORDS_SETS.steer)?.set;
 
 /** @typedef {{ less: HTMLButtonElement, clear: HTMLButtonElement, more: HTMLButtonElement }} MacroButtons */
 
@@ -469,6 +477,7 @@ async function askWords(card, set, words, control) {
   const lines = changeLines(set, edit.changed, {
     choices: lockChoices(card.candidate.genome),
     directions: steering.directions,
+    locks,
   });
   parts.wordsChanges.replaceChildren(
     ...(lines.length > 0 ? lines : ["Nothing changes: the values are already so."]).map((line) => {
@@ -479,6 +488,7 @@ async function askWords(card, set, words, control) {
     }),
   );
   parts.wordsKeep.hidden = lines.length === 0;
+  parts.wordsError.hidden = true;
   parts.wordsBox.hidden = false;
   status.say("Filled in from your words, unsaved. Press Keep to keep it or Undo to put it back.");
 }
@@ -491,25 +501,46 @@ async function askWords(card, set, words, control) {
 async function keepWords(card) {
   const pending = card.words;
   if (pending === null) return;
+  const { parts } = card;
+  if (card.locking || card.busy) {
+    parts.wordsError.textContent =
+      "Another change to this candidate is still being sent. Press Keep again once it ends.";
+    parts.wordsError.hidden = false;
+    return;
+  }
   const set = wordsSet(pending.set);
   const { changed } = pending.edit;
-  closeWords(card);
-  if (set === WORDS_SETS.locks) {
-    const { lock, unlock } = lockEdits(changed, locks);
-    await lockWork(card, async () => {
-      for (const path of lock)
-        await postJson(locksPath(), { candidateId: card.candidate.id, path });
-      for (const held of unlock) await postJson(`${locksPath()}/${held.id}/remove`, {});
-    });
-    status.say(`Kept: ${lock.length} locked and ${unlock.length} unlocked.`);
-  } else if (set === WORDS_SETS.macros) {
-    for (const { macro, direction } of macroEdits(changed)) {
-      await macroChoice(card, macro, direction);
+  // The box stays open, Keep and Undo off, until every request is sent, so a failure shows here.
+  parts.wordsKeep.disabled = true;
+  parts.wordsUndo.disabled = true;
+  parts.wordsError.hidden = true;
+  try {
+    if (set === WORDS_SETS.locks) {
+      const { unlock, lock } = lockEdits(changed, locks);
+      await lockWork(card, async () => {
+        for (const held of unlock) await postJson(`${locksPath()}/${held.id}/remove`, {});
+        for (const path of lock) {
+          await postJson(locksPath(), { candidateId: card.candidate.id, path });
+        }
+      });
+      status.say(`Kept: ${lock.length} locked and ${unlock.length} unlocked.`);
+    } else if (set === WORDS_SETS.macros) {
+      for (const { macro, direction } of macroEdits(changed)) {
+        await macroChoice(card, macro, direction);
+      }
+      status.say(`Kept the Less / More choices for ${card.label.toLowerCase()}.`);
+    } else {
+      status.say("Kept the sliders. Press Steer from here to steer toward them.");
     }
-    status.say(`Kept the Less / More choices for ${card.label.toLowerCase()}.`);
-  } else {
-    status.say("Kept the sliders. Press Steer from here to steer toward them.");
+  } catch (error) {
+    parts.wordsError.textContent = `Not all of it was kept: ${/** @type {Error} */ (error).message} What was sent before the failure is saved; Show the numbers lists the locks.`;
+    parts.wordsError.hidden = false;
+    throw error;
+  } finally {
+    parts.wordsKeep.disabled = false;
+    parts.wordsUndo.disabled = false;
   }
+  closeWords(card);
   card.steer.clear();
 }
 
@@ -1548,6 +1579,17 @@ function showSteering(card) {
   card.parts.placeWords.textContent = words;
   card.parts.placeWords.hidden = words === "";
   card.sliders.show(steering, renderId);
+  if (STEER_SET === undefined) return;
+  card.steer.setOff(
+    STEER_SET,
+    renderId === null
+      ? "This candidate has no excerpt yet, so it has no place on the brief's directions to steer from."
+      : steering.directions.length === 0
+        ? "The brief has no directions yet. Add one on the brief page to steer by."
+        : steering.reason === null
+          ? null
+          : `The directions can't be placed yet: ${steering.reason}.`,
+  );
 }
 
 /**

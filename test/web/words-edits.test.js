@@ -35,13 +35,56 @@ test("the locks' values now mark each path a live lock holds, and a Keep locks a
   expect(now.reverbDecay).toBe("locked");
   expect(now[`voices.${voice}`]).toBe("free");
   const { changed } = applyWords(now, { reverbDecay: "free", [`voices.${voice}`]: "locked" });
-  expect(lockEdits(changed, locks)).toEqual({ lock: [`voices.${voice}`], unlock: [locks[0]] });
+  expect(lockEdits(changed, locks)).toEqual({
+    unlock: [locks[0]],
+    lock: [`voices.${voice}`],
+    dropped: [],
+  });
   const labels = new Map(
     lockChoices(genome).flatMap(({ choices }) => choices.map(({ path, label }) => [path, label])),
   );
-  expect(changeLines("locks", changed, { choices: lockChoices(genome), directions: [] })).toEqual([
+  expect(
+    changeLines("locks", changed, { choices: lockChoices(genome), directions: [], locks }),
+  ).toEqual([
     `Unlock ${labels.get("reverbDecay")}`,
     `Lock the whole ${voice} voice, every parameter`,
+  ]);
+});
+
+test("a Keep unlocks first, then locks whole voices, then the rest, and drops a parameter its voice keeps", () => {
+  const whole = `voices.${voice}`;
+  const param = `voices.${voice}.level`;
+  /** @param {Record<string, string>} changes @param {{ id: number, path: string }[]} locks */
+  const edits = (changes, locks) => {
+    const now = lockValues(lockChoices(genome), locks);
+    return lockEdits(applyWords(now, changes).changed, locks);
+  };
+  // The answer locks the voice's parameter before the whole voice.
+  expect(edits({ [param]: "locked", [whole]: "locked", reverbDecay: "locked" }, [])).toEqual({
+    unlock: [],
+    lock: [whole, "reverbDecay"],
+    dropped: [{ path: param, voice }],
+  });
+  // The voice is already locked whole, and its parameter shows as free.
+  const held = [{ id: 7, path: whole }];
+  expect(edits({ [param]: "locked" }, held)).toEqual({
+    unlock: [],
+    lock: [],
+    dropped: [{ path: param, voice }],
+  });
+  // The voice is unlocked whole and one parameter locked: the unlock goes first.
+  expect(edits({ [param]: "locked", [whole]: "free" }, held)).toEqual({
+    unlock: held,
+    lock: [param],
+    dropped: [],
+  });
+  const lines = changeLines(
+    "locks",
+    applyWords(lockValues(lockChoices(genome), held), { [param]: "locked" }).changed,
+    { choices: lockChoices(genome), directions: [], locks: held },
+  );
+  expect(lines).toEqual([
+    `Leave ${voice} level as it is: the whole ${voice} voice is locked, which keeps it`,
   ]);
 });
 
@@ -54,7 +97,7 @@ test("the macros' values now are the live choices, and a Keep sets or clears eac
     { macro: "brightness", direction: null },
     { macro: "space", direction: "less" },
   ]);
-  expect(changeLines("macros", changed, { choices: [], directions: [] })).toEqual([
+  expect(changeLines("macros", changed, { choices: [], directions: [], locks: [] })).toEqual([
     "brightness: no choice",
     "space: less (sound closer and drier)",
   ]);
@@ -68,6 +111,7 @@ test("a steer's settings go back to their sliders by direction id, said in words
     changeLines("steer", changed, {
       choices: [],
       directions: [{ id: 12, near: "dry", far: "wet" }],
+      locks: [],
     }),
   ).toEqual(["Steer aims close to “wet” on “dry” to “wet”"]);
 });
