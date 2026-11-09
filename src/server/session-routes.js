@@ -1,5 +1,5 @@
 // The session and job routes (decision 0027): a session's state and stop, asking for
-// candidates, nudging (0037), exploring (0038), searching (0054) and steering (0056) from one,
+// candidates, nudging (0037), retuning (0094), exploring (0038), searching (0054) and steering (0056) from one,
 // breeding two sketches (0058) and the breed's estimate, filling the brief's map (0057),
 // re-rendering missing excerpts, the candidates with their excerpts, revised pairs (0036),
 // places in the ranking (0046) and a search's shown points, hiding and showing them again
@@ -30,6 +30,7 @@ import { JOB_KIND } from "../domain/job-kind.js";
 import { DEFAULT_NUDGES, lockRefusal, STEP_SIZE } from "../domain/nudge.js";
 import { OPERATOR } from "../domain/operator.js";
 import { percentiles } from "../domain/percentiles.js";
+import { RETUNE_FIELD, retune, retuneRefusal, samePitch } from "../domain/retune.js";
 import {
   DEFAULT_SEARCH_BUDGET,
   DEFAULT_STEER_BUDGET,
@@ -38,6 +39,8 @@ import {
 import { MAX_SEARCH_DIMENSIONS, searchSpace } from "../domain/search-space.js";
 import { WORDS_CHARS } from "../domain/words-prompt.js";
 import { isObject } from "../engine/is-object.js";
+import { isAbsolute } from "../engine/tuning.js";
+import { getTuning, tuningIds } from "../engine/tuning-registry.js";
 import { refuseSecondWords } from "./ask-words.js";
 import { getAttachment } from "./attachment-store.js";
 import { currentExcerpt } from "./candidate-excerpt.js";
@@ -69,6 +72,7 @@ import {
   rowId,
   text,
 } from "./request-fields.js";
+import { RETUNE_OPERATOR, retuneJob } from "./retune-job.js";
 import { duplicateJob, HttpError, wrongType } from "./routing.js";
 import { readSearchResults, searchEstimate, searchJob, searchRefusal } from "./search-job.js";
 import { readRanking } from "./session-ranking.js";
@@ -155,6 +159,8 @@ const CANDIDATES = "candidates";
 const EXCERPTS = "excerpts";
 /** A nudge job is named for the operator its children store. */
 const NUDGE = NUDGE_OPERATOR;
+/** A retune job is named for the operator its child stores. */
+const RETUNE = RETUNE_OPERATOR;
 const EXPLORE = EXPLORE_OPERATOR;
 /** A search job is named for the operator its points store. */
 const SEARCH = OPERATOR.optimize;
@@ -209,6 +215,9 @@ const DUPLICATE = Object.freeze({
   /** @param {number} id */
   [NUDGE]: (id) =>
     `This session is already making this nudge (job ${id}). Wait for it to finish, or cancel it.`,
+  /** @param {number} id */
+  [RETUNE]: (id) =>
+    `This session is already making this retune (job ${id}). Wait for it to finish, or cancel it.`,
   /** @param {number} id */
   [EXPLORE]: (id) =>
     `This session is already making this explore (job ${id}). Wait for it to finish, or cancel it.`,
@@ -368,6 +377,26 @@ function baseCandidate(app, session, candidateId) {
   const refused = lockRefusal(applyLocks(found.genome, locksInForce(app.store, session.vibeId)));
   if (refused !== null) throw new HttpError(409, `candidate ${candidateId} ${refused}`);
   return found;
+}
+
+/**
+ * A retune's pitch from the body: a known tuning, one of its scales, and a key of its degrees
+ * when it is relative and none when it is absolute; a 400 otherwise.
+ * @param {Record<string, unknown>} given
+ * @returns {import("../domain/retune.js").RetunePitch}
+ */
+function retunePitch(given) {
+  const tuning = oneOf(given, RETUNE_FIELD.tuning, tuningIds());
+  const chosen = getTuning(tuning);
+  const scale = oneOf(given, RETUNE_FIELD.scale, Object.keys(chosen.scales));
+  if (isAbsolute(chosen)) {
+    if (given[RETUNE_FIELD.key] !== undefined) {
+      throw new HttpError(400, `${tuning} is absolute, so it takes no key`);
+    }
+    return { tuning, scale };
+  }
+  const key = integer(given, RETUNE_FIELD.key, { min: 0, max: chosen.degrees.length - 1 });
+  return { tuning, scale, key };
 }
 
 /**
@@ -631,6 +660,46 @@ export const SESSION_ROUTES = [
         count,
       });
       return addSessionJob(app, session, NUDGE, run, `${candidateId} ${stepSize} ${count}`);
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/sessions/:sessionId/retunes",
+    handle: async ({ app, params, body }) => {
+      const session = requireOpenSession(app, params);
+      const given = fields(await body(), [CANDIDATE_ID, ...Object.values(RETUNE_FIELD)]);
+      const candidateId = rowId(given, CANDIDATE_ID);
+      const pitch = retunePitch(given);
+      const { candidate, genome } = baseCandidate(app, session, candidateId);
+      if (samePitch(genome, pitch)) {
+        throw new HttpError(
+          400,
+          `candidate ${candidateId} already plays this tuning, scale and key`,
+        );
+      }
+      const locks = locksInForce(app.store, session.vibeId);
+      const refused = retuneRefusal(locks);
+      if (refused !== null)
+        throw new HttpError(409, `candidate ${candidateId} can't be retuned: ${refused}`);
+      // Checked now, so a retune the brief refuses is answered at once and stores nothing.
+      const { constraints } = currentRevision(app.store, session.vibeId);
+      const checked = retune({ base: genome, pitch, locks, constraints });
+      if (checked.genome === null) {
+        const why = checked.lint.findings.map(({ path, message }) => `${path}: ${message}`);
+        throw new HttpError(
+          409,
+          `the brief refuses this retune of candidate ${candidateId}; revise the brief first: ${why.join("; ")}`,
+        );
+      }
+      const run = retuneJob(app, {
+        vibeId: session.vibeId,
+        sessionId: session.id,
+        base: candidate,
+        genome,
+        pitch,
+      });
+      const action = JSON.stringify([candidateId, pitch.tuning, pitch.scale, pitch.key ?? null]);
+      return addSessionJob(app, session, RETUNE, run, action);
     },
   },
   {

@@ -2,10 +2,11 @@ import { expect, test } from "vitest";
 import { operatorLabel } from "../../src/domain/operator-label.js";
 
 test("operatorLabel names each operator in a word, and refuses one it doesn't know", () => {
-  expect([null, "revise", "nudge", "explore", "optimize"].map(operatorLabel)).toEqual([
+  expect([null, "revise", "nudge", "retune", "explore", "optimize"].map(operatorLabel)).toEqual([
     "first try",
     "revised",
     "nudged",
+    "retuned",
     "variation",
     "searched",
   ]);

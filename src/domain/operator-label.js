@@ -6,6 +6,7 @@ import { OPERATOR } from "./operator.js";
 const OPERATOR_WORDS = Object.freeze({
   [OPERATOR.revise]: "revised",
   [OPERATOR.nudge]: "nudged",
+  [OPERATOR.retune]: "retuned",
   [OPERATOR.explore]: "variation",
   [OPERATOR.optimize]: "searched",
   [OPERATOR.optimizeEar]: "searched by ear",

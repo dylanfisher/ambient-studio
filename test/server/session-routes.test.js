@@ -14,10 +14,11 @@ import { addSketch } from "../../src/server/rating-store.js";
 import { getRender } from "../../src/server/render-store.js";
 import { sha256Hex } from "../../src/server/sha256-hex.js";
 import { markRemoved, TABLE } from "../../src/server/store.js";
+import { reviseVibe } from "../../src/server/vibe-store.js";
 import { FIXTURE_RECORDINGS } from "../support/golden.js";
 import { seedExcerpts } from "../support/seed-excerpts.js";
 import { SEED_GENOMES } from "../support/seed-genomes.js";
-import { GENOMES, removeStudio, startStudio } from "../support/studio.js";
+import { GENOMES, removeStudio, startStudio, VIBE } from "../support/studio.js";
 
 // Each distinct window renders once for real; later tests get a copy of those samples.
 vi.mock("../../src/server/render-offline.js", async (original) =>
@@ -457,6 +458,104 @@ test("a malformed nudge is refused with a message naming the problem", async () 
   await ok("POST", `/api/sessions/${session.id}/stop`, {});
   expect((await server.api("POST", path, good)).status).toBe(409);
   expect(server.jobs.list()).toEqual([]);
+});
+
+// Retune (decision 0094).
+test("a retune through its route makes one child in the new pitch with the base's seed", async () => {
+  const studio = await setup();
+  const { server, omlx, ok, openSession, drive } = studio;
+  const opened = await openSession();
+  const { session } = opened;
+  const [base] = await seedExcerpts(studio, opened, GENOMES.slice(0, 1));
+  const baseId = base?.candidate.id;
+  const pitch = { tuning: "19-edo", scale: "all", key: 3 };
+
+  const job = await ok("POST", `/api/sessions/${session.id}/retunes`, {
+    candidateId: baseId,
+    ...pitch,
+  });
+  expect(job).toMatchObject({ kind: "retune" });
+  await drive(server.jobs.settled(job.id));
+  const done = await ok("GET", `/api/jobs/${job.id}`);
+  expect(done).toMatchObject({ state: "done", error: null, progress: { done: 1, total: 1 } });
+  expect(done.result).toMatchObject({ findings: [] });
+
+  const { candidates } = await ok("GET", `/api/sessions/${session.id}/candidates`);
+  expect(candidates.map((/** @type {any} */ c) => c.id)).toEqual([baseId, done.result.candidateId]);
+  const child = candidates.at(-1);
+  expect(child).toMatchObject({
+    rejectReason: null,
+    seed: candidates[0].seed,
+    operator: "retune",
+    operatorParams: pitch,
+    parentIds: [baseId],
+    genome: { ...candidates[0].genome, ...pitch },
+  });
+  expect(child.excerpt.url).toBe(`/audio/${done.result.excerpt.renderId}`);
+  expect(omlx.requests).toHaveLength(0);
+});
+
+test("a retune is refused when malformed, already the base's, locked, or against the brief", async () => {
+  const studio = await setup();
+  const { server, ok, openSession } = studio;
+  const { vibe, session } = await openSession();
+  const base = seedCandidate(studio, vibe, GENOMES[0]);
+  const path = `/api/sessions/${session.id}/retunes`;
+  const good = { candidateId: base.id, tuning: "12-tet", scale: "aeolian", key: 2 };
+  /** @type {[unknown, number, RegExp][]} */
+  const cases = [
+    [{ ...good, count: 2 }, 400, /^unknown fields count/],
+    [{ ...good, tuning: "24-tet" }, 400, /^tuning must be one of 12-tet, .*got "24-tet"/],
+    [{ ...good, tuning: "19-edo" }, 400, /^scale must be one of all, got "aeolian"/],
+    [{ ...good, key: 12 }, 400, /^key must be an integer from 0 to 11, got 12/],
+    [{ ...good, key: undefined }, 400, /^key must be an integer from 0 to 11, got undefined/],
+    [{ ...good, tuning: "colundi", scale: "all" }, 400, /^colundi is absolute, so it takes no key/],
+    [{ ...good, scale: "dorian" }, 400, /already plays this tuning, scale and key/],
+    [{ ...good, candidateId: 999 }, 400, /there is no candidate 999/],
+  ];
+  for (const [body, status, message] of cases) {
+    const reply = await server.api("POST", path, body);
+    expect(reply.status, JSON.stringify(body)).toBe(status);
+    expect(reply.json().error, JSON.stringify(body)).toMatch(message);
+  }
+
+  reviseVibe(server.store, vibe.id, {
+    ...VIBE,
+    constraints: { ...VIBE.constraints, scale: "dorian" },
+  });
+  const brief = await server.api("POST", path, good);
+  expect(brief.status).toBe(409);
+  expect(brief.json().error).toMatch(/^the brief refuses this retune .*revise the brief first: /);
+
+  await ok("POST", `/api/vibes/${vibe.id}/locks`, { candidateId: base.id, path: "scale" });
+  const locked = await server.api("POST", path, good);
+  expect(locked.status).toBe(409);
+  expect(locked.json().error).toBe(
+    `candidate ${base.id} can't be retuned: the brief locks scale, so a retune would be undone; remove the lock first`,
+  );
+  expect(server.jobs.list()).toEqual([]);
+});
+
+test("a second identical retune while one is unfinished is a 409, and another pitch queues", async () => {
+  const studio = await setup();
+  const { server, omlx, ok, openSession } = studio;
+  const { vibe, session } = await openSession();
+  const base = seedCandidate(studio, vibe, GENOMES[0]);
+  // A held request in another session keeps every retune queued.
+  const blocker = await openSession();
+  omlx.script({ tokens: ["{"], holdAfter: 0 });
+  await ok("POST", `/api/sessions/${blocker.session.id}/candidates`, { count: 1 });
+
+  const path = `/api/sessions/${session.id}/retunes`;
+  const body = { candidateId: base.id, tuning: "12-tet", scale: "aeolian", key: 2 };
+  const { id, refused } = oneAccepted(await postTwice(studio, path, body));
+  expect(refused).toEqual({
+    error: `This session is already making this retune (job ${id}). Wait for it to finish, or cancel it.`,
+    jobId: id,
+  });
+  expect((await server.api("POST", path, { ...body, key: 4 })).status).toBe(200);
+  for (const job of server.jobs.list()) server.jobs.cancel(job.id);
+  await server.jobs.idle();
 });
 
 // Explore (decision 0038).

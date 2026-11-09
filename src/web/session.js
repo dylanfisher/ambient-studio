@@ -4,8 +4,9 @@
 // under the one it was made from, carries its A/B marks, and can be hidden into the hidden
 // panel, and the page keeps its scroll across a trip to Quick A/B or the A/B view (0049). Of a
 // revised pair, one row shows and links the other (0036). Each row also reads its features
-// against its brief's ranges, locks its values (0035), explores or nudges from it (0039), and
-// shows where it sits on the brief's directions, with sliders to steer from it (0056).
+// against its brief's ranges, locks its values (0035), explores or nudges from it (0039),
+// retunes it (0094), and shows where it sits on the brief's directions, with sliders to steer
+// from it (0056).
 // In a session ranked by the brief's taste model, the rows follow the ranking with each score,
 // and Best question opens the pair the model is least sure of (0046).
 // Played fraction and time taken are measured here as decision 0027 defines them. A "card" in
@@ -16,6 +17,7 @@
 /** @import { CardHold } from "./card-hold.js" */
 /** @import { JobStatus } from "./job-progress.js" */
 /** @import { PlayedTracker } from "./played-tracker.js" */
+/** @import { RetuneControls } from "./retune-controls.js" */
 /** @import { StartJob, SteerControls } from "./steer-controls.js" */
 /** @import { SteeringView, SteerSliders } from "./steer-sliders.js" */
 import { featureWords } from "../domain/feature-words.js";
@@ -54,6 +56,7 @@ import { createPlayedTracker } from "./played-tracker.js";
 import { createQuickAbOrder, ORDER_MODES, ratedPairKeys } from "./quick-ab-order.js";
 import { rangesReadout } from "./ranges-readout.js";
 import { rankText } from "./rank-text.js";
+import { retuneControls } from "./retune-controls.js";
 import { runJob } from "./run-job.js";
 import { keepOnClick, scrollMemory } from "./scroll-memory.js";
 import { statusLine } from "./status-line.js";
@@ -222,6 +225,7 @@ const STEER_SET = CARD_SETS.find(({ set }) => wordsSet(set) === WORDS_SETS.steer
  * @property {CardHold} hold whether it is in use, which holds its pair's swap
  * @property {SteerControls} steer its explore and nudge controls
  * @property {SteerSliders} sliders its sliders and Steer from here (decision 0056)
+ * @property {RetuneControls} retune its tuning, scale and key and Retune (decision 0094)
  * @property {string[]} offered the macro lock paths its lock control offers; none while the
  *   offer is hidden
  * @property {boolean} locking whether a lock change from it is being sent
@@ -645,6 +649,11 @@ function showCardControls() {
         : null,
     );
     card.sliders.off(
+      stopped
+        ? "This session is stopped, so it takes no more jobs. Start a new session from the brief page."
+        : null,
+    );
+    card.retune.off(
       stopped
         ? "This session is stopped, so it takes no more jobs. Start a new session from the brief page."
         : null,
@@ -1246,6 +1255,13 @@ function makeCard(candidate, number, revised) {
       start: startSteer,
       run: status.run,
     }),
+    retune: retuneControls({
+      candidateId: candidate.id,
+      genome: candidate.genome,
+      sessionId: () => sessionId,
+      start: startSteer,
+      run: status.run,
+    }),
     offered: [],
     locking: false,
     words: null,
@@ -1255,7 +1271,7 @@ function makeCard(candidate, number, revised) {
   parts.heading.textContent = card.label;
   parts.rowId.textContent = `#${candidate.id}`;
   parts.intent.textContent = intentText(candidate);
-  parts.steer.append(card.steer.root, card.sliders.root);
+  parts.steer.append(card.steer.root, card.retune.root, card.sliders.root);
   parts.lockPath.replaceChildren(
     ...lockChoices(candidate.genome).map(({ label, choices }) => {
       const group = document.createElement("optgroup");

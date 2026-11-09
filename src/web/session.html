@@ -42,7 +42,8 @@
           then rate it with the buttons on its row; Hide moves it to Hidden candidates at the
           bottom, where it can be shown again. The marks beside a row count how often it was
           chosen (▲) and not chosen (▼) in A/B comparisons. Under each row are its Less / More
-          choices, note and sketch, explore and nudge, and a Change it field: write a change in
+          choices, note and sketch, explore and nudge, Retune to hear it in another tuning,
+          scale or key, and a Change it field: write a change in
           words, then press Explore from here for variations, or Set from these words to have
           the model set its locks, its Less / More choices or where Steer aims, which you keep or
           undo. Show the numbers adds its locks, measurements and the other numbers. Thumbs and the Less / More choices can be changed
@@ -307,6 +308,14 @@
           <input data-part="queries" type="number" step="1" size="5" data-numbers title="How many pairs Search by ear asks you, from 1 to 60." />
           <button class="button outline small" type="button" data-part="ear" title="Searches near this candidate by your ear, on the Quick A/B page.">Search by ear</button>
         </div>
+      </div>
+    </template>
+    <template id="retune-controls">
+      <div class="row">
+        <select data-part="tuning" title="The tuning Retune sets."></select>
+        <select data-part="scale" title="The scale of the tuning Retune sets."></select>
+        <select data-part="key" title="The key Retune sets: the degree the scale starts on, with its root's frequency. Choosing another tuning picks the key nearest this candidate's root."></select>
+        <button class="button outline small" type="button" data-part="retune" title="Makes one child of this candidate in the tuning, scale and key chosen beside it, everything else kept, with no model request, and renders its excerpt. Takes a few seconds.">Retune</button>
       </div>
     </template>
     <template id="steer-sliders">

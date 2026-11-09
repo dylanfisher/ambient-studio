@@ -1,12 +1,13 @@
 // How a candidate was made, in words, for its card and its lineage node (decision 0039): its
-// operator and parent, an explore's direction, a search or steer point's place in its run (0054,
-// 0056), a breed's two parents (0058), and why
-// a rejected one was rejected. A nudge child or search point has no intent, and its rejected
-// draws are no model answer, so neither reads as one. No DOM: the page sets these with
-// `textContent`, so a direction is never read as HTML.
+// operator and parent, an explore's direction, a retune's pitch (0094), a search or steer point's
+// place in its run (0054, 0056), a breed's two parents (0058), and why a rejected one was
+// rejected. A nudge child, retune or search point has no intent, and its rejected draws are no
+// model answer, so neither reads as one. No DOM: the page sets these with `textContent`, so a
+// direction is never read as HTML.
 import { BREED_STAGE } from "../domain/breed-settings.js";
 import { OPERATOR } from "../domain/operator.js";
 import { REJECT_REASON } from "../domain/reject-reason.js";
+import { pitchText } from "../domain/retune.js";
 
 /**
  * The parts of a candidate this reads, as the candidates and lineage routes give them.
@@ -68,6 +69,9 @@ export function originText({ operator, operatorParams, parentIds, search }, name
   if (operator === OPERATOR.nudge) {
     return `A ${operatorParams.stepSize} nudge of ${parent}: its numbers moved, with no model request.`;
   }
+  if (operator === OPERATOR.retune) {
+    return `A retune of ${parent} to ${pitchText(operatorParams)}: everything else kept, with no model request.`;
+  }
   if (operator === OPERATOR.explore) {
     const { direction, baseTrimmed } = operatorParams;
     const toward = typeof direction === "string" ? `, toward “${direction}”` : "";
@@ -115,6 +119,9 @@ export function intentText(candidate) {
   if (operator === OPERATOR.nudge || operator === OPERATOR.elite || isMutation(candidate)) {
     return "A nudge has no intent of its own: it is its base with some numbers moved.";
   }
+  if (operator === OPERATOR.retune) {
+    return "A retune has no intent of its own: it is its base in another tuning, scale or key.";
+  }
   if (
     operator === OPERATOR.optimize ||
     operator === OPERATOR.optimizeEar ||
@@ -143,5 +150,7 @@ export function rejectText(candidate) {
   if (operator === OPERATOR.optimizeEar) {
     return `a search-by-ear point ${why}, so it was told as a loss and never played`;
   }
+  if (operator === OPERATOR.retune)
+    return `a retune ${why}, since the brief changed after it was asked`;
   return `a model answer ${why}`;
 }

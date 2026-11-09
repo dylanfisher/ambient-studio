@@ -34,6 +34,18 @@ describe("originText", () => {
         nameOf,
       ),
     ).toBe("The model's variation of candidate 3.");
+    expect(
+      originText(
+        candidate({
+          operator: "retune",
+          parentIds: [3],
+          operatorParams: { tuning: "19-edo", scale: "all", key: 3 },
+        }),
+        nameOf,
+      ),
+    ).toBe(
+      "A retune of candidate 3 to 19-edo, scale all, key 3: everything else kept, with no model request.",
+    );
   });
 
   test("quotes an explore's direction as the owner wrote it, and says when the base was trimmed", () => {
@@ -131,6 +143,9 @@ describe("intentText", () => {
     expect(intentText(candidate({ operator: "nudge" }))).toBe(
       "A nudge has no intent of its own: it is its base with some numbers moved.",
     );
+    expect(intentText(candidate({ operator: "retune" }))).toBe(
+      "A retune has no intent of its own: it is its base in another tuning, scale or key.",
+    );
     expect(intentText(candidate({}))).toBe("The model gave no intent.");
     expect(intentText(candidate({ operator: "optimize" }))).toBe(
       "A search point has no intent of its own: it is its base with some numbers moved.",
@@ -149,6 +164,9 @@ describe("rejectText", () => {
     expect(
       rejectText(candidate({ operator: "optimize", rejectReason: REJECT_REASON.lintErrors })),
     ).toBe("a search point that broke the brief's rules, so it was told a low score");
+    expect(
+      rejectText(candidate({ operator: "retune", rejectReason: REJECT_REASON.lintErrors })),
+    ).toBe("a retune that broke the brief's rules, since the brief changed after it was asked");
     expect(rejectText(candidate({ rejectReason: REJECT_REASON.noJson }))).toBe(
       "a model answer with no JSON in it",
     );

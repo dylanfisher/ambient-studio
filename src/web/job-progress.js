@@ -11,6 +11,7 @@ const TITLE = Object.freeze({
   evaluation: "Model test",
   agreement: "Taste model test",
   nudge: "Nudging a candidate",
+  [OPERATOR.retune]: "Retuning a candidate",
   explore: "The model's variations of a candidate",
   [OPERATOR.optimize]: "Searching by your taste model",
   [OPERATOR.optimizeEar]: "Searching by ear",

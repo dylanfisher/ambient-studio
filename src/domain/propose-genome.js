@@ -1,6 +1,7 @@
 // One point of a search turned into a genome a candidate can hold (decisions 0037, 0053): moved
-// in the vector view, validated, locked, checked for a repeat and linted. A point that fails a
-// step comes back rejected, with the genome as written, so it is stored and never rendered.
+// in the vector view, or written whole as a retune's (0094), then validated, locked, checked for
+// a repeat and linted. A point that fails a step comes back rejected, with the genome as
+// written, so it is stored and never rendered.
 /** @import { Constraints } from "./constraint-schema.js" */
 /** @import { Finding, LintResult } from "./lint-result.js" */
 /** @import { RejectReason } from "./reject-reason.js" */
@@ -55,8 +56,18 @@ const rejected = (proposal, findings) => ({
  * @param {ProposalContext} context
  * @returns {Proposal}
  */
-export function proposeGenome(start, paths, vector, { locks, constraints, seen }) {
-  const written = fromVectorUnchecked(start, paths, vector);
+export function proposeGenome(start, paths, vector, context) {
+  return proposeWritten(fromVectorUnchecked(start, paths, vector), context);
+}
+
+/**
+ * A genome written some other way than from the vector view, as a retune writes it (decision
+ * 0094), taken through the same chain.
+ * @param {unknown} written
+ * @param {ProposalContext} context
+ * @returns {Proposal}
+ */
+export function proposeWritten(written, { locks, constraints, seen }) {
   const validated = validateGenome(written);
   if (!validated.ok) {
     const findings = validated.errors.map((e) => ({ ...e, rule: SCHEMA_RULE }));

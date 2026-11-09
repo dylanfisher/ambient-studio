@@ -108,7 +108,7 @@ describe("lineageReading", () => {
     ]);
   });
 
-  test("an explore whose base didn't fit, a nudge, a revision and a search say so", () => {
+  test("an explore whose base didn't fit, a nudge, a revision, a search and a retune say so", () => {
     const steps = [
       step({ id: 1 }),
       step({
@@ -132,6 +132,12 @@ describe("lineageReading", () => {
       }),
       step({ id: 6, operator: "optimize-ear", operatorParams: { query: 2 }, parentIds: [5] }),
       step({ id: 7, operator: "elite", operatorParams: { stepSize: "small" }, parentIds: [6] }),
+      step({
+        id: 8,
+        operator: "retune",
+        operatorParams: { tuning: "colundi", scale: "core18" },
+        parentIds: [7],
+      }),
     ];
     const lines = lineageReading({ steps, missingParentId: null }, nameOf);
     expect(lines.slice(2).map((line) => line.replace(/ Nothing changed\.$/, ""))).toEqual([
@@ -141,6 +147,7 @@ describe("lineageReading", () => {
       "Step 5, candidate 5, searched from candidate 4, scored by the taste model.",
       "Step 6, candidate 6, searched by ear from candidate 5, chosen by the owner over the best so far.",
       "Step 7, candidate 7, map fill from candidate 6, a small step.",
+      "Step 8, candidate 8, retuned from candidate 7, set to colundi, scale core18.",
     ]);
   });
 

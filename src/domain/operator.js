@@ -1,5 +1,5 @@
 // The operators a candidate stores, naming how it was made (decisions 0036–0038, 0054–0056,
-// 0058); a first try from a plain request stores null. The server writes them and the pages
+// 0058, 0094); a first try from a plain request stores null. The server writes them and the pages
 // read them. `arrange` (0067), `shift` (0075), `draft` (0074), `develop` (0079) and `words` (0084)
 // name a request group instead, as they make no candidate.
 export const OPERATOR = Object.freeze({
@@ -9,6 +9,8 @@ export const OPERATOR = Object.freeze({
   reviseControl: "revise-control",
   /** Seeded steps in the vector view, with no model request (0037). */
   nudge: "nudge",
+  /** The base with the owner's tuning, scale and key, with no model request (0094). */
+  retune: "retune",
   /** A fresh first prompt holding a base (0038). */
   explore: "explore",
   /** A point of a CMA-ES search scored by the taste model, with no model request (0054). */

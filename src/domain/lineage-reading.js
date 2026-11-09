@@ -11,6 +11,7 @@ import { OPERATOR } from "./operator.js";
 import { operatorLabel } from "./operator-label.js";
 import { numberText } from "./param-text.js";
 import { quoted } from "./references-text.js";
+import { pitchText } from "./retune.js";
 
 /**
  * The most tokens the reading of a lineage takes, beside the reading of its sketch in the
@@ -88,6 +89,7 @@ function howText({ operator, operatorParams: params, parentIds }, from, nameOf) 
   if (operator === OPERATOR.nudge || operator === OPERATOR.elite) {
     return ` from ${parent}, a ${params?.stepSize} step`;
   }
+  if (operator === OPERATOR.retune) return ` from ${parent}, set to ${pitchText(params)}`;
   if (operator === OPERATOR.optimize) return ` from ${parent}, scored by the taste model`;
   if (operator === OPERATOR.optimizeEar) {
     return ` from ${parent}, chosen by the owner over the best so far`;

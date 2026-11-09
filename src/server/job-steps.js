@@ -38,6 +38,7 @@ export const JOB_STEP = Object.freeze({
   renderingControl: (n, of) => `Rendering the control revision of candidate ${n} of ${of}`,
   /** @param {number} n @param {number} of */
   renderingNudge: (n, of) => `Rendering the excerpt for nudge ${n} of ${of}`,
+  renderingRetune: "Rendering the retuned excerpt",
   /** @param {number} n @param {number} of */
   renderingMutation: (n, of) => `Rendering the mutation of child ${n} of ${of}`,
   /** @param {number} n @param {number} of */
