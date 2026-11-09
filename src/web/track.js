@@ -34,6 +34,7 @@ import { materialCard } from "./material-card.js";
 import { NOT_STARTED } from "./owner-job.js";
 import { unloadGuard } from "./quick-ab-session.js";
 import { runJob } from "./run-job.js";
+import { sketchReadingCard } from "./sketch-reading-card.js";
 import { statusLine } from "./status-line.js";
 import {
   addSection,
@@ -283,6 +284,7 @@ function draw() {
   material.draw(errors.length === 0);
 
   page.sectionBox.hidden = selected === null;
+  reading.show(selected === null ? null : /** @type {Section} */ (sections[selected]).sketchId);
   page.timeline.append(playhead);
   drawRender();
   for (const name of /** @type {TimelineAction[]} */ (Object.keys(TIMELINE_KEYS))) {
@@ -839,6 +841,9 @@ const material = materialCard({
     await save();
   },
 });
+
+// What the model reads of the chosen section's sketch (decision 0078) keeps to its own module.
+const reading = sketchReadingCard(status);
 
 /** Lists the revisions, newest first, each with Open. */
 function showRevisions() {

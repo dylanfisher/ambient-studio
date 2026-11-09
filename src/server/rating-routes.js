@@ -2,17 +2,29 @@
 // their ratings, and keep as sketch. Each names the render the owner heard, keeps it as rated
 // audio with `captureRatedAudio`, and stores the heard identity beside the rating (0021). A
 // candidate holds one live thumbs and one live direction per macro, and the remove routes take
-// feedback or an A/B rating back by marking it removed (0031).
+// feedback or an A/B rating back by marking it removed (0031). A kept sketch is read back as
+// the lines the model reads of it and its lineage (0078).
+/** @import { Features } from "../domain/extract-features.js" */
+/** @import { Lineage, LineageStep } from "../domain/lineage-reading.js" */
 /** @import { MacroName } from "../engine/macro-table.js" */
+/** @import { Candidate } from "./generation-store.js" */
+/** @import { Store } from "./store.js" */
 /** @import { FeedbackKindFields, HeardExcerpt, RatingSide } from "./rating-store.js" */
 /** @import { Render } from "./render-store.js" */
 /** @import { App, Route } from "./routing.js" */
 /** @import { SessionRanking } from "./session-ranking.js" */
 /** @import { Session } from "./session-store.js" */
 import { AB_ORDER_SEEDS, abOrder } from "../domain/ab-order.js";
+import { ATTACHMENT_KIND, AXIS_SOURCE } from "../domain/attachment-kind.js";
+import { axisName } from "../domain/axis-words.js";
+import { lineageReading } from "../domain/lineage-reading.js";
 import { macroWindow } from "../domain/macro-window.js";
+import { quoted } from "../domain/references-text.js";
+import { sketchReading } from "../domain/sketch-reading.js";
 import { MACROS } from "../engine/genome-schema.js";
 import { requireGenome } from "../engine/validate-genome.js";
+import { getAttachment } from "./attachment-store.js";
+import { currentExcerpt } from "./candidate-excerpt.js";
 import { jobRecordings } from "./candidate-job.js";
 import { captureRatedAudio } from "./capture-rated-audio.js";
 import { getCandidate, getGenome } from "./generation-store.js";
@@ -23,6 +35,7 @@ import {
   FEEDBACK_KIND,
   getFeedback,
   getRating,
+  getSketch,
   MACRO_DIRECTIONS,
   OUTCOMES,
   SKETCH_FIELD,
@@ -31,6 +44,7 @@ import {
   undoFeedback,
   undoRating,
 } from "./rating-store.js";
+import { getRegion } from "./reference-store.js";
 import { getRender } from "./render-store.js";
 import {
   fields,
@@ -43,9 +57,11 @@ import {
   tagList,
   text,
 } from "./request-fields.js";
+import { isUnchanged, REVISE } from "./revise-candidate.js";
 import { HttpError } from "./routing.js";
 import { readRanking } from "./session-ranking.js";
 import { requireOpenSession } from "./session-routes.js";
+import { sketchParts } from "./track-manifest.js";
 import { getVibe } from "./vibe-store.js";
 
 const MACRO_NAMES = Object.freeze(Object.keys(MACROS));
@@ -96,6 +112,84 @@ async function keepHeard(app, renderId) {
   const rated = await captureRatedAudio(app.store, app.paths, renderId, () => jobRecordings(app));
   const { genomeId, seed, offset, duration, engineVersion } = rated;
   return { genomeId, seed, offset, duration, engineVersion, ratedAudioId: rated.id };
+}
+
+/**
+ * The sketch named by the path, or a 404 when there is none, it was removed, or its vibe was.
+ * @param {Store} store
+ * @param {Record<string, string>} params
+ */
+function requireSketch(store, params) {
+  const id = idParam(params, "sketchId");
+  const sketch = getSketch(store, id);
+  const parts = sketch && sketchParts(store, sketch);
+  const vibe = parts && getVibe(store, parts.vibeId);
+  if (!sketch || sketch.removedAt !== null || !parts || !vibe || vibe.removedAt !== null) {
+    throw new HttpError(404, `there is no sketch ${id}`);
+  }
+  return parts;
+}
+
+/**
+ * The candidate's chain back to its first ancestor stored, oldest first, as the lineage route
+ * walks it (0039): along each first parent, with an unchanged revision folded into its first
+ * try. A parent that isn't stored, or was removed, ends the chain.
+ * @param {Store} store
+ * @param {Candidate} candidate the sketch's
+ * @returns {Lineage}
+ */
+function sketchLineage(store, candidate) {
+  /** @type {LineageStep[]} */
+  const steps = [];
+  /** @type {Candidate | undefined} */
+  let at = candidate;
+  /** @type {number | null} */
+  let missingParentId = null;
+  while (at) {
+    const here = at;
+    if (here === candidate || !(here.operator === REVISE && isUnchanged(here))) {
+      const genome = here.genomeId === null ? undefined : getGenome(store, here.genomeId)?.genome;
+      if (!genome) throw new Error(`candidate ${here.id} in sketch lineage has no genome`);
+      const { id, operator, operatorParams, parentIds, intent } = here;
+      steps.unshift({
+        id,
+        operator,
+        operatorParams,
+        parentIds,
+        intent,
+        genome: requireGenome(genome, `candidate ${id}'s genome`),
+      });
+    }
+    const [parentId] = here.parentIds;
+    if (typeof parentId !== "number") break;
+    at = getCandidate(store, parentId);
+    if (!at || at.removedAt !== null) {
+      missingParentId = parentId;
+      at = undefined;
+    } else if (!(at.id < here.id)) {
+      // A parent is always made first, so this ends a chain that would otherwise loop.
+      throw new Error(`candidate ${here.id} names a later parent ${parentId}`);
+    }
+  }
+  return { steps, missingParentId };
+}
+
+/**
+ * A steer's direction or region in words, by its attachment, or null when it isn't stored.
+ * @param {Store} store
+ * @param {number} id
+ * @returns {string | null}
+ */
+function attachmentName(store, id) {
+  const attachment = getAttachment(store, id);
+  if (!attachment) return null;
+  if (attachment.kind === ATTACHMENT_KIND.direction) {
+    const { near, far } = /** @type {{ near: string | null, far: string }} */ (attachment.details);
+    return axisName({ source: AXIS_SOURCE.direction, near, far });
+  }
+  const label =
+    attachment.regionId === null ? undefined : getRegion(store, attachment.regionId)?.label;
+  return label === undefined ? null : `the region ${quoted(label)}`;
 }
 
 /**
@@ -254,6 +348,25 @@ export const RATING_ROUTES = [
       // The sketch row names the candidate only, and the rated-audio row keeps what was heard.
       await keepHeard(app, render.id);
       return addSketch(app.store, { candidateId, notes, tags });
+    },
+  },
+  {
+    // What the model reads of a sketch (0078), from stored rows only: no render, sidecar or
+    // model request. Its features are its excerpt's when that is cached.
+    method: "GET",
+    path: "/api/sketches/:sketchId/reading",
+    handle: ({ app, params }) => {
+      const { candidate, genome } = requireSketch(app.store, params);
+      const features = currentExcerpt(app.store, app.paths.renderCache, candidate)?.features;
+      return {
+        sketch: sketchReading(
+          requireGenome(genome, `candidate ${candidate.id}'s genome`),
+          /** @type {Features | null} */ (features ?? null),
+        ),
+        lineage: lineageReading(sketchLineage(app.store, candidate), (id) =>
+          attachmentName(app.store, id),
+        ),
+      };
     },
   },
   {

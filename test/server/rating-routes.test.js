@@ -7,19 +7,41 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from "vitest";
 import { AB_ORDER_SEEDS, abOrder } from "../../src/domain/ab-order.js";
+import { EXCERPT_SECONDS } from "../../src/domain/excerpt-seconds.js";
 import { ENGINE_VERSION } from "../../src/engine/engine-version.js";
-import { addFeedback, listRatedAudio, listRatedGenomes } from "../../src/server/rating-store.js";
+import { excerptOffset } from "../../src/engine/excerpt-offset.js";
+import { addAttachment } from "../../src/server/attachment-store.js";
+import { addCandidate, putGenome } from "../../src/server/generation-store.js";
+import { PRODUCER } from "../../src/server/producer.js";
+import {
+  addFeedback,
+  addSketch,
+  listRatedAudio,
+  listRatedGenomes,
+} from "../../src/server/rating-store.js";
 import { readTrainingSet } from "../../src/server/read-training-set.js";
 import { getRender, putRender } from "../../src/server/render-store.js";
 import { MAX_CHARS, MAX_TAGS } from "../../src/server/request-fields.js";
+import { markRemoved, TABLE } from "../../src/server/store.js";
 import { abRatingBody, chosenOutcome } from "../../src/web/ab-rating.js";
 import { seedExcerpts } from "../support/seed-excerpts.js";
-import { GENOMES, removeStudio, startStudio } from "../support/studio.js";
+import { GENOMES, removeStudio, startStudio, VIBE } from "../support/studio.js";
+
+/** Renders started in this file, so a read-only route can be shown to start none. */
+const renders = vi.hoisted(() => ({ count: 0 }));
 
 // Each distinct window renders once for real; later tests get a copy of those samples.
-vi.mock("../../src/server/render-offline.js", async (original) =>
-  (await import("../support/memo-render.js")).memoRenderOffline(await original()),
-);
+vi.mock("../../src/server/render-offline.js", async (original) => {
+  const memo = (await import("../support/memo-render.js")).memoRenderOffline(await original());
+  return {
+    ...memo,
+    /** @type {typeof memo.renderOffline} */
+    renderOffline: (...args) => {
+      renders.count += 1;
+      return memo.renderOffline(...args);
+    },
+  };
+});
 
 /** @type {Studio[]} */
 const studios = [];
@@ -582,5 +604,156 @@ describe("undo and replace (0031)", () => {
         .all(session.id);
       expect(live).toHaveLength(1);
     }
+  });
+});
+
+describe("a sketch's reading (0078)", () => {
+  /** Features as an excerpt is measured. */
+  const FEATURES = {
+    raw: { loudness: -20, shortTermMax: -18, loudnessRange: 3, truePeak: -4 },
+    heard: {
+      gainDb: 4,
+      centroidMean: 900,
+      centroidSpread: 200,
+      onsetRate: 0.2,
+      lowEndShare: 0.4,
+      stereoWidth: 0.2,
+      flatness: 0.01,
+    },
+  };
+
+  /** A vibe with a sketch whose candidate has a chain of three, one unchanged revision in it. */
+  async function setupChain() {
+    const studio = await startStudio();
+    studios.push(studio);
+    const vibe = await studio.ok("POST", "/api/vibes", VIBE);
+    const { store } = studio.server;
+    /**
+     * A candidate as a job would store it.
+     * @param {{ genome: unknown, seed?: number, operator?: string | null, parentIds?: number[],
+     *   operatorParams?: object | null, intent?: string | null }} spec
+     */
+    const seed = ({ genome, seed = 1, ...lineage }) =>
+      addCandidate(store, {
+        vibeRevisionId: vibe.revision.id,
+        generationId: null,
+        sessionId: null,
+        genomeId: putGenome(store, vibe.id, genome).id,
+        seed,
+        source: "llm",
+        parentIds: lineage.parentIds ?? [],
+        locks: [],
+        operator: lineage.operator ?? null,
+        operatorParams: lineage.operatorParams ?? null,
+        intent: lineage.intent ?? null,
+        rejectReason: null,
+        lint: null,
+        rejectedGenome: null,
+      });
+    const [drone, wetter] = GENOMES;
+    const first = seed({ genome: drone, intent: "a slow cold drone" });
+    // An unchanged revision has no node of its own: what was made from it reads its first try.
+    const unchanged = seed({
+      genome: drone,
+      operator: "revise",
+      parentIds: [first.id],
+      operatorParams: { unchanged: true },
+    });
+    const direction = addAttachment(store, {
+      vibeId: vibe.id,
+      kind: "direction",
+      regionId: null,
+      details: { near: "dry", far: "wet" },
+    });
+    const varied = seed({
+      genome: wetter,
+      operator: "explore",
+      parentIds: [unchanged.id],
+      operatorParams: { direction: "darker", baseTrimmed: false },
+      intent: "darker and wetter",
+    });
+    const steered = seed({
+      genome: drone,
+      operator: "steer",
+      parentIds: [varied.id],
+      operatorParams: { steer: { directions: [{ id: direction.id, setting: 0.7 }], regions: [] } },
+    });
+    const sketch = addSketch(store, { candidateId: steered.id, notes: "", tags: [] });
+    return { ...studio, seed, first, varied, steered, sketch };
+  }
+
+  /**
+   * The candidate's excerpt row and file, measured, as the excerpt job leaves them.
+   * @param {Studio} studio
+   * @param {{ genomeId: number | null, seed: number }} candidate
+   */
+  async function measure({ server }, { genomeId, seed }) {
+    const duration = EXCERPT_SECONDS;
+    const offset = excerptOffset(/** @type {any} */ (GENOMES[0]), seed, duration);
+    const file = `seeded-${genomeId}.mp3`;
+    await mkdir(server.paths.renderCache, { recursive: true });
+    await writeFile(join(server.paths.renderCache, file), "");
+    putRender(server.store, {
+      genomeId: /** @type {number} */ (genomeId),
+      seed,
+      offset,
+      duration,
+      target: -16,
+      producer: PRODUCER,
+      file,
+      features: FEATURES,
+      checks: { ok: true, findings: [] },
+    });
+  }
+
+  test("reads the sketch and its chain from stored rows, rendering nothing", async () => {
+    const studio = await setupChain();
+    const { ok, server, omlx, sketch, first, varied, steered } = studio;
+    const path = `/api/sketches/${sketch.id}/reading`;
+    const before = renders.count;
+    const unmeasured = await ok("GET", path);
+    expect(unmeasured.sketch.at(-1)).toBe(
+      "The sketch hasn't been measured yet, so no features are given.",
+    );
+    expect(unmeasured.lineage).toEqual([
+      "How the sketch was made, from its first ancestor, in 3 steps:",
+      `Step 1, candidate ${first.id}, first try: "a slow cold drone".`,
+      `Step 2, candidate ${varied.id}, variation of candidate ${first.id}, toward "darker": "darker and wetter". Changed: reverbDecay (2 → 4 s).`,
+      `Step 3, candidate ${steered.id}, steered from candidate ${varied.id}, along “dry” to “wet” (setting 0.7). Changed: reverbDecay (4 → 2 s).`,
+    ]);
+
+    await measure(studio, steered);
+    const measured = await ok("GET", path);
+    expect(measured.sketch[0]).toMatch(/^Whole piece: /);
+    expect(measured.sketch.at(-1)).toMatch(/^Its excerpt, measured: loudness range \(3\.0 LU\)/);
+    expect(renders.count).toBe(before);
+    expect(server.jobs.list()).toEqual([]);
+    expect(omlx.requests).toEqual([]);
+  });
+
+  test("a parent that isn't stored ends the chain, and says so", async () => {
+    const { ok, server, seed } = await setupChain();
+    const orphan = seed({
+      genome: GENOMES[0],
+      seed: 2,
+      operator: "nudge",
+      parentIds: [999],
+      operatorParams: { stepSize: "small", seed: 3 },
+    });
+    const sketch = addSketch(server.store, { candidateId: orphan.id, notes: "", tags: [] });
+    const { lineage } = await ok("GET", `/api/sketches/${sketch.id}/reading`);
+    expect(lineage).toEqual([
+      `How the sketch was made, from candidate ${orphan.id}, in one step: candidate ${orphan.id}'s parent, candidate 999, isn't in the studio, so the chain stops there and what candidate ${orphan.id} changed isn't known.`,
+      `Step 1, candidate ${orphan.id}, nudged from candidate 999, a small step.`,
+    ]);
+  });
+
+  test("an unknown or removed sketch is a 404", async () => {
+    const { server, sketch } = await setupChain();
+    expect((await server.api("GET", "/api/sketches/999/reading")).status).toBe(404);
+    markRemoved(server.store, TABLE.sketches, sketch.id, "test");
+    const reply = await server.api("GET", `/api/sketches/${sketch.id}/reading`);
+    expect(reply.status).toBe(404);
+    expect(reply.json().error).toBe(`there is no sketch ${sketch.id}`);
   });
 });
