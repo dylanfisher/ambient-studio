@@ -52,7 +52,7 @@ const PARAMS = Object.freeze({
     unit: "dB",
     trajectory: true,
     safe: [0, 12],
-    description: "boost at upper formant",
+    description: "upper formant boost",
   }),
   tilt: number({
     min: 0,
@@ -110,7 +110,7 @@ const PARAMS = Object.freeze({
     default: 12,
     unit: "cents",
     safe: [4, 25],
-    description: "singers detuned ±this",
+    description: "detuned ±this",
   }),
   pan: number({
     min: 0,
@@ -118,7 +118,7 @@ const PARAMS = Object.freeze({
     default: 1,
     unit: "",
     safe: [0.5, 1],
-    description: "singers panned ±this",
+    description: "panned ±this",
   }),
   phrase: number({
     min: 3,
@@ -127,7 +127,7 @@ const PARAMS = Object.freeze({
     unit: "s",
     scale: "log",
     safe: [5, 16],
-    description: "sung between breaths",
+    description: "between breaths",
   }),
   breath: number({
     min: 0,
@@ -135,7 +135,7 @@ const PARAMS = Object.freeze({
     default: 0,
     unit: "s",
     safe: [0.3, 1],
-    description: "0 never breathes",
+    description: "0 = no breaths",
   }),
   flutter: number({
     min: 0,

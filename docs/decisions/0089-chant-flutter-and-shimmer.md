@@ -133,8 +133,11 @@ shimmer cost 164.3 (161.9 without the wanders), and fit beside a reverb of up to
   partials would take back room, but it changes the samples of every genome with growl,
   `chant-growl.json`'s golden among them, so it needs an engine version or a genome-side switch;
   it isn't taken here.
-- The schema text grows by the two lines, about 62 characters, to about 4,023, over the 4,000
-  `schema-text.test.js` holds; CG.4 owns that budget (0072).
+- The schema text grows by the two lines, 62 characters, which would take it to 4,023, over the
+  4,000 `schema-text.test.js` holds (0072). So five of the chant's own descriptions are shorter:
+  focus "upper formant boost", spread "detuned ±this", pan "panned ±this", phrase "between
+  breaths" and breath "0 = no breaths", 26 characters, and the text is at 3,997. CG.3 and CG.4
+  have no schema room left: each new parameter needs room found first, or CG.4 moves the limit.
 - Registering the parameters changes what `randomGenome` returns for existing seeds (0003's
   amendment accepts this). No stored genome renders differently, so `ENGINE_VERSION` stays 2;
   every existing golden hash is unchanged, and `chant-flutter.json` is new at v2: five singers
