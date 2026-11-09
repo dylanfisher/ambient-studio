@@ -43,7 +43,8 @@ function changeSection(arrangement, index, change) {
 /**
  * Adds a section of the sketch after section `after`, or first when null, playing the sketch
  * from its start for `SECTION_FIELDS.seconds`'s default or the whole sketch when shorter. Its
- * crossfade is the default, or half the shorter neighbor when that is less. Neither has text.
+ * crossfade is the default, or half the shorter neighbor when that is less. Neither has text,
+ * and the section plays its sketch, not a development.
  * @param {Arrangement} arrangement
  * @param {{ id: number, duration: number }} sketch
  * @param {number | null} after
@@ -56,6 +57,7 @@ export function addSection(arrangement, sketch, after) {
     offset: 0,
     seconds: Math.max(field.min, Math.min(field.default, sketch.duration)),
     text: "",
+    developmentId: null,
   };
   const index = after === null ? 0 : after + 1;
   const sections = arrangement.sections.toSpliced(index, 0, section);
@@ -126,6 +128,20 @@ export const setSection = (arrangement, index, values) =>
  */
 export const setSectionText = (arrangement, index, text) =>
   changeSection(arrangement, index, (section) => ({ ...section, text }));
+
+/**
+ * Has a section play a development of its sketch, or its sketch again with null (decision
+ * 0079), from `offset` on that genome's timeline: 0 for a new development, which lasts the
+ * section's seconds, and the offset the development was written from when going back to the
+ * sketch. Its seconds and text stay.
+ * @param {Arrangement} arrangement
+ * @param {number} index
+ * @param {number | null} developmentId
+ * @param {number} offset
+ * @returns {Arrangement}
+ */
+export const setDevelopment = (arrangement, index, developmentId, offset) =>
+  changeSection(arrangement, index, (section) => ({ ...section, offset, developmentId }));
 
 /**
  * Moves a section's offset or seconds by `steps` of `SECTION_STEP`, never under the field's

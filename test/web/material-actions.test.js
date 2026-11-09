@@ -100,7 +100,13 @@ test("an elite placed is kept as a sketch first, then becomes a section that sav
   expect(placed.sketch.candidateId).toBe(elite.cell.candidateId);
   expect(placed.index).toBe(0);
   expect(placed.arrangement.sections).toEqual([
-    { sketchId: placed.sketch.id, offset: 0, seconds: expect.any(Number), text: "" },
+    {
+      sketchId: placed.sketch.id,
+      offset: 0,
+      seconds: expect.any(Number),
+      text: "",
+      developmentId: null,
+    },
   ]);
   const saved = await ok("POST", `${trackPath}/revisions`, {
     arrangement: placed.arrangement,
@@ -173,23 +179,23 @@ test("a swap names the steered sketch and keeps the section's window", () => {
   const arrangement = {
     ...emptyArrangement(),
     sections: [
-      { sketchId: 1, offset: 30, seconds: 120, text: "" },
-      { sketchId: 2, offset: 0, seconds: 90, text: "brighter toward the end" },
+      { sketchId: 1, offset: 30, seconds: 120, text: "", developmentId: null },
+      { sketchId: 2, offset: 0, seconds: 90, text: "brighter toward the end", developmentId: null },
     ],
     transitions: [{ kind: "crossfade", seconds: 8, text: "" }],
   };
   const swapped = swapSketch(arrangement, 1, 7);
   expect(swapped.sections).toEqual([
-    { sketchId: 1, offset: 30, seconds: 120, text: "" },
-    { sketchId: 7, offset: 0, seconds: 90, text: "brighter toward the end" },
+    { sketchId: 1, offset: 30, seconds: 120, text: "", developmentId: null },
+    { sketchId: 7, offset: 0, seconds: 90, text: "brighter toward the end", developmentId: null },
   ]);
   expect(swapped.transitions).toBe(arrangement.transitions);
   expect(arrangement.sections[1]?.sketchId).toBe(2);
 });
 
 test("a finished steer swaps in only on the line of versions it started on, and only into its own section", () => {
-  const from = { sketchId: 2, offset: 0, seconds: 90, text: "" };
-  const other = { sketchId: 1, offset: 30, seconds: 120, text: "" };
+  const from = { sketchId: 2, offset: 0, seconds: 90, text: "", developmentId: null };
+  const other = { sketchId: 1, offset: 30, seconds: 120, text: "", developmentId: null };
   const arrangement = {
     ...emptyArrangement(),
     sections: [other, from],

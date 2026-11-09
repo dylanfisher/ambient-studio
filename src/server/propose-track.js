@@ -286,7 +286,7 @@ export function proposeJob(app, { vibeId, name, length, arc, regionId }) {
       };
       /** @type {ProposalAsk} */
       const ask = {
-        context: arrangementContext(store, vibeId),
+        context: arrangementContext(store, vibeId, null),
         elites: durations,
         length,
         arc,
@@ -318,7 +318,7 @@ export function proposeJob(app, { vibeId, name, length, arc, regionId }) {
           sketchIds.set(candidateId, addSketch(store, { candidateId, notes: "", tags: [] }).id);
         }
         const arrangement = placed(valid.arrangement, valid.elites, sketchIds, kept.id);
-        const checked = validateArrangement(arrangement, arrangementContext(store, vibeId));
+        const checked = validateArrangement(arrangement, arrangementContext(store, vibeId, null));
         if (!checked.ok) {
           throw new Error(
             `the proposal failed its check once its elites were kept: ${JSON.stringify(checked.errors)}`,

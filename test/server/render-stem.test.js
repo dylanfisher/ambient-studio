@@ -176,8 +176,8 @@ test.each(instanced)(
     const arrangement = {
       ...emptyArrangement(),
       sections: [
-        { sketchId: 1, offset: 6, seconds: 16, text: "" },
-        { sketchId: 2, offset: 20, seconds: 16, text: "" },
+        { sketchId: 1, offset: 6, seconds: 16, text: "", developmentId: null },
+        { sketchId: 2, offset: 20, seconds: 16, text: "", developmentId: null },
       ],
       transitions: [{ kind, seconds: 8, curve: "smooth", text: "" }],
     };

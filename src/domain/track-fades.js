@@ -3,15 +3,18 @@
 // genome's fades sit; the track instead fades in as its first sketch does and out as its last
 // does, on the master bus's curve, applied to the mix.
 /** @import { Arrangement } from "./arrangement-schema.js" */
+/** @import { SectionGenomes } from "./section-genome.js" */
 import { CURVES } from "../engine/trajectory.js";
 import { requireGenome } from "../engine/validate-genome.js";
 import { arrangementLength } from "./arrangement-length.js";
 
 /**
  * The fades' lengths in seconds: the first section's sketch's `fadeIn` and the last one's
- * `fadeOut`, scaled down together when they add up to more than the track.
+ * `fadeOut`, scaled down together when they add up to more than the track. A developed section
+ * fades as its sketch does: a development is written to play inside a track, with no fades of its
+ * own (0079).
  * @param {Arrangement} arrangement a valid one
- * @param {ReadonlyMap<number, unknown>} genomes each sketch's stored genome, by sketch id
+ * @param {SectionGenomes} genomes the sketches' genomes by id, which the fades read
  * @returns {{ fadeIn: number, fadeOut: number }}
  */
 export function trackFades(arrangement, genomes) {

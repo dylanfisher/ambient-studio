@@ -3,6 +3,7 @@
 // chunks take, each chunk's pre-roll included. The estimate divides the work by a rate, from the
 // last track render or the bench before any.
 /** @import { Arrangement } from "./arrangement-schema.js" */
+/** @import { SectionGenomes } from "./section-genome.js" */
 import { CHUNK_SECONDS, chunkWindows } from "../engine/chunk-windows.js";
 import { cost } from "../engine/cost.js";
 import { preRoll } from "../engine/render-plan.js";
@@ -27,7 +28,7 @@ export const BENCH_RATE = 4000;
 
 /**
  * @param {Arrangement} arrangement a valid one
- * @param {ReadonlyMap<number, unknown>} genomes each sketch's stored genome, by sketch id
+ * @param {SectionGenomes} genomes each sketch's stored genome by its id, and each development's
  * @param {number} [chunkSeconds] `CHUNK_SECONDS` when omitted
  * @returns {TrackCost}
  */

@@ -3,6 +3,7 @@
 // the recipe with what the render measured, from which `rerenderTrack` renders it again. Built
 // like 0015's sidecar: each section's normalized genome with its hash, the seed and window, and
 // the engine and renderer versions.
+/** @import { Arrangement } from "../domain/arrangement-schema.js" */
 /** @import { Constraints } from "../domain/constraint-schema.js" */
 /** @import { TrackCost } from "../domain/track-cost.js" */
 /** @import { Genome } from "../engine/genome-schema.js" */
@@ -12,6 +13,7 @@
 /** @import { Store } from "./store.js" */
 /** @import { Track, TrackRevision } from "./track-store.js" */
 import {
+  genomeKey,
   renderedTransition,
   sectionGenome,
   sectionInstances,
@@ -28,6 +30,7 @@ import { isObject } from "../engine/is-object.js";
 import { LANE_CURVE, LANE_POINTS, LANE_SAMPLE_SECONDS } from "../engine/macro-lane.js";
 import { SAMPLE_RATE } from "../engine/render-plan.js";
 import { requireGenome } from "../engine/validate-genome.js";
+import { getDevelopment } from "./development-store.js";
 import { getCandidate, getGenome } from "./generation-store.js";
 import { genomeHash } from "./genome-hash.js";
 import { loadSamples } from "./load-samples.js";
@@ -41,14 +44,16 @@ import { getRevision } from "./vibe-store.js";
  * A section as the manifest records it.
  * @typedef {object} ManifestSection
  * @property {number} sketchId
- * @property {number} candidateId
- * @property {number} seed the candidate's
+ * @property {number} candidateId the sketch's
+ * @property {number} seed the candidate's, which a development keeps (0079)
  * @property {number} offset timeline seconds where the section's render starts: where the
  *   section starts, or a morph's handover into it (`sectionWindow`)
  * @property {number} duration seconds the section renders
  * @property {string} genomeHash of `genome`
  * @property {Genome} genome the section's, from `sectionGenome`, normalized
  * @property {string[]} [instances] a morph's renamed instances in `genome` (0064), when it has any
+ * @property {number} [developmentId] the development the section plays in place of its sketch
+ *   (0079), when it has one
  */
 
 /**
@@ -122,6 +127,37 @@ export function sketchParts(store, { id, candidateId }) {
 }
 
 /**
+ * The genomes an arrangement's sections play, read from the store once: each sketch's by its id,
+ * which the track's fades read, and each development's by its key (0079); with the candidate and
+ * seed each renders at. Throws when a row a section names is missing.
+ * @param {Store} store
+ * @param {Arrangement} arrangement
+ */
+export function sectionSources(store, arrangement) {
+  /** @type {Map<number | string, unknown>} */
+  const genomes = new Map();
+  /** @type {Map<number | string, { candidateId: number, seed: number }>} */
+  const candidates = new Map();
+  for (const section of arrangement.sections) {
+    const { sketchId, developmentId } = section;
+    const sketch = getSketch(store, sketchId);
+    if (!sketch) throw new Error(`there is no sketch ${sketchId}`);
+    const { candidate, genome } = sketchParts(store, sketch);
+    genomes.set(sketchId, genome);
+    candidates.set(sketchId, { candidateId: candidate.id, seed: candidate.seed });
+    if (developmentId === null) continue;
+    const development = getDevelopment(store, developmentId);
+    const developed = development && getGenome(store, development.genomeId)?.genome;
+    if (!development || !developed) {
+      throw new Error(`development ${developmentId} has no genome to render`);
+    }
+    genomes.set(genomeKey(section), developed);
+    candidates.set(genomeKey(section), { candidateId: candidate.id, seed: development.seed });
+  }
+  return { genomes, candidates };
+}
+
+/**
  * The revision's recipe and cost. The loudness target is the vibe's current one, as a section's
  * player uses (0061); the ceiling is the lowest any section's genome sets.
  * @param {Store} store
@@ -131,23 +167,13 @@ export function sketchParts(store, { id, candidateId }) {
 export function trackRecipe(store, { track, revision, constraints }) {
   const { arrangement } = revision;
   if (arrangement.sections.length === 0) throw new Error("the track has no sections to render");
-  /** @type {Map<number, unknown>} */
-  const genomes = new Map();
-  /** @type {Map<number, { candidateId: number, seed: number }>} */
-  const candidates = new Map();
-  for (const { sketchId } of arrangement.sections) {
-    const sketch = getSketch(store, sketchId);
-    if (!sketch) throw new Error(`there is no sketch ${sketchId}`);
-    const { candidate, genome } = sketchParts(store, sketch);
-    genomes.set(sketchId, genome);
-    candidates.set(sketchId, { candidateId: candidate.id, seed: candidate.seed });
-  }
+  const { genomes, candidates } = sectionSources(store, arrangement);
   const sections = arrangement.sections.map((section, index) => {
     const genome = sectionGenome(arrangement, index, genomes);
     const window = sectionWindow(arrangement, index, genomes);
     const instances = sectionInstances(arrangement, index, genomes);
     const { candidateId, seed } = /** @type {{ candidateId: number, seed: number }} */ (
-      candidates.get(section.sketchId)
+      candidates.get(genomeKey(section))
     );
     return {
       sketchId: section.sketchId,
@@ -158,6 +184,8 @@ export function trackRecipe(store, { track, revision, constraints }) {
       genomeHash: genomeHash(genome),
       genome,
       ...(instances.length > 0 && { instances }),
+      // Named only when set, so a track with no developments keeps its recipe and cache key.
+      ...(section.developmentId !== null && { developmentId: section.developmentId }),
     };
   });
   return {

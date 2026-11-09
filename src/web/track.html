@@ -161,6 +161,12 @@
         <!-- biome-ignore lint/a11y/useMediaCaption: instrumental sections have no speech to caption -->
         <audio id="sectionAudio" preload="none" title="Plays the chosen section's part of its sketch, rendered as it will sound in the track."></audio>
         <div id="jobBox" class="stack"></div>
+        <p id="developedLine" class="small"></p>
+        <div class="row">
+          <button id="develop" class="button secondary small" type="button" title="Asks the model to write this section's own genome from its sketch, how the sketch was made, your words for the section and where its neighbors meet it, after a confirm that says how long it takes. The sketch stays as it is, and the development is saved as a new version of this track.">Develop this section</button>
+          <button id="plainSketch" class="button outline small" type="button" title="Has the chosen section play its sketch again instead of its development, from where it started in the sketch. The development is kept, and earlier versions still play it. Save to keep the change.">Play the plain sketch</button>
+        </div>
+        <div id="developJobBox" class="stack"></div>
       </section>
 
       <section id="readingBox" class="card stack" aria-labelledby="reading-heading" hidden>

@@ -8,7 +8,9 @@ import { REJECT_REASON } from "../../src/domain/reject-reason.js";
 /** @type {ArrangementContext} */
 const context = {
   vibeId: 1,
+  trackId: null,
   sketch: (id) => (id === 7 ? { vibeId: 1, removedReason: null, duration: 300 } : undefined),
+  development: () => undefined,
 };
 const elites = new Map([[40, 240]]);
 const ask = { context, elites, length: 600, arc: "emerge, plateau, dissolve" };
@@ -34,7 +36,7 @@ describe("the length rule", () => {
       ok: true,
       arrangement: {
         ...given,
-        sections: given.sections.map((section) => ({ ...section, text: "" })),
+        sections: given.sections.map((section) => ({ ...section, text: "", developmentId: null })),
         transitions: [{ kind: "crossfade", seconds: 8, text: "" }],
         length: 600,
         arc: ask.arc,
@@ -167,4 +169,22 @@ test("a cut-off or unparsed response is rejected with no answer to repair", () =
     ask,
   );
   expect(fenced.ok).toBe(true);
+});
+
+test("a proposed section names no development: a new track has none (0079)", () => {
+  const given = answer(278);
+  const named = {
+    ...given,
+    sections: given.sections.map((section, i) =>
+      i === 0 ? { ...section, developmentId: 5 } : section,
+    ),
+  };
+  const checked = checkProposal(named, ask);
+  expect(checked.ok).toBe(false);
+  expect(!checked.ok && checked.errors).toContainEqual(
+    expect.objectContaining({
+      path: "$.sections[0].developmentId",
+      message: "there is no development 5",
+    }),
+  );
 });

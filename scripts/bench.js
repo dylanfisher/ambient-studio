@@ -172,7 +172,13 @@ function benchTrack(length) {
   const genomes = new Map(names.map((name, i) => [i + 1, golden(name)]));
   const arrangement = {
     ...emptyArrangement(),
-    sections: names.map((_, i) => ({ sketchId: i + 1, offset: TRACK.offset, seconds, text: "" })),
+    sections: names.map((_, i) => ({
+      sketchId: i + 1,
+      offset: TRACK.offset,
+      seconds,
+      text: "",
+      developmentId: null,
+    })),
     // The first transition, example into drone, is a weave: the two share their pitch globals.
     transitions: names
       .slice(1)
@@ -237,7 +243,7 @@ function chantTrack() {
   const genomes = new Map([[1, genome]]);
   const arrangement = {
     ...emptyArrangement(),
-    sections: [0, 1].map(() => ({ sketchId: 1, offset, seconds, text: "" })),
+    sections: [0, 1].map(() => ({ sketchId: 1, offset, seconds, text: "", developmentId: null })),
     transitions: [{ kind: "crossfade", seconds: transition, text: "" }],
   };
   const plan = {

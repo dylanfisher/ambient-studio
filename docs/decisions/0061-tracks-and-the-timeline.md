@@ -5,7 +5,9 @@
   past its sketch, the keys and the section player; amended by
   [0065](0065-macro-lanes.md) (`lanes` hold macro lanes, under the timeline) and
   [0077](0077-section-and-transition-text.md) (`text` on every section and transition, two text
-  fields in the chosen section's panel, the start of the text on each block). Amends
+  fields in the chosen section's panel, the start of the text on each block) and
+  [0079](0079-develop-a-section.md) (`developmentId` on every section, its offset on the
+  development's timeline, the develop and plain-sketch actions and keys). Amends
   [0021](0021-store-tables-and-append-only.md) (the track tables) and
   [0032](0032-plain-language-pages.md) (the timeline page and its keys)
 

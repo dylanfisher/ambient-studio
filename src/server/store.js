@@ -51,6 +51,7 @@ export const TABLE = /** @type {const} */ ({
   tracks: "tracks",
   trackRevisions: "track_revisions",
   trackExports: "track_exports",
+  developments: "developments",
   renders: "renders",
   embeddings: "embeddings",
   regionAnalyses: "region_analyses",

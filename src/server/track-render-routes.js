@@ -53,7 +53,7 @@ function requireRevision(store, params, revisionId) {
   const { track } = requireTrack(store, params);
   const revision = listTrackRevisions(store, track.id).find(({ id }) => id === revisionId);
   if (!revision) throw new HttpError(404, `track ${track.id} has no version ${revisionId}`);
-  checkedArrangement(store, track.vibeId, revision.arrangement);
+  checkedArrangement(store, track, revision.arrangement);
   if (revision.arrangement.sections.length === 0) {
     throw new HttpError(400, "This version has no sections to render. Add a sketch first.");
   }

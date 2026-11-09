@@ -25,8 +25,8 @@ const genomes = new Map([
 const arrangement = {
   ...emptyArrangement(),
   sections: [
-    { sketchId: 1, offset: 0, seconds: 40, text: "" },
-    { sketchId: 2, offset: 30, seconds: 250, text: "" },
+    { sketchId: 1, offset: 0, seconds: 40, text: "", developmentId: null },
+    { sketchId: 2, offset: 30, seconds: 250, text: "", developmentId: null },
   ],
   transitions: [{ kind: "crossfade", seconds: 10, text: "" }],
 };
@@ -78,7 +78,7 @@ test("a weave counts as a morph does, the incoming section from the handover", (
 test("one section's peak is its own cost, and an empty track costs nothing", () => {
   const alone = {
     ...emptyArrangement(),
-    sections: [{ sketchId: 1, offset: 0, seconds: 40, text: "" }],
+    sections: [{ sketchId: 1, offset: 0, seconds: 40, text: "", developmentId: null }],
   };
   expect(trackCost(alone, genomes).peak).toBe(cost(sectionGenome(alone, 0, genomes)));
   expect(trackCost(emptyArrangement(), genomes)).toEqual({ peak: 0, work: 0, audio: 0, length: 0 });

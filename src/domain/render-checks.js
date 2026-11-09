@@ -67,8 +67,12 @@ function dcOffset({ channels }) {
   });
 }
 
-/** @param {unknown} genome @returns {Finding[]} */
-function costBudget(genome) {
+/**
+ * The engine's cost budget, which a render checks and a development's answer is held to (0079).
+ * @param {unknown} genome
+ * @returns {Finding[]}
+ */
+export function costBudget(genome) {
   const found = cost(genome);
   if (found <= COST_BUDGET) return [];
   return [

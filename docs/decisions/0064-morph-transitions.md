@@ -6,7 +6,9 @@
   suffix. Amends [0062](0062-track-render-and-export.md) (section windows, the manifest's
   transitions, the cost) and [0063](0063-stems-by-voice-id.md) (stems by section); amended by
   [0080](0080-weave-transitions.md) (a weave is this morph with each split voice on its own
-  stretch; a fallback's reason names its kind; the result lists a weave's order)
+  stretch; a fallback's reason names its kind; the result lists a weave's order) and
+  [0079](0079-develop-a-section.md) (a morph or a weave into or out of a developed section reads
+  its development's genome)
 
 ## Context
 

@@ -8,6 +8,7 @@ import { emptyArrangement } from "../../src/domain/arrangement-schema.js";
 import { ATTACHMENT_KIND } from "../../src/domain/attachment-kind.js";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
 import { addAttachment } from "../../src/server/attachment-store.js";
+import { addDevelopment } from "../../src/server/development-store.js";
 import { addEvaluation } from "../../src/server/evaluation-store.js";
 import { addCandidate, addGeneration, putGenome } from "../../src/server/generation-store.js";
 import { setHidden } from "../../src/server/hide-store.js";
@@ -193,7 +194,7 @@ export function fillStore(store) {
   });
   const arrangement = {
     ...emptyArrangement(),
-    sections: [{ sketchId: sketch.id, offset: 0, seconds: 60, text: "" }],
+    sections: [{ sketchId: sketch.id, offset: 0, seconds: 60, text: "", developmentId: null }],
   };
   const { track, revision } = createTrack(store, { vibeId: vibe.id, name: "first", arrangement });
   const trackExport = addTrackExport(store, {
@@ -201,6 +202,16 @@ export function fillStore(store) {
     kind: "mix",
     folder: "first-1",
     manifestSha256: "2".repeat(64),
+  });
+  const development = addDevelopment(store, {
+    trackId: track.id,
+    sketchId: sketch.id,
+    text: "a slow swell",
+    offset: 0,
+    seconds: 60,
+    genomeId: genome.id,
+    seed: 7,
+    generationId: generation.id,
   });
   return {
     vibes: vibe.id,
@@ -223,5 +234,6 @@ export function fillStore(store) {
     tracks: track.id,
     track_revisions: revision.id,
     track_exports: trackExport.id,
+    developments: development.id,
   };
 }

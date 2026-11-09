@@ -5,7 +5,8 @@
   keeping one cached render per track, and the export folder's name; amended by
   [0063](0063-stems-by-voice-id.md) (an export can write stems) and
   [0064](0064-morph-transitions.md) (morphs: section windows, the manifest's transitions, the
-  cost). Amends
+  cost) and [0079](0079-develop-a-section.md) (a developed section renders its development's
+  genome at the sketch's seed, named in the manifest; the fades stay the sketches'). Amends
   [0010](0010-event-windows-control-grid-memory.md) (a track renders as several contexts),
   [0015](0015-export-sidecar-json.md) (the track manifest),
   [0016](0016-render-speed-bench.md) (`--track`), [0019](0019-config-file-and-paths.md) (two

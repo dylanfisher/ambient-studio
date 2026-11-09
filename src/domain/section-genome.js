@@ -1,7 +1,7 @@
-// A sketch's genome fitted to its section of a track (decision 0062). Every audio path of a
-// track goes through here: the render, the seam preview, the cost, stems (0063), morphs and
-// weaves (`morphGenome`, 0064 and 0080) and macro lanes (`applyLanes`, 0065).
-/** @import { Arrangement } from "./arrangement-schema.js" */
+// A sketch's genome, or the track's development of it (decision 0079), fitted to its section of a
+// track (0062). Every audio path of a track goes through here: the render, the seam preview,
+// the cost, stems (0063), morphs and weaves (`morphGenome`, 0064 and 0080) and macro lanes (0065).
+/** @import { Arrangement, Section } from "./arrangement-schema.js" */
 /** @import { Morph } from "./morph-genome.js" */
 /** @import { Genome } from "../engine/genome-schema.js" */
 /** @import { Curve } from "../engine/trajectory.js" */
@@ -13,27 +13,50 @@ import { morphs, TRANSITION_KIND } from "./arrangement-schema.js";
 import { morphGenome } from "./morph-genome.js";
 
 /**
- * The sketch's genome for its section, normalized, before any morph:
- * - no master fade, since a section's window rarely starts at its sketch's 0 or ends at its
+ * The stored genomes a track's sections play: each sketch's by its id, and each development's
+ * by `developmentKey` of its id (decision 0079). A section reads its own through `genomeKey`.
+ * @typedef {ReadonlyMap<number | string, unknown>} SectionGenomes
+ */
+
+/**
+ * Where a development's genome sits in `SectionGenomes`: a string, so it never meets a sketch id.
+ * @param {number} id
+ */
+export const developmentKey = (id) => `development ${id}`;
+
+/**
+ * The key of the genome a section plays: its development's when it has one, else its sketch's.
+ * @param {Section} section
+ * @returns {number | string}
+ */
+export const genomeKey = ({ sketchId, developmentId }) =>
+  developmentId === null ? sketchId : developmentKey(developmentId);
+
+/**
+ * The genome a section plays, its sketch's or its development's, fitted to the section and
+ * normalized, before any morph:
+ * - no master fade, since a section's window rarely starts at its genome's 0 or ends at its
  *   duration, where the genome's fades sit; the track's own fades come from `trackFades`;
- * - when the section runs past the sketch's end (0061's extend), `duration` raised to the
+ * - when the section runs past the genome's end (0061's extend), `duration` raised to the
  *   section's end and each voice that reached the old end moved to the new one. Trajectories
  *   hold past their last point (0007), so they are left as they are.
  * @param {Arrangement} arrangement a valid one
  * @param {number} index the section's
- * @param {ReadonlyMap<number, unknown>} genomes each sketch's stored genome, by sketch id
+ * @param {SectionGenomes} genomes
  * @returns {Genome}
  */
-function fittedGenome(arrangement, index, genomes) {
+export function fittedGenome(arrangement, index, genomes) {
   const section = arrangement.sections[index];
   if (!section) throw new Error(`there is no section ${index + 1}`);
-  const stored = genomes.get(section.sketchId);
+  const played =
+    section.developmentId === null
+      ? `sketch ${section.sketchId}`
+      : `development ${section.developmentId}`;
+  const stored = genomes.get(genomeKey(section));
   if (stored === undefined) {
-    throw new Error(
-      `section ${index + 1} plays sketch ${section.sketchId}, which has no genome here`,
-    );
+    throw new Error(`section ${index + 1} plays ${played}, which has no genome here`);
   }
-  const genome = requireGenome(stored, `sketch ${section.sketchId}'s genome`);
+  const genome = requireGenome(stored, `${played}'s genome`);
   const end = section.offset + section.seconds;
   const extended = end > genome.duration;
   const fitted = {
@@ -55,7 +78,7 @@ function fittedGenome(arrangement, index, genomes) {
  * crossfade or there is none. One that can't hold says why, and plays as a crossfade.
  * @param {Arrangement} arrangement a valid one
  * @param {number} index the outgoing section's
- * @param {ReadonlyMap<number, unknown>} genomes
+ * @param {SectionGenomes} genomes
  * @returns {Morph | null}
  */
 export function sectionMorph(arrangement, index, genomes) {
@@ -86,7 +109,7 @@ export function sectionMorph(arrangement, index, genomes) {
  * same.
  * @param {Arrangement} arrangement a valid one
  * @param {number} index the section's
- * @param {ReadonlyMap<number, unknown>} genomes each sketch's stored genome, by sketch id
+ * @param {SectionGenomes} genomes
  * @returns {Genome}
  */
 export function sectionGenome(arrangement, index, genomes) {
@@ -98,7 +121,7 @@ export function sectionGenome(arrangement, index, genomes) {
  * A section's genome before lanes, and where it plays on the track.
  * @param {Arrangement} arrangement a valid one
  * @param {number} index the section's
- * @param {ReadonlyMap<number, unknown>} genomes
+ * @param {SectionGenomes} genomes
  */
 function unlaned(arrangement, index, genomes) {
   const morph = sectionMorph(arrangement, index, genomes);
@@ -115,7 +138,7 @@ function unlaned(arrangement, index, genomes) {
  * page can say the sketch's own motion there is coarser.
  * @param {Arrangement} arrangement a valid one
  * @param {number} index the section's
- * @param {ReadonlyMap<number, unknown>} genomes
+ * @param {SectionGenomes} genomes
  * @returns {string[]}
  */
 export function sectionThinning(arrangement, index, genomes) {
@@ -128,7 +151,7 @@ export function sectionThinning(arrangement, index, genomes) {
  * from the morph's handover: before it, the morph's genome plays its voices.
  * @param {Arrangement} arrangement a valid one
  * @param {number} index the section's
- * @param {ReadonlyMap<number, unknown>} genomes
+ * @param {SectionGenomes} genomes
  * @returns {{ offset: number, duration: number }} timeline seconds
  */
 export function sectionWindow(arrangement, index, genomes) {
@@ -147,7 +170,7 @@ export function sectionWindow(arrangement, index, genomes) {
  * weave's handover, a crossfade of `MORPH_HANDOVER` at its end, with its kind, seconds and curve.
  * @param {Arrangement} arrangement a valid one
  * @param {number} index
- * @param {ReadonlyMap<number, unknown>} genomes
+ * @param {SectionGenomes} genomes
  * @returns {{ kind: string, seconds: number, morphSeconds?: number, curve?: Curve }}
  */
 export function renderedTransition(arrangement, index, genomes) {
@@ -169,7 +192,7 @@ export function renderedTransition(arrangement, index, genomes) {
  * (0063) gathers each under `voiceOfInstance` of its id.
  * @param {Arrangement} arrangement a valid one
  * @param {number} index the section's
- * @param {ReadonlyMap<number, unknown>} genomes
+ * @param {SectionGenomes} genomes
  * @returns {string[]}
  */
 export function sectionInstances(arrangement, index, genomes) {

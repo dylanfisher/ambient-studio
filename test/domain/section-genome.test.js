@@ -1,11 +1,13 @@
 // A section's genome (decision 0062): the sketch's genome with no master fade inside the track,
 // extended when the section runs past the sketch's end, and the morph into the next section
-// when their transition is one (0064).
+// when their transition is one (0064); a developed section plays its development (0079).
 /** @import { Genome } from "../../src/engine/genome-schema.js" */
 import { describe, expect, test } from "vitest";
 import { emptyArrangement } from "../../src/domain/arrangement-schema.js";
 import { morphGenome } from "../../src/domain/morph-genome.js";
 import {
+  developmentKey,
+  genomeKey,
   renderedTransition,
   sectionGenome,
   sectionInstances,
@@ -30,7 +32,7 @@ const twoVoices = requireGenome(
   "two voices",
 );
 
-/** @param {{ sketchId: number, offset: number, seconds: number, text: "" }[]} sections */
+/** @param {{ sketchId: number, offset: number, seconds: number, text: "", developmentId: null }[]} sections */
 const arrangement = (sections) => ({
   ...emptyArrangement(),
   sections,
@@ -40,9 +42,9 @@ const arrangement = (sections) => ({
 test("a section inside its sketch plays the sketch's genome with no master fades", () => {
   const genomes = new Map([[1, droneGenome]]);
   const track = arrangement([
-    { sketchId: 1, offset: 0, seconds: 30, text: "" },
-    { sketchId: 1, offset: 10, seconds: 30, text: "" },
-    { sketchId: 1, offset: 20, seconds: 40, text: "" },
+    { sketchId: 1, offset: 0, seconds: 30, text: "", developmentId: null },
+    { sketchId: 1, offset: 10, seconds: 30, text: "", developmentId: null },
+    { sketchId: 1, offset: 20, seconds: 40, text: "", developmentId: null },
   ]);
   for (const index of [0, 1, 2]) {
     expect(sectionGenome(track, index, genomes)).toEqual({ ...drone, fadeIn: 0, fadeOut: 0 });
@@ -52,7 +54,7 @@ test("a section inside its sketch plays the sketch's genome with no master fades
 test("a section past its sketch's end extends the timeline and the voices that reach the end", () => {
   const genomes = new Map([[2, twoVoices]]);
   const genome = sectionGenome(
-    arrangement([{ sketchId: 2, offset: 30, seconds: 90, text: "" }]),
+    arrangement([{ sketchId: 2, offset: 30, seconds: 90, text: "", developmentId: null }]),
     0,
     genomes,
   );
@@ -69,7 +71,11 @@ test("a section past its sketch's end extends the timeline and the voices that r
 
 test("a section names a sketch the caller has no genome for", () => {
   expect(() =>
-    sectionGenome(arrangement([{ sketchId: 9, offset: 0, seconds: 30, text: "" }]), 0, new Map()),
+    sectionGenome(
+      arrangement([{ sketchId: 9, offset: 0, seconds: 30, text: "", developmentId: null }]),
+      0,
+      new Map(),
+    ),
   ).toThrow("section 1 plays sketch 9, which has no genome here");
   expect(() => sectionGenome(arrangement([]), 0, new Map())).toThrow("there is no section 1");
 });
@@ -92,8 +98,8 @@ describe("a morph between two sections", () => {
   const track = {
     ...emptyArrangement(),
     sections: [
-      { sketchId: 1, offset: 0, seconds: 30, text: "" },
-      { sketchId: 2, offset: 10, seconds: 30, text: "" },
+      { sketchId: 1, offset: 0, seconds: 30, text: "", developmentId: null },
+      { sketchId: 2, offset: 10, seconds: 30, text: "", developmentId: null },
     ],
     transitions: [{ kind: "morph", seconds: 12, curve: "smooth", text: "" }],
   };
@@ -165,8 +171,8 @@ describe("a weave between two sections", () => {
   const track = {
     ...emptyArrangement(),
     sections: [
-      { sketchId: 1, offset: 0, seconds: 30, text: "" },
-      { sketchId: 2, offset: 10, seconds: 30, text: "" },
+      { sketchId: 1, offset: 0, seconds: 30, text: "", developmentId: null },
+      { sketchId: 2, offset: 10, seconds: 30, text: "", developmentId: null },
     ],
     transitions: [{ kind: "weave", seconds: 12, curve: "late", text: "the bell comes in first" }],
   };
@@ -206,5 +212,99 @@ describe("a weave between two sections", () => {
     expect(sectionGenome(track, 0, apart)).toEqual(fitted(first));
     expect(sectionWindow(track, 1, apart)).toEqual({ offset: 10, duration: 30 });
     expect(renderedTransition(track, 0, apart)).toEqual({ kind: "crossfade", seconds: 12 });
+  });
+});
+
+describe("a developed section (0079)", () => {
+  // Sketch 1 is the drone; its development 4 is 90 s of it, the drone quieter and a pad that
+  // enters at 30 s, so a morph into it meets the pad.
+  const development = requireGenome(
+    {
+      ...droneGenome,
+      duration: 90,
+      voices: [
+        { ...droneGenome.voices[0], level: -16 },
+        { id: "pad", type: "pad", level: -14, start: 0 },
+      ],
+    },
+    "development",
+  );
+  const other = requireGenome(
+    { ...droneGenome, voices: [{ ...droneGenome.voices[0], level: -8 }] },
+    "other",
+  );
+  const genomes = new Map(
+    /** @type {[number | string, unknown][]} */ ([
+      [1, droneGenome],
+      [2, other],
+      [developmentKey(4), development],
+    ]),
+  );
+  const fitted = (/** @type {Genome} */ genome) => ({ ...genome, fadeIn: 0, fadeOut: 0 });
+  /** @param {string} kind */
+  const track = (kind) => ({
+    ...emptyArrangement(),
+    sections: [
+      { sketchId: 2, offset: 0, seconds: 30, text: "", developmentId: null },
+      { sketchId: 1, offset: 0, seconds: 90, text: "a pad enters", developmentId: 4 },
+    ],
+    transitions: [
+      kind === "crossfade"
+        ? { kind, seconds: 8, text: "" }
+        : { kind, seconds: 12, curve: "smooth", text: "" },
+    ],
+  });
+
+  test("plays its development's genome, not its sketch's, from its offset", () => {
+    const crossfaded = track("crossfade");
+    expect(genomeKey(/** @type {any} */ (crossfaded.sections[1]))).toBe(developmentKey(4));
+    expect(genomeKey(/** @type {any} */ (crossfaded.sections[0]))).toBe(2);
+    expect(sectionGenome(crossfaded, 1, genomes)).toEqual(fitted(development));
+    expect(sectionWindow(crossfaded, 1, genomes)).toEqual({ offset: 0, duration: 90 });
+    const sketchesOnly = new Map(
+      /** @type {[number, unknown][]} */ ([
+        [1, droneGenome],
+        [2, other],
+      ]),
+    );
+    expect(() => sectionGenome(crossfaded, 1, sketchesOnly)).toThrow(
+      "section 2 plays development 4, which has no genome here",
+    );
+  });
+
+  test("a morph and a weave into it meet the developed genome", () => {
+    for (const kind of ["morph", "weave"]) {
+      const expected = morphGenome(
+        { genome: fitted(other), at: 18 },
+        { genome: fitted(development), at: 0 },
+        12,
+        "smooth",
+        { weave: kind === "weave" },
+      );
+      expect(expected.ok, kind).toBe(true);
+      expect(sectionMorph(track(kind), 0, genomes), kind).toEqual(expected);
+      // The pad only the development has comes in as its own instance.
+      const ids = sectionGenome(track(kind), 0, genomes).voices.map(({ id }) => id);
+      expect(ids, kind).toContain("pad");
+    }
+  });
+
+  test("a morph out of it starts from the developed genome", () => {
+    const out = {
+      ...emptyArrangement(),
+      sections: [
+        { sketchId: 1, offset: 0, seconds: 90, text: "", developmentId: 4 },
+        { sketchId: 2, offset: 0, seconds: 30, text: "", developmentId: null },
+      ],
+      transitions: [{ kind: "morph", seconds: 12, curve: "smooth", text: "" }],
+    };
+    expect(sectionMorph(out, 0, genomes)).toEqual(
+      morphGenome(
+        { genome: fitted(development), at: 78 },
+        { genome: fitted(other), at: 0 },
+        12,
+        "smooth",
+      ),
+    );
   });
 });

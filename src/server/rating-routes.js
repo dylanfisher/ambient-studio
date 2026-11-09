@@ -175,6 +175,27 @@ function sketchLineage(store, candidate) {
 }
 
 /**
+ * What the model reads of a sketch (0078): its reading, with its excerpt's features when that is
+ * cached, and its lineage's. The reading route and the develop job (0079) both give these.
+ * @param {App} app
+ * @param {Candidate} candidate the sketch's
+ * @param {unknown} genome its stored genome
+ * @returns {{ sketch: string[], lineage: string[] }}
+ */
+export function sketchReadings(app, candidate, genome) {
+  const features = currentExcerpt(app.store, app.paths.renderCache, candidate)?.features;
+  return {
+    sketch: sketchReading(
+      requireGenome(genome, `candidate ${candidate.id}'s genome`),
+      /** @type {Features | null} */ (features ?? null),
+    ),
+    lineage: lineageReading(sketchLineage(app.store, candidate), (id) =>
+      attachmentName(app.store, id),
+    ),
+  };
+}
+
+/**
  * A steer's direction or region in words, by its attachment, or null when it isn't stored.
  * @param {Store} store
  * @param {number} id
@@ -357,16 +378,7 @@ export const RATING_ROUTES = [
     path: "/api/sketches/:sketchId/reading",
     handle: ({ app, params }) => {
       const { candidate, genome } = requireSketch(app.store, params);
-      const features = currentExcerpt(app.store, app.paths.renderCache, candidate)?.features;
-      return {
-        sketch: sketchReading(
-          requireGenome(genome, `candidate ${candidate.id}'s genome`),
-          /** @type {Features | null} */ (features ?? null),
-        ),
-        lineage: lineageReading(sketchLineage(app.store, candidate), (id) =>
-          attachmentName(app.store, id),
-        ),
-      };
+      return sketchReadings(app, candidate, genome);
     },
   },
   {

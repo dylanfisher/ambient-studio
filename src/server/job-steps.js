@@ -15,6 +15,9 @@ export const JOB_STEP = Object.freeze({
   readingMaterial: "Reading the brief's sketches and map for the proposal",
   proposing: "Asking the model to propose the track",
   repairingProposal: "Asking the model to fix its proposal",
+  readingSection: "Reading the section's sketch, its lineage and its neighbors",
+  developing: "Asking the model to develop the section",
+  repairingDevelopment: "Asking the model to fix its development",
   draftingBrief: "Asking the model to write the brief from your words",
   repairingBrief: "Asking the model to fix the brief it wrote",
   /** @param {number} n @param {number} of */

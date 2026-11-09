@@ -3,6 +3,7 @@
 /** @import { Route } from "./routing.js" */
 import { ARCHIVE_ROUTES } from "./archive-routes.js";
 import { ATTACHMENT_ROUTES } from "./attachment-routes.js";
+import { DEVELOP_ROUTES } from "./develop-routes.js";
 import { DRAFT_BRIEF_ROUTES } from "./draft-brief-routes.js";
 import { EMBEDDING_ROUTES } from "./embedding-routes.js";
 import { EVALUATION_ROUTES } from "./evaluation-routes.js";
@@ -38,6 +39,7 @@ export const ROUTES = [
   ...ARCHIVE_ROUTES,
   ...TRACK_ROUTES,
   ...TRACK_RENDER_ROUTES,
+  ...DEVELOP_ROUTES,
   ...PROPOSAL_ROUTES,
   ...DRAFT_BRIEF_ROUTES,
 ];

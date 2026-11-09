@@ -69,19 +69,21 @@ export const TRACK_LENGTH = number({
 });
 
 /**
- * A section's keys, by name: the sketch it plays, the numbers in `SECTION_FIELDS`, and the
- * owner's text.
+ * A section's keys, by name: the sketch it plays, the numbers in `SECTION_FIELDS`, the owner's
+ * text, and the development of the sketch it plays instead, or null (decision 0079).
  */
 export const SECTION_KEY = Object.freeze({
   sketchId: "sketchId",
   offset: "offset",
   seconds: "seconds",
   text: TEXT_KEY,
+  developmentId: "developmentId",
 });
 
 /**
- * A section's numbers. `offset` is where it starts on its sketch's timeline; the section may run
- * past the sketch's end, which extends the sketch's genome (0061), but not past `MAX_DURATION`.
+ * A section's numbers. `offset` is where it starts on its sketch's timeline, or on its
+ * development's when it has one (0079); the section may run past that genome's end, which
+ * extends it (0061), but not past `MAX_DURATION`.
  * @type {Readonly<Record<"offset" | "seconds", NumberDescriptor>>}
  */
 export const SECTION_FIELDS = Object.freeze({
@@ -133,6 +135,8 @@ export const TRANSITION_KEYS = Object.freeze({
  * @property {number} offset seconds on the sketch's timeline
  * @property {number} seconds
  * @property {string} text the owner's words for what happens in it, or ""
+ * @property {number | null} developmentId the track's development of the sketch it plays in its
+ *   place, or null for the sketch itself (0079)
  */
 
 /**
