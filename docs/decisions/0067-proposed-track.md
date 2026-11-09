@@ -6,6 +6,8 @@
   shown. Amends [0024](0024-prompt-parse-repair-generation.md) (a second operator through the same
   request path, `extractObject`, `RETRIEVAL_METHOD.none`); amended by
   [0074](0074-draft-brief-from-words.md) (`judgeProposal`'s parse step shared as `judgeAnswer`)
+  and [0077](0077-section-and-transition-text.md) (empty text on each section and transition of
+  the answer before it is checked)
 
 ## Context
 

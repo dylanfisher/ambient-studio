@@ -143,9 +143,9 @@ export const SWAP = Object.freeze(
 /**
  * What to do with a finished steer's sketch: save it in its section's place, put it on the
  * unsaved timeline, or leave it kept and say why. The section is the one steered from, found at
- * its place or by its window. Saving the timeline during the run keeps the same line of
- * versions; opening another version by hand doesn't, so a section there that happens to match
- * is left alone.
+ * its place or by its window, whatever its text says now. Saving the timeline during the run
+ * keeps the same line of versions; opening another version by hand doesn't, so a section there
+ * that happens to match is left alone.
  * @param {object} state
  * @param {Arrangement} state.arrangement the timeline now
  * @param {Section} state.from the section as it was when the steer started
@@ -159,8 +159,12 @@ export function steerSwap({ arrangement, from, at, openedThen, openedNow, unsave
   if (openedNow !== openedThen) {
     return { kind: SWAP.skip, reason: "another version was opened while it ran" };
   }
+  // The window, not the text: words written on the section during the run don't stop the swap.
   const same = (/** @type {Section | undefined} */ section) =>
-    JSON.stringify(section) === JSON.stringify(from);
+    section !== undefined &&
+    section.sketchId === from.sketchId &&
+    section.offset === from.offset &&
+    section.seconds === from.seconds;
   const index = same(arrangement.sections[at]) ? at : arrangement.sections.findIndex(same);
   if (index === -1) {
     return { kind: SWAP.skip, reason: "its section has changed or been removed since" };

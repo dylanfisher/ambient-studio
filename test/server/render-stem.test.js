@@ -160,10 +160,10 @@ test("a morph's renamed instance plays in its voice's stem, and the stems still 
   const arrangement = {
     ...emptyArrangement(),
     sections: [
-      { sketchId: 1, offset: 6, seconds: 16 },
-      { sketchId: 2, offset: 20, seconds: 16 },
+      { sketchId: 1, offset: 6, seconds: 16, text: "" },
+      { sketchId: 2, offset: 20, seconds: 16, text: "" },
     ],
-    transitions: [{ kind: "morph", seconds: 8, curve: "smooth" }],
+    transitions: [{ kind: "morph", seconds: 8, curve: "smooth", text: "" }],
   };
   /** @type {TrackPlan} */
   const morphed = {

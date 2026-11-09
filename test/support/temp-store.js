@@ -193,7 +193,7 @@ export function fillStore(store) {
   });
   const arrangement = {
     ...emptyArrangement(),
-    sections: [{ sketchId: sketch.id, offset: 0, seconds: 60 }],
+    sections: [{ sketchId: sketch.id, offset: 0, seconds: 60, text: "" }],
   };
   const { track, revision } = createTrack(store, { vibeId: vibe.id, name: "first", arrangement });
   const trackExport = addTrackExport(store, {

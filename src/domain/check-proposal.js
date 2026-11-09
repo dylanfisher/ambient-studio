@@ -1,10 +1,10 @@
 // Checks the model's proposed arrangement (decision 0067): the one JSON object in its response,
 // holding only sections, transitions and lanes, filled out with the owner's length and arc and
-// checked by `validateArrangement`, then held to the length asked for within
-// `LENGTH_TOLERANCE`; one further off has its sections scaled to the length when that is within
-// `LENGTH_FIT_MOST` and still valid. A section may name a listed elite by `eliteId` in place of `sketchId`; it
-// is checked against the elite's duration, and the caller keeps the elite as a sketch before the
-// arrangement is stored.
+// empty text on each section and transition (0077), and checked by `validateArrangement`, then
+// held to the length asked for within `LENGTH_TOLERANCE`; one further off has its sections
+// scaled to the length when that is within `LENGTH_FIT_MOST` and still valid. A section may name
+// a listed elite by `eliteId` in place of `sketchId`; it is checked against the elite's duration,
+// and the caller keeps the elite as a sketch before the arrangement is stored.
 /** @import { Arrangement } from "./arrangement-schema.js" */
 /** @import { QuotedError } from "./build-repair-prompt.js" */
 /** @import { RejectReason } from "./reject-reason.js" */
@@ -13,7 +13,7 @@ import { isObject } from "../engine/is-object.js";
 import { show } from "../engine/validation-error.js";
 import { ANSWER_KEYS, ELITE_KEY, LENGTH_RULE, LENGTH_TOLERANCE } from "./arrange-prompt.js";
 import { arrangementLength } from "./arrangement-length.js";
-import { ARRANGEMENT_KEY, SECTION_KEY } from "./arrangement-schema.js";
+import { ARRANGEMENT_KEY, SECTION_KEY, TEXT_KEY } from "./arrangement-schema.js";
 import { fitArrangementLength } from "./fit-arrangement-length.js";
 import { judgeAnswer } from "./judge-answer.js";
 import { ANSWER_RULE } from "./lint-result.js";
@@ -100,6 +100,19 @@ function standInSections(sections, { elites, context }, errors) {
 }
 
 /**
+ * The parts with "" for text on each object that has none: the prompt doesn't ask the model for
+ * text, and text it writes anyway is checked as the owner's is. A list that isn't one, or a part
+ * that isn't an object, is left for the validator to report.
+ * @param {unknown} parts the answer's sections or transitions
+ */
+const withText = (parts) =>
+  Array.isArray(parts)
+    ? parts.map((part) =>
+        isObject(part) && !Object.hasOwn(part, TEXT_KEY) ? { ...part, [TEXT_KEY]: "" } : part,
+      )
+    : parts;
+
+/**
  * Checks a parsed answer, every finding with its path and rule.
  * @param {Record<string, unknown>} answer
  * @param {ProposalAsk} ask
@@ -125,8 +138,8 @@ export function checkProposal(answer, ask) {
   const given = {
     [ARRANGEMENT_KEY.length]: ask.length,
     [ARRANGEMENT_KEY.arc]: ask.arc,
-    [ARRANGEMENT_KEY.sections]: sections,
-    [ARRANGEMENT_KEY.transitions]: answer[ARRANGEMENT_KEY.transitions],
+    [ARRANGEMENT_KEY.sections]: withText(sections),
+    [ARRANGEMENT_KEY.transitions]: withText(answer[ARRANGEMENT_KEY.transitions]),
     [ARRANGEMENT_KEY.lanes]: answer[ARRANGEMENT_KEY.lanes],
     [ARRANGEMENT_KEY.proposal]: null,
   };

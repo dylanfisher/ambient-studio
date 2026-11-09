@@ -13,6 +13,7 @@ import { dragSeconds } from "./timeline-layout.js";
  * @property {Span} span
  * @property {string} name
  * @property {string} times
+ * @property {string} words the start of the section's text, "" when it has none
  */
 
 /**
@@ -40,7 +41,7 @@ export function drawTimeline(container, { length, blocks, fades }, selected, on)
     mark.style.width = `${width}%`;
     return mark;
   });
-  const buttons = blocks.map(({ span, name, times }, index) => {
+  const buttons = blocks.map(({ span, name, times, words }, index) => {
     const block = document.createElement("button");
     block.type = "button";
     block.className = `timeline-block ${index % 2 === 0 ? "upper" : "lower"}`;
@@ -52,6 +53,12 @@ export function drawTimeline(container, { length, blocks, fades }, selected, on)
     label.className = "timeline-label";
     label.textContent = `${index + 1}. ${name}`;
     block.append(label);
+    if (words !== "") {
+      const start = document.createElement("span");
+      start.className = "timeline-words";
+      start.textContent = words;
+      block.append(start);
+    }
     block.onclick = () => on.select(index);
     for (const edge of EDGES)
       block.append(

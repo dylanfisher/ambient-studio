@@ -68,10 +68,10 @@ const withLanes = (arrangement, lanes) => ({ ...arrangement, lanes });
 const TWO = Object.freeze({
   ...emptyArrangement(),
   sections: [
-    { sketchId: 1, offset: 5, seconds: 40 },
-    { sketchId: 2, offset: 10, seconds: 40 },
+    { sketchId: 1, offset: 5, seconds: 40, text: "" },
+    { sketchId: 2, offset: 10, seconds: 40, text: "" },
   ],
-  transitions: [{ kind: "crossfade", seconds: 6 }],
+  transitions: [{ kind: "crossfade", seconds: 6, text: "" }],
 });
 
 /** A brightness lane with a breakpoint in the crossfade, at 37 s, and one that clamps, at 15 s. */
@@ -186,7 +186,7 @@ describe("applyLanes through sectionGenome", () => {
     expect(LANE_MOST_POINTS).toBe(MAX_POINTS - 2);
     const one = {
       ...emptyArrangement(),
-      sections: [{ sketchId: 1, offset: 0, seconds: 80 }],
+      sections: [{ sketchId: 1, offset: 0, seconds: 80, text: "" }],
     };
     const dense = /** @type {Lane} */ ({
       macro: "brightness",
@@ -214,7 +214,10 @@ describe("applyLanes through sectionGenome", () => {
 test("a lane with more than 62 − n breakpoints inside a section thins the section's own n", () => {
   // Sketch 1's brightness has its own breakpoints at 20 and 50 s; the lane's fall between
   // whole seconds, so none of them is one of its own.
-  const one = { ...emptyArrangement(), sections: [{ sketchId: 1, offset: 0, seconds: 80 }] };
+  const one = {
+    ...emptyArrangement(),
+    sections: [{ sketchId: 1, offset: 0, seconds: 80, text: "" }],
+  };
   /** @param {number} count */
   const lane = (count) =>
     /** @type {Lane} */ ({
@@ -244,10 +247,10 @@ describe("lanes and a morph", () => {
   const morphing = /** @type {Arrangement} */ ({
     ...emptyArrangement(),
     sections: [
-      { sketchId: 1, offset: 0, seconds: 30 },
-      { sketchId: 2, offset: 10, seconds: 30 },
+      { sketchId: 1, offset: 0, seconds: 30, text: "" },
+      { sketchId: 2, offset: 10, seconds: 30, text: "" },
     ],
-    transitions: [{ kind: "morph", seconds: 12, curve: "smooth" }],
+    transitions: [{ kind: "morph", seconds: 12, curve: "smooth", text: "" }],
   });
   const lane = /** @type {Lane} */ ({
     macro: "brightness",

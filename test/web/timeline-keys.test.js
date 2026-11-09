@@ -96,6 +96,10 @@ test("no key fires in a field you type in, or with Cmd", () => {
   const typing = page({ tagName: "INPUT", type: "number" });
   for (const code of Object.values(TIMELINE_KEYS)) typing.press(code);
   expect(typing.ran).toEqual([]);
+  // The chosen section's text and its transition's are textareas.
+  const writing = page({ tagName: "TEXTAREA" });
+  for (const code of Object.values(TIMELINE_KEYS)) writing.press(code);
+  expect(writing.ran).toEqual([]);
   const { ran, press } = page({ tagName: "BUTTON" });
   press("KeyS", { metaKey: true });
   press("KeyS");

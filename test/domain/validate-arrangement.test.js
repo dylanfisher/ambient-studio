@@ -5,6 +5,7 @@ import { describe, expect, test } from "vitest";
 import { arrangementLength } from "../../src/domain/arrangement-length.js";
 import {
   emptyArrangement,
+  MAX_TEXT_CHARS,
   MAX_TRACK_SECONDS,
   TRANSITION_KIND,
   TRANSITION_SECONDS,
@@ -30,13 +31,13 @@ const VALID = Object.freeze({
   length: null,
   arc: null,
   sections: [
-    { sketchId: 1, offset: 10, seconds: 40 },
-    { sketchId: 2, offset: 0, seconds: 200 },
-    { sketchId: 1, offset: 0, seconds: 50 },
+    { sketchId: 1, offset: 10, seconds: 40, text: "" },
+    { sketchId: 2, offset: 0, seconds: 200, text: "a long slow swell, nothing new comes in" },
+    { sketchId: 1, offset: 0, seconds: 50, text: "" },
   ],
   transitions: [
-    { kind: "crossfade", seconds: 8 },
-    { kind: "crossfade", seconds: 10 },
+    { kind: "crossfade", seconds: 8, text: "" },
+    { kind: "crossfade", seconds: 10, text: "the swell falls away under the return" },
   ],
   lanes: [],
   proposal: null,
@@ -95,6 +96,15 @@ describe("validateArrangement", () => {
     expect(validateArrangement(laned, context)).toEqual({ ok: true, arrangement: laned });
   });
 
+  test("text of up to 300 characters passes, on more than one line", () => {
+    expect(MAX_TEXT_CHARS).toBe(300);
+    const written = changed((a) => {
+      a.sections[0].text = "x".repeat(MAX_TEXT_CHARS);
+      a.transitions[0].text = "first the hiss thins\nthen the bell comes in";
+    });
+    expect(validateArrangement(written, context)).toEqual({ ok: true, arrangement: written });
+  });
+
   test("a crossfade's default is 8 s", () => {
     expect(TRANSITION_KIND.crossfade).toBe("crossfade");
     expect(TRANSITION_SECONDS.default).toBe(8);
@@ -102,7 +112,7 @@ describe("validateArrangement", () => {
 
   test("a morph with its curve passes, and its length counts as a crossfade's", () => {
     const morphed = changed(
-      (a) => (a.transitions[1] = { kind: "morph", seconds: 10, curve: "late" }),
+      (a) => (a.transitions[1] = { kind: "morph", seconds: 10, curve: "late", text: "" }),
     );
     expect(TRANSITION_KIND.morph).toBe("morph");
     expect(validateArrangement(morphed, context)).toEqual({ ok: true, arrangement: morphed });
@@ -188,13 +198,13 @@ describe("validateArrangement", () => {
     ],
     [
       "a morph with no curve",
-      (a) => (a.transitions[1] = { kind: "morph", seconds: 10 }),
+      (a) => (a.transitions[1] = { kind: "morph", seconds: 10, text: "" }),
       "$.transitions[1].curve",
       /missing/,
     ],
     [
       "a morph with an unknown curve",
-      (a) => (a.transitions[1] = { kind: "morph", seconds: 10, curve: "steep" }),
+      (a) => (a.transitions[1] = { kind: "morph", seconds: 10, curve: "steep", text: "" }),
       "$.transitions[1].curve",
       /"smooth"/,
     ],
@@ -206,9 +216,46 @@ describe("validateArrangement", () => {
     ],
     [
       "a morph too short to move before it hands over",
-      (a) => (a.transitions[1] = { kind: "morph", seconds: 7, curve: "linear" }),
+      (a) => (a.transitions[1] = { kind: "morph", seconds: 7, curve: "linear", text: "" }),
       "$.transitions[1].seconds",
       /a morph must be at least 8 s/,
+    ],
+    ["a section with no text", (a) => delete a.sections[1].text, "$.sections[1].text", /missing/],
+    [
+      "a section's text that isn't text",
+      (a) => (a.sections[0].text = 5),
+      "$.sections[0].text",
+      /must be text, got 5/,
+    ],
+    [
+      "a section's text too long",
+      (a) => (a.sections[2].text = "a".repeat(MAX_TEXT_CHARS + 1)),
+      "$.sections[2].text",
+      /at most 300 characters, got 301/,
+    ],
+    [
+      "a transition with no text",
+      (a) => delete a.transitions[0].text,
+      "$.transitions[0].text",
+      /missing/,
+    ],
+    [
+      "a morph with no text",
+      (a) => (a.transitions[1] = { kind: "morph", seconds: 10, curve: "linear" }),
+      "$.transitions[1].text",
+      /missing/,
+    ],
+    [
+      "a transition's text that isn't text",
+      (a) => (a.transitions[1].text = null),
+      "$.transitions[1].text",
+      /must be text, got null/,
+    ],
+    [
+      "a transition's text too long",
+      (a) => (a.transitions[0].text = "b".repeat(MAX_TEXT_CHARS + 1)),
+      "$.transitions[0].text",
+      /at most 300 characters/,
     ],
     ["an unknown key", (a) => (a.tempo = 90), "$.tempo", /unknown key/],
     [
@@ -308,8 +355,8 @@ describe("validateArrangement", () => {
 
   test("a track over 20 minutes fails at its sections", () => {
     const long = changed((a) => {
-      a.sections = [1, 2, 3].map(() => ({ sketchId: 2, offset: 0, seconds: 450 }));
-      a.transitions = [1, 2].map(() => ({ kind: "crossfade", seconds: 8 }));
+      a.sections = [1, 2, 3].map(() => ({ sketchId: 2, offset: 0, seconds: 450, text: "" }));
+      a.transitions = [1, 2].map(() => ({ kind: "crossfade", seconds: 8, text: "" }));
     });
     expect(errorsOf(long)).toEqual([
       {

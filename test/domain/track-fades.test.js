@@ -15,10 +15,10 @@ test("the track fades in as its first sketch does and out as its last does", () 
   const arrangement = {
     ...emptyArrangement(),
     sections: [
-      { sketchId: 1, offset: 10, seconds: 30 },
-      { sketchId: 2, offset: 0, seconds: 30 },
+      { sketchId: 1, offset: 10, seconds: 30, text: "" },
+      { sketchId: 2, offset: 0, seconds: 30, text: "" },
     ],
-    transitions: [{ kind: "crossfade", seconds: 5 }],
+    transitions: [{ kind: "crossfade", seconds: 5, text: "" }],
   };
   expect(trackFades(arrangement, genomes)).toEqual({ fadeIn: 3, fadeOut: 6 });
 });
@@ -26,7 +26,7 @@ test("the track fades in as its first sketch does and out as its last does", () 
 test("fades longer than the track are scaled down together to fit it", () => {
   const arrangement = {
     ...emptyArrangement(),
-    sections: [{ sketchId: 1, offset: 0, seconds: 12 }],
+    sections: [{ sketchId: 1, offset: 0, seconds: 12, text: "" }],
   };
   const { fadeIn, fadeOut } = trackFades(arrangement, genomes);
   expect(fadeIn + fadeOut).toBeCloseTo(12, 12);

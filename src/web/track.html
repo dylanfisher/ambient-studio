@@ -133,7 +133,15 @@
             <input id="fadeInput" type="number" step="1" size="5" title="How long this section and its neighbor overlap as one fades out and the other in, or as one morphs into the other, in seconds: at most half the shorter of the two." />
           </label>
         </div>
+        <label class="field small"
+          >What should happen in this section
+          <textarea id="sectionTextInput" rows="2" title="Your words for what should happen in this section, such as what comes in, what fades or how it should feel. Saved with the track; later steps show them to the model. They don't change how it sounds."></textarea>
+        </label>
         <p id="fadeLine" class="small muted"></p>
+        <label id="transitionTextField" class="field small"
+          ><span id="transitionTextLabel">How this section should become the next</span>
+          <textarea id="transitionTextInput" rows="2" title="Your words for how one section should become the next across this crossfade or morph. Saved with the track; later steps show them to the model. They don't change how it sounds."></textarea>
+        </label>
         <div class="row">
           <button id="moveLeft" class="button outline small" type="button" title="Moves the chosen section one place earlier in the track. The crossfades stay where they are.">Move earlier</button>
           <button id="moveRight" class="button outline small" type="button" title="Moves the chosen section one place later in the track. The crossfades stay where they are.">Move later</button>

@@ -19,6 +19,9 @@ import { clockTime } from "./excerpt-player.js";
 /** Percents are rounded to this many places, so a layout compares equal across browsers. */
 const PLACES = 1e6;
 
+/** The most of a section's text its block shows, in characters, before it is cut at a word. */
+const BLOCK_WORDS = 40;
+
 /**
  * The span from `start` to `end` on a track `length` seconds long.
  * @param {number} start
@@ -71,21 +74,36 @@ export function dragSeconds(pixels, width, length) {
 export const sectionCount = (count) => `${count} ${count === 1 ? "section" : "sections"}`;
 
 /**
- * A block's name and the part of its sketch it plays, with how far it is extended past the
- * sketch's end.
+ * The start of a section's text on one line: all of it up to `BLOCK_WORDS` characters, else cut
+ * at the last word that fits, or at `BLOCK_WORDS` when one word is longer, with an ellipsis.
+ * @param {string} text
+ */
+function startOf(text) {
+  const line = text.replace(/\s+/g, " ").trim();
+  if (line.length <= BLOCK_WORDS) return line;
+  const cut = line.slice(0, BLOCK_WORDS + 1);
+  const space = cut.lastIndexOf(" ");
+  return `${(space > 0 ? cut.slice(0, space) : cut.slice(0, BLOCK_WORDS)).trimEnd()}…`;
+}
+
+/**
+ * A block's name, the part of its sketch it plays, with how far it is extended past the
+ * sketch's end, and the start of its text, "" when it has none.
  * @param {Section} section
  * @param {BlockSketch | undefined} sketch undefined when the sketch is no longer listed
- * @returns {{ name: string, times: string }}
+ * @returns {{ name: string, times: string, words: string }}
  */
-export function blockText({ sketchId, offset, seconds }, sketch) {
+export function blockText({ sketchId, offset, seconds, text }, sketch) {
   const end = offset + seconds;
   const range = `${clockTime(offset)} to ${clockTime(end)}`;
+  const words = startOf(text);
   if (!sketch)
-    return { name: `Sketch ${sketchId}, no longer kept`, times: `${range}, ${seconds} s` };
+    return { name: `Sketch ${sketchId}, no longer kept`, times: `${range}, ${seconds} s`, words };
   const past = end - sketch.duration;
   const extended = past > 0 ? `; extended by ${clockTime(past)} past its end` : "";
   return {
     name: sketch.intent ? `Sketch ${sketchId}: ${sketch.intent}` : `Sketch ${sketchId}`,
     times: `${range} of its ${clockTime(sketch.duration)}, ${seconds} s${extended}`,
+    words,
   };
 }

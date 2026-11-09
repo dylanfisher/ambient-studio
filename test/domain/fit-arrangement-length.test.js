@@ -7,10 +7,10 @@ import { fitArrangementLength } from "../../src/domain/fit-arrangement-length.js
 const arrangement = (seconds) => ({
   length: null,
   arc: null,
-  sections: seconds.map((s) => ({ sketchId: 7, offset: 0, seconds: s })),
+  sections: seconds.map((s) => ({ sketchId: 7, offset: 0, seconds: s, text: "" })),
   transitions: seconds
     .slice(1)
-    .map(() => ({ kind: /** @type {const} */ ("crossfade"), seconds: 10 })),
+    .map(() => ({ kind: /** @type {const} */ ("crossfade"), seconds: 10, text: "" })),
   lanes: [
     {
       macro: /** @type {const} */ ("density"),

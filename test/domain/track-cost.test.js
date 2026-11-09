@@ -25,10 +25,10 @@ const genomes = new Map([
 const arrangement = {
   ...emptyArrangement(),
   sections: [
-    { sketchId: 1, offset: 0, seconds: 40 },
-    { sketchId: 2, offset: 30, seconds: 250 },
+    { sketchId: 1, offset: 0, seconds: 40, text: "" },
+    { sketchId: 2, offset: 30, seconds: 250, text: "" },
   ],
-  transitions: [{ kind: "crossfade", seconds: 10 }],
+  transitions: [{ kind: "crossfade", seconds: 10, text: "" }],
 };
 
 test("the peak is both sections' cost in a crossfade, and the work counts each chunk's pre-roll", () => {
@@ -51,7 +51,7 @@ test("the peak is both sections' cost in a crossfade, and the work counts each c
 test("a morph counts both sections, and the incoming one only from the handover", () => {
   const morphed = {
     ...arrangement,
-    transitions: [{ kind: "morph", seconds: 12, curve: "smooth" }],
+    transitions: [{ kind: "morph", seconds: 12, curve: "smooth", text: "" }],
   };
   const morph = sectionGenome(morphed, 0, genomes);
   // The morph's genome holds the incoming sketch's second drone, rising.
@@ -64,7 +64,10 @@ test("a morph counts both sections, and the incoming one only from the handover"
 });
 
 test("one section's peak is its own cost, and an empty track costs nothing", () => {
-  const alone = { ...emptyArrangement(), sections: [{ sketchId: 1, offset: 0, seconds: 40 }] };
+  const alone = {
+    ...emptyArrangement(),
+    sections: [{ sketchId: 1, offset: 0, seconds: 40, text: "" }],
+  };
   expect(trackCost(alone, genomes).peak).toBe(cost(sectionGenome(alone, 0, genomes)));
   expect(trackCost(emptyArrangement(), genomes)).toEqual({ peak: 0, work: 0, audio: 0, length: 0 });
 });

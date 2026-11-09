@@ -911,11 +911,16 @@ audio[hidden] + .player {
   outline-offset: 1px;
 }
 
-.timeline-label {
+.timeline-label,
+.timeline-words {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   pointer-events: none;
+}
+
+.timeline-words {
+  color: var(--muted-foreground);
 }
 
 .timeline-edge {

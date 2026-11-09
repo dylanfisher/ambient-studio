@@ -4,13 +4,13 @@ import { expect, test } from "vitest";
 import { curveWords, transitionText } from "../../src/web/transition-text.js";
 
 test("a crossfade names its two sections", () => {
-  expect(transitionText(0, { kind: "crossfade", seconds: 8 }, null)).toBe(
+  expect(transitionText(0, { kind: "crossfade", seconds: 8, text: "" }, null)).toBe(
     "The crossfade from section 1 into section 2.",
   );
 });
 
 test("a morph says how long its sounds move, along which curve, and when the next takes over", () => {
-  const morph = { kind: "morph", seconds: 20, curve: "smooth" };
+  const morph = { kind: "morph", seconds: 20, curve: "smooth", text: "" };
   expect(transitionText(1, morph, { ok: true })).toBe(
     "Section 2 morphs into section 3 along the smooth curve, easing in and out: its sounds move toward section 3's for 16 s, then section 3 takes over in the last 4 s.",
   );
@@ -20,7 +20,7 @@ test("a morph says how long its sounds move, along which curve, and when the nex
 });
 
 test("a morph too short says how long it must be, whatever else the timeline knows", () => {
-  expect(transitionText(0, { kind: "morph", seconds: 5, curve: "smooth" }, null)).toBe(
+  expect(transitionText(0, { kind: "morph", seconds: 5, curve: "smooth", text: "" }, null)).toBe(
     "A morph needs at least 8 s: its sounds move, then section 2 takes over in the last 4 s. Make this one 3 s longer, or make it a crossfade again.",
   );
 });
@@ -33,7 +33,7 @@ test("a morph that can't hold says it plays as a crossfade, and why", () => {
   expect(
     transitionText(
       0,
-      { kind: "morph", seconds: 10, curve: "linear" },
+      { kind: "morph", seconds: 10, curve: "linear", text: "" },
       { ok: false, reason: "the two sketches have different keys (2, 9)" },
     ),
   ).toBe(

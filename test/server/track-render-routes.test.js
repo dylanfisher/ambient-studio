@@ -80,13 +80,13 @@ async function setup() {
   const arrangement = {
     ...emptyArrangement(),
     sections: [
-      { sketchId: sketches[0]?.id, offset: 0, seconds: 10 },
-      { sketchId: sketches[1]?.id, offset: 30, seconds: 10 },
-      { sketchId: sketches[2]?.id, offset: 55, seconds: 10 },
+      { sketchId: sketches[0]?.id, offset: 0, seconds: 10, text: "" },
+      { sketchId: sketches[1]?.id, offset: 30, seconds: 10, text: "" },
+      { sketchId: sketches[2]?.id, offset: 55, seconds: 10, text: "" },
     ],
     transitions: [
-      { kind: "crossfade", seconds: 2 },
-      { kind: "crossfade", seconds: 2 },
+      { kind: "crossfade", seconds: 2, text: "" },
+      { kind: "crossfade", seconds: 2, text: "" },
     ],
   };
   const revision = await studio.ok("POST", `/api/tracks/${track.id}/revisions`, {
@@ -231,13 +231,13 @@ test("a morph renders as the outgoing genome moving into the next, and one that 
   const arrangement = {
     ...emptyArrangement(),
     sections: [
-      { sketchId: same?.id, offset: 0, seconds: 16 },
-      { sketchId: same?.id, offset: 30, seconds: 16 },
-      { sketchId: other?.id, offset: 0, seconds: 16 },
+      { sketchId: same?.id, offset: 0, seconds: 16, text: "" },
+      { sketchId: same?.id, offset: 30, seconds: 16, text: "" },
+      { sketchId: other?.id, offset: 0, seconds: 16, text: "" },
     ],
     transitions: [
-      { kind: "morph", seconds: 8, curve: "smooth" },
-      { kind: "morph", seconds: 8, curve: "smooth" },
+      { kind: "morph", seconds: 8, curve: "smooth", text: "" },
+      { kind: "morph", seconds: 8, curve: "smooth", text: "" },
     ],
   };
   const revision = await ok("POST", `/api/tracks/${track.id}/revisions`, {
@@ -346,10 +346,10 @@ test("an export with stems writes a float WAV per voice id at the mix's gain, li
     arrangement: {
       ...emptyArrangement(),
       sections: [
-        { sketchId: first?.id, offset: 0, seconds: 10 },
-        { sketchId: second?.id, offset: 30, seconds: 10 },
+        { sketchId: first?.id, offset: 0, seconds: 10, text: "" },
+        { sketchId: second?.id, offset: 30, seconds: 10, text: "" },
       ],
-      transitions: [{ kind: "crossfade", seconds: 2 }],
+      transitions: [{ kind: "crossfade", seconds: 2, text: "" }],
     },
     note: "two",
   });

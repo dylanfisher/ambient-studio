@@ -3,7 +3,9 @@
 - **Date:** 2026-11-07
 - **Status:** accepted; provisional: owner to confirm one brief per track, extending a section
   past its sketch, the keys and the section player; amended by
-  [0065](0065-macro-lanes.md) (`lanes` hold macro lanes, under the timeline). Amends
+  [0065](0065-macro-lanes.md) (`lanes` hold macro lanes, under the timeline) and
+  [0077](0077-section-and-transition-text.md) (`text` on every section and transition, two text
+  fields in the chosen section's panel, the start of the text on each block). Amends
   [0021](0021-store-tables-and-append-only.md) (the track tables) and
   [0032](0032-plain-language-pages.md) (the timeline page and its keys)
 

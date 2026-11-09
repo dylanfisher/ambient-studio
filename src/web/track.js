@@ -1,10 +1,11 @@
 // The timeline page (decision 0061): one track of a brief, its sections as blocks scaled to
 // time. The owner adds sketches, chooses a section and moves it, sets where it starts and how
 // long it plays, and sets its crossfade, by fields, by dragging a block's edges, or by the keys
-// shown on each button. The arrangement is checked as it changes by the same validator the
-// server runs, and Save appends a revision. Earlier revisions are listed, and one opened can be
-// saved as the newest. A section plays its own window of its sketch, rendered once by an
-// owner-started job through the excerpt player.
+// shown on each button. The owner writes what should happen in the section and in its
+// transition (0077), saved with the arrangement and never part of the render. The arrangement
+// is checked as it changes by the same validator the server runs, and Save appends a revision.
+// Earlier revisions are listed, and one opened can be saved as the newest. A section plays its
+// own window of its sketch, rendered once by an owner-started job through the excerpt player.
 /** @import { Arrangement, Section } from "../domain/arrangement-schema.js" */
 /** @import { ArrangementSketch } from "../domain/validate-arrangement.js" */
 /** @import { TimelineAction } from "./timeline-keys.js" */
@@ -13,6 +14,7 @@
 /** @import { Curve } from "../engine/trajectory.js" */
 import { arrangementLength } from "../domain/arrangement-length.js";
 import {
+  MAX_TEXT_CHARS,
   SECTION_FIELDS,
   SECTION_KEY,
   TRANSITION_KIND,
@@ -41,7 +43,9 @@ import {
   removeSection,
   SECTION_STEP,
   setSection,
+  setSectionText,
   setTransition,
+  setTransitionText,
   stepSection,
   stepTransition,
   TRANSITION_STEP,
@@ -72,6 +76,10 @@ const page = elementsById({
   fadeField: HTMLElement,
   fadeInput: HTMLInputElement,
   fadeLine: HTMLElement,
+  sectionTextInput: HTMLTextAreaElement,
+  transitionTextField: HTMLElement,
+  transitionTextLabel: HTMLElement,
+  transitionTextInput: HTMLTextAreaElement,
   sectionAudio: HTMLAudioElement,
   jobBox: HTMLElement,
   addHelp: HTMLElement,
@@ -100,6 +108,8 @@ page.addHelp.textContent = `The sketches you kept for this brief. A new section 
 page.secondsInput.min = String(SECTION_FIELDS.seconds.min);
 page.offsetInput.min = String(SECTION_FIELDS.offset.min);
 page.fadeInput.min = String(TRANSITION_SECONDS.min);
+page.sectionTextInput.maxLength = MAX_TEXT_CHARS;
+page.transitionTextInput.maxLength = MAX_TEXT_CHARS;
 mountPlayer(page.sectionAudio, status.fail);
 mountPlayer(page.trackAudio, status.fail);
 const playControl = jobControl(buttons.play);
@@ -148,7 +158,7 @@ let openedVersion = 0;
 let openedByHand = 0;
 /** @type {number | null} the section the keys and buttons act on */
 let selected = null;
-/** Each section window's audio once rendered, by the section as JSON. */
+/** Each section window's audio once rendered, by its sketch, offset and seconds as JSON. */
 const windowAudio = /** @type {Map<string, string>} */ (new Map());
 
 /**
@@ -200,8 +210,11 @@ function checked(arrangement) {
   });
 }
 
-/** Writes a number into a field unless the owner is typing in it. */
-function fill(/** @type {HTMLInputElement} */ input, /** @type {number} */ value) {
+/** Writes a value into a field unless the owner is typing in it. */
+function fill(
+  /** @type {HTMLInputElement | HTMLTextAreaElement} */ input,
+  /** @type {number | string} */ value,
+) {
   if (document.activeElement !== input) input.value = String(value);
 }
 
@@ -284,12 +297,14 @@ function draw() {
   page.sectionTimes.textContent = `Plays ${text.times}.`;
   fill(page.offsetInput, section.offset);
   fill(page.secondsInput, section.seconds);
+  fill(page.sectionTextInput, section.text);
   buttons.selectPrevious.disabled = selected === 0;
   buttons.selectNext.disabled = selected === sections.length - 1;
   buttons.moveLeft.disabled = selected === 0;
   buttons.moveRight.disabled = selected === sections.length - 1;
   const fade = transitionOf(arrangement, selected);
   page.fadeField.hidden = fade === null;
+  page.transitionTextField.hidden = fade === null;
   buttons.fadeShorter.disabled = fade === null;
   buttons.fadeLonger.disabled = fade === null;
   buttons.morph.disabled = fade === null;
@@ -305,6 +320,8 @@ function draw() {
     page.fadeLine.textContent = "No crossfade: the track has one section.";
   } else {
     fill(page.fadeInput, transition.seconds);
+    fill(page.transitionTextInput, transition.text);
+    page.transitionTextLabel.textContent = `How section ${fade + 1} should become section ${fade + 2}`;
     // A morph is checked against both sketches' genomes only once the timeline is valid.
     const morph = errors.length === 0 ? sectionMorph(arrangement, fade, sketchGenomes()) : null;
     page.fadeLine.textContent = transitionText(fade, transition, morph);
@@ -401,6 +418,15 @@ page.fadeInput.onchange = () =>
     });
   });
 
+page.sectionTextInput.onchange = () => {
+  const text = page.sectionTextInput.value;
+  onSelected((arrangement, index) => setSectionText(arrangement, index, text));
+};
+page.transitionTextInput.onchange = () => {
+  const text = page.transitionTextInput.value;
+  onTransition((arrangement, fade) => setTransitionText(arrangement, fade, text));
+};
+
 /** Adds the chosen sketch after the chosen section. */
 function add() {
   if (draft === null) return;
@@ -445,7 +471,8 @@ async function playSection() {
   }
   if (playControl.held()) return;
   const section = /** @type {Section} */ (draft.sections[selected]);
-  const key = JSON.stringify(section);
+  // The window alone: text doesn't change what the section plays.
+  const key = JSON.stringify([section.sketchId, section.offset, section.seconds]);
   const known = windowAudio.get(key);
   if (known !== undefined) {
     play(known);

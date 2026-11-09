@@ -60,10 +60,10 @@ async function setup() {
 const twoSections = (sketchId) => ({
   ...emptyArrangement(),
   sections: [
-    { sketchId, offset: 0, seconds: 30 },
-    { sketchId, offset: 20, seconds: 40 },
+    { sketchId, offset: 0, seconds: 30, text: "" },
+    { sketchId, offset: 20, seconds: 40, text: "" },
   ],
-  transitions: [{ kind: "crossfade", seconds: 8 }],
+  transitions: [{ kind: "crossfade", seconds: 8, text: "" }],
 });
 
 test("a track is made with an empty first revision, and each save appends one", async () => {
@@ -105,8 +105,8 @@ test("a malformed arrangement is refused with every path, and nothing is saved",
   const { server, ok, vibe, sketch } = await setup();
   const { track } = await ok("POST", `/api/vibes/${vibe.id}/tracks`, { name: "t" });
   const arrangement = twoSections(sketch.id);
-  arrangement.sections[0] = { sketchId: 999, offset: 0, seconds: 30 };
-  arrangement.sections[1] = { sketchId: sketch.id, offset: 61, seconds: 40 };
+  arrangement.sections[0] = { sketchId: 999, offset: 0, seconds: 30, text: "" };
+  arrangement.sections[1] = { sketchId: sketch.id, offset: 61, seconds: 40, text: "" };
   const reply = await server.api("POST", `/api/tracks/${track.id}/revisions`, {
     arrangement,
     note: "",
@@ -126,7 +126,7 @@ test("a sketch of another brief can't be placed", async () => {
   const { track } = await ok("POST", `/api/vibes/${vibe.id}/tracks`, { name: "t" });
   const arrangement = {
     ...emptyArrangement(),
-    sections: [{ sketchId: elsewhere.id, offset: 0, seconds: 30 }],
+    sections: [{ sketchId: elsewhere.id, offset: 0, seconds: 30, text: "" }],
   };
   const reply = await server.api("POST", `/api/tracks/${track.id}/revisions`, {
     arrangement,
@@ -150,7 +150,7 @@ test("a section's player renders its own window, cut at the sketch's end", async
   const { server, ok, vibe, sketch } = await setup();
   const { track } = await ok("POST", `/api/vibes/${vibe.id}/tracks`, { name: "t" });
   const path = `/api/tracks/${track.id}/section-audio`;
-  const job = await ok("POST", path, { sketchId: sketch.id, offset: 48, seconds: 30 });
+  const job = await ok("POST", path, { sketchId: sketch.id, offset: 48, seconds: 30, text: "" });
   expect(job.kind).toBe("section-audio");
   await server.jobs.settled(job.id);
   const done = await ok("GET", `/api/jobs/${job.id}`);
@@ -160,13 +160,18 @@ test("a section's player renders its own window, cut at the sketch's end", async
   expect(audio.status).toBe(200);
   expect(audio.headers["content-type"]).toBe("audio/mpeg");
 
-  const again = await ok("POST", path, { sketchId: sketch.id, offset: 48, seconds: 30 });
+  const again = await ok("POST", path, { sketchId: sketch.id, offset: 48, seconds: 30, text: "" });
   await server.jobs.settled(again.id);
   expect((await ok("GET", `/api/jobs/${again.id}`)).result).toMatchObject({
     renderId: done.result.renderId,
     cached: true,
   });
-  const refused = await server.api("POST", path, { sketchId: sketch.id, offset: 60, seconds: 30 });
+  const refused = await server.api("POST", path, {
+    sketchId: sketch.id,
+    offset: 60,
+    seconds: 30,
+    text: "",
+  });
   expect(refused.status).toBe(400);
   expect(refused.json().error).toContain("$.sections[0].offset");
 });
@@ -182,8 +187,13 @@ test("a second section job while one is unfinished is a 409 naming it", async ()
     () => new Promise((resolve) => (release = () => resolve(null))),
   );
   const path = `/api/tracks/${track.id}/section-audio`;
-  const first = await ok("POST", path, { sketchId: sketch.id, offset: 0, seconds: 10 });
-  const second = await server.api("POST", path, { sketchId: sketch.id, offset: 20, seconds: 10 });
+  const first = await ok("POST", path, { sketchId: sketch.id, offset: 0, seconds: 10, text: "" });
+  const second = await server.api("POST", path, {
+    sketchId: sketch.id,
+    offset: 20,
+    seconds: 10,
+    text: "",
+  });
   expect(second.status).toBe(409);
   expect(second.json()).toMatchObject({
     jobId: first.id,
@@ -215,8 +225,8 @@ test("each section's measures are its cached window's features, null until its p
     checks: {},
   });
   const sections = [
-    { sketchId: sketch.id, offset: 48, seconds: 30 },
-    { sketchId: sketch.id, offset: 0, seconds: 30 },
+    { sketchId: sketch.id, offset: 48, seconds: 30, text: "" },
+    { sketchId: sketch.id, offset: 0, seconds: 30, text: "" },
   ];
   const path = `/api/tracks/${track.id}/measures`;
   expect(await ok("POST", path, { sections })).toEqual({ measures: [features, null] });
@@ -233,10 +243,13 @@ test("each section's measures are its cached window's features, null until its p
     [{ sections: "nope" }, "sections must be a list of sections"],
     [{ sections: [5] }, "$.sections[0]"],
     [{ sections: [null] }, "$.sections[0]"],
-    [one({ sketchId: sketch.id, offset: "a", seconds: 30 }), "$.sections[0].offset"],
-    [one({ sketchId: 999, offset: 0, seconds: 30 }), "$.sections[0].sketchId"],
-    [one({ sketchId: elsewhere.id, offset: 0, seconds: 30 }), /sketch \d+ is of another vibe/],
-    [one({ sketchId: removed.id, offset: 0, seconds: 30 }), "$.sections[0].sketchId"],
+    [one({ sketchId: sketch.id, offset: "a", seconds: 30, text: "" }), "$.sections[0].offset"],
+    [one({ sketchId: 999, offset: 0, seconds: 30, text: "" }), "$.sections[0].sketchId"],
+    [
+      one({ sketchId: elsewhere.id, offset: 0, seconds: 30, text: "" }),
+      /sketch \d+ is of another vibe/,
+    ],
+    [one({ sketchId: removed.id, offset: 0, seconds: 30, text: "" }), "$.sections[0].sketchId"],
   ])) {
     const reply = await server.api("POST", path, given);
     expect(reply.status, JSON.stringify(given)).toBe(400);

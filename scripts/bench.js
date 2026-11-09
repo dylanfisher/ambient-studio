@@ -168,14 +168,14 @@ function benchTrack(length) {
   const genomes = new Map(names.map((name, i) => [i + 1, golden(name)]));
   const arrangement = {
     ...emptyArrangement(),
-    sections: names.map((_, i) => ({ sketchId: i + 1, offset: TRACK.offset, seconds })),
+    sections: names.map((_, i) => ({ sketchId: i + 1, offset: TRACK.offset, seconds, text: "" })),
     // The first transition, example into drone, is a morph: the two share their pitch globals.
     transitions: names
       .slice(1)
       .map((_, i) =>
         i === 0
-          ? { kind: "morph", seconds: transition, curve: MORPH_CURVE }
-          : { kind: "crossfade", seconds: transition },
+          ? { kind: "morph", seconds: transition, curve: MORPH_CURVE, text: "" }
+          : { kind: "crossfade", seconds: transition, text: "" },
       ),
     // Acceptance 4's two macro lanes (0065), each moving across every section.
     lanes: /** @type {Lane[]} */ ([
@@ -233,8 +233,8 @@ function chantTrack() {
   const genomes = new Map([[1, genome]]);
   const arrangement = {
     ...emptyArrangement(),
-    sections: [0, 1].map(() => ({ sketchId: 1, offset, seconds })),
-    transitions: [{ kind: "crossfade", seconds: transition }],
+    sections: [0, 1].map(() => ({ sketchId: 1, offset, seconds, text: "" })),
+    transitions: [{ kind: "crossfade", seconds: transition, text: "" }],
   };
   const plan = {
     sections: arrangement.sections.map((_, index) => ({

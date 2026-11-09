@@ -100,7 +100,7 @@ test("an elite placed is kept as a sketch first, then becomes a section that sav
   expect(placed.sketch.candidateId).toBe(elite.cell.candidateId);
   expect(placed.index).toBe(0);
   expect(placed.arrangement.sections).toEqual([
-    { sketchId: placed.sketch.id, offset: 0, seconds: expect.any(Number) },
+    { sketchId: placed.sketch.id, offset: 0, seconds: expect.any(Number), text: "" },
   ]);
   const saved = await ok("POST", `${trackPath}/revisions`, {
     arrangement: placed.arrangement,
@@ -173,26 +173,27 @@ test("a swap names the steered sketch and keeps the section's window", () => {
   const arrangement = {
     ...emptyArrangement(),
     sections: [
-      { sketchId: 1, offset: 30, seconds: 120 },
-      { sketchId: 2, offset: 0, seconds: 90 },
+      { sketchId: 1, offset: 30, seconds: 120, text: "" },
+      { sketchId: 2, offset: 0, seconds: 90, text: "brighter toward the end" },
     ],
-    transitions: [{ kind: "crossfade", seconds: 8 }],
+    transitions: [{ kind: "crossfade", seconds: 8, text: "" }],
   };
   const swapped = swapSketch(arrangement, 1, 7);
   expect(swapped.sections).toEqual([
-    { sketchId: 1, offset: 30, seconds: 120 },
-    { sketchId: 7, offset: 0, seconds: 90 },
+    { sketchId: 1, offset: 30, seconds: 120, text: "" },
+    { sketchId: 7, offset: 0, seconds: 90, text: "brighter toward the end" },
   ]);
   expect(swapped.transitions).toBe(arrangement.transitions);
   expect(arrangement.sections[1]?.sketchId).toBe(2);
 });
 
 test("a finished steer swaps in only on the line of versions it started on, and only into its own section", () => {
-  const from = { sketchId: 2, offset: 0, seconds: 90 };
+  const from = { sketchId: 2, offset: 0, seconds: 90, text: "" };
+  const other = { sketchId: 1, offset: 30, seconds: 120, text: "" };
   const arrangement = {
     ...emptyArrangement(),
-    sections: [{ sketchId: 1, offset: 30, seconds: 120 }, from],
-    transitions: [{ kind: "crossfade", seconds: 8 }],
+    sections: [other, from],
+    transitions: [{ kind: "crossfade", seconds: 8, text: "" }],
   };
   const started = { from, at: 1, openedThen: 3 };
   // Edited since but not saved: put on the timeline for the owner to save.
@@ -201,7 +202,7 @@ test("a finished steer swaps in only on the line of versions it started on, and 
     index: 1,
   });
   // Saved since, with the section moved first: saved in its new place.
-  const moved = { ...arrangement, sections: [from, { sketchId: 1, offset: 30, seconds: 120 }] };
+  const moved = { ...arrangement, sections: [from, other] };
   expect(steerSwap({ ...started, arrangement: moved, openedNow: 3, unsaved: false })).toEqual({
     kind: SWAP.save,
     index: 0,
@@ -212,9 +213,15 @@ test("a finished steer swaps in only on the line of versions it started on, and 
     reason: "another version was opened while it ran",
   });
   // The section removed since.
-  const removed = { ...arrangement, sections: [{ sketchId: 1, offset: 30, seconds: 120 }] };
+  const removed = { ...arrangement, sections: [other] };
   expect(steerSwap({ ...started, arrangement: removed, openedNow: 3, unsaved: true })).toEqual({
     kind: SWAP.skip,
     reason: "its section has changed or been removed since",
+  });
+  // Words written on the section since: still its window, so still swapped in.
+  const worded = { ...arrangement, sections: [other, { ...from, text: "let it thin out" }] };
+  expect(steerSwap({ ...started, arrangement: worded, openedNow: 3, unsaved: true })).toEqual({
+    kind: SWAP.edit,
+    index: 1,
   });
 });

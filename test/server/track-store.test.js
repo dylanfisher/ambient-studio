@@ -1,8 +1,12 @@
 // Tracks, their revisions and their exports (decision 0061): append-only, a removed track keeps
-// its rows, and migration 0011 over 0010's shape.
+// its rows, migration 0011 over 0010's shape, and migration 0012 over 0011's.
 /** @import { Store } from "../../src/server/store.js" */
 import { afterEach, expect, test } from "vitest";
-import { emptyArrangement } from "../../src/domain/arrangement-schema.js";
+import {
+  emptyArrangement,
+  SECTION_KEYS,
+  TRANSITION_KEYS,
+} from "../../src/domain/arrangement-schema.js";
 import { openStore, readMigrations } from "../../src/server/store.js";
 import {
   addTrackExport,
@@ -30,7 +34,7 @@ const vibeOf = (store) =>
 
 const ONE = {
   ...emptyArrangement(),
-  sections: [{ sketchId: 1, offset: 0, seconds: 60 }],
+  sections: [{ sketchId: 1, offset: 0, seconds: 60, text: "" }],
 };
 
 test("saving twice keeps both revisions, the newest last", async () => {
@@ -151,4 +155,72 @@ test("migration 0011 over a database built with 0001 to 0010 keeps its rows and 
       /append-only/,
     );
   }
+});
+
+test("migration 0012 gives every section and transition of every stored revision empty text", async () => {
+  const made = await tempStore();
+  cleanups.push(made.remove);
+  const { paths, store: current } = made;
+  current.close();
+  const file = `${paths.database}-0011`;
+  const migrations = readMigrations();
+  expect(migrations[11]?.name).toBe("0012-section-text");
+  const now = () => 0;
+  const old = openStore(file, { now, migrations: migrations.slice(0, 11) });
+  const vibe = vibeOf(old);
+  // Revisions in 0011's shape, written by hand: sections and transitions with no text.
+  const before = {
+    length: 600,
+    arc: "emerge, plateau, dissolve",
+    sections: [
+      { sketchId: 1, offset: 12.5, seconds: 60 },
+      { sketchId: 2, offset: 0, seconds: 90 },
+      { sketchId: 1, offset: 30, seconds: 45 },
+    ],
+    transitions: [
+      { kind: "morph", seconds: 12, curve: "late" },
+      { kind: "crossfade", seconds: 8 },
+    ],
+    lanes: [
+      {
+        macro: "brightness",
+        points: [
+          [0, 0],
+          [100, -0.25, "smooth"],
+        ],
+      },
+    ],
+    proposal: null,
+  };
+  old.db
+    .prepare("INSERT INTO tracks (id, vibeId, name, createdAt) VALUES (1, ?, 't', 0)")
+    .run(vibe.id);
+  const insert = old.db.prepare(
+    "INSERT INTO track_revisions (trackId, arrangement, note, createdAt) VALUES (1, ?, ?, 0)",
+  );
+  insert.run(JSON.stringify(emptyArrangement()), "empty");
+  insert.run(JSON.stringify(before), "three");
+  old.close();
+
+  const store = openStore(file, { now, migrations });
+  cleanups.push(async () => store.close());
+  const [empty, three] = listTrackRevisions(store, 1);
+  expect(empty?.arrangement).toEqual(emptyArrangement());
+  expect(three?.note).toBe("three");
+  expect(three?.arrangement).toEqual({
+    ...before,
+    sections: before.sections.map((section) => ({ ...section, text: "" })),
+    transitions: before.transitions.map((transition) => ({ ...transition, text: "" })),
+  });
+  // Each key in the order a stored one lists them, so a migrated revision reads as a new one.
+  for (const section of three?.arrangement.sections ?? []) {
+    expect(Object.keys(section)).toEqual(SECTION_KEYS);
+  }
+  expect(three?.arrangement.transitions.map((transition) => Object.keys(transition))).toEqual([
+    TRANSITION_KEYS.morph,
+    TRANSITION_KEYS.crossfade,
+  ]);
+  expect(() => store.db.prepare("UPDATE track_revisions SET note = 'x'").run()).toThrow(
+    /append-only/,
+  );
 });

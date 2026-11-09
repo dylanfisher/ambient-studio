@@ -42,7 +42,7 @@ function changeSection(arrangement, index, change) {
 /**
  * Adds a section of the sketch after section `after`, or first when null, playing the sketch
  * from its start for `SECTION_FIELDS.seconds`'s default or the whole sketch when shorter. Its
- * crossfade is the default, or half the shorter neighbor when that is less.
+ * crossfade is the default, or half the shorter neighbor when that is less. Neither has text.
  * @param {Arrangement} arrangement
  * @param {{ id: number, duration: number }} sketch
  * @param {number | null} after
@@ -54,6 +54,7 @@ export function addSection(arrangement, sketch, after) {
     sketchId: sketch.id,
     offset: 0,
     seconds: Math.max(field.min, Math.min(field.default, sketch.duration)),
+    text: "",
   };
   const index = after === null ? 0 : after + 1;
   const sections = arrangement.sections.toSpliced(index, 0, section);
@@ -68,6 +69,7 @@ export function addSection(arrangement, sketch, after) {
   const transitions = arrangement.transitions.toSpliced(at, 0, {
     kind: TRANSITION_KIND.crossfade,
     seconds,
+    text: "",
   });
   return { arrangement: { ...arrangement, sections, transitions }, index };
 }
@@ -113,6 +115,16 @@ export function moveSection(arrangement, index, step) {
  */
 export const setSection = (arrangement, index, values) =>
   changeSection(arrangement, index, (section) => ({ ...section, ...values }));
+
+/**
+ * Sets a section's text, as typed.
+ * @param {Arrangement} arrangement
+ * @param {number} index
+ * @param {string} text
+ * @returns {Arrangement}
+ */
+export const setSectionText = (arrangement, index, text) =>
+  changeSection(arrangement, index, (section) => ({ ...section, text }));
 
 /**
  * Moves a section's offset or seconds by `steps` of `SECTION_STEP`, never under the field's
@@ -178,6 +190,20 @@ export const setTransition = (arrangement, index, seconds) => ({
 });
 
 /**
+ * Sets transition `index`'s text, as typed.
+ * @param {Arrangement} arrangement
+ * @param {number} index
+ * @param {string} text
+ * @returns {Arrangement}
+ */
+export const setTransitionText = (arrangement, index, text) => ({
+  ...arrangement,
+  transitions: arrangement.transitions.map((transition, i) =>
+    i === index ? { ...transition, text } : transition,
+  ),
+});
+
+/**
  * Moves crossfade `index` by `steps` of `TRANSITION_STEP`, never under its least.
  * @param {Arrangement} arrangement
  * @param {number} index
@@ -192,7 +218,7 @@ export function stepTransition(arrangement, index, steps) {
 
 /**
  * Turns transition `index` from a crossfade into a morph with `MORPH_CURVE`, or back, keeping
- * its seconds. A morph shorter than `MORPH_LEAST` shows as an error rather than growing.
+ * its seconds and text. A morph shorter than `MORPH_LEAST` shows as an error rather than growing.
  * @param {Arrangement} arrangement
  * @param {number} index
  * @returns {Arrangement}
@@ -201,10 +227,10 @@ export const toggleMorph = (arrangement, index) => ({
   ...arrangement,
   transitions: arrangement.transitions.map((transition, i) => {
     if (i !== index) return transition;
-    const { seconds } = transition;
+    const { seconds, text } = transition;
     return transition.kind === TRANSITION_KIND.morph
-      ? { kind: TRANSITION_KIND.crossfade, seconds }
-      : { kind: TRANSITION_KIND.morph, seconds, curve: MORPH_CURVE };
+      ? { kind: TRANSITION_KIND.crossfade, seconds, text }
+      : { kind: TRANSITION_KIND.morph, seconds, curve: MORPH_CURVE, text };
   }),
 });
 

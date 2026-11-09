@@ -13,9 +13,11 @@ import { arrangementLength } from "./arrangement-length.js";
 import {
   ARRANGEMENT_KEY,
   MAX_ARC_CHARS,
+  MAX_TEXT_CHARS,
   MAX_TRACK_SECONDS,
   SECTION_FIELDS,
   SECTION_KEYS,
+  TEXT_KEY,
   TRACK_LENGTH,
   TRANSITION_KEYS,
   TRANSITION_KIND,
@@ -56,6 +58,27 @@ function checkShape(given, keys, path, errors) {
   checkKeys(given, (key) => keys.includes(key), path, errors);
   for (const key of keys) {
     if (given[key] === undefined) errors.push({ path: `${path}.${key}`, message: MISSING });
+  }
+}
+
+/**
+ * Pushes an error unless the part's text, when it has the key, is a string of at most
+ * `MAX_TEXT_CHARS`. A missing key is `checkShape`'s error.
+ * @param {Record<string, unknown>} given a section or a transition
+ * @param {string} path the part's
+ * @param {ValidationError[]} errors
+ */
+function checkText(given, path, errors) {
+  const text = given[TEXT_KEY];
+  if (text === undefined) return;
+  const at = `${path}.${TEXT_KEY}`;
+  if (typeof text !== "string") {
+    errors.push({ path: at, message: `must be text, got ${show(text)}` });
+  } else if (text.length > MAX_TEXT_CHARS) {
+    errors.push({
+      path: at,
+      message: `must be at most ${MAX_TEXT_CHARS} characters, got ${text.length}`,
+    });
   }
 }
 
@@ -105,6 +128,7 @@ function checkSection(given, path, { vibeId, sketch }, errors) {
   for (const [name, descriptor] of Object.entries(SECTION_FIELDS)) {
     if (given[name] !== undefined) checkValue(descriptor, given[name], `${path}.${name}`, errors);
   }
+  checkText(given, path, errors);
   if (errors.length > before) return undefined;
   const section = /** @type {Section} */ (/** @type {unknown} */ (given));
   if (!found) return undefined;
@@ -178,6 +202,7 @@ function checkTransitions(given, sections, passed, errors) {
         .join(", ");
       errors.push({ path: `${at}.curve`, message: `must be one of ${listed}, got ${show(curve)}` });
     }
+    checkText(transition, at, errors);
     if (errors.length > before) return;
     if (morph && /** @type {number} */ (transition.seconds) < MORPH_LEAST) {
       errors.push({

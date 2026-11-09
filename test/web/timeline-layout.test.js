@@ -8,10 +8,10 @@ import { blockText, dragSeconds, timelineLayout } from "../../src/web/timeline-l
 const ARRANGEMENT = {
   ...emptyArrangement(),
   sections: [
-    { sketchId: 1, offset: 10, seconds: 40 },
-    { sketchId: 2, offset: 0, seconds: 70 },
+    { sketchId: 1, offset: 10, seconds: 40, text: "" },
+    { sketchId: 2, offset: 0, seconds: 70, text: "" },
   ],
-  transitions: [{ kind: "crossfade", seconds: 10 }],
+  transitions: [{ kind: "crossfade", seconds: 10, text: "" }],
 };
 
 test("the layout module holds no DOM, so it runs here", () => {
@@ -42,18 +42,32 @@ test("a drag across the timeline is its share of the track's length, to a tenth 
 
 test("a block says its sketch, its intent and the part of the sketch it plays", () => {
   const sketch = { id: 1, intent: "a slow cold drone", duration: 60 };
-  expect(blockText({ sketchId: 1, offset: 10, seconds: 40 }, sketch)).toEqual({
+  expect(blockText({ sketchId: 1, offset: 10, seconds: 40, text: "" }, sketch)).toEqual({
     name: "Sketch 1: a slow cold drone",
     times: "0:10 to 0:50 of its 1:00, 40 s",
+    words: "",
   });
-  expect(blockText({ sketchId: 1, offset: 30, seconds: 60 }, sketch).times).toBe(
+  expect(blockText({ sketchId: 1, offset: 30, seconds: 60, text: "" }, sketch).times).toBe(
     "0:30 to 1:30 of its 1:00, 60 s; extended by 0:30 past its end",
   );
-  expect(blockText({ sketchId: 1, offset: 0, seconds: 60 }, { ...sketch, intent: null }).name).toBe(
-    "Sketch 1",
-  );
-  expect(blockText({ sketchId: 9, offset: 0, seconds: 60 }, undefined)).toEqual({
+  expect(
+    blockText({ sketchId: 1, offset: 0, seconds: 60, text: "" }, { ...sketch, intent: null }).name,
+  ).toBe("Sketch 1");
+  expect(blockText({ sketchId: 9, offset: 0, seconds: 60, text: "" }, undefined)).toEqual({
     name: "Sketch 9, no longer kept",
     times: "0:00 to 1:00, 60 s",
+    words: "",
   });
+});
+
+test("a block shows the start of its section's text, cut at a word", () => {
+  const sketch = { id: 1, intent: null, duration: 60 };
+  /** @param {string} text */
+  const words = (text) => blockText({ sketchId: 1, offset: 0, seconds: 30, text }, sketch).words;
+  expect(words("the bell comes forward")).toBe("the bell comes forward");
+  expect(words("start almost silent, then let the hiss open out slowly until the end")).toBe(
+    "start almost silent, then let the hiss…",
+  );
+  expect(words("rise\nthen fall")).toBe("rise then fall");
+  expect(words("x".repeat(60))).toBe(`${"x".repeat(40)}…`);
 });

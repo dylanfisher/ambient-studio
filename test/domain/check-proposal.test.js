@@ -28,10 +28,18 @@ const answer = (first) => ({
 
 describe("the length rule", () => {
   test("a track within 5% of the length passes, with the owner's length and arc filled in", () => {
-    const checked = checkProposal(answer(278), ask);
+    const given = answer(278);
+    const checked = checkProposal(given, ask);
     expect(checked).toEqual({
       ok: true,
-      arrangement: { ...answer(278), length: 600, arc: ask.arc, proposal: null },
+      arrangement: {
+        ...given,
+        sections: given.sections.map((section) => ({ ...section, text: "" })),
+        transitions: [{ kind: "crossfade", seconds: 8, text: "" }],
+        length: 600,
+        arc: ask.arc,
+        proposal: null,
+      },
       elites: new Map(),
       fittedFrom: null,
     });
@@ -74,6 +82,27 @@ describe("the length rule", () => {
     ]);
     expect(checked.answer).toEqual(answer(150));
   });
+});
+
+test("each section and transition gets empty text, and text the model gave is checked", () => {
+  const given = answer(278);
+  const checked = checkProposal(given, ask);
+  if (!checked.ok) throw new Error(JSON.stringify(checked.errors));
+  expect(checked.arrangement.sections.map(({ text }) => text)).toEqual(["", ""]);
+  expect(checked.arrangement.transitions.map(({ text }) => text)).toEqual([""]);
+  // The answer itself is left as the model wrote it, for a repair to quote.
+  expect(given).toEqual(answer(278));
+  const written = answer(278);
+  Object.assign(written.transitions[0] ?? {}, { text: "slowly" });
+  const kept = checkProposal(written, ask);
+  if (!kept.ok) throw new Error(JSON.stringify(kept.errors));
+  expect(kept.arrangement.transitions[0]?.text).toBe("slowly");
+  Object.assign(written.sections[0] ?? {}, { text: 4 });
+  const refused = checkProposal(written, ask);
+  if (refused.ok) throw new Error("passed");
+  expect(refused.errors).toEqual([
+    expect.objectContaining({ path: "$.sections[0].text", rule: PROPOSAL_RULE.arrangement }),
+  ]);
 });
 
 test("the validator's errors and the answer's own are findings with their rules", () => {

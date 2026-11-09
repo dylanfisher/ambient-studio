@@ -13,6 +13,15 @@ export const MAX_TRACK_SECONDS = 1200;
 /** The longest arc the owner writes, in characters. */
 export const MAX_ARC_CHARS = 200;
 
+/** The longest text the owner writes on a section or a transition, in characters (0077). */
+export const MAX_TEXT_CHARS = 300;
+
+/**
+ * The key of the owner's words on a section and on a transition: what should happen in that
+ * part of the track. "" when there are none; never part of what renders (0077).
+ */
+export const TEXT_KEY = "text";
+
 /** The arrangement's keys, in the order a stored one lists them. */
 export const ARRANGEMENT_KEY = Object.freeze({
   length: "length",
@@ -47,11 +56,15 @@ export const TRACK_LENGTH = number({
   description: "the track length the owner asked for",
 });
 
-/** A section's keys, by name: the sketch it plays and the numbers in `SECTION_FIELDS`. */
+/**
+ * A section's keys, by name: the sketch it plays, the numbers in `SECTION_FIELDS`, and the
+ * owner's text.
+ */
 export const SECTION_KEY = Object.freeze({
   sketchId: "sketchId",
   offset: "offset",
   seconds: "seconds",
+  text: TEXT_KEY,
 });
 
 /**
@@ -92,10 +105,13 @@ export const TRANSITION_SECONDS = number({
   description: "how long the transition overlaps its two sections",
 });
 
-/** A transition's keys by its kind: a morph also names the curve its parameters move by. */
+/**
+ * A transition's keys by its kind, in the order a stored one lists them: a morph also names the
+ * curve its parameters move by.
+ */
 export const TRANSITION_KEYS = Object.freeze({
-  [TRANSITION_KIND.crossfade]: Object.freeze(["kind", "seconds"]),
-  [TRANSITION_KIND.morph]: Object.freeze(["kind", "seconds", "curve"]),
+  [TRANSITION_KIND.crossfade]: Object.freeze(["kind", "seconds", TEXT_KEY]),
+  [TRANSITION_KIND.morph]: Object.freeze(["kind", "seconds", "curve", TEXT_KEY]),
 });
 
 /**
@@ -103,6 +119,7 @@ export const TRANSITION_KEYS = Object.freeze({
  * @property {number} sketchId a live sketch of the track's vibe
  * @property {number} offset seconds on the sketch's timeline
  * @property {number} seconds
+ * @property {string} text the owner's words for what happens in it, or ""
  */
 
 /**
@@ -110,6 +127,7 @@ export const TRANSITION_KEYS = Object.freeze({
  * @property {string} kind a `TRANSITION_KIND` value
  * @property {number} seconds
  * @property {string} [curve] a morph's: one of 0007's `CURVES`
+ * @property {string} text the owner's words for how one section becomes the next, or ""
  */
 
 /**
