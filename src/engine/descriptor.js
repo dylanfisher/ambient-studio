@@ -181,6 +181,13 @@ export const isRecording = (descriptor) => descriptor.kind === "recording";
 export const isNumeric = (descriptor) => descriptor.kind === "number" || descriptor.kind === "int";
 
 /**
+ * Whether a descriptor is a choice among named values, as a bell's model.
+ * @param {Descriptor} descriptor
+ * @returns {descriptor is EnumDescriptor}
+ */
+export const isChoice = (descriptor) => descriptor.kind === "enum";
+
+/**
  * The values an enum or a bool allows.
  * @param {EnumDescriptor | BoolDescriptor} descriptor
  * @returns {readonly (string | boolean)[]}

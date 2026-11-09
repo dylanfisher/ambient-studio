@@ -105,6 +105,12 @@ export const attachmentPath = (attachmentId) => `/api/vibe-attachments/${attachm
  */
 export const trackPath = (trackId) => `/api/tracks/${trackId}`;
 
+/**
+ * What the model reads of a sketch and its lineage (decision 0078).
+ * @param {number} sketchId
+ */
+export const sketchReadingPath = (sketchId) => `/api/sketches/${sketchId}/reading`;
+
 /** Every job since the server started, with its kind. */
 export const JOBS_PATH = "/api/jobs";
 

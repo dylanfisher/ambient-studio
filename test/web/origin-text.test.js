@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
+import { operatorLabel } from "../../src/domain/operator-label.js";
 import { REJECT_REASON } from "../../src/domain/reject-reason.js";
-import { intentText, operatorLabel, originText, rejectText } from "../../src/web/origin-text.js";
+import { intentText, originText, rejectText } from "../../src/web/origin-text.js";
 
 /** @param {number} id */
 const nameOf = (id) => `candidate ${id}`;
@@ -122,18 +123,6 @@ describe("originText", () => {
   test("an operator the page doesn't know is an error", () => {
     expect(() => originText(candidate({ operator: "crossover" }), nameOf)).toThrow(/crossover/);
   });
-});
-
-test("operatorLabel names each operator in a word, and refuses one it doesn't know", () => {
-  expect([null, "revise", "nudge", "explore", "optimize"].map(operatorLabel)).toEqual([
-    "first try",
-    "revised",
-    "nudged",
-    "variation",
-    "searched",
-  ]);
-  expect(() => operatorLabel("optimize-control")).toThrow(/optimize-control/);
-  expect(() => operatorLabel("revise-control")).toThrow(/revise-control/);
 });
 
 describe("intentText", () => {

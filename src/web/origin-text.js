@@ -108,29 +108,6 @@ export function originText({ operator, operatorParams, parentIds, search }, name
   throw new Error(`the page doesn't know the operator ${operator}`);
 }
 
-/** Each operator as a node's badge reads; a first try's is under null. */
-const OPERATOR_WORDS = Object.freeze({
-  [OPERATOR.revise]: "revised",
-  [OPERATOR.nudge]: "nudged",
-  [OPERATOR.explore]: "variation",
-  [OPERATOR.optimize]: "searched",
-  [OPERATOR.optimizeEar]: "searched by ear",
-  [OPERATOR.steer]: "steered",
-  [OPERATOR.breed]: "bred",
-  [OPERATOR.elite]: "map fill",
-});
-
-/**
- * @param {string | null} operator
- * @returns {string} a word or two for a badge
- */
-export function operatorLabel(operator) {
-  if (operator === null) return "first try";
-  const words = OPERATOR_WORDS[/** @type {keyof typeof OPERATOR_WORDS} */ (operator)];
-  if (words === undefined) throw new Error(`the page doesn't know the operator ${operator}`);
-  return words;
-}
-
 /**
  * The card's intent line: the model's intent, or why there is none.
  * @param {Origin} candidate
