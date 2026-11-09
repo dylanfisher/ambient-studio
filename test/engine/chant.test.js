@@ -1,14 +1,16 @@
 // Most checks read the voice's JS source directly, which is cheap; renders are short (3–9 s) to
 // keep the gate light on a machine that also serves omlx.
+/** @import { Singer } from "../../src/engine/chant.js" */
 /** @import { Genome, Voice } from "../../src/engine/genome-schema.js" */
 import { describe, expect, test } from "vitest";
 import { spectralCentroid } from "../../src/domain/spectral-centroid.js";
-import { chant, chantChunk, chantTrack } from "../../src/engine/chant.js";
+import { chant, chantChunk, chantTrack, wanderAt } from "../../src/engine/chant.js";
 import { COST_BUDGET, cost } from "../../src/engine/cost.js";
 import { effectiveParams } from "../../src/engine/effective-params.js";
 import { GLOBAL_PARAMS } from "../../src/engine/genome-schema.js";
 import chantGenome from "../../src/engine/genomes/chant.json" with { type: "json" };
 import ensembleGenome from "../../src/engine/genomes/chant-ensemble.json" with { type: "json" };
+import flutterGenome from "../../src/engine/genomes/chant-flutter.json" with { type: "json" };
 import growlGenome from "../../src/engine/genomes/chant-growl.json" with { type: "json" };
 import { requireGenome, validateGenome } from "../../src/engine/validate-genome.js";
 import { voiceTypeIds } from "../../src/engine/voice-registry.js";
@@ -26,6 +28,7 @@ const SEED = 1;
 const golden = requireGenome(chantGenome, "the chant golden genome");
 const ensemble = requireGenome(ensembleGenome, "the six-singer chant golden genome");
 const growling = requireGenome(growlGenome, "the growling chant golden genome");
+const unsteady = requireGenome(flutterGenome, "the fluttering chant golden genome");
 /** C2, the A-minor scale note nearest the 65 Hz default root. */
 const C2 = 65.40639;
 /** Growl at 0 until 1.5 s, up to 0.8, back to 0 at 4 s, and up again: it crosses 0 twice. */
@@ -337,9 +340,12 @@ describe("the chant voice", () => {
     expect(Math.sqrt(side / mid)).toBeGreaterThanOrEqual(0.5);
   });
 
-  test("adding singers keeps the first ones' pitch, place and breaths", () => {
+  test.each([
+    ["", {}],
+    [", with flutter and shimmer on,", { flutter: 1, shimmer: 1 }],
+  ])("adding singers%s keeps the first ones' pitch, place, breaths and wander", (_, change) => {
     const at = (/** @type {number} */ singers) =>
-      source(oneChant({ singers, breath: 0.6 }), 0).track;
+      source(oneChant({ singers, breath: 0.6, ...change }), 0).track;
     const four = at(4);
     const nine = at(9);
     expect(nine.singers.slice(0, 4)).toEqual(four.singers);
@@ -356,6 +362,12 @@ describe("the chant voice", () => {
       oneChant({ singers: 6, growl: GROWL_IN_AND_OUT }),
     ],
     ["six singers growling, rough", growling],
+    ["one singer, flutter and shimmer", oneChant({ flutter: 1, shimmer: 1 })],
+    [
+      "six singers breathing, flutter and shimmer",
+      oneChant({ singers: 6, breath: 0.6, phrase: 3, flutter: 1, shimmer: 1 }),
+    ],
+    ["five singers growling, rough, flutter and shimmer", unsteady],
   ])(
     "%s: its source is the same whichever window computes it, and from a track started anywhere",
     (_, genome) => {
@@ -391,6 +403,7 @@ describe("the chant voice", () => {
     ["one singer", golden],
     ["six singers", ensemble],
     ["four singers, growl a trajectory, rough", growling],
+    ["five singers, flutter and shimmer", unsteady],
   ])(
     "%s: excerpts at several offsets match their window of a full render (0007's tolerance)",
     async (_, genome) => {
@@ -454,6 +467,7 @@ describe("the chant voice", () => {
         "bend",
         "breath",
         "depth",
+        "flutter",
         "focus",
         "growl",
         "pan",
@@ -461,6 +475,7 @@ describe("the chant voice", () => {
         "pulse",
         "root",
         "rough",
+        "shimmer",
         "singers",
         "spread",
         "tilt",
@@ -473,6 +488,10 @@ describe("the chant voice", () => {
     expect(errors({ growl: GROWL_IN_AND_OUT, rough: 1 })).toEqual([]);
     expect(errors({ rough: { points: [[0, 0]] } })).toEqual(["$.voices[0].rough"]);
     expect(errors({ growl: 1.5, rough: -0.5 })).toEqual(["$.voices[0].growl", "$.voices[0].rough"]);
+    // Flutter and shimmer are fixed for the track.
+    expect(errors({ flutter: 1, shimmer: 1 })).toEqual([]);
+    expect(errors({ flutter: { points: [[0, 1]] } })).toEqual(["$.voices[0].flutter"]);
+    expect(errors({ shimmer: { points: [[0, 1]] } })).toEqual(["$.voices[0].shimmer"]);
   });
 
   test("the golden ensemble has six singers who breathe, spread in pitch and place", () => {
@@ -641,6 +660,343 @@ describe("the chant's growl and rough", () => {
     const genome = requireGenome(
       { reverbDecay: 12, voices: [{ id: "c", type: "chant", singers: 12, growl: 1, rough: 1 }] },
       "twelve singers growling with a 12 s reverb",
+    );
+    expect(cost(genome)).toBeLessThanOrEqual(COST_BUDGET);
+  });
+});
+
+/**
+ * Centered moving means of `data` over `2h + 1` points, edges averaged over what they hold.
+ * @param {Float64Array} data
+ * @param {number} h
+ */
+function movingMean(data, h) {
+  const sums = new Float64Array(data.length + 1);
+  for (let i = 0; i < data.length; i++)
+    sums[i + 1] = /** @type {number} */ (sums[i]) + /** @type {number} */ (data[i]);
+  return Float64Array.from(data, (_, i) => {
+    const lo = Math.max(0, i - h);
+    const hi = Math.min(data.length, i + h + 1);
+    const upper = /** @type {number} */ (sums[hi]);
+    const lower = /** @type {number} */ (sums[lo]);
+    return (upper - lower) / (hi - lo);
+  });
+}
+
+/** Points a second the measured wanders are sampled at. */
+const TRACE_RATE = 100;
+
+/**
+ * The pitch of harmonic `n` of `f0` in `data`, in cents from `n × f0`, at `TRACE_RATE`: the
+ * harmonic is shifted to 0 Hz and smoothed twice over one cycle of f0, which nulls every other
+ * harmonic, and its phase is differenced over each 1/TRACE_RATE s. The k-th value is the mean
+ * pitch from `k / TRACE_RATE` s to the next.
+ * @param {ArrayLike<number>} data
+ * @param {number} f0
+ * @param {number} n
+ */
+function pitchTrace(data, f0, n) {
+  const hz = n * f0;
+  const h = Math.round(RATE / f0 / 2);
+  const re = new Float64Array(data.length);
+  const im = new Float64Array(data.length);
+  for (let i = 0; i < data.length; i++) {
+    const angle = (2 * Math.PI * hz * i) / RATE;
+    re[i] = /** @type {number} */ (data[i]) * Math.cos(angle);
+    im[i] = -(/** @type {number} */ (data[i])) * Math.sin(angle);
+  }
+  const x = movingMean(movingMean(re, h), h);
+  const y = movingMean(movingMean(im, h), h);
+  const hop = RATE / TRACE_RATE;
+  /** @type {number[]} */
+  const cents = [];
+  for (let i = 0; i + hop < data.length; i += hop) {
+    const a = Math.atan2(/** @type {number} */ (y[i]), /** @type {number} */ (x[i]));
+    const b = Math.atan2(/** @type {number} */ (y[i + hop]), /** @type {number} */ (x[i + hop]));
+    let turn = (b - a) / (2 * Math.PI);
+    turn -= Math.round(turn);
+    cents.push(1200 * Math.log2(1 + (turn * TRACE_RATE) / hz));
+  }
+  return cents;
+}
+
+/**
+ * The level of `data` in dB over each cycle of f0, at the cycle's middle time.
+ * @param {ArrayLike<number>} data
+ * @param {number} f0
+ */
+function cycleLevels(data, f0) {
+  const n = Math.round(RATE / f0);
+  /** @type {{ t: number; db: number }[]} */
+  const levels = [];
+  for (let at = 0; at + n <= data.length; at += n) {
+    let sum = 0;
+    for (let i = at; i < at + n; i++) sum += /** @type {number} */ (data[i]) ** 2;
+    levels.push({ t: (at + n / 2) / RATE, db: 10 * Math.log10(sum / n) });
+  }
+  return levels;
+}
+
+/** @param {number[]} values */
+const withoutMean = (values) => {
+  const mean = values.reduce((a, v) => a + v, 0) / values.length;
+  return values.map((v) => v - mean);
+};
+
+/** @param {number[]} values */
+const rms = (values) => {
+  const centered = withoutMean(values);
+  return Math.sqrt(centered.reduce((a, v) => a + v * v, 0) / centered.length);
+};
+
+/**
+ * Pearson's correlation of two equally long series.
+ * @param {number[]} a
+ * @param {number[]} b
+ */
+function correlation(a, b) {
+  const x = withoutMean(a);
+  const y = withoutMean(b);
+  let xy = 0;
+  let xx = 0;
+  let yy = 0;
+  for (let i = 0; i < x.length; i++) {
+    const p = /** @type {number} */ (x[i]);
+    const q = /** @type {number} */ (y[i]);
+    xy += p * q;
+    xx += p * p;
+    yy += q * q;
+  }
+  return xy / Math.sqrt(xx * yy);
+}
+
+/**
+ * The share of a series' power, its mean removed, from `lo` to `hi` Hz, by a DFT at its own
+ * resolution.
+ * @param {number[]} values sampled at `rate`
+ * @param {number} rate
+ * @param {number} lo
+ * @param {number} hi
+ */
+function bandShare(values, rate, lo, hi) {
+  const x = withoutMean(values);
+  const n = x.length;
+  const total = x.reduce((a, v) => a + v * v, 0) / n;
+  let band = 0;
+  for (let k = Math.ceil((lo * n) / rate); k <= Math.floor((hi * n) / rate); k++) {
+    let re = 0;
+    let im = 0;
+    for (let i = 0; i < n; i++) {
+      const angle = (2 * Math.PI * k * i) / n;
+      re += /** @type {number} */ (x[i]) * Math.cos(angle);
+      im -= /** @type {number} */ (x[i]) * Math.sin(angle);
+    }
+    band += (2 * (re * re + im * im)) / (n * n);
+  }
+  return band / total;
+}
+
+/**
+ * A wander function sampled at `TRACE_RATE` from 0 for `seconds`, each value the mean over its
+ * step, as `pitchTrace` measures.
+ * @param {(t: number) => number} wander
+ * @param {number} seconds
+ */
+const sampled = (wander, seconds) =>
+  Array.from({ length: seconds * TRACE_RATE }, (_, k) => {
+    let sum = 0;
+    for (let j = 0; j < 10; j++) sum += wander((k + (j + 0.5) / 10) / TRACE_RATE);
+    return sum / 10;
+  });
+
+/**
+ * A genome's singer `s` at seed 1.
+ * @param {Genome} genome
+ * @param {number} s
+ */
+const singerOf = (genome, s) => /** @type {Singer} */ (source(genome, 0).track.singers[s]);
+
+/**
+ * The left and right channels of a source, summed.
+ * @param {Float32Array[]} channels
+ */
+const summed = ([left, right]) =>
+  Float64Array.from(
+    /** @type {Float32Array} */ (left),
+    (v, i) => v + /** @type {number} */ (right?.[i]),
+  );
+
+describe("the chant's flutter and shimmer", () => {
+  const seconds = 20;
+  // A trace's first and last tenth of a second hold the smoothing's edges.
+  const inner = (/** @type {number[]} */ values) => values.slice(10, -10);
+
+  test("flutter 1 gives one singer a pitch wander of 2–8 cents RMS, 70% or more of its power in 1–8 Hz, measured on its sound", () => {
+    const genome = oneChant({ root: 65, depth: 0, flutter: 1 });
+    const { track, channels } = source(genome, seconds);
+    // Harmonic 5 is the strongest at the default vowel.
+    const measured = inner(pitchTrace(summed(channels), track.control(0).hz, 5));
+    const lead = /** @type {Singer} */ (track.singers[0]);
+    const expected = inner(sampled((t) => wanderAt(lead.flutter, t), seconds)).slice(0, -1);
+    expect(rms(measured)).toBeGreaterThanOrEqual(2);
+    expect(rms(measured)).toBeLessThanOrEqual(8);
+    expect(bandShare(measured, TRACE_RATE, 1, 8)).toBeGreaterThanOrEqual(0.7);
+    // The sound follows the voice's own pitch wander, so the phase integrates it at its scale.
+    expect(rms(measured) / rms(expected)).toBeGreaterThan(0.95);
+    expect(rms(measured) / rms(expected)).toBeLessThan(1.05);
+    expect(correlation(measured, expected)).toBeGreaterThan(0.98);
+  });
+
+  test("a chorus singer reads the shared table at its own wandering pitch", () => {
+    const change = { root: 65, depth: 0, spread: 0, flutter: 1 };
+    const pair = oneChant({ ...change, singers: 2 });
+    const two = summed(sourceOf(pair, seconds * RATE));
+    const one = summed(sourceOf(oneChant(change), seconds * RATE));
+    // The lead sings the same samples at 1/√2 of its level, so what's left is singer 1 alone.
+    const data = two.map((v, i) => v - /** @type {number} */ (one[i]) / Math.SQRT2);
+    const { track } = source(pair, 0);
+    const singer = /** @type {Singer} */ (track.singers[1]);
+    const measured = inner(pitchTrace(data, track.control(0).hz, 5));
+    const expected = inner(sampled((t) => wanderAt(singer.flutter, t), seconds)).slice(0, -1);
+    const lead = inner(
+      sampled((t) => wanderAt(/** @type {Singer} */ (track.singers[0]).flutter, t), seconds),
+    ).slice(0, -1);
+    expect(rms(measured)).toBeGreaterThanOrEqual(2);
+    expect(rms(measured) / rms(expected)).toBeGreaterThan(0.95);
+    expect(rms(measured) / rms(expected)).toBeLessThan(1.05);
+    expect(correlation(measured, expected)).toBeGreaterThan(0.98);
+    expect(Math.abs(correlation(measured, lead))).toBeLessThan(0.2);
+  });
+
+  test("shimmer 1 gives one singer a level wander of 0.3–1.5 dB RMS, measured on its sound", () => {
+    const genome = oneChant({ root: 65, depth: 0, shimmer: 1 });
+    const { track, channels } = source(genome, seconds);
+    const levels = cycleLevels(summed(channels), track.control(0).hz);
+    const measured = levels.map((l) => l.db);
+    const lead = /** @type {Singer} */ (track.singers[0]);
+    const expected = levels.map((l) => wanderAt(lead.shimmer, l.t));
+    expect(rms(measured)).toBeGreaterThanOrEqual(0.3);
+    expect(rms(measured)).toBeLessThanOrEqual(1.5);
+    expect(rms(measured) / rms(expected)).toBeGreaterThan(0.95);
+    expect(rms(measured) / rms(expected)).toBeLessThan(1.05);
+    expect(correlation(measured, expected)).toBeGreaterThan(0.98);
+  });
+
+  test("a chorus singer's level follows its own shimmer, measured on its sound", () => {
+    const change = { root: 65, depth: 0, spread: 0, shimmer: 1 };
+    const pair = oneChant({ ...change, singers: 2 });
+    const two = summed(sourceOf(pair, seconds * RATE));
+    const one = summed(sourceOf(oneChant(change), seconds * RATE));
+    // The lead sings the same samples at 1/√2 of its level, so what's left is singer 1 alone.
+    const data = two.map((v, i) => v - /** @type {number} */ (one[i]) / Math.SQRT2);
+    const { track } = source(pair, 0);
+    const levels = cycleLevels(data, track.control(0).hz);
+    const measured = levels.map((l) => l.db);
+    const singer = /** @type {Singer} */ (track.singers[1]);
+    const lead = /** @type {Singer} */ (track.singers[0]);
+    const expected = levels.map((l) => wanderAt(singer.shimmer, l.t));
+    expect(rms(measured)).toBeGreaterThanOrEqual(0.3);
+    expect(rms(measured) / rms(expected)).toBeGreaterThan(0.95);
+    expect(rms(measured) / rms(expected)).toBeLessThan(1.05);
+    expect(correlation(measured, expected)).toBeGreaterThan(0.98);
+    const leads = levels.map((l) => wanderAt(lead.shimmer, l.t));
+    expect(Math.abs(correlation(measured, leads))).toBeLessThan(0.2);
+  });
+
+  test("each of twelve singers wanders within the ranges at 1, and no two singers' wanders correlate 0.2 or more", () => {
+    for (const seed of [1, 2, 3]) {
+      const genome = oneChant({ singers: 12, flutter: 1, shimmer: 1 });
+      const { singers } = chantTrack(genome, /** @type {Voice} */ (genome.voices[0]), RATE, seed);
+      const pitch = singers.map((s) => sampled((t) => wanderAt(s.flutter, t), 30));
+      const level = singers.map((s) => sampled((t) => wanderAt(s.shimmer, t), 30));
+      for (let a = 0; a < singers.length; a++) {
+        const p = /** @type {number[]} */ (pitch[a]);
+        const l = /** @type {number[]} */ (level[a]);
+        const who = `seed ${seed}, singer ${a}`;
+        expect(rms(p), who).toBeGreaterThanOrEqual(2);
+        expect(rms(p), who).toBeLessThanOrEqual(8);
+        expect(bandShare(p, TRACE_RATE, 1, 8), who).toBeGreaterThanOrEqual(0.7);
+        expect(rms(l), who).toBeGreaterThanOrEqual(0.3);
+        expect(rms(l), who).toBeLessThanOrEqual(1.5);
+        for (let b = a + 1; b < singers.length; b++) {
+          const pair = `seed ${seed}, singers ${a} and ${b}`;
+          const q = /** @type {number[]} */ (pitch[b]);
+          const m = /** @type {number[]} */ (level[b]);
+          expect(Math.abs(correlation(p, q)), pair).toBeLessThan(0.2);
+          expect(Math.abs(correlation(l, m)), pair).toBeLessThan(0.2);
+        }
+      }
+    }
+  });
+
+  test("flutter and shimmer scale the wander, and at 0 there is none", () => {
+    const full = singerOf(oneChant({ flutter: 1, shimmer: 1 }), 0);
+    const half = singerOf(oneChant({ flutter: 0.5, shimmer: 0.5 }), 0);
+    expect(rms(sampled((t) => wanderAt(full.flutter, t), 5))).toBeGreaterThan(1);
+    for (const t of [0.3, 1.7, 12.25]) {
+      expect(wanderAt(half.flutter, t)).toBeCloseTo(wanderAt(full.flutter, t) / 2, 12);
+      expect(wanderAt(half.shimmer, t)).toBeCloseTo(wanderAt(full.shimmer, t) / 2, 12);
+    }
+    const off = singerOf(oneChant({ flutter: 0, shimmer: 0 }), 0);
+    expect(off.flutter).toEqual([]);
+    expect(off.shimmer).toEqual([]);
+  });
+
+  test.each([
+    ["one singer", golden],
+    ["six singers", ensemble],
+    ["four singers growling, rough", growling],
+  ])("%s: flutter 0 and shimmer 0 sing the samples the chant sings without them", (_, genome) => {
+    const zeros = requireGenome(
+      { ...genome, voices: genome.voices.map((v) => ({ ...v, flutter: 0, shimmer: 0 })) },
+      "flutter and shimmer at 0",
+    );
+    expect(sourceOf(zeros, 3 * RATE)).toEqual(sourceOf(genome, 3 * RATE));
+  });
+
+  test("turning flutter and shimmer on moves none of the singers' other draws", () => {
+    const at = (/** @type {Record<string, unknown>} */ change) =>
+      source(oneChant({ singers: 6, breath: 0.6, ...change }), 0).track;
+    const plain = at({});
+    const wandering = at({ flutter: 1, shimmer: 1 });
+    const placed = (/** @type {readonly Singer[]} */ singers) =>
+      singers.map(({ cents, pan, phase }) => ({ cents, pan, phase }));
+    expect(placed(wandering.singers)).toEqual(placed(plain.singers));
+    for (let s = 0; s < 6; s++) expect(wandering.breaths(s, 120)).toEqual(plain.breaths(s, 120));
+  });
+
+  test("the fluttering golden has flutter, shimmer, growl, a chorus that breathes and a non-neutral macro", () => {
+    const voice = /** @type {Voice} */ (unsteady.voices[0]);
+    expect(voice.flutter).toBeGreaterThan(0);
+    expect(voice.shimmer).toBeGreaterThan(0);
+    expect(voice.growl).toBeGreaterThan(0);
+    expect(voice.singers).toBeGreaterThan(1);
+    expect(voice.breath).toBeGreaterThan(0);
+    expect(unsteady.macros.motion).not.toBe(0.5);
+  });
+
+  test("flutter and shimmer price each singer's wander, and twelve singers with growl, rough, flutter and shimmer at 1 fit beside a 12 s reverb", () => {
+    /** @param {Record<string, unknown>} change */
+    const at = (change) => {
+      const genome = oneChant(change);
+      return chant.cost(/** @type {Voice} */ (genome.voices[0]), genome);
+    };
+    const plain = at({ singers: 12 });
+    expect(at({ singers: 12, flutter: 0, shimmer: 0 })).toBe(plain);
+    expect(at({ singers: 12, flutter: 1 })).toBeGreaterThan(plain);
+    expect(at({ singers: 12, shimmer: 1 })).toBeGreaterThan(plain);
+    expect(at({ singers: 12, flutter: 0.1 })).toBe(at({ singers: 12, flutter: 1 }));
+    const chorus = (/** @type {Record<string, unknown>} */ change) =>
+      at({ singers: 12, ...change }) - at({ singers: 1, ...change });
+    expect(chorus({ flutter: 1, shimmer: 1 })).toBeGreaterThan(chorus({}));
+    const genome = requireGenome(
+      {
+        reverbDecay: 12,
+        voices: [
+          { id: "c", type: "chant", singers: 12, growl: 1, rough: 1, flutter: 1, shimmer: 1 },
+        ],
+      },
+      "twelve unsteady singers growling with a 12 s reverb",
     );
     expect(cost(genome)).toBeLessThanOrEqual(COST_BUDGET);
   });

@@ -3,7 +3,9 @@
 - **Date:** 2026-11-08
 - **Status:** accepted; provisional: owner to confirm. Amends [0069](0069-chant-voice.md) (the
   singers, the cost, the common `detune`); amended by [0088](0088-chant-growl.md) (a table of two
-  cycles where the voice growls or is rough, cost).
+  cycles where the voice growls or is rough, cost) and by
+  [0089](0089-chant-flutter-and-shimmer.md) (each singer's pitch and level wander, their slots, a
+  chorus singer reading the table at its wandering phase, cost).
 
 ## Context
 

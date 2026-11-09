@@ -1,0 +1,57 @@
+{
+  "genome": "chant-flutter",
+  "engineVersion": 2,
+  "hashes": {
+    "raw": {
+      "darwin-arm64": {
+        "cpu": "Apple M1 Max",
+        "node": "v26.12.1",
+        "nodeWebAudioApi": "2.2.0",
+        "renders": {
+          "start": {
+            "seed": 1,
+            "offset": 0,
+            "duration": 2,
+            "sha256": "f15aec4abeb504e75d3ae2fc3a3e4e5c31c459b01e69c968e205e7aad86e3b83",
+            "summary": {
+              "peak": 0.74,
+              "rms": -13.3,
+              "bands": [-39.41, -36.02, -25.26, -14.56, -20.58, -39.95, -55.29, -94.49]
+            }
+          },
+          "end": {
+            "seed": 1,
+            "offset": 58,
+            "duration": 2,
+            "sha256": "1bef90a99ae3957aac3891f2e580c1f1701fc3dd1baaee2b952ff807f4d58840",
+            "summary": {
+              "peak": -33.31,
+              "rms": -49.93,
+              "bands": [-77.49, -73.48, -65.81, -51.51, -55.32, -73.62, -90.48, -128.97]
+            }
+          }
+        }
+      }
+    },
+    "normalized": {
+      "darwin-arm64": {
+        "cpu": "Apple M1 Max",
+        "node": "v26.12.1",
+        "nodeWebAudioApi": "2.2.0",
+        "renders": {
+          "start": {
+            "seed": 1,
+            "offset": 0,
+            "duration": 2,
+            "sha256": "caa1e4e2ce44da5d7dddca342a7e555e306c8bfa677d4c8b60ab05823dec0b18",
+            "summary": {
+              "peak": -5.39,
+              "rms": -19.43,
+              "bands": [-45.55, -42.15, -31.39, -20.7, -26.71, -46.08, -61.42, -100.62]
+            }
+          }
+        }
+      }
+    }
+  }
+}
