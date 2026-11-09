@@ -4168,3 +4168,14 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
 - 2026-11-09: TD.4's first review failed (Sonnet: 83k tokens, 24 calls, 2.6 min): a weave threw
   instead of falling back when a voice starts or ends inside its stretch. Sent back to the
   builder with the reviewer's two repros.
+- 2026-11-09: TD.4 merged as cd3b552 (Opus: 283k tokens, 214 calls, 58 min with one fix round of
+  21 min; reviewers Sonnet: 83k and 54k tokens, 2.6 and 2.3 min, FAIL then PASS). A weave hands
+  split voices over on two staggered sequences at once, leaving voices highest first and entering
+  voices lowest first, each stretch two steps of (seconds − 4)/(n + 1) with half overlap; the
+  plan's one-sequence order left a −49.5 dB hole and was rejected. Only a voice sounding through
+  the whole move gets a stretch; others move as in the morph, which fixed the first review's two
+  throws. A morph is unchanged (0 differences over 400 random morphs and about 4,400 fuzzed
+  weaves); a weave with at most one split voice a side equals the morph. Bench with a weave: 20
+  min at 26.9x, 541 MiB; 10 min within 7.1% (0080). `./scripts/check` and a fresh second run
+  agree: 2,504 tests. The fuzz hit morph throws ("times must rise") only at a 1.5 s move, which
+  `MORPH_LEAST` 8 s rules out for a stored arrangement.
