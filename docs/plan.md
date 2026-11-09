@@ -4353,3 +4353,13 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   settings put a dense chant's compared values alone past 270 tokens, so the state goes over the
   cap, as 0082 intends. The test now makes a bell, a cymbal, a drone and a drum dense (4ac4275).
   `./scripts/check` clean: 2,771 tests; the uncached second run is clean too.
+- 2026-11-09: CG.4 merged as 72141cd (Opus: 189k tokens, 130 calls, 23 min; the orchestrator read
+  the diff). `narrow` (0–1, default 0, "sharper focus") narrows the chant's upper resonance
+  toward 40 Hz and raises its peak to keep its area: the focused partial stands 7.5–14 dB further
+  over its neighbors at 1. At 0 every sample is bit for bit as before, and every golden is
+  unchanged (0091). Low chant asks for the growl, the inhales, the scoop and the sag. Cost: narrow
+  adds none; twelve singers with everything on are 551.2 of 560. The worst develop prompt is
+  4,028, the bridge 4,040 of 4,096, the schema text 4,098 of 4,100. Bench (`./scripts/bench
+  --chant`, every CG parameter at 1): render median 23.1x real time (22.8–23.2), 535 MiB peak.
+  A/B pairs for the owner are in tmp/chant-ab/. `./scripts/check` clean: 2,788 tests; the
+  uncached second run is clean too. Phase CG is built; its listening checks are pending.
