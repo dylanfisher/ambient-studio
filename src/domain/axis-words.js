@@ -18,8 +18,11 @@ import { TARGET_FEATURES } from "./target-schema.js";
 
 const [MORE, LESS] = MACRO_DIRECTIONS;
 
-/** @param {string | null | undefined} near */
-const nearText = (near) => (near == null ? "the brief's description" : `“${near}”`);
+/**
+ * A direction's near end in words: quoted, or the brief's description when it has none.
+ * @param {string | null | undefined} near
+ */
+export const nearText = (near) => (near == null ? "the brief's description" : `“${near}”`);
 
 /**
  * The axis's name, as the map and the brief page give it.
