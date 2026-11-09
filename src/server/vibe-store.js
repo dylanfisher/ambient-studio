@@ -1,15 +1,8 @@
 // Vibes, their revisions and their notes (decision 0021).
+/** @import { VibeDraft } from "../domain/vibe-draft.js" */
 /** @import { Removable, Store } from "./store.js" */
+import { VIBE_DRAFT_FIELD } from "../domain/vibe-draft.js";
 import { insertRow, markRemoved, selectRow, selectRows, TABLE, transaction } from "./store.js";
-
-/**
- * What the owner edits: every edit appends a revision.
- * @typedef {object} VibeDraft
- * @property {string} name
- * @property {string} brief
- * @property {unknown} constraints 2b's constraint set, checked by the caller
- * @property {unknown} softTargets
- */
 
 /**
  * @typedef {VibeDraft & Removable & { id: number, vibeId: number, createdAt: number }}
@@ -28,14 +21,6 @@ import { insertRow, markRemoved, selectRow, selectRows, TABLE, transaction } fro
  */
 
 /** @typedef {NoteDraft & Removable & { id: number, createdAt: number }} Note */
-
-/** The fields of a `VibeDraft`, by name; every one is required. */
-export const VIBE_DRAFT_FIELD = Object.freeze({
-  name: "name",
-  brief: "brief",
-  constraints: "constraints",
-  softTargets: "softTargets",
-});
 
 const VIBES = { json: [] };
 const REVISIONS = { json: [VIBE_DRAFT_FIELD.constraints, VIBE_DRAFT_FIELD.softTargets] };

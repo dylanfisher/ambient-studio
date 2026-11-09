@@ -3,11 +3,13 @@
 // (0030). An edit never changes a row: it appends a revision (0021); a removed note is marked.
 /** @import { Route } from "./routing.js" */
 /** @import { Store } from "./store.js" */
-/** @import { Vibe, VibeDraft } from "./vibe-store.js" */
+/** @import { VibeDraft } from "../domain/vibe-draft.js" */
+/** @import { Vibe } from "./vibe-store.js" */
 import { isDeepStrictEqual } from "node:util";
 import { SEED_VIBES } from "../domain/seed-vibes.js";
 import { validateConstraints } from "../domain/validate-constraints.js";
 import { validateTargets } from "../domain/validate-targets.js";
+import { VIBE_DRAFT_FIELD } from "../domain/vibe-draft.js";
 import { show } from "../engine/validation-error.js";
 import { listFeedback, listRatings, listSketches } from "./rating-store.js";
 import { fields, idParam, MAX_CHARS, text } from "./request-fields.js";
@@ -23,7 +25,6 @@ import {
   listVibes,
   removeNote,
   reviseVibe,
-  VIBE_DRAFT_FIELD,
 } from "./vibe-store.js";
 
 /**
