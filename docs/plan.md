@@ -2898,6 +2898,125 @@ builders at once. Records 0083–0087 are reserved for these steps.
 
 **Result:**
 
+## Phase CG — Chant growl and breath
+
+**Goal:** the chant voice sounds like low human chanting, not an additive organ. Today every
+partial in `src/engine/chant.js` is a steady sine at an integer harmonic: there is no undertone,
+no unsteadiness from singer to singer and no breath noise, and nothing moves faster than the
+pulse swell except the breaths. The voice stays additive, in JS, with no new dependencies; a
+physical model of the airway is out of scope.
+
+**Settled by the owner on 2026-11-09**, after listening to phase CV: what's missing is "depth /
+growl" and "the quicker changes that come from breathing". Listening checks are batched at the
+end of the phase.
+
+**What the code holds today** (read at `07a0460`):
+
+- One lead singer sums harmonics up to `TOP_HZ` 3 kHz under `tilt`, shaped by two vowel
+  resonances and a weak chest one, with `focus` raising the partial nearest the upper resonance
+  (0069). Chorus singers read one 2,048-point table of the lead's waveform at the undetuned
+  pitch, sampled every 0.1 s, each at its own phase (0070).
+- Phrases and breaths come from seeded slots on each singer's own schedule; a breath fades the
+  singer to 0 over `BREATH_RAMP` 80 ms and back (0070). With one singer every breath falls at
+  least 20 dB.
+- Every sample is a function of timeline time, so an excerpt equals the same window of a full
+  render bit for bit (0069's frame rule).
+- Cost: 4 + 23 + 0.9 a partial for the lead, 0.15 a partial for the tables and 3 a chorus
+  singer; twelve singers at 65 Hz cost 107 (0070).
+
+**Acceptance, as measurable checks** (one singer at a 65 Hz root unless stated):
+
+1. **Growl.** `growl` (0–1, a trajectory) adds the half-integer harmonics (0.5, 1.5, 2.5 … × f0)
+   under the same tilt and vowel resonances. At 1, the strongest half-integer partial in
+   200–800 Hz is within 6 dB of the strongest integer one there; at 0 the voice renders as
+   today. `rough` (0–1) makes alternate cycles differ in strength: at 1, peak levels of
+   neighboring cycles differ by at least 2 dB, at 0 by under 0.1 dB.
+2. **Unsteadiness.** `flutter` (0–1) gives each singer seeded 1/f pitch wander: at the default
+   on value, its RMS is 2–8 cents with at least 70% of its power in 1–8 Hz; `shimmer` (0–1)
+   gives level wander of 0.3–1.5 dB RMS. Two singers' wanders correlate under 0.2.
+3. **Aspiration.** `aspiration` (0–1, a trajectory) adds noise shaped by the two vowel
+   resonances, its level pulsing at f0: at 1, the energy between harmonics in 200–800 Hz rises at
+   least 10 dB over 0, and the noise envelope's modulation spectrum peaks within 5% of f0.
+4. **Breath dynamics.** `breathiness` (0–1) shapes each breath of 0070's schedule: an inhale
+   noise in the gap, at 20–35 dB under the phrase's level; a pitch scoop into each phrase of
+   20–80 cents below, reaching the note within 150 ms with a soft onset; and toward each phrase's
+   end a sag of 1–4 dB and 5–20 cents over its last second. The schedule itself, and so where
+   breaths fall, is unchanged.
+5. **Focus.** At high `focus` the upper resonance also narrows, to about 40 Hz wide at 1, so the
+   focused partial stands at least 6 dB further over its neighbors than it does today.
+6. **Reproducible and fast.** Every new parameter defaults off, every existing golden hash is
+   unchanged, and the engine version stays 2 (0009). Each renders the same samples in an excerpt
+   as in a full render at several offsets, with a new golden genome per step.
+   `./scripts/bench --chant` with twelve singers and every new parameter on renders 20 minutes
+   at a render-only median of at least 10× real time, and the cost formula bounds the densest
+   window under `COST_BUDGET` beside a 15 s reverb.
+7. **The model can use them.** The schema text lists the new parameters within its 4,000
+   characters (0072) and the prompt checks pass; the "low chant" starting point allows them.
+
+**Gate:** `./scripts/check`; the bench; the owner's listening checks.
+
+### Steps
+
+Order: CG.1, CG.2, CG.3, then CG.4. Each step edits `chant.js`, so they run one at a time. They
+share no files with phases TD and WF, so a CG step takes a free builder slot beside one of
+theirs. Records 0088–0091 are reserved for these steps.
+
+#### CG.1 — Growl
+
+- **Builds:** `growl` and `rough` in `chant.js`. The half-integer partials go into the lead's
+  sum and into the chorus table, which covers two cycles of f0 when growl is above 0, so a
+  chorus singer still costs four table reads a frame; `rough` weights alternate cycles. Cost
+  counts the extra partials, as 0070 prices the table.
+- **Tiers:** engine.
+- **Tests first:** acceptance 1; growl 0 equals today's samples; window equality with growl
+  moving; a golden genome with growl and rough on.
+- **Records:** writes 0088. Amends 0069 and 0070.
+- **Parallel:** beside a TD or WF step. Review: yes, with a performance pass.
+
+#### CG.2 — Flutter and shimmer
+
+- **Builds:** `flutter` and `shimmer`: each singer's pitch and level wander, drawn with the
+  voice's drawer (0003) on fixed slots, as a sum of a few seeded sinusoids from about 1 to 8 Hz
+  with 1/f weights, computed from timeline time so windows stay exact. The chorus reads the table
+  at its wandering phase, so wander costs no partials.
+- **Tiers:** engine.
+- **Tests first:** acceptance 2; window equality; adding a singer leaves the others' wander
+  unchanged; a golden genome.
+- **Records:** writes 0089. Amends 0070.
+- **Parallel:** beside a TD or WF step. Review: yes, with a performance pass.
+
+#### CG.3 — Aspiration and breath dynamics
+
+- **Builds:** `aspiration` and `breathiness`. Noise has to be a function of timeline time like
+  every other sample, so the builder chooses a form that keeps windows exact, such as a band of
+  seeded random-phase partials at the resonances or counter-based noise filtered in fixed blocks
+  from timeline 0, and records the choice and its cost. The inhale, scoop, onset and sag read
+  0070's phrase schedule and change none of its draws.
+- **Tiers:** engine.
+- **Tests first:** acceptance 3 and 4; the breath schedule unchanged against CV.2's; window
+  equality across a breath; a golden genome.
+- **Records:** writes 0090. Amends 0070.
+- **Parallel:** beside a TD or WF step. Review: yes, with a performance pass.
+
+#### CG.4 — Focus, the model and the bench
+
+- **Builds:** a narrower upper resonance at high `focus`, behind a new parameter or a rule that
+  leaves stored genomes rendering as they do (focus's own scale can't change meaning); the
+  schema text lines; "low chant" allowing the new parameters; the 20-minute bench of acceptance
+  6, numbers in the log; and a render set for the owner: the low chant with each new parameter
+  on and off, as A/B pairs.
+- **Tiers:** engine, domain, scripts.
+- **Tests first:** acceptance 5 and 7; every golden unchanged.
+- **Records:** writes 0091 if a choice the earlier records don't settle comes up.
+- **Parallel:** beside a TD or WF step. Review: the orchestrator reads the diff.
+
+**Pending owner checks** (after CG.4, on mbp2015 and mbp2026): A/B the low chant with each of
+growl, rough, flutter and shimmer, aspiration, breathiness and focus on and off. Does it sound
+like low human chanting? Does the growl read as rough or as a second pitch? Do the breaths
+sound like breathing?
+
+**Result:**
+
 ## Phase 7 — Album builder
 
 **Goal:** tracks ordered into an album with an arc. **Acceptance:** ordering; energy, brightness
@@ -4032,3 +4151,9 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   and a fresh second test run agree: 2,440 tests. Pending owner check in Safari 17.6: every page
   closed and open, session row height, and the references help line that points at hidden
   fields.
+- 2026-11-09: phase CG written at the owner's request, sent from another session after the
+  owner listened to phase CV: "depth / growl" and "the quicker changes that come from
+  breathing". Growl and rough cycles, per-singer flutter and shimmer, aspiration and breath
+  dynamics, and a narrower focus, each defaulting off so the engine version stays 2. Records
+  0088–0091 are reserved for its steps. It runs one step at a time, in a free builder slot
+  beside TD and WF.
