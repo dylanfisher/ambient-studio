@@ -11,7 +11,12 @@ import { cloneTemplate } from "./clone-template.js";
 import { elementsById } from "./element-by-id.js";
 import { factRows } from "./fact-rows.js";
 import { formatTime } from "./format-time.js";
-import { baseIds, optimizerFacts, optimizerSummary } from "./optimizer-test-text.js";
+import {
+  baseIds,
+  optimizerFacts,
+  optimizerSummary,
+  optimizerVerdict,
+} from "./optimizer-test-text.js";
 import { ownerJob } from "./owner-job.js";
 
 /**
@@ -25,6 +30,7 @@ export function optimizerTestView(status, vibes) {
     optimizerBudget: HTMLInputElement,
     optimizerButton: HTMLButtonElement,
     optimizerWhen: HTMLElement,
+    optimizerWhenNumbers: HTMLElement,
     optimizerJobBox: HTMLElement,
     optimizerNone: HTMLElement,
     optimizerResults: HTMLElement,
@@ -52,18 +58,27 @@ export function optimizerTestView(status, vibes) {
     page.optimizerWhen.textContent =
       newest === null
         ? ""
-        : `Last run ${formatTime(newest.createdAt)}, ${newest.params.budget} evaluations a search.` +
-          (tests.length > 1 ? ` ${tests.length - 1} earlier tests are stored.` : "");
+        : `Last run ${formatTime(newest.createdAt)}.` +
+          (tests.length > 1 ? " Earlier tests are stored too." : "");
+    page.optimizerWhenNumbers.textContent =
+      newest === null
+        ? ""
+        : `${newest.params.budget} evaluations a search` +
+          (tests.length > 1 ? `; ${tests.length - 1} earlier tests stored.` : ".");
     page.optimizerResults.replaceChildren(
       ...(newest?.report.vibes ?? []).map((/** @type {any} */ vibe) => {
         const card = cloneTemplate("optimizer-card", {
           title: HTMLElement,
+          verdict: HTMLElement,
           summary: HTMLElement,
           facts: HTMLElement,
           links: HTMLElement,
         });
         card.title.textContent = vibe.name;
-        card.summary.textContent = optimizerSummary(vibe);
+        card.verdict.textContent = optimizerVerdict(vibe);
+        // A brief left out says why in its verdict; there are no numbers to add.
+        card.summary.hidden = vibe.leftOut !== null;
+        card.summary.textContent = vibe.leftOut === null ? optimizerSummary(vibe) : "";
         const facts = optimizerFacts(vibe);
         card.facts.replaceChildren(...factRows(facts));
         card.facts.hidden = facts.length === 0;

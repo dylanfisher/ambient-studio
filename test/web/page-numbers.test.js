@@ -20,7 +20,7 @@ const PAGES_ALLOWED = {
  * @type {Record<string, string[]>}
  */
 const SHOWS_NUMBERS = {
-  "brief.html": ["constraintBox", "targetBox", "regionBox", "ratingList"],
+  "brief.html": ["constraintBox", "targetBox", "regionBox", "heard"],
   "evaluation.html": [
     "facts",
     "revisionFacts",
@@ -43,18 +43,21 @@ const SHOWS_NUMBERS = {
     "schemaAfter",
     "truncated",
     "failed",
+    "summary",
+    "made",
+    "reportRevisionNumbers",
   ],
   "lineage.html": ["control"],
   "map.html": [
     "coverageLine",
     "controlSwitch",
-    "axisAcross",
-    "axisUp",
-    "grid",
-    "openLine",
+    "axisAcrossEnds",
+    "axisUpEnds",
+    "axisLayerEnds",
+    "openScore",
     "control",
   ],
-  "quick-ab.html": ["earShifts", "value"],
+  "quick-ab.html": ["earShifts", "value", "progressCount", "leftShare", "rightShare"],
   "references.html": ["regionStart", "regionEnd", "times", "analysis"],
   "session.html": [
     "rankBadge",
@@ -86,18 +89,8 @@ const CLONED_INTO = {
 /** Parts left outside the toggle on purpose, by page and id or `data-part`, with why. */
 const ALLOWED = {
   "brief.html": {
-    ratingList:
-      "The ratings list is the record of what was rated; hiding it would leave the card empty. Its heard values aren't said in words yet (0085).",
     constraints:
       "An earlier version's rules and ranges stay in its own disclosure, written by constraintsText and targetsText.",
-  },
-  "map.html": {
-    axisAcross:
-      "An axis caption names the axis; without it the map has no labels. WF.3 writes its ends in words.",
-    axisUp:
-      "An axis caption names the axis; without it the map has no labels. WF.3 writes its ends in words.",
-    grid: "The cells are the map itself; each shows its intent beside its score until WF.3 says the score as a verdict.",
-    openLine: "The open cell's line is word text kept in view until WF.3 says its score in words.",
   },
 };
 

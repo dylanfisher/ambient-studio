@@ -8,6 +8,7 @@ import {
   responseFormatText,
   revisionFacts,
   revisionVerdictText,
+  revisionVerdictWords,
   timeText,
 } from "../../src/web/report-text.js";
 
@@ -114,7 +115,8 @@ describe("what a result means", () => {
       ...times(14, [null, null]),
       ...times(2, ["truncated", "truncated"]),
     ]);
-    expect(meaningText(overall)).toMatch(/2 answers were cut off/);
+    expect(meaningText(overall)).toMatch(/Some answers were cut off/);
+    expect(meaningText(overall)).not.toMatch(/\d/);
   });
 
   test("nothing answered says there is nothing to judge", () => {
@@ -230,6 +232,28 @@ describe("the revision test in plain words", () => {
       ...pairs(8, [false, false]),
     ]);
     expect(revisionVerdictText(overall)).toMatch(/^The gain comes from asking again/);
+    expect(revisionVerdictWords(overall)).toBe(
+      "The gain comes from asking again: the revision told its measurements fixed some first tries, but not clearly more than the revision that wasn't told them. The measurements don't earn their place yet; decide whether to keep the revision step.",
+    );
+  });
+
+  test("each verdict reads in words alone, with the counts and p behind the numbers", () => {
+    expect(revisionVerdictWords(revisionReportOf(2, pairs(10, [true, false])).overall)).toBe(
+      "Inconclusive: too few first tries missed a range to tell. Run it again with more candidates per brief.",
+    );
+    const passes = revisionReportOf(4, [
+      ...pairs(5, [true, true]),
+      ...pairs(9, [true, false]),
+      [false, true],
+      ...pairs(5, [false, false]),
+    ]).overall;
+    expect(revisionVerdictWords(passes)).toBe(
+      "The measurements help: the revision that was told its measurements landed inside every range more often than the one that wasn't.",
+    );
+    expect(revisionVerdictWords(revisionReportOf(0, pairs(20, [false, false])).overall)).toBe(
+      "The revision step didn't help: the revision told its measurements fixed none of the first tries.",
+    );
+    expect(revisionVerdictWords(reportOf(times(4, [null, null])).overall)).toBeNull();
   });
 
   test("a brief's card names the ranges the test used", () => {

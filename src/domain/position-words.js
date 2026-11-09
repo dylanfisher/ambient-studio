@@ -5,7 +5,7 @@ import { AXIS_SOURCE } from "./attachment-kind.js";
 import { axisName, nearText } from "./axis-words.js";
 
 /** Up to this far from an end is "close to" it; up to `leaning`, "leaning toward" it. */
-const POSITION_BANDS = Object.freeze({ close: 0.2, leaning: 0.4 });
+export const POSITION_BANDS = Object.freeze({ close: 0.2, leaning: 0.4 });
 
 /** What a position says when the excerpt has none yet on a direction. */
 export const NOT_PLACED = "not placed yet";

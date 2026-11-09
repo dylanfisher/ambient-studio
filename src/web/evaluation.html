@@ -43,7 +43,9 @@
           once with its measurements and once without, to find out whether hearing the
           measurements helps. The taste model test, further down, checks something else: how
           well the studio has learned your own A/B choices, and the optimizer test checks
-          whether a search scored by that model finds better candidates than plain nudges.
+          whether a search scored by that model finds better candidates than plain nudges. Each
+          result opens with what it found in words; Show the numbers gives its rates, times and
+          tables.
         </p>
         <p><button id="numbersToggle" class="button outline small" type="button" aria-expanded="false" title="Shows or hides the numbers on this page: the fields that set values directly, the measurements and the scores. The page remembers your choice in this browser.">Show the numbers</button></p>
         <p id="status" class="status" role="status" aria-live="polite">Loading…</p>
@@ -137,7 +139,7 @@
             <input id="optimizerBudget" type="number" min="1" step="1" size="4" title="How many points each search renders and scores, and how many nudges its control makes. More finds better points but takes longer; the confirm says how long." />
           </label>
           <button id="optimizerButton" class="button primary" type="button" title="Asks you to confirm, then starts the optimizer test on the ticked briefs. It first says how many excerpts that renders and about how long it takes.">Start the optimizer test</button>
-          <span id="optimizerWhen" class="small muted"></span>
+          <span class="small muted"><span id="optimizerWhen"></span> <span id="optimizerWhenNumbers" data-numbers></span></span>
         </div>
         <div id="optimizerJobBox" class="stack"></div>
         <p id="optimizerNone" class="muted small">No optimizer test has finished yet.</p>
@@ -167,6 +169,7 @@
           <div id="reportRevision" class="callout" hidden>
             <h3>Does hearing the measurements help?</h3>
             <p id="reportRevisionMeaning"></p>
+            <p id="reportRevisionNumbers" class="small" data-numbers></p>
             <p class="small muted">
               Each first try that missed a feature range, or failed a render check, was revised
               twice from the same first try: once told what its excerpt measured and what it
@@ -198,7 +201,7 @@
     </template>
     <template id="report-item">
       <li>
-        <button class="button outline wide" type="button" data-part="open" title="Shows this test's result.">result</button>
+        <button class="button outline wide" type="button" data-part="open" title="Shows this test's result."><span data-part="name">result</span><span data-part="rate" data-numbers></span></button>
       </li>
     </template>
     <template id="job-progress">
@@ -220,7 +223,8 @@
     <template id="taste-card">
       <div class="card stack">
         <h3 data-part="title">brief</h3>
-        <p class="small" data-part="summary"></p>
+        <p class="small" data-part="verdict"></p>
+        <p class="small muted" data-part="summary" data-numbers></p>
         <dl class="facts small" data-part="facts" data-numbers></dl>
       </div>
     </template>
@@ -236,7 +240,8 @@
     <template id="optimizer-card">
       <div class="card stack">
         <h3 data-part="title">brief</h3>
-        <p class="small" data-part="summary"></p>
+        <p class="small" data-part="verdict"></p>
+        <p class="small muted" data-part="summary" data-numbers></p>
         <dl class="facts small" data-part="facts" data-numbers></dl>
         <div class="row" data-part="links"></div>
       </div>
@@ -246,7 +251,7 @@
     </template>
     <template id="tally">
       <div class="card stack">
-        <h3 data-part="title">brief</h3>
+        <h3><span data-part="title">brief</span><span data-part="made" data-numbers></span></h3>
         <p class="small" data-part="meaning"></p>
         <dl class="facts small" data-numbers>
           <dt>Worked first time</dt>

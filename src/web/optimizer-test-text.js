@@ -74,6 +74,30 @@ export function optimizerSummary(vibe) {
 }
 
 /**
+ * A brief's result as verdicts alone, the line its card opens with (decision 0086): the counts,
+ * scores and p are in `optimizerSummary`, behind the numbers toggle.
+ * @param {any} vibe
+ */
+export function optimizerVerdict(vibe) {
+  if (vibe.leftOut !== null) return `Left out: ${vibe.leftOut}`;
+  const { verdict, owner, spotChecks } = vibe;
+  const says = /** @type {Record<string, string>} */ (SAYS)[verdict.verdict] ?? "";
+  const byModel = verdict.counts
+    ? `By your taste model, ${says.charAt(0).toLowerCase()}${says.slice(1)}`
+    : verdict.text === null
+      ? modelText(vibe)
+      : `By your taste model: ${verdict.text}.`;
+  /** @type {string} */
+  let byEar;
+  if (spotChecks.length === 0) byEar = ownerText(vibe);
+  else if (owner.verdict === VERDICT.inconclusive) {
+    byEar = `By ear: ${OWNER_INCONCLUSIVE}${owner.unrated > 0 ? "; rate the blind pairs" : ""}.`;
+  } else if (owner.verdict === VERDICT.search) byEar = "By ear, the search is better.";
+  else byEar = "By ear, it doesn't show the search is better.";
+  return `${byModel} ${byEar}`;
+}
+
+/**
  * A tested brief's facts as term and value: each search, the map's coverage and the time.
  * @param {any} vibe
  * @returns {[string, string][]}

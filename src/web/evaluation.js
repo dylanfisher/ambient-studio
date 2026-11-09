@@ -41,6 +41,7 @@ import {
   responseFormatText,
   revisionFacts,
   revisionVerdictText,
+  revisionVerdictWords,
   timeText,
 } from "./report-text.js";
 import { statusLine } from "./status-line.js";
@@ -65,6 +66,7 @@ const page = elementsById({
   reportMeaning: HTMLElement,
   reportRevision: HTMLElement,
   reportRevisionMeaning: HTMLElement,
+  reportRevisionNumbers: HTMLElement,
   reportTallies: HTMLElement,
   latencyFirst: HTMLElement,
   latencyRepair: HTMLElement,
@@ -110,6 +112,7 @@ let thinking = null;
 function tallyCard(title, tally, maxTokens, withMeaning) {
   const card = cloneTemplate("tally", {
     title: HTMLElement,
+    made: HTMLElement,
     meaning: HTMLElement,
     validBefore: HTMLElement,
     validBeforeRange: HTMLElement,
@@ -124,7 +127,8 @@ function tallyCard(title, tally, maxTokens, withMeaning) {
     revision: HTMLElement,
     revisionFacts: HTMLElement,
   });
-  card.title.textContent = `${title}: ${tally.made} of ${tally.requested} asked for were made`;
+  card.title.textContent = title;
+  card.made.textContent = `: ${tally.made} of ${tally.requested} asked for were made`;
   card.meaning.hidden = !withMeaning;
   card.meaning.textContent = withMeaning ? meaningText(tally) : "";
   card.validBefore.textContent = rateText(tally.valid.beforeRepair);
@@ -162,9 +166,10 @@ function showReport(index) {
   page.reportStopped.textContent =
     report.stopped === null ? "" : `The test stopped early: ${report.stopped}`;
   page.reportMeaning.textContent = meaningText(report.overall);
-  const verdict = revisionVerdictText(report.overall);
+  const verdict = revisionVerdictWords(report.overall);
   page.reportRevision.hidden = verdict === null;
   page.reportRevisionMeaning.textContent = verdict ?? "";
+  page.reportRevisionNumbers.textContent = revisionVerdictText(report.overall) ?? "";
   page.reportTallies.replaceChildren(
     tallyCard("All briefs", report.overall, params.maxTokens, false),
     // One brief's card would repeat the overall one.
@@ -215,11 +220,14 @@ async function loadReports() {
   page.reportList.replaceChildren(
     ...evaluations
       .map((evaluation, index) => {
-        const item = cloneTemplate("report-item", { open: HTMLButtonElement });
+        const item = cloneTemplate("report-item", {
+          open: HTMLButtonElement,
+          name: HTMLElement,
+          rate: HTMLElement,
+        });
         const { overall, stopped } = evaluation.report;
-        item.open.textContent =
-          `Test ${evaluation.id}, ${formatTime(evaluation.createdAt)}: worked after one fix ` +
-          `${rateText(overall.valid.afterRepair)}${stopped === null ? "" : " (stopped early)"}`;
+        item.name.textContent = `Test ${evaluation.id}, ${formatTime(evaluation.createdAt)}${stopped === null ? "" : " (stopped early)"}`;
+        item.rate.textContent = `: worked after one fix ${rateText(overall.valid.afterRepair)}`;
         item.open.title = `Shows the result of model test ${evaluation.id} below.`;
         item.open.onclick = () => status.run(() => showReport(index));
         return item.root;

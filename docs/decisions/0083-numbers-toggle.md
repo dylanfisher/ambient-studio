@@ -6,7 +6,10 @@
   raw numbers only behind the toggle; the session's Details and Locks disclosures) and
   [0049](0049-session-table-hiding-marks.md) (the session row's More controls). Amended by
   [0085](0085-session-and-brief-in-words.md) (`originText` leaves the allowlist on the session
-  and lineage pages, and a search point's score moves behind the toggle).
+  and lineage pages, and a search point's score moves behind the toggle) and
+  [0086](0086-other-pages-in-words.md) (the map's grid, axis captions and open cell's line and
+  the brief's ratings list leave the allowlist, said in words with their numbers behind the
+  toggle).
 
 ## Context
 

@@ -11,6 +11,7 @@ import {
   modelText,
   optimizerFacts,
   optimizerSummary,
+  optimizerVerdict,
   ownerText,
 } from "../../src/web/optimizer-test-text.js";
 
@@ -72,6 +73,33 @@ describe("ownerText", () => {
     );
     const failed = { ...passed, wins: 9, p: 0.073, verdict: VERDICT.even };
     expect(ownerText(tested({ owner: failed }))).toMatch(/doesn't show the search is better/);
+  });
+});
+
+describe("optimizerVerdict", () => {
+  test("a counted comparison and a passed spot check read as verdicts alone", () => {
+    const passed = { ...noChoices, wins: 10, decided: 12, p: 79 / 4096, verdict: VERDICT.search };
+    expect(optimizerVerdict(tested({ owner: passed }))).toBe(
+      "By your taste model, the search is better. By ear, the search is better.",
+    );
+    const even = { ...passed, wins: 9, p: 0.073, verdict: VERDICT.even };
+    expect(optimizerVerdict(tested({ owner: even }))).toMatch(
+      /By ear, it doesn't show the search is better\.$/,
+    );
+  });
+
+  test("waiting verdicts say so, with no counts", () => {
+    const low = { ...agreement, low: 0.45 };
+    expect(optimizerVerdict(tested({ agreement: low, verdict: modelVerdict(low, model) }))).toBe(
+      "By your taste model: inconclusive: the model doesn't yet beat chance on held-out pairs. By ear: inconclusive, waiting on data; rate the blind pairs.",
+    );
+    const none = tested({ verdict: modelVerdict(agreement, null), spotChecks: [] });
+    expect(optimizerVerdict(none)).toBe(
+      "By your taste model: no search scored a point in both arms. By ear: there are no pairs to compare.",
+    );
+    expect(optimizerVerdict(tested({ leftOut: "This brief has no taste model yet." }))).toBe(
+      "Left out: This brief has no taste model yet.",
+    );
   });
 });
 

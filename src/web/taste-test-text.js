@@ -1,5 +1,7 @@
 // The taste model test's report in plain words (decisions 0032 and 0045). No DOM here, so the
 // wording is tested. The report is the server's `PreferenceTestReport`, read as JSON.
+import { OPTIMIZER_TEST } from "../domain/optimizer-report.js";
+import { PLACE_SIDE, placeOf } from "../domain/place-words.js";
 import { PAIR_NOUN, PREFERENCE_MINIMUM } from "../domain/preference-minimum.js";
 
 const NEEDS = `${PREFERENCE_MINIMUM.pairs} A/B choices over at least ${PREFERENCE_MINIMUM.sessions} sessions`;
@@ -69,6 +71,35 @@ export function tasteSummary(vibe) {
     return `There is no model to test yet: ${agreementText(test.model)}.`;
   }
   return `On sessions it hadn't learned from, the model picked your choice ${percent(agreement.share)} of the time (${agreement.agreed} of ${agreement.scored}), probably between ${percent(agreement.low)} and ${percent(agreement.high)}.`;
+}
+
+/**
+ * What a brief's test found as a verdict alone, the line its card opens with (decision 0086):
+ * the agreement's interval against chance, as the optimizer test reads it (0059). The counts
+ * and shares are in `tasteSummary`, behind the numbers toggle.
+ * @param {any} vibe one of the report's `vibes`
+ */
+export function tasteVerdict({ shortfall, test }) {
+  if (shortfall !== null) {
+    if (shortfall.pairs > 0 && shortfall.sessions > 0) {
+      return "Not enough data yet: the test needs more A/B choices, over more sessions.";
+    }
+    return shortfall.pairs > 0
+      ? "Not enough data yet: the test needs more A/B choices."
+      : "Not enough data yet: the test needs A/B choices from more sessions.";
+  }
+  const { agreement } = test.model;
+  if (agreement === null) return "There is no model to test yet.";
+  const { chance } = OPTIMIZER_TEST;
+  if (agreement.low > chance) {
+    return placeOf(agreement.share).side === PLACE_SIDE.above
+      ? "The model picks your choice most of the time, more often than chance."
+      : "The model picks your choice more often than chance, though not by much.";
+  }
+  if (agreement.high < chance) {
+    return "The model picks against your choice more often than chance would, so something it reads misleads it.";
+  }
+  return "The model can't yet be told apart from a coin toss; more A/B choices will tell.";
 }
 
 /**

@@ -19,6 +19,14 @@ export const BENCH_SECONDS = Object.freeze({ render: 2, embed: 0.17 });
 export const searchSeconds = (evaluations, { render, embed }) => evaluations * (render + embed);
 
 /**
+ * The minutes `evaluations` take, rounded, and at least 1, as every confirm says them.
+ * @param {number} evaluations
+ * @param {StepSeconds} seconds per evaluation
+ */
+export const searchMinutes = (evaluations, seconds) =>
+  Math.max(1, Math.round(searchSeconds(evaluations, seconds) / 60));
+
+/**
  * Each step's median, nearest rank, so each figure is one that was measured.
  * @param {readonly StepSeconds[]} timings one per evaluation
  * @returns {StepSeconds}
@@ -58,7 +66,7 @@ const counted = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
  */
 export function searchCostText(evaluations, seconds, { measured, control }) {
   const arms = control ? 2 : 1;
-  const minutes = Math.max(1, Math.round(searchSeconds(arms * evaluations, seconds) / 60));
+  const minutes = searchMinutes(arms * evaluations, seconds);
   const then = control
     ? `, then ${evaluations} medium nudges of it as a control that isn't shown`
     : "";
@@ -81,7 +89,7 @@ export function searchCostText(evaluations, seconds, { measured, control }) {
  */
 export function optimizerTestCostText(briefs, runs, budget, seconds, { measured }) {
   const evaluations = briefs * runs * 2 * budget;
-  const minutes = Math.max(1, Math.round(searchSeconds(evaluations, seconds) / 60));
+  const minutes = searchMinutes(evaluations, seconds);
   return (
     `Run the optimizer test on ${briefs} brief${briefs === 1 ? "" : "s"}? ` +
     `Each brief gets ${runs} search${runs === 1 ? "" : "es"} of ${counted(budget, "evaluation")}, each followed by ${budget} medium nudges of the same start as its control, ${evaluations} evaluations in all. ` +
@@ -112,13 +120,21 @@ function costLine(minutes, seconds, measured) {
  * @returns {string}
  */
 export function steerCostText(evaluations, seconds, { measured }) {
-  const minutes = Math.max(1, Math.round(searchSeconds(evaluations, seconds) / 60));
+  const minutes = searchMinutes(evaluations, seconds);
   return (
     `Steer from this candidate with ${counted(evaluations, "evaluation")}? ` +
     "Each renders an excerpt, analyzes its sound and scores it by where it sits on the sliders you moved and how near it is to the regions you chose, and a little by your taste model when the brief has one; nothing is sent to the language model. " +
     costLine(minutes, seconds, measured)
   );
 }
+
+/**
+ * A fill's minutes: its steps, and its control arm's as many nudges.
+ * @param {number} steps
+ * @param {StepSeconds} seconds
+ * @param {boolean} control
+ */
+const fillMinutes = (steps, seconds, control) => searchMinutes((control ? 2 : 1) * steps, seconds);
 
 /**
  * The map's fill's confirm (decision 0057): its steps, and the control's as many nudges, at the
@@ -130,8 +146,7 @@ export function steerCostText(evaluations, seconds, { measured }) {
  * @returns {string}
  */
 export function fillCostText(steps, explores, seconds, { measured, control }) {
-  const arms = control ? 2 : 1;
-  const minutes = Math.max(1, Math.round(searchSeconds(arms * steps, seconds) / 60));
+  const minutes = fillMinutes(steps, seconds, control);
   const then = control
     ? `, then ${steps} medium nudges from the same starts as a control that isn't shown`
     : "";
@@ -145,4 +160,22 @@ export function fillCostText(steps, explores, seconds, { measured, control }) {
     asked +
     costLine(minutes, seconds, measured)
   );
+}
+
+/**
+ * The map's fill as time, the line beside Fill the map (decision 0086): the confirm's minutes,
+ * with the steps and their seconds behind the numbers toggle.
+ * @param {number} steps
+ * @param {number} explores how many of the steps ask the model
+ * @param {StepSeconds} seconds per evaluation
+ * @param {{ control: boolean }} options as `fillCostText`'s
+ * @returns {string}
+ */
+export function fillTimeText(steps, explores, seconds, { control }) {
+  const minutes = fillMinutes(steps, seconds, control);
+  const asking =
+    explores === 0
+      ? ""
+      : ", and longer for the steps that ask the language model, which wait their turn";
+  return `A fill with the settings now takes about ${counted(minutes, "minute")}${asking}.`;
 }

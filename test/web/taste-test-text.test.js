@@ -1,6 +1,11 @@
 // The taste model test's report in plain words (decisions 0032 and 0045).
 import { describe, expect, test } from "vitest";
-import { agreementText, tasteFacts, tasteSummary } from "../../src/web/taste-test-text.js";
+import {
+  agreementText,
+  tasteFacts,
+  tasteSummary,
+  tasteVerdict,
+} from "../../src/web/taste-test-text.js";
 
 const short = {
   pairs: 0,
@@ -85,6 +90,44 @@ describe("tasteSummary", () => {
       ["The louder one", "49% of 41, probably between 40% and 60%"],
       ["Left out", "1 about the same; 1 whose candidate was also rated in another session"],
     ]);
+  });
+});
+
+describe("tasteVerdict", () => {
+  const tested = (/** @type {any} */ model) => ({
+    ...short,
+    shortfall: null,
+    test: { model },
+  });
+
+  test("too little data says what more it needs, with no counts", () => {
+    expect(tasteVerdict(short)).toBe(
+      "Not enough data yet: the test needs more A/B choices, over more sessions.",
+    );
+    expect(tasteVerdict({ ...short, shortfall: { pairs: 10, sessions: 0 } })).toBe(
+      "Not enough data yet: the test needs more A/B choices.",
+    );
+    expect(tasteVerdict({ ...short, shortfall: { pairs: 0, sessions: 1 } })).toBe(
+      "Not enough data yet: the test needs A/B choices from more sessions.",
+    );
+  });
+
+  test("the agreement's interval against chance gives the verdict", () => {
+    expect(tasteVerdict(tested(found(32, 41, 0.62, 0.88)))).toBe(
+      "The model picks your choice most of the time, more often than chance.",
+    );
+    expect(tasteVerdict(tested(found(25, 41, 0.51, 0.75)))).toBe(
+      "The model picks your choice more often than chance, though not by much.",
+    );
+    expect(tasteVerdict(tested(found(29, 41, 0.5, 0.857)))).toBe(
+      "The model can't yet be told apart from a coin toss; more A/B choices will tell.",
+    );
+    expect(tasteVerdict(tested(found(10, 41, 0.12, 0.4)))).toBe(
+      "The model picks against your choice more often than chance would, so something it reads misleads it.",
+    );
+    expect(tasteVerdict(tested({ agreement: null, unscored: 41 }))).toBe(
+      "There is no model to test yet.",
+    );
   });
 });
 

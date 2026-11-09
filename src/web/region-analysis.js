@@ -37,11 +37,20 @@ export async function runAnalysis(regionId, vibeId, say) {
 }
 
 /**
- * The job's result in a sentence or two.
+ * What the job measured on, behind the numbers toggle.
  * @param {AnalyzeResult} result
  */
-export function analysisText({ target, windows, embedded, notEmbedded }) {
-  const measured = `Measured on ${windowsText(windows)} at ${target} LUFS.`;
-  if (embedded) return `${measured} Its sound is analyzed too.`;
-  return `${measured} Its sound isn't analyzed: ${notEmbedded ?? "no reason was given"}.`;
+export const analysisText = ({ target, windows }) =>
+  `Measured on ${windowsText(windows)} at ${target} LUFS.`;
+
+/**
+ * The job's result in words (decision 0086): what the region can now be used for.
+ * @param {AnalyzeResult} result
+ */
+export function analysisWords({ embedded, notEmbedded }) {
+  const measured = "Measured the way an excerpt is";
+  if (embedded) {
+    return `${measured}, and its sound analyzed: a brief can take its ranges from this region, and a steer can aim toward it.`;
+  }
+  return `${measured}, so a brief can take its ranges from this region. Its sound isn't analyzed, so a steer can't aim toward it yet: ${notEmbedded ?? "no reason was given"}.`;
 }
