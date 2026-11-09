@@ -4017,3 +4017,18 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   templates, and one words operator that turns the owner's words into values for a stated set
   of fields. Records 0083–0087 are reserved for its steps. It runs beside phase TD, two builders
   at most, with the track page left to TD until TD.3.
+- 2026-11-09: TD.1 merged as 2e7d84c (Opus: 209k tokens, 95 calls, 26 min; the orchestrator read
+  the diff, and stopped the builder's leftover background run after its commit). Every section
+  and transition holds `text`, at most 300 characters, "" by default; migration 0012 adds it to
+  every stored revision, tested over 0011's shape with a morph and a lane; the recipe key is the
+  same with or without text; the proposal fills "" before validating. The section player caches
+  by window alone, so typing words doesn't re-render (0077).
+- 2026-11-09: WF.1 merged as e7b4d33 (Opus: 192k tokens, 79 calls, 18 min; the orchestrator read
+  the report and the diff's shape). One "Show the numbers" button per page, closed by default,
+  remembered per page in `localStorage`; a CSS rule on `[data-numbers]` hides every marked part,
+  cloned rows included. A test lists each page's number inputs and fails on one outside the
+  toggle, with the track page and a few named parts allowlisted with reasons. The session's
+  "More controls" button is gone and its second row always shows (0083). `./scripts/check` clean
+  and a fresh second test run agree: 2,440 tests. Pending owner check in Safari 17.6: every page
+  closed and open, session row height, and the references help line that points at hidden
+  fields.
