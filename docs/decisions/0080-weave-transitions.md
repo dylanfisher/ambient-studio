@@ -4,7 +4,9 @@
 - **Status:** accepted; provisional: owner to confirm the two sequences running together rather
   than leaving voices first, the half overlap, the register order, and the button's three-step
   order. Amends [0064](0064-morph-transitions.md) (a third transition kind built on the morph;
-  the fallback reasons name their kind; `Morph` lists a weave's order)
+  the fallback reasons name their kind; `Morph` lists a weave's order); amended by
+  [0081](0081-bridges.md) (a bridge's two joins are weaves of a stated length, built and checked
+  to hold before the bridge is stored; `fixedParams` and `JOIN_GLOBALS` are exported for it)
 
 ## Context
 

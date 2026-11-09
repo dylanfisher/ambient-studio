@@ -10,18 +10,20 @@ import { clockTime } from "./excerpt-player.js";
 export const REQUESTS = Object.freeze({ low: 1, high: 2 });
 
 /**
- * How long `REQUESTS` take, from recent requests' times, as the confirm's last sentence.
+ * How long `requests` take, from recent requests' times, as the confirm's last sentence.
  * @param {{ seconds: number | null, timed: number }} estimate the median seconds of the last
  *   `timed` requests the model answered; null seconds when none was timed
+ * @param {{ low: number, high: number }} [requests] the fewest and the most: `REQUESTS`, or a
+ *   bridge's two halves' (0081)
  * @returns {string}
  */
-export function requestsTimeText({ seconds, timed }) {
+export function requestsTimeText({ seconds, timed }, requests = REQUESTS) {
   if (seconds === null) {
     return "No request to the model has been timed yet, so the time can't be estimated.";
   }
-  /** @param {number} requests */
-  const minutes = (requests) => Math.max(1, Math.round((requests * seconds) / 60));
-  const [low, high] = [minutes(REQUESTS.low), minutes(REQUESTS.high)];
+  /** @param {number} count */
+  const minutes = (count) => Math.max(1, Math.round((count * seconds) / 60));
+  const [low, high] = [minutes(requests.low), minutes(requests.high)];
   const span = low === high ? `${low} minute${low === 1 ? "" : "s"}` : `${low} to ${high} minutes`;
   const source =
     timed === 1

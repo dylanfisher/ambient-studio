@@ -5,12 +5,14 @@
 // voices lose their values first, then are named only.
 /** @import { Genome, Voice } from "../engine/genome-schema.js" */
 /** @import { Trajectory } from "../engine/trajectory.js" */
+/** @import { Descriptor } from "../engine/descriptor.js" */
 import { isNumeric } from "../engine/descriptor.js";
 import { GLOBAL_PARAMS, MACROS, VOICE_PARAMS } from "../engine/genome-schema.js";
 import { isObject } from "../engine/is-object.js";
 import { valueAt } from "../engine/trajectory.js";
 import { voiceParams } from "../engine/voice-registry.js";
 import { fitReading } from "./fit-reading.js";
+import { fixedParams } from "./morph-genome.js";
 import { numberText } from "./param-text.js";
 import { PITCH } from "./sketch-reading.js";
 
@@ -19,6 +21,12 @@ import { PITCH } from "./sketch-reading.js";
  * sketch's genome.
  */
 export const MEETING_STATE_TOKENS = 180;
+
+/**
+ * The most tokens one end of a bridge's state takes, with each voice's settings that can't move
+ * (decision 0081): a bridge's prompt can leave out the lineage's reading for the room.
+ */
+export const BRIDGE_STATE_TOKENS = 270;
 
 /** Which edge of its section a neighbor meets the developed one at. */
 export const MEETING_EDGE = Object.freeze(/** @type {const} */ ({ end: "end", start: "start" }));
@@ -51,17 +59,30 @@ function valueThere(value, at, descriptor) {
  * @param {number} at
  * @param {MeetingEdge} edge
  */
-const sounds = ({ start, end }, at, edge) =>
+export const sounds = ({ start, end }, at, edge) =>
   edge === MEETING_EDGE.end ? start < at && end >= at : start <= at && end > at;
 
 /**
+ * A setting that can't move, as the prompt writes it: a number with its unit, anything else as
+ * it is.
+ * @param {unknown} value
+ * @param {Descriptor} descriptor
+ */
+const settingText = (value, descriptor) =>
+  isNumeric(descriptor) && typeof value === "number"
+    ? numberText(value, descriptor.unit)
+    : String(value);
+
+/**
  * One voice at `at`: its id and type, its level, and in full its pitch and every parameter that
- * moves, each as it stands there.
+ * moves, each as it stands there, and with `fixed` every setting that can't move and isn't its
+ * default.
  * @param {Voice} voice
  * @param {number} at
  * @param {boolean} full
+ * @param {boolean} fixed
  */
-function voiceLine(voice, at, full) {
+function voiceLine(voice, at, full, fixed) {
   const table = voiceParams(voice.type);
   /** @type {Record<string, unknown>} */
   const held = voice;
@@ -74,6 +95,16 @@ function voiceLine(voice, at, full) {
       parts.push(`${name} ${valueThere(held[name], at, descriptor)}`);
     }
   }
+  if (full && fixed) {
+    for (const name of fixedParams(voice.type)) {
+      const descriptor = /** @type {Descriptor} */ (table[name]);
+      const value = held[name];
+      // A recording has no default, so its hash is always written.
+      const { default: fallback } = /** @type {{ default?: unknown }} */ (descriptor);
+      if (name === PITCH || value === undefined || value === fallback) continue;
+      parts.push(`${name} ${settingText(value, descriptor)}`);
+    }
+  }
   return `${voice.id} (${voice.type}): ${parts.join(", ")}`;
 }
 
@@ -84,9 +115,17 @@ function voiceLine(voice, at, full) {
  * @param {number} at seconds on that genome's timeline: the section's end or start
  * @param {MeetingEdge} edge
  * @param {number} [budgetTokens]
+ * @param {{ fixed?: boolean }} [options] `fixed` adds each voice's settings that can't move,
+ *   which a bridge copies (decision 0081)
  * @returns {string[]}
  */
-export function meetingState(genome, at, edge, budgetTokens = MEETING_STATE_TOKENS) {
+export function meetingState(
+  genome,
+  at,
+  edge,
+  budgetTokens = MEETING_STATE_TOKENS,
+  { fixed = false } = {},
+) {
   const { tuning, scale, key, pulse, bpm } = genome;
   const globals = [
     `tuning ${tuning}`,
@@ -109,7 +148,7 @@ export function meetingState(genome, at, edge, budgetTokens = MEETING_STATE_TOKE
   const write = (levels) => {
     const named = voices.filter((_, i) => levels[i] === DETAIL.named).map(({ id }) => id);
     const lines = voices.flatMap((voice, i) =>
-      levels[i] === DETAIL.named ? [] : [voiceLine(voice, at, levels[i] === DETAIL.full)],
+      levels[i] === DETAIL.named ? [] : [voiceLine(voice, at, levels[i] === DETAIL.full, fixed)],
     );
     return [
       ...head,

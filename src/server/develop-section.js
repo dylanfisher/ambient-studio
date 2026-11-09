@@ -7,6 +7,7 @@
 // only when the owner's route adds it.
 /** @import { Arrangement } from "../domain/arrangement-schema.js" */
 /** @import { DevelopmentAsk } from "../domain/check-development.js" */
+/** @import { ChatMessage } from "../domain/prompt-tokens.js" */
 /** @import { JobContext } from "./job-runner.js" */
 /** @import { App } from "./routing.js" */
 import { judgeDevelopment } from "../domain/check-development.js";
@@ -40,7 +41,7 @@ const DEVELOP_RESPONSE_FORMAT = Object.freeze({
 });
 
 /** The share of the context budget the first prompt may take; the rest is the repair's (0024). */
-const FIRST_PROMPT_SHARE = 0.5;
+export const FIRST_PROMPT_SHARE = 0.5;
 
 /**
  * What the owner asked for: one section of one saved revision, checked by the route.
@@ -121,52 +122,19 @@ export function developJob(app, { track, revisionId, arrangement, index }) {
         budgetTokens: Math.floor(config.queue.contextBudgetTokens * FIRST_PROMPT_SHARE),
       });
       job.signal.throwIfAborted();
-      const seed = Math.floor(app.random() * STREAM_SEEDS);
-      const requestGroup = requestGroupName(track.vibeId, seed, OPERATOR.develop);
-      if (listRequestGroup(store, requestGroup).length > 0) {
-        throw new Error(`request group ${requestGroup} already exists; develop again`);
-      }
-      const sampling = firstSampling(seed);
-      const batch = {
-        store,
-        queue: app.queue,
-        config,
-        vibeRevisionId: revision.id,
-        sessionId: null,
-        requestGroup,
-        exampleIds: [],
-        attachmentIds: [],
-        retrievalMethod: RETRIEVAL_METHOD.none,
-        /** @param {{ kind: string }} step */
-        onStep: ({ kind }) =>
-          job.progress(
-            0,
-            1,
-            kind === GENERATION_STEP.asking
-              ? JOB_STEP.developing
-              : kind === GENERATION_STEP.repairing
-                ? JOB_STEP.repairingDevelopment
-                : JOB_STEP.busy,
-          ),
-      };
       /** @type {DevelopmentAsk} */
       const ask = {
         seconds: section.seconds,
         constraints,
         recordings: new Set(recordingRefs(genome).map(({ hash }) => hash)),
       };
-      const { generation, verdict, repaired } = await answerWithRepair({
-        batch,
+      const { generation, developed, repaired } = await askDevelopment(app, job, {
+        vibeId: track.vibeId,
+        vibeRevisionId: revision.id,
         messages: built.messages,
-        sampling,
-        responseFormat: DEVELOP_RESPONSE_FORMAT,
-        judge: (completion) => judgeDevelopment(completion, config.queue.maxTokens, ask),
-        buildRepair: buildDevelopRepair,
-        signal: job.signal,
-        what: "development",
+        ask,
+        progress: { done: 0, of: 1 },
       });
-      job.signal.throwIfAborted();
-      const developed = verdict.genome;
       const development = transaction(store, () =>
         addDevelopment(store, {
           trackId: track.id,
@@ -177,6 +145,7 @@ export function developJob(app, { track, revisionId, arrangement, index }) {
           genomeId: putGenome(store, track.vibeId, developed).id,
           seed: candidate.seed,
           generationId: generation.id,
+          bridge: false,
         }),
       );
       job.progress(1, 1, null);
@@ -193,4 +162,66 @@ export function developJob(app, { track, revisionId, arrangement, index }) {
       job.signal.removeEventListener("abort", cancelRequests);
     }
   };
+}
+
+/**
+ * Sends one development's prompt through the queue in a new request group of operator
+ * `develop`, with one repair for an answer that parsed, and returns the checked genome. Throws
+ * when the answer is still invalid, or when the job was cancelled. A bridge (0081) sends one per
+ * part.
+ * @param {App} app
+ * @param {JobContext} job
+ * @param {object} request
+ * @param {number} request.vibeId
+ * @param {number} request.vibeRevisionId the brief's revision the prompt was written from
+ * @param {ChatMessage[]} request.messages
+ * @param {DevelopmentAsk} request.ask
+ * @param {{ done: number, of: number }} request.progress the job's progress while it asks
+ */
+export async function askDevelopment(
+  app,
+  job,
+  { vibeId, vibeRevisionId, messages, ask, progress },
+) {
+  const { store, config } = app;
+  const seed = Math.floor(app.random() * STREAM_SEEDS);
+  const requestGroup = requestGroupName(vibeId, seed, OPERATOR.develop);
+  if (listRequestGroup(store, requestGroup).length > 0) {
+    throw new Error(`request group ${requestGroup} already exists; develop again`);
+  }
+  const sampling = firstSampling(seed);
+  const batch = {
+    store,
+    queue: app.queue,
+    config,
+    vibeRevisionId,
+    sessionId: null,
+    requestGroup,
+    exampleIds: [],
+    attachmentIds: [],
+    retrievalMethod: RETRIEVAL_METHOD.none,
+    /** @param {{ kind: string }} step */
+    onStep: ({ kind }) =>
+      job.progress(
+        progress.done,
+        progress.of,
+        kind === GENERATION_STEP.asking
+          ? JOB_STEP.developing
+          : kind === GENERATION_STEP.repairing
+            ? JOB_STEP.repairingDevelopment
+            : JOB_STEP.busy,
+      ),
+  };
+  const { generation, verdict, repaired } = await answerWithRepair({
+    batch,
+    messages,
+    sampling,
+    responseFormat: DEVELOP_RESPONSE_FORMAT,
+    judge: (completion) => judgeDevelopment(completion, config.queue.maxTokens, ask),
+    buildRepair: buildDevelopRepair,
+    signal: job.signal,
+    what: "development",
+  });
+  job.signal.throwIfAborted();
+  return { generation, developed: verdict.genome, repaired };
 }

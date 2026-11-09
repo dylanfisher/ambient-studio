@@ -166,6 +166,13 @@
           <button id="develop" class="button secondary small" type="button" title="Asks the model to write this section's own genome from its sketch, how the sketch was made, your words for the section and where its neighbors meet it, after a confirm that says how long it takes. The sketch stays as it is, and the development is saved as a new version of this track.">Develop this section</button>
           <button id="plainSketch" class="button outline small" type="button" title="Has the chosen section play its sketch again instead of its development, from where it started in the sketch. The development is kept, and earlier versions still play it. Save to keep the change.">Play the plain sketch</button>
         </div>
+        <div class="row">
+          <label id="bridgeField" class="field small"
+            >Bridge, in seconds
+            <input id="bridgeSecondsInput" type="number" step="1" size="5" title="How long a bridge between this section and the next plays, in seconds: at least a minute, or two when the two sketches are in different keys, tunings or tempos, since it is then written as two halves." />
+          </label>
+          <button id="bridge" class="button secondary small" type="button" title="Asks the model to write a passage between this section and the next from your words for how one should become the other, starting where this section ends and ending where the next one starts, so a weave joins it to each, after a confirm that says how long it takes. The sketches stay as they are, and the bridge is saved as a new version of this track.">Bridge</button>
+        </div>
         <div id="developJobBox" class="stack"></div>
       </section>
 

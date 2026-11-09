@@ -1,9 +1,13 @@
 // Developing a section on the timeline (decision 0079): the confirm, why the button is off, what
 // a developed section says, and where a finished development goes when the timeline changed or
 // another version was opened during the run (0066's rules).
-import { expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 import { emptyArrangement } from "../../src/domain/arrangement-schema.js";
+import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
 import {
+  bridgeCostText,
+  bridgeRefusal,
+  bridgeSwap,
   developCostText,
   developedText,
   developRefusal,
@@ -32,10 +36,12 @@ test("the button is off on an unsaved timeline and under 60 s, and says why", ()
 
 test("a developed section names its development and the words it was written from", () => {
   expect(developedText(undefined)).toBe("It plays its sketch as it is.");
-  expect(developedText({ id: 4, text: "thin out", createdAt: 0 })).toMatch(
+  expect(developedText({ id: 4, text: "thin out", createdAt: 0, bridge: false })).toMatch(
     /^It plays development 4 of its sketch, written .* from your words “thin out”\.$/,
   );
-  expect(developedText({ id: 4, text: "", createdAt: 0 })).toMatch(/with no words\.$/);
+  expect(developedText({ id: 4, text: "", createdAt: 0, bridge: false })).toMatch(
+    /with no words\.$/,
+  );
 });
 
 test("a finished development goes into its own section on the line of versions it started on", () => {
@@ -93,4 +99,117 @@ test("a finished development goes into its own section on the line of versions i
       8,
     ),
   ).toMatchObject({ kind: SWAP.save, arrangement: { sections: [other, { developmentId: 8 }] } });
+});
+
+describe("a bridge (decision 0081)", () => {
+  const out = { sketchId: 1, offset: 0, seconds: 100, text: "", developmentId: null };
+  const into = { sketchId: 2, offset: 0, seconds: 100, text: "", developmentId: null };
+  const arrangement = {
+    ...emptyArrangement(),
+    sections: [out, into],
+    transitions: [{ kind: "crossfade", seconds: 8, text: "let the pad rise" }],
+  };
+  const whole = {
+    parts: [{ sketchId: 1, seconds: 60 }],
+    into: 16,
+    out: 16,
+    middle: null,
+    differs: [],
+    keyless: false,
+  };
+  const halves = {
+    ...whole,
+    parts: [
+      { sketchId: 1, seconds: 60 },
+      { sketchId: 2, seconds: 60 },
+    ],
+    middle: 8,
+    differs: /** @type {"key"[]} */ (["key"]),
+    keyless: true,
+  };
+
+  test("the confirm states the requests and, between two keys, the two halves", () => {
+    const one = bridgeCostText(0, whole, { seconds: 50, timed: 20 });
+    expect(one).toMatch(/^Ask the model to write a bridge between section 1 and section 2\?/);
+    expect(one).toContain(
+      "writes 1:00 that starts where section 1 ends and ends where section 2 starts",
+    );
+    expect(one).toContain("1 or 2 requests to the model");
+    expect(one).toContain("about 1 to 2 minutes");
+    const two = bridgeCostText(0, halves, { seconds: 50, timed: 20 });
+    expect(two).toContain(
+      "differ in key, which one genome can't change, so it writes two halves of 1:00 and 1:00",
+    );
+    expect(two).toContain("2 to 4 requests to the model");
+    expect(two).toContain("about 2 to 3 minutes");
+  });
+
+  test("the button is off on an unsaved timeline, with one section, or for the plan's reason", () => {
+    const sketches = new Map(
+      /** @type {[number | string, unknown][]} */ ([
+        [1, { ...droneGenome, duration: 120 }],
+        [2, { ...droneGenome, duration: 120 }],
+      ]),
+    );
+    expect(bridgeRefusal(arrangement, 0, 60, false, sketches)).toBeNull();
+    expect(bridgeRefusal(arrangement, 0, 60, true, sketches)).toMatch(
+      /only a saved version is bridged/,
+    );
+    expect(bridgeRefusal(arrangement, null, 60, false, sketches)).toMatch(/one section/);
+    expect(bridgeRefusal(arrangement, 0, 30, false, sketches)).toMatch(
+      /^Turned off: a bridge plays from 60 to 900 s, not 30 s\.$/,
+    );
+  });
+
+  test("a finished bridge goes between its two sections, joined by weaves", () => {
+    const started = { from: out, into, at: 0, openedThen: 1 };
+    const result = { developmentIds: [7], plan: whole };
+    const swap = bridgeSwap(
+      { ...started, arrangement, openedNow: 1, unsaved: false },
+      result,
+      "let the pad rise",
+    );
+    expect(swap).toMatchObject({ kind: SWAP.save, index: 0 });
+    expect(swap.kind !== SWAP.skip && swap.arrangement).toEqual({
+      ...arrangement,
+      sections: [
+        out,
+        { sketchId: 1, offset: 0, seconds: 60, text: "let the pad rise", developmentId: 7 },
+        into,
+      ],
+      transitions: [
+        { kind: "weave", seconds: 16, curve: "smooth", text: "" },
+        { kind: "weave", seconds: 16, curve: "smooth", text: "" },
+      ],
+    });
+    // Two halves, with the crossfade between them.
+    const two = bridgeSwap(
+      { ...started, arrangement, openedNow: 1, unsaved: true },
+      { developmentIds: [7, 8], plan: halves },
+      "",
+    );
+    expect(two.kind).toBe(SWAP.edit);
+    expect(two.kind !== SWAP.skip && two.arrangement.transitions.map(({ kind }) => kind)).toEqual([
+      "weave",
+      "crossfade",
+      "weave",
+    ]);
+    // The incoming section changed, or another version was opened: left out, saying why.
+    const changed = { ...arrangement, sections: [out, { ...into, seconds: 90 }] };
+    expect(
+      bridgeSwap({ ...started, arrangement: changed, openedNow: 1, unsaved: true }, result, ""),
+    ).toEqual({
+      kind: SWAP.skip,
+      reason: "the two sections it joins have changed or been parted since",
+    });
+    expect(
+      bridgeSwap({ ...started, arrangement, openedNow: 2, unsaved: false }, result, ""),
+    ).toEqual({ kind: SWAP.skip, reason: "another version was opened while it ran" });
+  });
+
+  test("a bridge's section says it is a bridge and the words it was written from", () => {
+    expect(developedText({ id: 4, text: "rise", createdAt: 0, bridge: true })).toMatch(
+      /^It plays bridge 4, written .* from your words for the join “rise”\.$/,
+    );
+  });
 });

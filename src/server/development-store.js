@@ -8,17 +8,20 @@ import { insertRow, selectRow, selectRows, TABLE } from "./store.js";
  * @typedef {object} DevelopmentDraft
  * @property {number} trackId
  * @property {number} sketchId the sketch it develops
- * @property {string} text the owner's words for the section it was written from
+ * @property {string} text the owner's words it was written from: the section's, or a bridge's
+ *   join's
  * @property {number} offset where the section started on the sketch's timeline
  * @property {number} seconds the length asked for, and its genome's duration
  * @property {number} genomeId its genome, in the `genomes` table under the track's vibe
  * @property {number} seed the sketch's candidate's
  * @property {number} generationId the answer it was taken from
+ * @property {boolean} bridge whether it is a bridge, written for a join between two sections
+ *   rather than for one section (decision 0081)
  */
 
 /** @typedef {DevelopmentDraft & Removable & { id: number, createdAt: number }} Development */
 
-const DEVELOPMENTS = { json: [] };
+const DEVELOPMENTS = { json: [], boolean: ["bridge"] };
 
 /**
  * @param {Store} store

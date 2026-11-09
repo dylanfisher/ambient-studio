@@ -212,6 +212,7 @@ export function fillStore(store) {
     genomeId: genome.id,
     seed: 7,
     generationId: generation.id,
+    bridge: false,
   });
   return {
     vibes: vibe.id,
