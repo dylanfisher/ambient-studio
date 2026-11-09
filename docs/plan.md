@@ -4363,3 +4363,16 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   --chant`, every CG parameter at 1): render median 23.1x real time (22.8–23.2), 535 MiB peak.
   A/B pairs for the owner are in tmp/chant-ab/. `./scripts/check` clean: 2,788 tests; the
   uncached second run is clean too. Phase CG is built; its listening checks are pending.
+- 2026-11-09: retrospective after TD.6, WF.5, CG.3 and CG.4 (orchestrator rule 11), closing
+  phases TD, WF and CG.
+  - Naming the exact comparison in reviewer briefs worked. TD.6's review found the dense-bridge
+    overflow by building the case; WF.5's found the lane-shape change with a fuzz. Both were
+    fixed before merge, and the orchestrator read each small fix in place of a second review.
+  - Two branches built apart met in one test: CG.3's new chant settings pushed TD.6's at-cap
+    bridge test past its cap. Only the merged gate catches that, so it stays mandatory after
+    every merge, even when both branches passed on their own.
+  - Prompt room is now the limit on adding features: the schema text has 2 characters left, and
+    the develop and bridge prompts are within 70 tokens of 4,096. The next phase that adds a
+    parameter or prompt text needs a wording pass or a budget decision first.
+  - Wall time: TD.6 about 5 h, mostly suite runs under load; WF.5 41 min; CG.3 59 min plus the
+    wait for the owner; CG.4 23 min. Reviews took 2–3 min.
