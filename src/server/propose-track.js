@@ -23,6 +23,7 @@ import { ARRANGEMENT_KEY } from "../domain/arrangement-schema.js";
 import { ATTACHMENT_KIND } from "../domain/attachment-kind.js";
 import { quotedErrors } from "../domain/build-repair-prompt.js";
 import { judgeProposal } from "../domain/check-proposal.js";
+import { invalidAfter } from "../domain/judge-answer.js";
 import { macroWindow } from "../domain/macro-window.js";
 import { OPERATOR } from "../domain/operator.js";
 import { estimateTokens, promptText } from "../domain/prompt-tokens.js";
@@ -34,10 +35,10 @@ import { currentExcerpt } from "./candidate-excerpt.js";
 import { STREAM_SEEDS } from "./candidate-job.js";
 import {
   currentRevision,
+  firstSampling,
   GENERATION_STEP,
   requestGroupName,
   requestGroupPattern,
-  samplingStream,
   sendRequest,
 } from "./generate-candidates.js";
 import { getCandidate, getGenome, listRequestGroup } from "./generation-store.js";
@@ -249,8 +250,7 @@ export function proposeJob(app, { vibeId, name, length, arc, regionId }) {
       if (listRequestGroup(store, requestGroup).length > 0) {
         throw new Error(`request group ${requestGroup} already exists; propose again`);
       }
-      const [draw] = samplingStream(seed, 1);
-      if (!draw) throw new Error("the sampling stream drew nothing");
+      const sampling = firstSampling(seed);
       const batch = {
         store,
         queue: app.queue,
@@ -285,7 +285,7 @@ export function proposeJob(app, { vibeId, name, length, arc, regionId }) {
           batch,
           0,
           prompt,
-          draw.sampling,
+          sampling,
           repairsId,
           ARRANGE_RESPONSE_FORMAT,
         );
@@ -311,11 +311,8 @@ export function proposeJob(app, { vibeId, name, length, arc, regionId }) {
         repaired = true;
       }
       if (!verdict.ok) {
-        const when = repaired
-          ? "still invalid after one repair"
-          : "invalid, with nothing to repair";
         throw new Error(
-          `The model's proposal was ${when} (generation ${generation.id}):\n${quotedErrors(verdict.errors).join("\n")}`,
+          `The model's proposal was ${invalidAfter(repaired)} (generation ${generation.id}):\n${quotedErrors(verdict.errors).join("\n")}`,
         );
       }
       job.signal.throwIfAborted();

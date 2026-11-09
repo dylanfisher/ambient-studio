@@ -306,6 +306,18 @@ export function samplingStream(seed, count) {
 }
 
 /**
+ * The stream's first sampling, for an operator that sends one request and its repair, as a
+ * proposal (0067) and a brief's draft (0074) do.
+ * @param {number} seed
+ * @returns {Sampling}
+ */
+export function firstSampling(seed) {
+  const [draw] = samplingStream(seed, 1);
+  if (!draw) throw new Error("the sampling stream drew nothing");
+  return draw.sampling;
+}
+
+/**
  * @param {RejectReason} reason
  * @param {Finding[]} findings
  * @param {Partial<Verdict>} [rest]

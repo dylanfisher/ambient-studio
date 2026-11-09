@@ -13,7 +13,7 @@ import { show } from "../engine/validation-error.js";
 import { ANSWER_KEYS, ELITE_KEY, LENGTH_RULE, LENGTH_TOLERANCE } from "./arrange-prompt.js";
 import { arrangementLength } from "./arrangement-length.js";
 import { ARRANGEMENT_KEY, SECTION_KEY } from "./arrangement-schema.js";
-import { extractObject } from "./extract-genome.js";
+import { judgeAnswer } from "./judge-answer.js";
 import { ANSWER_RULE } from "./lint-result.js";
 import { REJECT_REASON } from "./reject-reason.js";
 import { validateArrangement } from "./validate-arrangement.js";
@@ -157,20 +157,5 @@ export function checkProposal(answer, ask) {
  * @param {ProposalAsk} ask
  * @returns {ProposalVerdict}
  */
-export function judgeProposal({ text, finishReason }, maxTokens, ask) {
-  if (finishReason === "length") {
-    const message = `the answer hit max_tokens (${maxTokens}) and was cut off`;
-    return {
-      ok: false,
-      reason: REJECT_REASON.truncated,
-      errors: [{ path: "$", rule: REJECT_REASON.truncated, message }],
-      answer: null,
-    };
-  }
-  const found = extractObject(text);
-  if (!found.ok) {
-    const { reason, message } = found;
-    return { ok: false, reason, errors: [{ path: "$", rule: reason, message }], answer: null };
-  }
-  return checkProposal(found.answer, ask);
-}
+export const judgeProposal = (completion, maxTokens, ask) =>
+  judgeAnswer(completion, maxTokens, (answer) => checkProposal(answer, ask));
