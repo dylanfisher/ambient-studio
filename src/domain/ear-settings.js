@@ -1,6 +1,7 @@
 // A search by ear's settings and what it tells its optimizer (decision 0055): preferential BO in
 // the sidecar, one new point a query against the run's best, drawn at the owner's variation and
 // leaning toward the owner's shift (0075).
+import { number } from "../engine/descriptor.js";
 import { isObject } from "../engine/is-object.js";
 import { STEP_SIZE } from "./nudge.js";
 import { OUTCOMES } from "./rating-values.js";
@@ -31,6 +32,17 @@ const DEFAULT_EAR_VARIATION = /** @type {const} */ ("wide");
  * from -1 (less) to 1 (more), the paths it doesn't name at 0.
  * @typedef {{ variation: EarVariation, shift: Record<string, number> }} EarSteering
  */
+
+/** One searched path's shift: -1 less of it, 1 more of it, 0 no lean. */
+export const EAR_SHIFT = number({
+  min: -1,
+  max: 1,
+  default: 0,
+  unit: "",
+  description: "how far new variations lean on this control",
+});
+
+const SHIFT_RANGE = `${EAR_SHIFT.min} to ${EAR_SHIFT.max}`;
 
 /** The steering a search starts with: the default variation and no shift. */
 export const START_STEERING = Object.freeze({ variation: DEFAULT_EAR_VARIATION, shift: {} });
@@ -114,7 +126,7 @@ export function checkSteering(variation, shift, paths) {
     return { ok: false, error: `variation must be one of ${variations.join(", ")}, got ${got}` };
   }
   if (!isObject(shift)) {
-    const error = "shift must be an object of searched paths, each a number from -1 to 1";
+    const error = `shift must be an object of searched paths, each a number from ${SHIFT_RANGE}`;
     return { ok: false, error };
   }
   /** @type {Record<string, number>} */
@@ -125,9 +137,12 @@ export function checkSteering(variation, shift, paths) {
     if (!paths.includes(path)) {
       return { ok: false, error: `the shift names ${path}, which this search doesn't move` };
     }
-    if (!Number.isFinite(value) || !(value >= -1 && value <= 1)) {
+    if (!Number.isFinite(value) || !(value >= EAR_SHIFT.min && value <= EAR_SHIFT.max)) {
       const got = JSON.stringify(value);
-      return { ok: false, error: `the shift of ${path} must be a number from -1 to 1, got ${got}` };
+      return {
+        ok: false,
+        error: `the shift of ${path} must be a number from ${SHIFT_RANGE}, got ${got}`,
+      };
     }
     if (value !== 0) kept[path] = value;
   }
