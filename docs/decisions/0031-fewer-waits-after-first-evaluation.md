@@ -228,3 +228,8 @@ identity. No rated audio is removed when a rating is.
   anything else queues. The progress table gains breed, the candidates job's steps with "Asking
   the model for child 2 of 4" and "Rendering the mutation of child 2 of 4". Operator `breed` is
   the job's kind and its children's operator.
+- 2026-11-08: step perf.2. `src/config/example.json` now has `"thinking": false`. The
+  consequence above, that `true` keeps today's requests, still describes the switch, but the
+  example is what a new config starts from, and [0040](0040-revision-evaluation.md) measured
+  about 7 s a request with thinking off against about 55 s on; the owner runs with it off. An
+  existing config keeps what it has. Tests start from the example, and none depends on its value.

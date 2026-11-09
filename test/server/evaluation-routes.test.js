@@ -4,6 +4,7 @@
 /** @import { Scripted } from "../support/fake-omlx.js" */
 /** @import { Studio } from "../support/studio.js" */
 import { afterEach, describe, expect, test } from "vitest";
+import example from "../../src/config/example.json" with { type: "json" };
 import { SEED_VIBES } from "../../src/domain/seed-vibes.js";
 import { listRequestGroup } from "../../src/server/generation-store.js";
 import { randomGenomeScript } from "../support/random-genome-baseline.js";
@@ -107,7 +108,7 @@ describe("the evaluation job", () => {
       count: 16,
       revise: false,
       sendResponseFormat: false,
-      thinking: true,
+      thinking: example.queue.thinking,
     });
     expect(report.overall).toMatchObject({
       requested: 48,
@@ -202,7 +203,7 @@ describe("the evaluation job", () => {
     expect(await ok("GET", "/api/evaluations")).toEqual({
       evaluations: [],
       job: null,
-      thinking: true,
+      thinking: example.queue.thinking,
     });
     expect(server.jobs.list()).toEqual([]);
     expect(omlx.requests).toHaveLength(0);

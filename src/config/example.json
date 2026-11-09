@@ -14,7 +14,7 @@
     "maxTokens": 10752,
     "contextBudgetTokens": 8192,
     "sendResponseFormat": false,
-    "thinking": true
+    "thinking": false
   },
   "sidecar": {
     "requestTimeoutMs": 120000,
