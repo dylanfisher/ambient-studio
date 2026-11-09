@@ -2818,7 +2818,7 @@ control parameters. the goal is LLM language as the tool."
 
 ### Steps
 
-Order: WF.1 and WF.2 in parallel, then WF.3, then WF.4, then WF.5 after TD.3 (the track page is
+Order: WF.1 and WF.2 in parallel, then WF.2b, then WF.3, then WF.4, then WF.5 after TD.3 (the track page is
 TD's until then). WF steps run beside TD steps when they touch different pages; at most two
 builders at once. Records 0083–0087 are reserved for these steps.
 
@@ -2851,6 +2851,23 @@ builders at once. Records 0083–0087 are reserved for these steps.
   the draft's and shift's existing tests pass unchanged.
 - **Records:** writes 0084. Amends 0074 and 0075.
 - **Parallel:** with WF.1. Review: yes (omlx boundary).
+
+#### WF.2b — Words beside a running job
+
+- **Builds:** a words request runs while another job holds the runner, instead of waiting behind
+  it. Today the runner runs one job at a time (0026) and `queue.cancel()` rejects every waiting
+  request and aborts the one in flight (`omlx-queue.js`), so a words job waits as queued behind
+  a search, render or fill, and can't run beside one safely. The omlx queue gets a cancel scoped
+  to one caller (a token or request group), and every job that cancels on abort uses it; the
+  runner gets a second lane that runs only `words` jobs, one at a time, beside the main job. omlx
+  still sees one request in flight, since both lanes go through the one queue. The search's
+  shift words move onto the lane, so they show in the top bar and take a cancel.
+- **Tiers:** server, web (the top bar shows two jobs).
+- **Tests first:** a words job finishes while a held candidate job runs; cancelling either
+  cancels only its own requests; the queue still sends one request at a time across both lanes;
+  every existing cancel test passes.
+- **Records:** writes 0092. Amends 0022, 0026, 0073 and 0084.
+- **Parallel:** none (the runner and the queue). Review: yes (omlx boundary, concurrency).
 
 #### WF.3 — The brief and session pages in words
 
@@ -4205,3 +4222,12 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   - The harness bases a worktree on `origin/main`, which the owner pushes, so it lags local
     main. The checkers still skip `tmp/`, `.claude/worktrees/`, `node_modules/` and `.venv/`:
     each merged check counted the same test files with two worktrees present.
+- 2026-11-09: WF.2 merged as c7a7f78 (Opus: 233k tokens, 130 calls, 28 min; reviewer Sonnet: 72k
+  tokens, 15 calls, 4.5 min, PASS). `buildWordsPrompt`, `checkWords` and the `WORDS_SETS`
+  registry in `src/domain`; `askWords` and `POST /api/vibes/:id/words {set, words, current}`
+  in `src/server`, one request and at most one repair through the queue, a 409 for a second.
+  The worst prompt is about 3,122 tokens. The search's shift words run on it inline; the brief
+  draft stays apart, since its answer is a whole brief (0084). The reviewer found the shift's
+  words now edit the sliders instead of replacing them, which the orchestrator added to 0084,
+  and confirmed that a words job waits behind any running job and that the queue's cancel is
+  global. WF.2b is added before WF.3 to fix that, with record 0092.

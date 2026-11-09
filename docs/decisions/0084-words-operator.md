@@ -69,9 +69,14 @@ function (`askWords` in `src/server/ask-words.js`) inline, not as a job, because
 ear is itself a job that holds the runner until it ends, so a `words` job would wait behind it.
 Its request group keeps the operator `shift`, so stored rows still say what they were for. The
 answer's changes are merged over the run's shift and checked by `checkSteering`; the route
-returns `{shift, said, generationId}`, and the page sets its sliders as before. Two things
-change: the answer now has its repair round (0075 had none), and an answer still invalid is a
-502 listing the findings in place of the single reason.
+returns `{shift, said, generationId}`, and the page sets its sliders as before. Three things
+change: the answer now has its repair round (0075 had none); an answer still invalid is a
+502 listing the findings in place of the single reason; and words now edit the shift instead of
+replacing it. Under 0075 a path the answer left out went to 0; now it keeps the run's last-sent
+value, so "more of b" after a shift toward `a` keeps `a`, and clearing it takes words that say
+so. The values the model reads as "now" are the run's sent steering, not sliders the owner
+dragged and hasn't sent. Edits fit words as the main control (one change at a time); the owner
+can overrule.
 
 **The brief draft (0074) stays apart.** Its answer is a whole brief, not values for fields: a
 name, a description, constraints whose values are objects, lists and ranges, and feature ranges
