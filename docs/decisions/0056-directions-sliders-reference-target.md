@@ -5,7 +5,9 @@
   default budget. Amends [0031](0031-fewer-waits-after-first-evaluation.md) (the steer's
   conflict rule and progress step), [0034](0034-feature-ranges-as-soft-targets.md) (directions
   are not in `softTargets`), [0052](0052-references-in-the-prompt.md) (the `direction` kind's
-  details) and [0053](0053-search-space-ask-tell.md) (`searchScore` takes terms)
+  details) and [0053](0053-search-space-ask-tell.md) (`searchScore` takes terms); amended by
+  [0085](0085-session-and-brief-in-words.md) (a card says its positions in words, the numbers
+  behind the toggle, and a steer's setting can be set from words)
 
 ## Context
 

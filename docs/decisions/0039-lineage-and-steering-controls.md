@@ -3,7 +3,9 @@
 - **Date:** 2026-11-07
 - **Status:** accepted; provisional: owner to confirm. Amends
   [0032](0032-plain-language-pages.md) (the session card's new controls, the lineage page, the
-  nudge and explore job titles).
+  nudge and explore job titles); amended by [0085](0085-session-and-brief-in-words.md) (the
+  direction field is the card's Change it field, with Set from these words beside it; a search
+  point's origin line no longer gives its score; `lockChoices` moved to `src/domain`)
 
 ## Context
 
