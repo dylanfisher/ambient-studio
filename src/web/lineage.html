@@ -106,8 +106,12 @@
     <template id="steer-controls">
       <div class="stack small">
         <div class="row">
-          <input data-part="direction" type="text" size="22" placeholder="A direction, such as slower" title="An optional one-line direction for Explore from here, such as slower or less bell. The model reads it as you wrote it." />
+          <input data-part="direction" type="text" size="22" placeholder="Change it, such as slower" title="A change in one line of words, such as slower or keep the low drone. Explore from here reads it as a direction; Set from these words reads it into the choice beside it." />
           <button class="button outline small" type="button" data-part="explore" title="Asks the model for variations of this candidate, following the direction if you wrote one, and renders an excerpt of each. Takes about 1–2 minutes per variation.">Explore from here</button>
+        </div>
+        <div class="row" data-part="wordsRow" hidden>
+          <select data-part="wordsSet" title="Chooses what Set from these words changes: this candidate's locks, its Less / More choices, or where Steer from here aims."></select>
+          <button class="button outline small" type="button" data-part="words" title="Asks the model to read your words as new values for the choice beside it, and fills them in unsaved. Nothing is saved until you press Keep. Takes about half a minute.">Set from these words</button>
         </div>
         <div class="row">
           <select data-part="stepSize" title="How far Nudge from here moves this candidate's numbers: a small, medium or large step."></select>

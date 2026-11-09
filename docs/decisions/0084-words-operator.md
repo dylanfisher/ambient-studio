@@ -6,7 +6,9 @@
   words run on this operator, with one repair) and [0074](0074-draft-brief-from-words.md) (the
   brief draft stays apart, for the reasons below; its 409 check is shared as `refuseUnfinished`);
   amended by [0092](0092-words-beside-a-job.md) (the shift's words run as a words job in the
-  runner's words lane, and a words job cancels only its own requests)
+  runner's words lane, and a words job cancels only its own requests) and by
+  [0085](0085-session-and-brief-in-words.md) (a `candidate` scope, the route's `candidateId`, and
+  sets that narrow to fit)
 
 ## Context
 

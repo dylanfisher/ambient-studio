@@ -3,7 +3,9 @@
 - **Date:** 2026-11-07
 - **Status:** accepted; provisional: owner to confirm. Amends
   [0032](0032-plain-language-pages.md) (the session card's new controls, the lineage page, the
-  nudge and explore job titles).
+  nudge and explore job titles); amended by [0085](0085-session-and-brief-in-words.md) (the
+  direction field is the card's Change it field, with Set from these words beside it; a search
+  point's origin line no longer gives its score; `lockChoices` moved to `src/domain`)
 
 ## Context
 
@@ -77,8 +79,8 @@ follows the job and draws its children as they arrive; rating stays on the sessi
   as the revision pass and the shown-card rule read it, so the readout agrees with which card of
   a pair is shown. The readout is hidden when the version sets no ranges and every check passes.
 - **Locks.** A "Locks" disclosure lists the vibe's live locks, each with Unlock, and a select of
-  what can be locked on this candidate (`lockChoices`, `src/web/lock-choices.js`): the whole
-  piece's values, the macros, and each voice whole or one parameter at a time, only what the
+  what can be locked on this candidate (`lockChoices`, `src/domain/lock-choices.js`, moved down
+  from `src/web` by 0085 for the locks words set): the whole piece's values, the macros, and each voice whole or one parameter at a time, only what the
   genome holds. After a lock, `macroOffer(macros, locks)` (`src/web/macro-offer.js`) takes the
   route's `macros` less those already locked and, when any are left, the card asks "A locked
   value still follows the macros, and brightness and space move this one. Lock them too, so it

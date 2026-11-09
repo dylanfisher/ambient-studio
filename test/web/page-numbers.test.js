@@ -44,7 +44,7 @@ const SHOWS_NUMBERS = {
     "truncated",
     "failed",
   ],
-  "lineage.html": ["origin", "control"],
+  "lineage.html": ["control"],
   "map.html": [
     "coverageLine",
     "controlSwitch",
@@ -58,7 +58,7 @@ const SHOWS_NUMBERS = {
   "references.html": ["regionStart", "regionEnd", "times", "analysis"],
   "session.html": [
     "rankBadge",
-    "origin",
+    "score",
     "positions",
     "rangesBox",
     "lockPath",
@@ -87,13 +87,9 @@ const CLONED_INTO = {
 const ALLOWED = {
   "brief.html": {
     ratingList:
-      "The ratings list is the record of what was rated; hiding it would leave the card empty. Its heard values move to words in WF.3.",
+      "The ratings list is the record of what was rated; hiding it would leave the card empty. Its heard values aren't said in words yet (0085).",
     constraints:
       "An earlier version's rules and ranges stay in its own disclosure, written by constraintsText and targetsText.",
-  },
-  "lineage.html": {
-    origin:
-      "How a candidate was made is word text kept in view until WF.3 says its score in words.",
   },
   "map.html": {
     axisAcross:
@@ -102,10 +98,6 @@ const ALLOWED = {
       "An axis caption names the axis; without it the map has no labels. WF.3 writes its ends in words.",
     grid: "The cells are the map itself; each shows its intent beside its score until WF.3 says the score as a verdict.",
     openLine: "The open cell's line is word text kept in view until WF.3 says its score in words.",
-  },
-  "session.html": {
-    origin:
-      "How a candidate was made is word text kept in view until WF.3 says its score in words.",
   },
 };
 

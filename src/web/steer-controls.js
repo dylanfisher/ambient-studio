@@ -3,7 +3,9 @@
 // a step size with the nudge button, a budget and control switch with the search button,
 // which asks first with the cost, and a count of pairs with Search by ear, which opens the
 // Quick A/B page in its search-by-ear mode (0055). Each button is off from its click until its job finishes
-// (0032). The page sends the request and follows the job; this builds the request.
+// (0032). The page sends the request and follows the job; this builds the request. On a session
+// card the direction field is also its "Change it" field (0085): Set from these words reads the
+// same words into the field set the select beside it names, which the page asks and applies.
 /** @import { JobControl } from "./job-control.js" */
 import { DEFAULT_EAR_QUERIES, MAX_EAR_QUERIES } from "../domain/ear-settings.js";
 import { DEFAULT_EXPLORES, DIRECTION_CHARS, NOT_ONE_LINE } from "../domain/explore-direction.js";
@@ -44,9 +46,20 @@ export const NO_SESSION = "There is no open session to send this to.";
  */
 
 /**
+ * The field sets a card's words may set, and how the page asks one.
+ * @typedef {object} WordsOption
+ * @property {readonly { set: string, label: string }[]} sets in the select's order
+ * @property {(set: string, words: string, control: JobControl) => Promise<void>} ask asks the
+ *   set and fills the card; `control` is the words button's
+ */
+
+/**
  * @typedef {object} SteerControls
  * @property {HTMLElement} root
  * @property {() => boolean} unsent whether the direction field holds text not yet sent
+ * @property {() => void} clear empties the field, once its words were kept
+ * @property {(set: string, why: string | null) => void} setOff turns one field set's choice
+ *   off with `why` as its title, or back on with null
  * @property {(why: string | null) => void} off turns both buttons off with `why` as their
  *   title, or back on with null, unless a job of theirs is unfinished
  */
@@ -58,12 +71,17 @@ export const NO_SESSION = "There is no open session to send this to.";
  *   when there is none to send to
  * @param {StartJob} options.start
  * @param {(work: () => unknown) => Promise<void>} options.run runs a click, showing its error
+ * @param {WordsOption} [options.words] the card's field sets; without it, as on the lineage
+ *   page, the field is a direction for Explore only
  * @returns {SteerControls}
  */
-export function steerControls({ candidateId, sessionId, start, run }) {
+export function steerControls({ candidateId, sessionId, start, run, words }) {
   const parts = cloneTemplate("steer-controls", {
     direction: HTMLInputElement,
     explore: HTMLButtonElement,
+    wordsRow: HTMLElement,
+    wordsSet: HTMLSelectElement,
+    words: HTMLButtonElement,
     stepSize: HTMLSelectElement,
     nudge: HTMLButtonElement,
     budget: HTMLInputElement,
@@ -108,10 +126,7 @@ export function steerControls({ candidateId, sessionId, start, run }) {
   };
   parts.explore.onclick = () =>
     run(async () => {
-      const line = parts.direction.value;
-      if (NOT_ONE_LINE.test(line)) {
-        throw new Error("The direction must be one line of text, with no tabs or line breaks.");
-      }
+      const line = oneLine();
       const direction = line.trim() === "" ? null : line;
       await start(explore, `${sessionPath(session())}/explores`, {
         candidateId,
@@ -120,6 +135,29 @@ export function steerControls({ candidateId, sessionId, start, run }) {
       });
       parts.direction.value = "";
     });
+  /** The field's words, refused unless they are one line. */
+  const oneLine = () => {
+    const line = parts.direction.value;
+    if (NOT_ONE_LINE.test(line)) {
+      throw new Error("The direction must be one line of text, with no tabs or line breaks.");
+    }
+    return line;
+  };
+  if (words) {
+    parts.wordsRow.hidden = false;
+    parts.wordsSet.replaceChildren(...words.sets.map(({ set, label }) => new Option(label, set)));
+    const control = jobControl(parts.words);
+    parts.words.onclick = () =>
+      run(async () => {
+        const line = oneLine();
+        if (line.trim() === "") {
+          throw new Error("Write the change in words first.");
+        }
+        const chosen = parts.wordsSet.selectedOptions[0];
+        if (chosen?.disabled) throw new Error(chosen.title);
+        await words.ask(parts.wordsSet.value, line, control);
+      });
+  }
   parts.nudge.onclick = () =>
     run(() =>
       start(nudge, `${sessionPath(session())}/nudges`, {
@@ -174,6 +212,19 @@ export function steerControls({ candidateId, sessionId, start, run }) {
   return {
     root: parts.root,
     unsent: () => parts.direction.value.trim() !== "",
+    clear: () => {
+      parts.direction.value = "";
+    },
+    setOff(set, why) {
+      const option = [...parts.wordsSet.options].find(({ value }) => value === set);
+      if (!option) throw new Error(`the card offers no field set ${set}`);
+      option.disabled = why !== null;
+      option.title = why ?? "";
+      if (option.selected && why !== null) {
+        const free = [...parts.wordsSet.options].find((other) => !other.disabled);
+        if (free) free.selected = true;
+      }
+    },
     off(why) {
       for (const [control, button] of /** @type {const} */ ([
         [explore, parts.explore],

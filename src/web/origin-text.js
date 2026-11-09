@@ -79,17 +79,13 @@ export function originText({ operator, operatorParams, parentIds, search }, name
   if (operator === OPERATOR.optimize) {
     const { generation, point } = operatorParams;
     const shown =
-      search?.shown && search.score !== null
-        ? ` Shown as one of the search's best: search score ${search.score.toFixed(2)}.`
-        : "";
+      search?.shown && search.score !== null ? " Shown as one of the search's best." : "";
     return `Point ${point + 1} of generation ${generation + 1} of a search from ${parent}, scored by your taste model with no model request.${shown}`;
   }
   if (operator === OPERATOR.steer) {
     const { generation, point } = operatorParams;
     const shown =
-      search?.shown && search.score !== null
-        ? ` Shown as one of the steer's best: steer score ${search.score.toFixed(2)}.`
-        : "";
+      search?.shown && search.score !== null ? " Shown as one of the steer's best." : "";
     return `Point ${point + 1} of generation ${generation + 1} of a steer from ${parent}, scored by where it sits on the sliders and regions chosen, with no model request.${shown}`;
   }
   if (operator === OPERATOR.breed) {

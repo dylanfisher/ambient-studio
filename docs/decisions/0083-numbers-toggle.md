@@ -4,7 +4,9 @@
 - **Status:** accepted; provisional: owner to confirm the label words, the one button per page
   and the session's second row. Amends [0032](0032-plain-language-pages.md) (a page shows its
   raw numbers only behind the toggle; the session's Details and Locks disclosures) and
-  [0049](0049-session-table-hiding-marks.md) (the session row's More controls).
+  [0049](0049-session-table-hiding-marks.md) (the session row's More controls). Amended by
+  [0085](0085-session-and-brief-in-words.md) (`originText` leaves the allowlist on the session
+  and lineage pages, and a search point's score moves behind the toggle).
 
 ## Context
 

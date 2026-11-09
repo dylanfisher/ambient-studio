@@ -273,3 +273,20 @@ test("an unknown vibe is a 404, and a rejected flag that isn't true or false is 
   expect(bad.status).toBe(400);
   expect(bad.json().error).toMatch(/includeRejected/);
 });
+
+test("the brief's excerpt features list each rendered live excerpt once, from every session", async () => {
+  const { ok, vibe, store, seed, render } = await setup();
+  const first = startSession(store, vibe.id);
+  const second = startSession(store, vibe.id);
+  const a = seed({ sessionId: first.id, genome: GENOMES[0] });
+  const b = seed({ sessionId: second.id, genome: GENOMES[1] });
+  seed({ sessionId: second.id, genome: GENOME_C });
+  seed({ sessionId: first.id, genome: null });
+  const renders = [await render(a, GENOMES[0]), await render(b, GENOMES[1])];
+  const listed = await ok("GET", `/api/vibes/${vibe.id}/excerpt-features`);
+  expect(listed).toEqual({
+    excerpts: renders.map(({ id }) => ({ renderId: id, features: FEATURES })),
+  });
+  const other = await ok("POST", "/api/vibes", { ...VIBE, name: "another" });
+  expect(await ok("GET", `/api/vibes/${other.id}/excerpt-features`)).toEqual({ excerpts: [] });
+});

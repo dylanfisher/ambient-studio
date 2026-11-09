@@ -1,9 +1,9 @@
 import { expect, test } from "vitest";
+import { lockChoices } from "../../src/domain/lock-choices.js";
 import { lockOn } from "../../src/domain/validate-lock.js";
 import { MACROS } from "../../src/engine/genome-schema.js";
 import pad from "../../src/engine/genomes/pad.json" with { type: "json" };
 import { validateGenome } from "../../src/engine/validate-genome.js";
-import { lockChoices } from "../../src/web/lock-choices.js";
 
 const checked = validateGenome(pad);
 if (!checked.ok) throw new Error("the pad example genome is invalid");
@@ -25,6 +25,7 @@ test("lists the whole piece's values, the macros, and each voice whole and by pa
   expect(firstVoice?.choices[0]).toEqual({
     path: `voices.${voice.id}`,
     label: `the whole ${voice.id} voice, every parameter`,
+    description: `the whole voice, a ${voice.type}, every parameter`,
   });
   expect(firstVoice?.choices.map((choice) => choice.path)).toContain(`voices.${voice.id}.level`);
 });

@@ -2,6 +2,7 @@
 // ends, a card's position on each, where a card's slider starts, and the brief page's limit.
 // No DOM and no request here.
 import { MAX_DIRECTIONS } from "../domain/attachment-kind.js";
+import { NOT_PLACED } from "../domain/position-words.js";
 
 /** A slider moves in twentieths of the brief's spread. */
 export const SLIDER_STEP = 0.05;
@@ -25,7 +26,7 @@ export function positionsLine(directions, renderId) {
   if (directions.length === 0 || renderId === null) return "";
   const parts = directions.map((direction) => {
     const position = direction.positions[renderId];
-    const where = position === undefined ? "not placed yet" : position.toFixed(2);
+    const where = position === undefined ? NOT_PLACED : position.toFixed(2);
     return `${directionText(direction)} ${where}`;
   });
   return `Where it sits, from 0 (this brief's least) to 1 (its most): ${parts.join("; ")}.`;
