@@ -5,7 +5,9 @@
 // detuned, panned singers sing it, breathing on seeded schedules from timeline 0 (decision 0070).
 // `growl` adds the half-integer harmonics and `rough` makes alternate cycles uneven (decision
 // 0088). `flutter` and `shimmer` give each singer its own seeded wander in pitch and level
-// (decision 0089).
+// (decision 0089). `aspiration` adds noise shaped by the vowel and pulsing at f0, and
+// `breathiness` gives each breath an inhale, a scoop into the next phrase and a sag before it
+// (decision 0090).
 /** @import { ValuesOf } from "./descriptor.js" */
 /** @import { Resolved } from "./effective-params.js" */
 /** @import { Genome, Voice, VOICE_PARAMS } from "./genome-schema.js" */
@@ -60,7 +62,7 @@ const PARAMS = Object.freeze({
     default: 3,
     unit: "dB",
     safe: [2, 6],
-    description: "per harmonic octave",
+    description: "per octave",
   }),
   growl: number({
     min: 0,
@@ -151,6 +153,21 @@ const PARAMS = Object.freeze({
     unit: "",
     description: "level wander",
   }),
+  aspiration: number({
+    min: 0,
+    max: 1,
+    default: 0,
+    unit: "",
+    trajectory: true,
+    description: "breath noise",
+  }),
+  breathiness: number({
+    min: 0,
+    max: 1,
+    default: 0,
+    unit: "",
+    description: "scoop, sag, inhale",
+  }),
 });
 
 /** @typedef {ValuesOf<typeof VOICE_PARAMS> & ValuesOf<typeof PARAMS>} ChantVoice */
@@ -197,6 +214,12 @@ const SWELL_DB = 12;
  * 0.5 of the level at their pulse, 9.5 dB apart.
  */
 const ROUGH_SWING = 0.5;
+/**
+ * The share of the voice's power its aspiration noise takes at aspiration 1: the noise sits 10 dB
+ * under the voice, and the partials 0.46 dB under where they would be without it. The share
+ * grows with aspiration squared, so the noise's level grows linearly with it.
+ */
+const NOISE_SHARE = 0.1;
 
 /**
  * The power response of a band-pass resonance at `hz`, 1 at its center and falling 12 dB an
@@ -254,13 +277,15 @@ function swingPower(out, half, side) {
  * whatever its growl and rough. `focus` lifts the harmonic nearest the upper resonance, or
  * shares the lift between the two either side of it, so it moves smoothly as the vowel does.
  * A half-integer harmonic takes the tilt and resonances at its own frequency and no focus, times
- * `growl`, so at growl 1 it sits on the integer harmonics' spectral envelope. With growl and rough
- * at 0 the integer amplitudes are computed as they were before either existed, bit for bit.
+ * `growl`, so at growl 1 it sits on the integer harmonics' spectral envelope. With `aspiration`
+ * above 0 the partials give up the power its noise takes, so the voice's RMS stays the same. With
+ * growl, rough and aspiration at 0 the integer amplitudes are computed as they were before any
+ * of them existed, bit for bit.
  * @param {Float64Array} out
  * @param {Float64Array} half
- * @param {{ hz: number; vowel: number; focus: number; tilt: number; growl: number; swing: number }} at
+ * @param {{ hz: number; vowel: number; focus: number; tilt: number; growl: number; swing: number; aspiration: number }} at
  */
-function partialAmplitudes(out, half, { hz, vowel, focus, tilt, growl, swing }) {
+function partialAmplitudes(out, half, { hz, vowel, focus, tilt, growl, swing, aspiration }) {
   const { lower, upper } = vowelResonances(vowel);
   const upperGain = dbToGain(UPPER_DB);
   const chestGain = dbToGain(CHEST.db);
@@ -285,7 +310,8 @@ function partialAmplitudes(out, half, { hz, vowel, focus, tilt, growl, swing }) 
     }
   } else half.fill(0);
   if (swing > 0) power += swingPower(out, half, swing / 2);
-  const scale = SOURCE_RMS / Math.sqrt(power);
+  let scale = SOURCE_RMS / Math.sqrt(power);
+  if (aspiration > 0) scale *= Math.sqrt(1 - NOISE_SHARE * aspiration * aspiration);
   for (let i = 0; i < out.length; i++) out[i] = /** @type {number} */ (out[i]) * scale;
   if (growl > 0)
     for (let i = 0; i < half.length; i++) half[i] = /** @type {number} */ (half[i]) * scale;
@@ -298,6 +324,7 @@ function partialAmplitudes(out, half, { hz, vowel, focus, tilt, growl, swing }) 
  * @property {number} focus
  * @property {number} depth
  * @property {number} growl
+ * @property {number} aspiration
  */
 
 /**
@@ -332,6 +359,8 @@ function partialAmplitudes(out, half, { hz, vowel, focus, tilt, growl, swing }) 
  *   has turned from timeline 0 to grid sample k
  * @property {(singer: number, until: number) => Breath[]} breaths the singer's breaths that
  *   start before `until` seconds
+ * @property {number} breathiness 0 when the singers don't breathe
+ * @property {ChantNoise | null} noise null without aspiration or breathiness
  */
 
 /** The lead singer, undetuned and centered, sings as the chant of one singer always has. */
@@ -367,7 +396,9 @@ const LAG_PER_CENT = Math.LN2 / 1200;
  * The wanders' slots start at 2^31, past any phrase's: a phrase lasts at least 1.5 s, so 900 s
  * holds at most 600. Part i's place is the lead's draw, at event index 0 and slot `flutter + i`
  * (or `shimmer + i`), shared by every singer; singer s's phase for it is at slot
- * `flutter + WANDER_PARTS + i`.
+ * `flutter + WANDER_PARTS + i`. The noise's white samples are the lead's draws at slot `noise`,
+ * their index in the period as the event index, and stream q's offset in period p the draw at
+ * event index p, slot `noise + 1 + q`.
  */
 const SLOT = Object.freeze({
   cents: 1,
@@ -377,6 +408,7 @@ const SLOT = Object.freeze({
   phrases: 5,
   flutter: 2 ** 31,
   shimmer: 2 ** 31 + 2 * WANDER_PARTS,
+  noise: 2 ** 31 + 4 * WANDER_PARTS,
 });
 
 /** A breath's fade out, and its fade back in, at most; a shorter breath halves its length. */
@@ -581,6 +613,250 @@ function wanderTerms(terms, lag, level, { turns, hz, rise }, { ratio, phase, spa
 }
 
 /**
+ * The noise repeats its white samples every this many frames, 2.7 s at 48 kHz; each period reads
+ * them from a seeded offset, so the noise doesn't loop.
+ */
+const NOISE_PERIOD = 2 ** 17;
+/** Tables of the noise filtered for vowels 0, 0.25 … 1; a frame blends the two either side. */
+const NOISE_VOWELS = 5;
+/**
+ * Frames over which one period's reading fades into the next's, at equal power, so the change of
+ * offset doesn't click: 11 ms at 48 kHz.
+ */
+const NOISE_FADE = 512;
+/** sin and cos of a quarter turn over `NOISE_FADE`, the fade's weights in and out. */
+const FADE_IN = Float64Array.from({ length: NOISE_FADE }, (_, j) =>
+  Math.sin((Math.PI / 2) * ((j + 0.5) / NOISE_FADE)),
+);
+const FADE_OUT = Float64Array.from({ length: NOISE_FADE }, (_, j) =>
+  Math.cos((Math.PI / 2) * ((j + 0.5) / NOISE_FADE)),
+);
+/**
+ * Frames each filter runs over the end of the period before it writes the table, so its output
+ * is the period's steady state: the narrowest resonance, 160 Hz wide, decays by over 300 dB.
+ */
+const NOISE_WARM_UP = 8192;
+/** The noise's streams: the lead's, the chorus's two channels, then each singer's inhale. */
+const STREAM = Object.freeze({ lead: 0, left: 1, right: 2, inhale: 3 });
+
+/**
+ * Adds to `out` the period `white` through a band-pass resonance twice, so its amplitude
+ * response is the power response `resonance` gives the partials, times `gain`. The filter is a
+ * bilinear band-pass of peak 1 and Q = hz / width, run first over the period's last
+ * `NOISE_WARM_UP` frames.
+ * @param {Float64Array} out
+ * @param {Float64Array} white
+ * @param {{ hz: number; width: number }} band
+ * @param {number} gain
+ * @param {number} sampleRate
+ */
+function addResonance(out, white, { hz, width }, gain, sampleRate) {
+  const w = (2 * Math.PI * hz) / sampleRate;
+  const alpha = Math.sin(w) / (2 * (hz / width));
+  const b0 = alpha / (1 + alpha);
+  const a1 = (-2 * Math.cos(w)) / (1 + alpha);
+  const a2 = (1 - alpha) / (1 + alpha);
+  // Two sections in series, each y = b0 (x[n] − x[n−2]) − a1 y[n−1] − a2 y[n−2].
+  let x1 = 0;
+  let x2 = 0;
+  let y1 = 0;
+  let y2 = 0;
+  let z1 = 0;
+  let z2 = 0;
+  const length = white.length;
+  for (let n = -NOISE_WARM_UP; n < length; n++) {
+    const x = /** @type {number} */ (white[(n + length) % length]);
+    const y = b0 * (x - x2) - a1 * y1 - a2 * y2;
+    const z = b0 * (y - y2) - a1 * z1 - a2 * z2;
+    x2 = x1;
+    x1 = x;
+    y2 = y1;
+    y1 = y;
+    z2 = z1;
+    z1 = z;
+    if (n >= 0) out[n] = /** @type {number} */ (out[n]) + gain * z;
+  }
+}
+
+/**
+ * One period of seeded white noise shaped by each of `NOISE_VOWELS` vowels' two resonances, as
+ * the partials are, without the chest resonance or the tilt; each table scaled to an RMS of 1.
+ * Two neighboring tables are the same noise through nearby filters, so they correlate, but not
+ * fully, and a blend between them is quieter than either; `blendNorm` restores it from their
+ * measured correlations.
+ * @param {(eventIndex: number, slot: number) => number} u the voice's draws
+ * @param {number} sampleRate
+ * @param {(stream: number, period: number) => number} offset
+ * @returns {ChantNoise}
+ */
+function chantNoise(u, sampleRate, offset) {
+  const white = Float64Array.from({ length: NOISE_PERIOD }, (_, j) => 2 * u(j, SLOT.noise) - 1);
+  const tables = new Float64Array(NOISE_VOWELS * NOISE_PERIOD);
+  for (let v = 0; v < NOISE_VOWELS; v++) {
+    const table = tables.subarray(v * NOISE_PERIOD, (v + 1) * NOISE_PERIOD);
+    const { lower, upper } = vowelResonances(v / (NOISE_VOWELS - 1));
+    addResonance(table, white, lower, 1, sampleRate);
+    addResonance(table, white, upper, dbToGain(UPPER_DB), sampleRate);
+    let power = 0;
+    for (let j = 0; j < NOISE_PERIOD; j++) power += /** @type {number} */ (table[j]) ** 2;
+    const scale = 1 / Math.sqrt(power / NOISE_PERIOD);
+    for (let j = 0; j < NOISE_PERIOD; j++) table[j] = /** @type {number} */ (table[j]) * scale;
+  }
+  const correlations = Array.from({ length: NOISE_VOWELS - 1 }, (_, v) => {
+    let sum = 0;
+    for (let j = v * NOISE_PERIOD; j < (v + 1) * NOISE_PERIOD; j++)
+      sum += /** @type {number} */ (tables[j]) * /** @type {number} */ (tables[j + NOISE_PERIOD]);
+    return sum / NOISE_PERIOD;
+  });
+  return { tables, offset, correlations };
+}
+
+/**
+ * What restores a blend of table v and the next, `f` of the way, to an RMS of 1: two unit series
+ * correlated ρ blend to a power of 1 − 2f(1 − f)(1 − ρ).
+ * @param {ChantNoise} noise
+ * @param {number} v
+ * @param {number} f
+ */
+const blendNorm = ({ correlations }, v, f) =>
+  1 / Math.sqrt(1 - 2 * f * (1 - f) * (1 - /** @type {number} */ (correlations[v])));
+
+/**
+ * @typedef {object} ChantNoise
+ * @property {Float64Array} tables `NOISE_VOWELS` periods, one after another
+ * @property {(stream: number, period: number) => number} offset where stream q reads period p
+ * @property {readonly number[]} correlations of each table with the next
+ */
+
+/**
+ * Stream `stream`'s noise at timeline frame i, for a vowel between table `v` and the next by `f`.
+ * Frame i of period p reads the white samples' filtered table from the stream's offset for p; its
+ * first `NOISE_FADE` frames fade in from the reading period p − 1 would have gone on with.
+ * @param {ChantNoise} noise
+ * @param {number} stream
+ * @param {number} i
+ * @param {number} v
+ * @param {number} f
+ */
+function noiseAt({ tables, offset }, stream, i, v, f) {
+  const p = Math.floor(i / NOISE_PERIOD);
+  const into = i - p * NOISE_PERIOD;
+  const now = tableNoise(tables, v * NOISE_PERIOD + ((i + offset(stream, p)) % NOISE_PERIOD), f);
+  if (into >= NOISE_FADE || p === 0) return now;
+  const before = tableNoise(
+    tables,
+    v * NOISE_PERIOD + ((i + offset(stream, p - 1)) % NOISE_PERIOD),
+    f,
+  );
+  return (
+    /** @type {number} */ (FADE_IN[into]) * now + /** @type {number} */ (FADE_OUT[into]) * before
+  );
+}
+
+/**
+ * The noise at point j of one vowel's table, blended by `f` toward the same point of the next.
+ * @param {Float64Array} tables
+ * @param {number} j
+ * @param {number} f
+ */
+function tableNoise(tables, j, f) {
+  const lo = /** @type {number} */ (tables[j]);
+  const hi = /** @type {number} */ (tables[j + NOISE_PERIOD]);
+  return lo + f * (hi - lo);
+}
+
+/**
+ * At breathiness 1 each breath reshapes the phrases either side of it. Toward a phrase's end its
+ * level sags `SAG_DROP` of itself (2.5 dB) and its pitch `SAG_CENTS`, both along x² over its last
+ * `SAG_S`, and hold there through the fade out. The next phrase starts `SCOOP_CENTS` under the
+ * note and rises to it along the smooth curve over `SCOOP_S` from the start of its fade in, which
+ * lasts `ONSET_S` longer than the breath's own. In the breath an inhale's noise rises and falls
+ * along 16x²(1 − x)², at its middle `INHALE_DB` under the singer's level. Each scales linearly
+ * with breathiness.
+ */
+const SAG_S = 1;
+const SAG_DROP = 1 - dbToGain(-2.5);
+const SAG_CENTS = 12;
+const SCOOP_CENTS = 50;
+const SCOOP_S = 0.12;
+const ONSET_S = 0.1;
+const INHALE_DB = -26;
+
+/**
+ * Where a breath's phrase ends for the pitch: its middle, where the singer is silent, so the
+ * jump of the pitch's lag back to 0 there makes no sound.
+ * @param {Breath} breath
+ */
+const breathMiddle = ({ start, end }) => (start + end) / 2;
+
+/**
+ * The integral of the scoop's cents from `σ`, where it starts rising, to `t`: −depth before σ,
+ * rising to 0 along the smooth curve over `SCOOP_S`, then 0.
+ * @param {number} t
+ * @param {number} sigma
+ * @param {number} depth cents under the note
+ */
+function scoopIntegral(t, sigma, depth) {
+  const y = t - sigma;
+  if (y < 0) return -depth * y;
+  if (y >= SCOOP_S) return (-depth * SCOOP_S) / 2;
+  return -depth * (y - (y * y * y) / SCOOP_S ** 2 + (y * y * y * y) / (2 * SCOOP_S ** 3));
+}
+
+/**
+ * The integral of the sag's cents from `start` − `SAG_S` to `t`: 0 before, falling to −depth along
+ * x² over `SAG_S`, then −depth.
+ * @param {number} t
+ * @param {number} start the breath's start
+ * @param {number} depth cents
+ */
+function sagIntegral(t, start, depth) {
+  const y = t - (start - SAG_S);
+  if (y <= 0) return 0;
+  if (y < SAG_S) return (-depth * y * y * y) / (3 * SAG_S ** 2);
+  return -depth * (SAG_S / 3 + y - SAG_S);
+}
+
+/**
+ * Adds to `points` a singer's breaths' pitch lag at grid step k's segment points: from the middle
+ * of the breath before (or timeline 0), the integral of the scoop out of that breath and the sag
+ * into the next, times `LAG_PER_CENT`, as the pitch wander's lag is.
+ * @param {Float64Array} points `WANDER_SEGMENTS` + 1
+ * @param {number} k
+ * @param {readonly Breath[]} breaths the singer's, from timeline 0 to `SAG_S` past the step
+ * @param {number} breathiness
+ */
+function addBreathLag(points, k, breaths, breathiness) {
+  // The first breath whose middle is after the step's start.
+  let next = 0;
+  let above = breaths.length;
+  while (next < above) {
+    const mid = (next + above) >> 1;
+    if (breathMiddle(/** @type {Breath} */ (breaths[mid])) <= k / CONTROL_RATE) next = mid + 1;
+    else above = mid;
+  }
+  for (let m = 0; m <= WANDER_SEGMENTS; m++) {
+    const t = k / CONTROL_RATE + m / (WANDER_SEGMENTS * CONTROL_RATE);
+    while (next < breaths.length && breathMiddle(/** @type {Breath} */ (breaths[next])) <= t)
+      next++;
+    const before = breaths[next - 1];
+    const after = breaths[next];
+    const from = before ? breathMiddle(before) : 0;
+    let cents = 0;
+    if (before) {
+      const sigma = before.end - Math.min(BREATH_RAMP, (before.end - before.start) / 2);
+      const depth = SCOOP_CENTS * breathiness;
+      cents += scoopIntegral(t, sigma, depth) - scoopIntegral(from, sigma, depth);
+    }
+    if (after) {
+      const depth = SAG_CENTS * breathiness;
+      cents += sagIntegral(t, after.start, depth) - sagIntegral(from, after.start, depth);
+    }
+    points[m] = /** @type {number} */ (points[m]) + LAG_PER_CENT * cents;
+  }
+}
+
+/**
  * The voice's control values on the 0.1 s grid, and its fundamental's phase, both from timeline
  * 0. The phase sums the fundamental's frequency over the grid from 0 in one order, so a track
  * that starts late, as an excerpt's does, reaches the same value at each sample bit for bit.
@@ -601,6 +877,19 @@ export function chantTrack(genome, voice, sampleRate, seed) {
   const pitch = resolvePitch(getTuning(genome.tuning), genome.scale, genome.key);
   const fundamental = droneFundamental(pitch, self.root);
   const u = drawer(seed, voice.id);
+  const aspirates = highestValue(genome, self, "aspiration", PARAMS.aspiration, MACROS) > 0;
+  const breathes = self.breath > 0 && self.breathiness > 0;
+  /** @type {number[][]} */
+  const offsets = [];
+  // Drawn as first asked for and kept, since each frame of an inhale asks.
+  /** @param {number} stream @param {number} period */
+  const offset = (stream, period) => {
+    if (!offsets[stream]) offsets[stream] = [];
+    const list = /** @type {number[]} */ (offsets[stream]);
+    if (list[period] === undefined)
+      list[period] = Math.floor(u(period, SLOT.noise + 1 + stream) * NOISE_PERIOD);
+    return /** @type {number} */ (list[period]);
+  };
   // The others alternate sides, each between half the `pan` width and all of it.
   const singers = Array.from({ length: self.singers }, (_, s) => ({
     ...(s === 0
@@ -628,6 +917,7 @@ export function chantTrack(genome, voice, sampleRate, seed) {
         focus: values.focus,
         depth: values.depth,
         growl: values.growl,
+        aspiration: values.aspiration,
       });
     }
     return /** @type {ChantControl} */ (controls[k]);
@@ -651,6 +941,8 @@ export function chantTrack(genome, voice, sampleRate, seed) {
       return /** @type {number} */ (turns[k]);
     },
     breaths: breathSchedules(u, singers.length, self),
+    breathiness: self.breath > 0 ? self.breathiness : 0,
+    noise: aspirates || breathes ? chantNoise(u, sampleRate, offset) : null,
   };
 }
 
@@ -666,6 +958,10 @@ export function chantTrack(genome, voice, sampleRate, seed) {
 function singerGain(track, s, first, frames, scale) {
   const rate = track.sampleRate;
   const gain = new Float64Array(frames).fill(scale);
+  if (track.breathiness > 0) {
+    breathyGain(gain, track.breaths(s, (first + frames) / rate + SAG_S), first, rate, track);
+    return gain;
+  }
   for (const { start, end } of track.breaths(s, (first + frames) / rate)) {
     if (end * rate <= first) continue;
     const ramp = Math.min(BREATH_RAMP, (end - start) / 2);
@@ -679,6 +975,258 @@ function singerGain(track, s, first, frames, scale) {
     }
   }
   return gain;
+}
+
+/**
+ * Multiplies `gain`, a singer's at timeline frames from `first`, by its breaths at breathiness
+ * above 0: each fades out over `BREATH_RAMP` as without breathiness, fades back in over that plus
+ * `ONSET_S` × breathiness, past the breath's end, and each phrase sags into the breath that ends
+ * it. A sag starts no earlier than the middle of the breath before, where the singer is silent.
+ * @param {Float64Array} gain
+ * @param {readonly Breath[]} breaths the singer's, from timeline 0 to `SAG_S` past the frames
+ * @param {number} first
+ * @param {number} rate
+ * @param {ChantTrack} track
+ */
+function breathyGain(gain, breaths, first, rate, { breathiness }) {
+  const last = first + gain.length;
+  const onset = ONSET_S * breathiness;
+  const drop = SAG_DROP * breathiness;
+  for (let j = 0; j < breaths.length; j++) {
+    const { start, end } = /** @type {Breath} */ (breaths[j]);
+    if ((end + onset) * rate <= first) continue;
+    const ramp = Math.min(BREATH_RAMP, (end - start) / 2);
+    const fadeIn = ramp + onset;
+    for (
+      let i = Math.max(first, Math.ceil(start * rate));
+      i < Math.min(last, Math.ceil((end + onset) * rate));
+      i++
+    ) {
+      const t = i / rate;
+      const out = (t - start) / ramp;
+      const back = (t - (end - ramp)) / fadeIn;
+      const fadeOut = out >= 1 ? 0 : 0.5 + 0.5 * Math.cos(Math.PI * out);
+      const fade = back <= 0 ? 0 : back >= 1 ? 1 : 0.5 - 0.5 * Math.cos(Math.PI * back);
+      gain[i - first] = /** @type {number} */ (gain[i - first]) * Math.max(fadeOut, fade);
+    }
+    const before = breaths[j - 1];
+    const sagFrom = Math.max(start - SAG_S, before ? breathMiddle(before) : 0);
+    for (
+      let i = Math.max(first, Math.ceil(sagFrom * rate));
+      i < Math.min(last, Math.ceil((start + ramp) * rate));
+      i++
+    ) {
+      const x = Math.min(1, (i / rate - (start - SAG_S)) / SAG_S);
+      gain[i - first] = /** @type {number} */ (gain[i - first]) * (1 - drop * x * x);
+    }
+  }
+}
+
+/**
+ * Adds singer s's inhales to `left` and `right` from timeline frame `first`: in each breath,
+ * its noise stream along 16x²(1 − x)² at `INHALE_DB` × breathiness under `level`, the singer's
+ * own level, at the vowel at the breath's middle.
+ * @param {ChantTrack} track
+ * @param {number} s
+ * @param {[Float64Array, Float64Array]} channels left and right
+ * @param {number} first
+ * @param {{ level: number; toLeft: number; toRight: number }} singer
+ */
+function addInhales(track, s, [left, right], first, { level, toLeft, toRight }) {
+  const { sampleRate: rate, breathiness } = track;
+  const noise = /** @type {ChantNoise} */ (track.noise);
+  const last = first + left.length;
+  const peak = level * SOURCE_RMS * breathiness * dbToGain(INHALE_DB);
+  for (const breath of track.breaths(s, last / rate)) {
+    const { start, end } = breath;
+    if (end * rate <= first) continue;
+    const vowel = track.control(Math.round(breathMiddle(breath) * CONTROL_RATE)).vowel;
+    const at = Math.min(NOISE_VOWELS - 2, Math.floor(vowel * (NOISE_VOWELS - 1)));
+    const f = vowel * (NOISE_VOWELS - 1) - at;
+    const stream = STREAM.inhale + s;
+    const norm = blendNorm(noise, at, f);
+    for (
+      let i = Math.max(first, Math.ceil(start * rate));
+      i < Math.min(last, Math.ceil(end * rate));
+      i++
+    ) {
+      const x = (i / rate - start) / (end - start);
+      const hump = 4 * x * (1 - x);
+      const value = peak * norm * hump * hump * noiseAt(noise, stream, i, at, f);
+      const out = i - first;
+      left[out] = /** @type {number} */ (left[out]) + toLeft * value;
+      right[out] = /** @type {number} */ (right[out]) + toRight * value;
+    }
+  }
+}
+
+/**
+ * Whether aspiration is above 0 at any grid sample of frames `[first, end)`.
+ * @param {ChantTrack} track
+ * @param {number} first
+ * @param {number} end
+ */
+function aspirationRises(track, first, end) {
+  const step = track.sampleRate / CONTROL_RATE;
+  for (let k = Math.floor(first / step); k <= Math.ceil(end / step); k++)
+    if (track.control(k).aspiration > 0) return true;
+  return false;
+}
+
+/**
+ * The chorus's level in each channel at each frame, √Σ (side × gain)² over singers 1 and up:
+ * what their independent noises would sum to. Gains differ from `scale` only around breaths, so
+ * the sum starts from the steady value and is corrected in each breath and its onset alone. The
+ * sags before breaths are left out: each moves one singer's share of a noise 10 dB under the
+ * voice by at most 2.5 dB, and correcting them would more than double the frames corrected.
+ * @param {ChantTrack} track
+ * @param {readonly Float64Array[]} gains
+ * @param {readonly { toLeft: number; toRight: number }[]} sides
+ * @param {number} first
+ * @param {number} frames
+ * @param {number} scale
+ */
+function chorusLevels(track, gains, sides, first, frames, scale) {
+  const rate = track.sampleRate;
+  const after = ONSET_S * track.breathiness;
+  const steady = [0, 1].map((c) => {
+    let sum = 0;
+    for (let s = 1; s < sides.length; s++) {
+      const side = /** @type {(typeof sides)[number]} */ (sides[s]);
+      sum += ((c === 0 ? side.toLeft : side.toRight) * scale) ** 2;
+    }
+    return sum;
+  });
+  const [leftSteady, rightSteady] = /** @type {[number, number]} */ (steady);
+  const leftPower = new Float64Array(frames).fill(leftSteady);
+  const rightPower = new Float64Array(frames).fill(rightSteady);
+  const leftLevel = new Float64Array(frames).fill(Math.sqrt(leftSteady));
+  const rightLevel = new Float64Array(frames).fill(Math.sqrt(rightSteady));
+  const steadySquare = scale * scale;
+  /** @type {[number, number][]} */
+  const ranges = [];
+  for (let s = 1; s < sides.length; s++) {
+    const { toLeft, toRight } = /** @type {(typeof sides)[number]} */ (sides[s]);
+    const leftShare = toLeft * toLeft;
+    const rightShare = toRight * toRight;
+    const gain = /** @type {Float64Array} */ (gains[s]);
+    for (const { start, end } of track.breaths(s, (first + frames) / rate)) {
+      const from = Math.max(0, Math.ceil(start * rate) - first);
+      const to = Math.min(frames, Math.ceil((end + after) * rate) - first);
+      for (let out = from; out < to; out++) {
+        const g = /** @type {number} */ (gain[out]);
+        const change = g * g - steadySquare;
+        leftPower[out] = /** @type {number} */ (leftPower[out]) + leftShare * change;
+        rightPower[out] = /** @type {number} */ (rightPower[out]) + rightShare * change;
+      }
+      if (to > from) ranges.push([from, to]);
+    }
+  }
+  // The roots once over the frames any singer's breath touched.
+  ranges.sort((a, b) => a[0] - b[0]);
+  let done = 0;
+  for (const [from, to] of ranges) {
+    for (let out = Math.max(from, done); out < to; out++) {
+      leftLevel[out] = Math.sqrt(/** @type {number} */ (leftPower[out]));
+      rightLevel[out] = Math.sqrt(/** @type {number} */ (rightPower[out]));
+    }
+    done = Math.max(done, to);
+  }
+  return [leftLevel, rightLevel];
+}
+
+/** The pulse 1 + cos θ scaled to an RMS of 1 over a cycle. */
+const PULSE_NORM = 1 / Math.sqrt(1.5);
+/** The noise's level at aspiration 1, its share of the voice's power. */
+const NOISE_GAIN = SOURCE_RMS * Math.sqrt(NOISE_SHARE);
+
+/**
+ * Adds the aspiration noise to frames `[lo, hi)` of grid step k. The lead's stream follows its
+ * level and breaths and pulses with its phase, 1 + cos θ; the chorus's two streams, one a
+ * channel, follow the chorus's summed power and don't pulse, as singers at their own phases and
+ * pitches pulse at no shared rate. All follow the swell, and blend the vowel's two nearest
+ * tables at each frame.
+ * @param {ChantTrack} track
+ * @param {number} k
+ * @param {[number, number]} range
+ * @param {[ChantControl, ChantControl]} ends the grid samples either side
+ * @param {object} mix
+ * @param {number} mix.first the chunk's first frame
+ * @param {Float64Array[]} mix.channels
+ * @param {Float64Array} mix.pulses
+ * @param {Float64Array} mix.swell
+ * @param {{ gain: Float64Array; toLeft: number; toRight: number }} mix.lead
+ * @param {Float64Array[] | null} mix.choirs the chorus's level in each channel, or null for one
+ *   singer
+ */
+function addAspiration(track, k, [lo, hi], [a, b], mix) {
+  const noise = /** @type {ChantNoise} */ (track.noise);
+  const step = track.sampleRate / CONTROL_RATE;
+  const p = Math.floor(lo / NOISE_PERIOD);
+  const boundary = (p + 1) * NOISE_PERIOD;
+  if (hi > boundary) {
+    addAspiration(track, k, [lo, boundary], [a, b], mix);
+    addAspiration(track, k, [boundary, hi], [a, b], mix);
+    return;
+  }
+  const { tables } = noise;
+  const fadeEnd = p > 0 ? p * NOISE_PERIOD + NOISE_FADE : lo;
+  const leadAt = noise.offset(STREAM.lead, p);
+  const leftAt = noise.offset(STREAM.left, p);
+  const rightAt = noise.offset(STREAM.right, p);
+  const { first, pulses, swell, choirs } = mix;
+  const [leftChoir, rightChoir] = /** @type {[Float64Array, Float64Array]} */ (choirs ?? []);
+  const [left, right] = /** @type {[Float64Array, Float64Array]} */ (mix.channels);
+  const { gain, toLeft, toRight } = mix.lead;
+  const vowels = NOISE_VOWELS - 1;
+  const mask = NOISE_PERIOD - 1;
+  for (let i = lo; i < hi; i++) {
+    const u = (i - k * step) / step;
+    const out = i - first;
+    const vowel = (a.vowel + (b.vowel - a.vowel) * u) * vowels;
+    const v = Math.min(vowels - 1, Math.floor(vowel));
+    const f = vowel - v;
+    const base = v * NOISE_PERIOD;
+    const level =
+      (a.aspiration + (b.aspiration - a.aspiration) * u) *
+      NOISE_GAIN *
+      blendNorm(noise, v, f) *
+      /** @type {number} */ (swell[out]);
+    let ownNoise;
+    if (i < fadeEnd) ownNoise = noiseAt(noise, STREAM.lead, i, v, f);
+    else {
+      const j = base + ((i + leadAt) & mask);
+      const n0 = /** @type {number} */ (tables[j]);
+      const n1 = /** @type {number} */ (tables[j + NOISE_PERIOD]);
+      ownNoise = n0 + f * (n1 - n0);
+    }
+    const pulse = (1 + 0.5 * /** @type {number} */ (pulses[out])) * PULSE_NORM;
+    const value = level * pulse * /** @type {number} */ (gain[out]) * ownNoise;
+    left[out] = /** @type {number} */ (left[out]) + toLeft * value;
+    right[out] = /** @type {number} */ (right[out]) + toRight * value;
+    if (!choirs) continue;
+    let leftNoise;
+    let rightNoise;
+    if (i < fadeEnd) {
+      leftNoise = noiseAt(noise, STREAM.left, i, v, f);
+      rightNoise = noiseAt(noise, STREAM.right, i, v, f);
+    } else {
+      const l = base + ((i + leftAt) & mask);
+      const r = base + ((i + rightAt) & mask);
+      const l0 = /** @type {number} */ (tables[l]);
+      const l1 = /** @type {number} */ (tables[l + NOISE_PERIOD]);
+      const r0 = /** @type {number} */ (tables[r]);
+      const r1 = /** @type {number} */ (tables[r + NOISE_PERIOD]);
+      leftNoise = l0 + f * (l1 - l0);
+      rightNoise = r0 + f * (r1 - r0);
+    }
+    left[out] =
+      /** @type {number} */ (left[out]) +
+      level * /** @type {number} */ (leftChoir[out]) * leftNoise;
+    right[out] =
+      /** @type {number} */ (right[out]) +
+      level * /** @type {number} */ (rightChoir[out]) * rightNoise;
+  }
 }
 
 /** Points in a cycle of the chorus's waveform table. */
@@ -813,16 +1361,23 @@ export function chantChunk(track, first, frames) {
   const end = first + frames;
   const scale = 1 / Math.sqrt(singers.length);
   const gains = singers.map((_, s) => singerGain(track, s, first, frames, scale));
+  const breathy = track.breathiness > 0;
+  // The breaths' scoops and sags move a singer's pitch through the pitch wander's lag.
+  const breathLists = breathy
+    ? singers.map((_, s) => track.breaths(s, end / sampleRate + SAG_S))
+    : [];
   // Each singer's pitch wander's lag and level wander's gain at the step's segment points, or
   // null without the wander, and with either, its segments' terms; all filled step by step.
   const lags = singers.map(({ flutter }) =>
-    flutter.length > 0 ? new Float64Array(WANDER_SEGMENTS + 1) : null,
+    flutter.length > 0 || breathy ? new Float64Array(WANDER_SEGMENTS + 1) : null,
   );
   const levels = singers.map(({ shimmer }) =>
     shimmer.length > 0 ? new Float64Array(WANDER_SEGMENTS + 1) : null,
   );
   const terms = singers.map(({ flutter, shimmer }) =>
-    flutter.length > 0 || shimmer.length > 0 ? new Float64Array(TERMS * WANDER_SEGMENTS) : null,
+    flutter.length > 0 || shimmer.length > 0 || breathy
+      ? new Float64Array(TERMS * WANDER_SEGMENTS)
+      : null,
   );
   const sides = singers.map(({ pan }) => {
     const angle = ((pan + 1) * Math.PI) / 4;
@@ -833,6 +1388,11 @@ export function chantChunk(track, first, frames) {
   const right = new Float64Array(frames);
   const swell = new Float64Array(frames);
   const chorus = singers.length > 1;
+  // With aspiration, the lead's 2cos θ at each frame, for its noise's pulse, and the chorus's
+  // level in each channel, for its shared noise.
+  const pulses =
+    track.noise && aspirationRises(track, first, end) ? new Float64Array(frames) : null;
+  const choirs = pulses && chorus ? chorusLevels(track, gains, sides, first, frames, scale) : null;
   let from = new Float64Array(count);
   let to = new Float64Array(count);
   const slope = new Float64Array(count);
@@ -853,6 +1413,7 @@ export function chantChunk(track, first, frames) {
       tilt,
       growl: c.growl,
       swing,
+      aspiration: c.aspiration,
     });
   /**
    * @param {Float64Array} table
@@ -892,6 +1453,8 @@ export function chantChunk(track, first, frames) {
       const own = terms[s];
       if (!own) continue;
       if (lag) wanderPoints(lag, k, flutter, true);
+      if (lag && breathy)
+        addBreathLag(lag, k, /** @type {Breath[]} */ (breathLists[s]), track.breathiness);
       if (level) {
         wanderPoints(level, k, shimmer, false);
         for (let m = 0; m <= WANDER_SEGMENTS; m++)
@@ -935,6 +1498,7 @@ export function chantChunk(track, first, frames) {
         }
         const theta = 2 * Math.PI * (cycles - Math.floor(cycles));
         const twoCos = 2 * Math.cos(theta);
+        if (pulses) pulses[out] = twoCos;
         let below = 0;
         let sine = Math.sin(theta);
         let sum = 0;
@@ -1021,8 +1585,24 @@ export function chantChunk(track, first, frames) {
       [near, far] = [far, near];
       nearSpan = span;
     }
+    if (pulses && (a.aspiration > 0 || b.aspiration > 0)) {
+      addAspiration(track, k, [lo, hi], [a, b], {
+        first,
+        channels: [left, right],
+        pulses,
+        swell,
+        lead: { gain: lead, toLeft, toRight },
+        choirs,
+      });
+    }
     [from, to] = [to, from];
     [fromHalf, toHalf] = [toHalf, fromHalf];
+  }
+  if (breathy) {
+    for (let s = 0; s < singers.length; s++) {
+      const side = /** @type {(typeof sides)[number]} */ (sides[s]);
+      addInhales(track, s, [left, right], first, { level: scale, ...side });
+    }
   }
   return [Float32Array.from(left), Float32Array.from(right)];
 }
@@ -1039,7 +1619,11 @@ export function chantChunk(track, first, frames) {
  * does for the same partials (decision 0088). A singer's wanders' points take about 0.017 ms for
  * shimmer (0.15) and 0.005 ms for flutter (0.05); timed one mode a process, a singer with either
  * wander took about 0.08 ms less than a plain one, as its phase a frame is a quadratic with no
- * division, a saving not credited (decision 0089).
+ * division, a saving not credited (decision 0089). Timed one mode a process, aspiration's lead
+ * noise takes about 0.68 ms (6) and the chorus's two streams 0.57 ms (5), and each chorus singer
+ * 0.06 ms more over the share of the time it breathes (0.6). Breathiness takes each singer about
+ * 0.05 ms (0.4), and 0.21 ms over the share of the time it breathes, mostly its inhales (1.7)
+ * (decision 0090).
  */
 const PARTIAL_WEIGHT = 0.9;
 const LEAD_WEIGHT = 23;
@@ -1049,6 +1633,11 @@ const HALF_PARTIAL_WEIGHT = 1.1;
 const DOUBLE_WEIGHT = 4;
 const FLUTTER_WEIGHT = 0.05;
 const SHIMMER_WEIGHT = 0.15;
+const ASPIRATION_WEIGHT = 6;
+const CHORUS_NOISE_WEIGHT = 5;
+const CHORUS_BREATH_WEIGHT = 0.6;
+const BREATHY_WEIGHT = 0.4;
+const INHALE_WEIGHT = 1.7;
 
 const MACROS = /** @type {MacroRow[]} */ ([
   { macro: MACRO.brightness, param: "vowel", depth: 0.25 },
@@ -1057,9 +1646,10 @@ const MACROS = /** @type {MacroRow[]} */ ([
 
 /**
  * One buffer source a window, the JS mixing of every partial the lead sings, and with more than
- * one singer, the chorus's tables and each singer's reading of them, and each singer's wanders. A
- * voice whose growl rises above 0 anywhere is priced as growling throughout, so the cost bounds
- * its densest window.
+ * one singer, the chorus's tables and each singer's reading of them, and each singer's wanders,
+ * and the aspiration's noise and the breaths' shaping. A voice whose growl or aspiration rises
+ * above 0 anywhere is priced as having it throughout, and a singer's breaths as taking the most
+ * of the time they can, so the cost bounds its densest window.
  * @param {Voice} voice
  * @param {Genome} genome
  */
@@ -1078,6 +1668,20 @@ function cost(voice, genome) {
     self.singers > 1
       ? TABLE_PARTIAL_WEIGHT * tablePartials + CHORUS_WEIGHT * (self.singers - 1)
       : 0;
+  const breathy = self.breath > 0 ? self.breathiness : 0;
+  // The most of its time a singer spends in breaths and the onsets after them: breaths last up
+  // to 1.25 × `breath`, and phrases at least half of `phrase`.
+  const longest = 1.25 * self.breath;
+  const share =
+    self.breath > 0 ? Math.min(1, (longest + ONSET_S * breathy) / (self.phrase / 2 + longest)) : 0;
+  const aspirates = highestValue(genome, self, "aspiration", PARAMS.aspiration, MACROS) > 0;
+  const noise = aspirates
+    ? ASPIRATION_WEIGHT +
+      (self.singers > 1
+        ? CHORUS_NOISE_WEIGHT + CHORUS_BREATH_WEIGHT * share * (self.singers - 1)
+        : 0)
+    : 0;
+  const breaths = breathy > 0 ? self.singers * (BREATHY_WEIGHT + INHALE_WEIGHT * share) : 0;
   return (
     eventCost({ rate: 1 / WINDOW, seconds: WINDOW, nodes: 1 }) +
     LEAD_WEIGHT +
@@ -1086,7 +1690,9 @@ function cost(voice, genome) {
     (doubled ? DOUBLE_WEIGHT : 0) +
     chorus +
     self.singers *
-      ((self.flutter > 0 ? FLUTTER_WEIGHT : 0) + (self.shimmer > 0 ? SHIMMER_WEIGHT : 0))
+      ((self.flutter > 0 ? FLUTTER_WEIGHT : 0) + (self.shimmer > 0 ? SHIMMER_WEIGHT : 0)) +
+    noise +
+    breaths
   );
 }
 

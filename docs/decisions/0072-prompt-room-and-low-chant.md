@@ -5,7 +5,8 @@
   [0005](0005-genome-schema-table.md) (the schema text's limit, now 4,000 characters),
   [0024](0024-prompt-parse-repair-generation.md), [0038](0038-explore.md) and
   [0058](0058-breeding.md) (examples, the base and the parents written without their defaults),
-  and [0030](0030-seed-vibes-and-evaluation.md) (a fourth seed vibe).
+  and [0030](0030-seed-vibes-and-evaluation.md) (a fourth seed vibe); amended by
+  [0090](0090-chant-aspiration-and-breath.md) (the limit, now 4,100 characters).
 
 ## Context
 
@@ -93,3 +94,15 @@ serving (load average 1.1–1.4): peak cost 465.5, render median 27.2x, runs 27.
   canonical ones. Both are verbatim, as 0024 requires.
 - A default that changes changes what an omitted key means in a logged prompt, as it changes the
   render; that already bumps the engine version (0009).
+
+## Amendments
+
+- 2026-11-09: from step CG.3 ([0090](0090-chant-aspiration-and-breath.md)), provisional: owner
+  to confirm. The limit moves to 4,100 characters. The chant's `aspiration` and `breathiness`
+  lines take 79 characters, the `tilt` line gives back 9, and the text is 4,067; the chant's other
+  lines say no more than what each parameter does. Every prompt token check passes, measured
+  after the change: six examples 3,278 tokens and every voice locked 3,488, both of 4,096; a base
+  with six examples 3,554 of 4,506 and its revision 4,372 of 5,734; two parents 3,647 and 4,464;
+  a base with two references 5,049 and 5,867; the first develop prompt at its largest 4,019 of
+  4,096; the words prompt 3,122 and the brief draft 2,776 at their largest. The develop prompt
+  has the least room left, 77 tokens, so CG.4's lines need measuring against it.

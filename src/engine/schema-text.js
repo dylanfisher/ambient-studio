@@ -1,5 +1,5 @@
 // The genome schema as compact text for the LLM's prompt. omlx contexts are short, so a test
-// holds the full text under 4,000 characters (decisions 0005 and 0072).
+// holds the full text under 4,100 characters (decisions 0005 and 0072).
 /** @import { Descriptor, DescriptorTable } from "./descriptor.js" */
 import { allowsTrajectory, isRecording, valueText } from "./descriptor.js";
 import {

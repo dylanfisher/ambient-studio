@@ -5,7 +5,10 @@
   singers, the cost, the common `detune`); amended by [0088](0088-chant-growl.md) (a table of two
   cycles where the voice growls or is rough, cost) and by
   [0089](0089-chant-flutter-and-shimmer.md) (each singer's pitch and level wander, their slots, a
-  chorus singer reading the table at its wandering phase, cost).
+  chorus singer reading the table at its wandering phase, cost) and by
+  [0090](0090-chant-aspiration-and-breath.md) (breathiness reshapes the fades, level and pitch
+  around each breath and adds an inhale, reading the schedule and changing none of it; the noise's
+  slots; cost).
 
 ## Context
 
