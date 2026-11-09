@@ -157,14 +157,21 @@ pre {
   font-weight: 700;
 }
 
-/* The running job, at the bar's right end. */
+/* The running jobs, one per lane of the job runner, at the bar's right end. */
 
 .topbar-jobs {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.5rem 1rem;
   margin-left: auto;
   color: var(--muted-foreground);
+}
+
+.topbar-job {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .topbar-jobs .progress {

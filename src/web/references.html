@@ -15,8 +15,16 @@
         <a href="./references.html" aria-current="page" title="Opens this page, where you upload recordings to aim at and mark the parts you mean.">References</a>
         <a href="./evaluation.html" title="Opens the model test page, which checks how often the model follows your briefs. It makes no audio.">Model test</a>
         <span id="topbarJobs" class="topbar-jobs small" hidden>
-          <span id="topbarJobsText"></span>
-          <span id="topbarJobsBar" class="progress" role="progressbar" aria-label="The running job" aria-valuemin="0" aria-valuemax="100"><span id="topbarJobsFill" class="progress-fill"></span></span>
+          <span id="topbarMainJob" class="topbar-job" hidden>
+            <span id="topbarMainText"></span>
+            <span id="topbarMainBar" class="progress" role="progressbar" aria-label="The running job" aria-valuemin="0" aria-valuemax="100"><span id="topbarMainFill" class="progress-fill"></span></span>
+            <button id="topbarMainCancel" class="button outline small" type="button" title="Cancels this job from any page. What it already finished is kept, and the page that started it says it was cancelled.">Cancel</button>
+          </span>
+          <span id="topbarWordsJob" class="topbar-job" hidden>
+            <span id="topbarWordsText"></span>
+            <span id="topbarWordsBar" class="progress" role="progressbar" aria-label="The model reading your words" aria-valuemin="0" aria-valuemax="100"><span id="topbarWordsFill" class="progress-fill"></span></span>
+            <button id="topbarWordsCancel" class="button outline small" type="button" title="Cancels this job from any page. What it already finished is kept, and the page that started it says it was cancelled.">Cancel</button>
+          </span>
         </span>
       </nav>
     </header>

@@ -315,6 +315,53 @@ describe("createOmlxQueue", () => {
     expect((await next).text).toBe("after");
   });
 
+  test("a cancel for one owner rejects only its waiting requests, and the one in flight finishes", async () => {
+    const { clock, omlx, queue } = await setup();
+    const [mine, theirs] = [{}, {}];
+    omlx.script({ tokens: ["held"], holdAfter: 1 }, { tokens: ["second"] });
+    const first = settle(queue.request({ ...ask(), owner: theirs }));
+    const cancelled = settle(queue.request({ ...ask(), owner: mine }));
+    const second = settle(queue.request({ ...ask(), owner: theirs }));
+    await omlx.waitForRequests(1);
+    queue.cancel(mine);
+    expect((await cancelled).error?.message).toBe("omlx request cancelled");
+    omlx.release();
+    expect((await first).value?.text).toBe("held");
+    await clock.waitForTimer(QUEUE.minGapMs);
+    clock.advance(QUEUE.minGapMs);
+    expect((await second).value?.text).toBe("second");
+    expect(omlx.requests).toHaveLength(2);
+    expect(omlx.aborted()).toBe(0);
+    expect(omlx.maxInFlight()).toBe(1);
+  });
+
+  test("a cancel for the owner in flight aborts it, and another owner's waiting request goes on", async () => {
+    const { clock, omlx, queue } = await setup();
+    const [mine, theirs] = [{}, {}];
+    omlx.script({ tokens: ["held"], holdAfter: 1 }, { tokens: ["theirs"] });
+    const aborted = settle(queue.request({ ...ask(), owner: mine }));
+    const other = settle(queue.request({ ...ask(), owner: theirs }));
+    await omlx.waitForRequests(1);
+    queue.cancel(mine);
+    expect((await aborted).error?.message).toBe("omlx request cancelled");
+    await omlx.waitForAborted(1);
+    await clock.waitForTimer(QUEUE.minGapMs);
+    clock.advance(QUEUE.minGapMs);
+    expect((await other).value?.text).toBe("theirs");
+    expect(omlx.maxInFlight()).toBe(1);
+  });
+
+  test("a cancel for one owner during another's backoff leaves that request backing off", async () => {
+    const { clock, omlx, queue } = await setup();
+    omlx.script({ status: 429, body: "busy" }, { tokens: ["after"] });
+    const backingOff = settle(queue.request({ ...ask(), owner: {} }));
+    await clock.waitForTimer(/** @type {number} */ (BACKOFFS[0]));
+    queue.cancel({});
+    clock.advance(/** @type {number} */ (BACKOFFS[0]));
+    expect((await backingOff).value?.text).toBe("after");
+    expect(omlx.requests).toHaveLength(2);
+  });
+
   test.each([true, false])(
     "asks the chat template to think or not, as queue.thinking (%s) says",
     async (thinking) => {

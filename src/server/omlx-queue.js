@@ -28,6 +28,8 @@ export const RESPONSE_FORMAT_REFUSED = "omlx refused the JSON-schema response_fo
  *   `response_format` when `queue.sendResponseFormat` is true; required then, ignored otherwise
  * @property {(event: RetryEvent) => void} [onRetry] called before each of this request's
  *   backoffs, after the queue's own `onRetry`, so a job can tell the owner it is waiting
+ * @property {object} [owner] the job the request is for, so `cancel(owner)` cancels only its
+ *   requests (decision 0092)
  */
 
 /**
@@ -82,8 +84,34 @@ export class OmlxRequestError extends Error {
  * @typedef {object} OmlxQueue
  * @property {(request: CompletionRequest) => Promise<Completion>} request queues one chat
  *   completion; a prompt over the context budget is refused before it is queued
- * @property {() => void} cancel rejects every queued request and aborts the one in flight; the
- *   queue takes new requests afterwards
+ * @property {(owner?: object) => void} cancel rejects `owner`'s queued requests and aborts its
+ *   one in flight, or every request's when no owner is given; the queue takes new requests
+ *   afterwards
+ */
+
+/**
+ * The queue as one job uses it: each request carries `owner`, and `cancel()` cancels only those,
+ * so a job cancelling on abort leaves another job's requests alone (decision 0092).
+ * @param {OmlxQueue} queue
+ * @param {object} owner the job's own token, such as its `AbortSignal`
+ * @returns {OmlxQueue}
+ */
+export function ownedBy(queue, owner) {
+  return {
+    request: (request) => queue.request({ ...request, owner }),
+    cancel: () => queue.cancel(owner),
+  };
+}
+
+/**
+ * A request in the queue. `cancelled` is set when a cancel names it while it runs, so it stops
+ * at its next step even when it was between waits.
+ * @typedef {object} Queued
+ * @property {CompletionRequest} request
+ * @property {number} prefillMs
+ * @property {(completion: Completion) => void} resolve
+ * @property {(error: Error) => void} reject
+ * @property {boolean} cancelled
  */
 
 /** @typedef {{ busy: string, slowFirstToken: boolean }} Busy */
@@ -118,12 +146,11 @@ async function readText(response) {
 export function createOmlxQueue({ omlx, queue, clock, jitter, onRetry }) {
   const url = new URL(`${omlx.baseUrl.replace(/\/+$/, "")}/v1/chat/completions`);
   const send = url.protocol === "https:" ? httpsRequest : httpRequest;
-  /** @type {{ request: CompletionRequest, prefillMs: number, resolve: (c: Completion) => void, reject: (e: Error) => void }[]} */
+  /** @type {Queued[]} */
   const waiting = [];
-  let running = false;
+  /** @type {Queued | undefined} */
+  let running;
   let lastEndedAt = Number.NEGATIVE_INFINITY;
-  /** Counts cancels, so a request that was running when one came stops at its next step. */
-  let cancels = 0;
   const cancelled = () => new Error("omlx request cancelled");
   /** Stops whatever the running request is waiting on: its backoff, its gap or its request. */
   /** @type {((error: Error) => void) | undefined} */
@@ -344,11 +371,11 @@ export function createOmlxQueue({ omlx, queue, clock, jitter, onRetry }) {
   }
 
   /**
-   * @param {CompletionRequest} request
-   * @param {number} prefillMs
+   * @param {Queued} queued
    * @returns {Promise<Completion>}
    */
-  async function run(request, prefillMs) {
+  async function run(queued) {
+    const { request } = queued;
     /** @type {RetryEvent[]} */
     const retries = [];
     const sent = params(request);
@@ -356,7 +383,7 @@ export function createOmlxQueue({ omlx, queue, clock, jitter, onRetry }) {
     let lastSentAt = 0;
     try {
       return {
-        ...(await untilAnswered(request, prefillMs, retries, (at) => {
+        ...(await untilAnswered(queued, retries, (at) => {
           attempts++;
           lastSentAt = at;
         })),
@@ -375,19 +402,18 @@ export function createOmlxQueue({ omlx, queue, clock, jitter, onRetry }) {
   }
 
   /**
-   * Attempts `request` until one answers, backing off while omlx is busy.
-   * @param {CompletionRequest} request
-   * @param {number} prefillMs
+   * Attempts the request until one answers, backing off while omlx is busy.
+   * @param {Queued} queued
    * @param {RetryEvent[]} retries filled with each backoff
    * @param {(at: number) => void} onSend called as each attempt is sent
    * @returns {Promise<Omit<Completion, "retries" | "params">>}
    */
-  async function untilAnswered(request, prefillMs, retries, onSend) {
+  async function untilAnswered(queued, retries, onSend) {
+    const { request, prefillMs } = queued;
     let waited = 0;
-    const epoch = cancels;
     for (let number = 1; ; number++) {
       await sleep(lastEndedAt + queue.minGapMs - clock.now());
-      if (cancels !== epoch) throw cancelled();
+      if (queued.cancelled) throw cancelled();
       /** @type {Awaited<ReturnType<typeof attempt>>} */
       let outcome;
       onSend(clock.now());
@@ -397,7 +423,7 @@ export function createOmlxQueue({ omlx, queue, clock, jitter, onRetry }) {
         lastEndedAt = clock.now();
       }
       if (!("busy" in outcome)) return outcome;
-      if (cancels !== epoch) throw cancelled();
+      if (queued.cancelled) throw cancelled();
       const draw = jitter();
       if (!(draw >= 0 && draw < 1))
         throw new Error(`omlx queue: jitter drew ${draw}, not in [0, 1)`);
@@ -419,21 +445,19 @@ export function createOmlxQueue({ omlx, queue, clock, jitter, onRetry }) {
       onRetry(event);
       request.onRetry?.(event);
       await sleep(delayMs);
-      if (cancels !== epoch) throw cancelled();
+      if (queued.cancelled) throw cancelled();
     }
   }
 
   async function pump() {
     if (running) return;
-    running = true;
-    for (let job = waiting.shift(); job !== undefined; job = waiting.shift()) {
+    for (running = waiting.shift(); running !== undefined; running = waiting.shift()) {
       try {
-        job.resolve(await run(job.request, job.prefillMs));
+        running.resolve(await run(running));
       } catch (error) {
-        job.reject(/** @type {Error} */ (error));
+        running.reject(/** @type {Error} */ (error));
       }
     }
-    running = false;
   }
 
   return {
@@ -456,20 +480,26 @@ export function createOmlxQueue({ omlx, queue, clock, jitter, onRetry }) {
       }
       const prefillMs = Math.ceil((tokens * 1000) / queue.minPrefillTokensPerSecond);
       return new Promise((resolve, reject) => {
-        waiting.push({ request, prefillMs, resolve, reject });
+        waiting.push({ request, prefillMs, resolve, reject, cancelled: false });
         void pump();
       });
     },
-    cancel() {
-      cancels++;
-      for (const job of waiting.splice(0)) {
+    cancel(owner) {
+      /** @param {Queued} queued */
+      const named = (queued) => owner === undefined || queued.request.owner === owner;
+      for (const job of waiting.filter(named)) {
+        waiting.splice(waiting.indexOf(job), 1);
         const error = cancelled();
         const details = { cause: error, attempts: 0, latencyMs: null, retries: [] };
         job.reject(
           new OmlxRequestError(error.message, { ...details, params: params(job.request) }),
         );
       }
-      interrupt?.(cancelled());
+      // `interrupt` is only ever set by the running request's wait or attempt.
+      if (running && named(running)) {
+        running.cancelled = true;
+        interrupt?.(cancelled());
+      }
     },
   };
 }

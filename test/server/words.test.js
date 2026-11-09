@@ -192,3 +192,81 @@ test("a cancel while the model answers ends the job cancelled with no result", a
   expect(studio.omlx.requests).toHaveLength(1);
   expect(listRevisions(studio.server.store, vibe.id)).toHaveLength(1);
 });
+
+// Beside a running job (0092). The brief draft is the long job here: a main-lane job whose one
+// request can be held at the fake omlx and that cancels its requests on abort.
+const DRAFT = Object.freeze({
+  name: "Underwater drone",
+  brief: "A slow, dark drone heard from under water.",
+  constraints: { pulse: "none" },
+  softTargets: { features: {} },
+});
+const DRAFT_PATH = "/api/brief-drafts";
+const DRAFT_BODY = Object.freeze({ words: "a slow, dark underwater drone", current: null });
+const WORDS_BODY = Object.freeze({ set: "test", words: WORDS, current: CURRENT });
+
+test("a words job runs and finishes while another job holds the main lane", async () => {
+  const { studio, path } = await setup();
+  const { server } = studio;
+  /** @type {() => void} */
+  let release = () => undefined;
+  const long = server.jobs.add(
+    "candidates",
+    () => new Promise((resolve) => (release = () => resolve(undefined))),
+  );
+  studio.omlx.script(tokens(GOOD));
+  const job = await studio.ok("POST", path, WORDS_BODY);
+  expect(job.state).toBe("running");
+  await studio.drive(server.jobs.settled(job.id));
+  expect(await studio.ok("GET", `/api/jobs/${job.id}`)).toMatchObject({
+    state: "done",
+    result: GOOD,
+  });
+  expect(server.jobs.get(long.id).state).toBe("running");
+  release();
+  await server.jobs.settled(long.id);
+});
+
+test("cancelling a words job cancels only its request, and the other job's request in flight finishes", async () => {
+  const { studio, path } = await setup();
+  const { server, omlx } = studio;
+  omlx.script({ ...tokens(DRAFT), holdAfter: 0 });
+  const draft = await studio.ok("POST", DRAFT_PATH, DRAFT_BODY);
+  await omlx.waitForRequests(1);
+  const words = await studio.ok("POST", path, WORDS_BODY);
+  expect(words.state).toBe("running");
+  await studio.ok("POST", `/api/jobs/${words.id}/cancel`, {});
+  await server.jobs.settled(words.id);
+  expect(server.jobs.get(words.id).state).toBe("cancelled");
+  omlx.release();
+  await studio.drive(server.jobs.settled(draft.id));
+  expect(await studio.ok("GET", `/api/jobs/${draft.id}`)).toMatchObject({
+    state: "done",
+    result: { draft: DRAFT },
+  });
+  expect(omlx.requests).toHaveLength(1);
+  expect(omlx.aborted()).toBe(0);
+  expect(omlx.maxInFlight()).toBe(1);
+});
+
+test("cancelling the other job aborts only its request, and the words job's request goes on", async () => {
+  const { studio, path } = await setup();
+  const { server, omlx } = studio;
+  omlx.script({ tokens: ['{"name": '], holdAfter: 0 }, tokens(GOOD));
+  const draft = await studio.ok("POST", DRAFT_PATH, DRAFT_BODY);
+  await omlx.waitForRequests(1);
+  const words = await studio.ok("POST", path, WORDS_BODY);
+  // Running in its own lane, its request waiting in the queue behind the draft's.
+  expect(words.state).toBe("running");
+  await studio.ok("POST", `/api/jobs/${draft.id}/cancel`, {});
+  await omlx.waitForAborted(1);
+  await studio.drive(server.jobs.settled(words.id));
+  expect(await studio.ok("GET", `/api/jobs/${words.id}`)).toMatchObject({
+    state: "done",
+    result: GOOD,
+  });
+  await server.jobs.settled(draft.id);
+  expect(server.jobs.get(draft.id).state).toBe("cancelled");
+  expect(omlx.requests).toHaveLength(2);
+  expect(omlx.maxInFlight()).toBe(1);
+});

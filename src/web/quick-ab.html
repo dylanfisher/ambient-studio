@@ -15,8 +15,16 @@
         <a href="./references.html" title="Opens the references page, where you upload recordings to aim at and mark the parts you mean.">References</a>
         <a href="./evaluation.html" title="Opens the model test page, which checks how often the model follows your briefs. It makes no audio.">Model test</a>
         <span id="topbarJobs" class="topbar-jobs small" hidden>
-          <span id="topbarJobsText"></span>
-          <span id="topbarJobsBar" class="progress" role="progressbar" aria-label="The running job" aria-valuemin="0" aria-valuemax="100"><span id="topbarJobsFill" class="progress-fill"></span></span>
+          <span id="topbarMainJob" class="topbar-job" hidden>
+            <span id="topbarMainText"></span>
+            <span id="topbarMainBar" class="progress" role="progressbar" aria-label="The running job" aria-valuemin="0" aria-valuemax="100"><span id="topbarMainFill" class="progress-fill"></span></span>
+            <button id="topbarMainCancel" class="button outline small" type="button" title="Cancels this job from any page. What it already finished is kept, and the page that started it says it was cancelled.">Cancel</button>
+          </span>
+          <span id="topbarWordsJob" class="topbar-job" hidden>
+            <span id="topbarWordsText"></span>
+            <span id="topbarWordsBar" class="progress" role="progressbar" aria-label="The model reading your words" aria-valuemin="0" aria-valuemax="100"><span id="topbarWordsFill" class="progress-fill"></span></span>
+            <button id="topbarWordsCancel" class="button outline small" type="button" title="Cancels this job from any page. What it already finished is kept, and the page that started it says it was cancelled.">Cancel</button>
+          </span>
         </span>
       </nav>
     </header>
@@ -139,6 +147,7 @@
           </label>
           <button id="earShiftRead" class="button outline" type="button" title="Asks the model to read your words as the sliders below, and sets them. The search isn't told until you press Use from the next pair. One short model request.">Set the sliders from these words</button>
         </div>
+        <div id="earShiftBox"></div>
         <div id="earShifts" class="constraints" data-numbers></div>
         <div class="row">
           <button id="earSteer" class="button secondary" type="button" title="Draws every pair from the next one on with the variation and leanings above. The pair on screen stays, and no model is asked.">Use from the next pair</button>
@@ -157,6 +166,23 @@
           <span class="muted">more</span>
         </label>
         <span class="muted small" data-part="value"></span>
+      </div>
+    </template>
+
+    <template id="job-progress">
+      <div class="job">
+        <div class="row">
+          <strong data-part="title">job</strong>
+          <span class="badge" data-part="state">state</span>
+          <span class="muted small" data-part="elapsed"></span>
+          <span class="spacer"></span>
+          <button class="button outline small" type="button" data-part="cancel" title="Cancels this job. Anything it already finished is kept.">Cancel</button>
+        </div>
+        <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" data-part="bar"><div class="progress-fill" data-part="fill"></div></div>
+        <p class="small" data-part="step"></p>
+        <p class="small muted" data-part="notEmbedded" hidden></p>
+        <p class="small muted" data-part="notRanked" hidden></p>
+        <p class="small errors" data-part="error" hidden></p>
       </div>
     </template>
 

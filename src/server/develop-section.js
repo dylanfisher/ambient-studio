@@ -27,6 +27,7 @@ import {
 } from "./generate-candidates.js";
 import { listRequestGroup, putGenome } from "./generation-store.js";
 import { JOB_STEP } from "./job-steps.js";
+import { ownedBy } from "./omlx-queue.js";
 import { sketchReadings } from "./rating-routes.js";
 import { getSketch } from "./rating-store.js";
 import { RETRIEVAL_METHOD } from "./retrieve-examples.js";
@@ -67,9 +68,8 @@ function sketchOffset({ store }, { offset, developmentId }) {
 /**
  * The job that develops a section and stores the development. When the answer is still invalid
  * after its one repair, or can't be repaired, the job fails listing every finding and stores no
- * development; every request stays stored as a generation. Cancelling the job cancels the omlx
- * queue: the runner runs one job at a time, so while this one runs the queue holds only its
- * requests.
+ * development; every request stays stored as a generation. Cancelling the job cancels its own omlx
+ * requests (decision 0092).
  * @param {App} app
  * @param {DevelopRequest} request
  * @returns {(job: JobContext) => Promise<{ developmentId: number, trackId: number,
@@ -79,7 +79,8 @@ function sketchOffset({ store }, { offset, developmentId }) {
 export function developJob(app, { track, revisionId, arrangement, index }) {
   return async (job) => {
     const { store, config } = app;
-    const cancelRequests = () => app.queue.cancel();
+    const queue = ownedBy(app.queue, job.signal);
+    const cancelRequests = () => queue.cancel();
     job.signal.addEventListener("abort", cancelRequests);
     try {
       job.progress(0, 1, JOB_STEP.readingSection);
@@ -129,7 +130,7 @@ export function developJob(app, { track, revisionId, arrangement, index }) {
       const sampling = firstSampling(seed);
       const batch = {
         store,
-        queue: app.queue,
+        queue,
         config,
         vibeRevisionId: revision.id,
         sessionId: null,

@@ -1,6 +1,7 @@
 // The search-by-ear page's steering panel (decision 0075): a variation and a slider for each
 // path the search moves, sent together by Use from the next pair, and a line of words the model
-// reads as the sliders. It is built once the search
+// reads as the sliders, in a words job beside the search followed in a box with Cancel (0092).
+// It is built once the search
 // names its paths, and leaves the owner's unsent changes alone as the search moves on.
 /** @import { EarSteering, EarVariation } from "../domain/ear-settings.js" */
 /** @import { EarState } from "./quick-ab-ear.js" */
@@ -10,8 +11,10 @@ import { postJson, sessionPath } from "./api.js";
 import { cloneTemplate } from "./clone-template.js";
 import { leanText, pathName, steeringText, VARIATION_LABEL } from "./ear-steering-text.js";
 import { elementsById } from "./element-by-id.js";
+import { jobControl } from "./job-control.js";
 import { oneAtATime } from "./one-at-a-time.js";
 import { OWN_KEYS } from "./quick-ab-keys.js";
+import { runJob } from "./run-job.js";
 
 /**
  * @param {number} sessionId
@@ -28,7 +31,9 @@ export function earSteeringPanel(sessionId, status) {
     earSteerLine: HTMLElement,
     earShiftWords: HTMLInputElement,
     earShiftRead: HTMLButtonElement,
+    earShiftBox: HTMLElement,
   });
+  const readControl = jobControl(page.earShiftRead);
   page.earVariation.replaceChildren(
     ...Object.keys(EAR_VARIATION).map((variation) => {
       const option = document.createElement("option");
@@ -94,15 +99,31 @@ export function earSteeringPanel(sessionId, status) {
     if (words.length === 0)
       throw new Error("Type a shift first, such as darker and more spacious.");
     page.earSteerLine.textContent = "Asking the model to read your words…";
-    /** @type {{ shift: Record<string, number> }} */
-    let read;
+    const unread = "The words weren't read; the sliders are as they were.";
+    /** @type {Awaited<ReturnType<typeof runJob>>} */
+    let finished;
     try {
-      read = await postJson(`${sessionPath(sessionId)}/ear-search/shift-words`, { words });
+      finished = await runJob(status, {
+        path: `${sessionPath(sessionId)}/ear-search/shift-words`,
+        body: { words },
+        controls: [readControl],
+        boxes: page.earShiftBox,
+        started: "The model is reading your words beside the search.",
+      });
     } catch (error) {
-      page.earSteerLine.textContent = "The words weren't read; the sliders are as they were.";
+      page.earSteerLine.textContent = unread;
       throw error;
     }
-    const { shift } = read;
+    if (finished === null) {
+      page.earSteerLine.textContent = `${unread} Describe it again, or set the sliders by hand.`;
+      return;
+    }
+    if (finished.refused) {
+      page.earSteerLine.textContent = `${unread} Ask again once that job has finished.`;
+      return;
+    }
+    /** @type {{ shift: Record<string, number> }} */
+    const { shift } = finished.result;
     setSliders(shift);
     const leaning = steeringText({
       variation: /** @type {EarVariation} */ (page.earVariation.value),
@@ -125,16 +146,12 @@ export function earSteeringPanel(sessionId, status) {
         page.earSteerLine.textContent = `Now: ${steeringText(ear.steering)}`;
       }
       const ended = ear.phase === EAR_PHASE.finished || ear.stopped;
-      const controls = [
-        page.earVariation,
-        page.earSteer,
-        page.earUnshift,
-        page.earShiftWords,
-        page.earShiftRead,
-      ];
+      const controls = [page.earVariation, page.earSteer, page.earUnshift, page.earShiftWords];
       for (const control of controls) {
         control.disabled = ended;
       }
+      // Held off while its words job runs, whatever the search is doing.
+      page.earShiftRead.disabled = ended || readControl.held();
       for (const { input } of sliders.values()) input.disabled = ended;
     },
   };
