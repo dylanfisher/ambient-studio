@@ -4286,3 +4286,14 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   found fixed values shown at 3 digits against an exact check; they are now written exactly.
   `bridgeSwap` also requires both neighbors' developments unchanged. The worst bridge prompt is
   4,071 of 4,096. Two follow-ups went into TD.6. `./scripts/check` clean: 2,639 tests.
+- 2026-11-09: WF.3 merged as 6a30680 (Opus: 365k tokens, 234 calls, 43 min with one fix round;
+  reviewer Sonnet: 110k tokens, 33 calls, 15 min, PASS with two reachable failures fixed before
+  merge). Session rows say features against the whole brief's excerpts ("brighter than most of
+  this brief": a share of at least 0.7 is "most", 0.9 "nearly all"), positions by direction words,
+  and rank and search score as verdicts; the numbers moved into the toggle. "Change it" sets a
+  candidate's locks, Less/More choices or steer setting from words through three candidate field
+  sets, resolved on the server from `candidateId`, filling the card unsaved with Keep and Undo.
+  Fixes: lock edits keep the lock route's order, and a Keep can't be lost (0085). The locks set's
+  worst prompt is about 4,055 of 4,096 after narrowing. `./scripts/check` clean: 2,671 tests.
+  Pending owner check in Safari 17.6: each "Change it" choice, Keep and Undo, and the words lines
+  with the numbers closed.
