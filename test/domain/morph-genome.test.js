@@ -551,6 +551,67 @@ describe("a weave", () => {
     expect(requireGenome(genome, "weave")).toEqual(genome);
   });
 
+  // The move runs from 20 to 28 s on the outgoing timeline; the incoming one is 15 s behind.
+  const drone = voiceOf(OUT, "drone");
+  /**
+   * @param {string} id
+   * @param {number} root
+   * @param {object} [place] its start or end
+   */
+  const voice = (id, root, place = {}) => ({ ...drone, id, root, ...place });
+  /** @type {[string, object[], object[], string[]][]} */
+  const partial = [
+    [
+      "a leaving voice that starts after its stretch would end",
+      [voice("low", 40), voice("mid", 60), voice("high", 90, { start: 24 })],
+      [voice("in", 50)],
+      ["high"],
+    ],
+    [
+      "a leaving voice that ends inside the move",
+      [voice("low", 40), voice("mid", 60), voice("high", 90, { end: 25 })],
+      [voice("in", 50)],
+      ["high"],
+    ],
+    [
+      "entering voices that end before their stretches would start",
+      [voice("low", 40), voice("mid", 60)],
+      [
+        voice("e1", 50, { start: 0, end: 6 }),
+        voice("e2", 70, { start: 0, end: 6.5 }),
+        voice("e3", 90, { start: 0, end: 7 }),
+        voice("in", 45),
+      ],
+      ["e1", "e2", "e3"],
+    ],
+    [
+      "an entering voice that starts inside the move",
+      [voice("low", 40), voice("mid", 60)],
+      [voice("late", 50, { start: 8 }), voice("in", 70), voice("top", 90)],
+      ["late"],
+    ],
+  ];
+  test.each(partial)(
+    "%s takes no stretch and moves as in the morph",
+    (_name, outVoices, inVoices, partly) => {
+      const out = requireGenome({ ...OUT, voices: outVoices }, "outgoing");
+      const into = requireGenome({ ...IN, voices: inVoices }, "incoming");
+      const woven = held(weave(out, into));
+      const morphed = held(morph(out, into)).genome;
+      for (const id of partly) expect(voiceOf(woven.genome, id)).toEqual(voiceOf(morphed, id));
+      const ids = woven.order.map(({ id }) => id);
+      for (const id of partly) expect(ids).not.toContain(id);
+      expect(ids.length).toBeGreaterThan(0);
+      // The voices that sound through the move share it, each side from its start to its end.
+      for (const leaves of [true, false]) {
+        const side = woven.order.filter((handover) => handover.leaves === leaves);
+        if (side.length === 0) continue;
+        expect(side[0]?.from).toBe(start);
+        expect(side.at(-1)?.to).toBe(end);
+      }
+    },
+  );
+
   test("a weave that can't hold falls back as a morph does, and names itself", () => {
     const drone = voiceOf(OUT, "drone");
     expect(reason(weave(OUT, requireGenome({ ...IN, key: 9 }, "key 9")))).toBe(

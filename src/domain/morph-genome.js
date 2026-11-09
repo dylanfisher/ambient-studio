@@ -345,10 +345,17 @@ export function morphGenome(outgoing, incoming, seconds, curve, { weave = false 
   const falling = out.voices.filter(
     (voice) => !moves(voice) && voice.start < to && voice.end > from,
   );
+  // Only a voice that sounds through the whole move takes a stretch of it; one that starts or
+  // ends inside it falls or rises across the move as in a morph, so a stretch never falls
+  // outside its voice's life and a gap in a side's sequence can't open where a voice ends early.
   const order = weave
     ? stretches(
-        falling.map((voice) => ({ voice, leaves: true, register: register(voice, from) })),
-        rising.map(({ voice }) => ({ voice, leaves: false, register: register(voice, handover) })),
+        falling
+          .filter((voice) => voice.start <= from && voice.end >= to)
+          .map((voice) => ({ voice, leaves: true, register: register(voice, from) })),
+        rising
+          .filter(({ start, end }) => start <= from && end >= to)
+          .map(({ voice }) => ({ voice, leaves: false, register: register(voice, handover) })),
         from,
         to,
       )

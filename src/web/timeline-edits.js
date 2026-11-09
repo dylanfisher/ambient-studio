@@ -241,8 +241,8 @@ export const nextTransitionKind = (arrangement, index) => ({
 });
 
 /**
- * Gives morph or weave `index` the next of 0007's curves, in their order; a crossfade has no curve and
- * stays as it is.
+ * Gives morph or weave `index` the next of 0007's curves, in their order; a crossfade has no
+ * curve and stays as it is.
  * @param {Arrangement} arrangement
  * @param {number} index
  * @returns {Arrangement}

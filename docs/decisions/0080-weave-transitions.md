@@ -47,6 +47,15 @@ whole move, so a weave with at most one split voice a side, or none, is exactly 
 genome (tested); the top of the outgoing section thins while the floor of the incoming one
 arrives, register by register.
 
+**Only a voice that sounds through the whole move takes a stretch.** A split voice that starts
+or ends inside the move (an outgoing voice starting after the move starts or ending before it
+ends, an incoming one placed to start after it starts or to end before it ends) takes no
+stretch: it falls or rises across the whole move with its own start and end, exactly as in the
+morph, and the stretches are shared among the rest. So a stretch never lies outside its voice's
+life (which would give an end before the start, and a genome that doesn't validate), and a
+side's sequence has no gap where a voice ends early. Every input a morph accepts, a weave
+accepts.
+
 **A voice's register** (`register` in `morph-genome.js`): its root or center in Hz at the
 transition (drone, chant, drum, granular, cymbal), the log middle of its band for a pad
 (100–500 Hz) and a bell (150–1100 Hz), whose `BAND`s their engine files now export, and 0 for a
@@ -106,10 +115,12 @@ morph becoming a weave keeps its curve. K steps the curve of a morph or a weave.
   quarter, the middle and the end of its stretch within 1e-12 of the curve in the encoded space,
   for the four curves; the order; the matched drone equal to the morph's; the weave's quietest
   moment louder than the morph's for each curve; the render of the 6 s before the weave equal to
-  the outgoing genome's within 0007's tolerance; the fallbacks with their words.
+  the outgoing genome's within 0007's tolerance; the fallbacks with their words; a voice on
+  either side starting or ending inside the move taking no stretch and moving as in the morph.
+  Through the routes (`test/server/track-render-routes.test.js`), a weave of two split voices a
+  side renders and re-renders from its manifest to the same hash; its stems sum to its mix
+  within the tolerance (`test/server/render-stem.test.js`).
 - A weave costs what the morph costs: the same voices, the entering ones starting later.
-- A leaving voice that ends by itself before its stretch does keeps its own end, so that side's
-  handover has a gap there.
 - The proposal (0067) doesn't offer weaves yet; a weave the model writes anyway is checked like
   any transition.
 - A weave with no split voice, or one a side, plays the morph's samples under another cache key.
