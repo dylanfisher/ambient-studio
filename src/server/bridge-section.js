@@ -24,6 +24,7 @@ import { addDevelopment, getDevelopment } from "./development-store.js";
 import { currentRevision } from "./generate-candidates.js";
 import { putGenome } from "./generation-store.js";
 import { JOB_STEP } from "./job-steps.js";
+import { ownedBy } from "./omlx-queue.js";
 import { sketchReadings } from "./rating-routes.js";
 import { getSketch } from "./rating-store.js";
 import { transaction } from "./store.js";
@@ -78,7 +79,8 @@ function readSketch(app, sketchId) {
 export function bridgeJob(app, { track, revisionId, arrangement, index, plan }) {
   return async (job) => {
     const { store, config } = app;
-    const cancelRequests = () => app.queue.cancel();
+    const queue = ownedBy(app.queue, job.signal);
+    const cancelRequests = () => queue.cancel();
     job.signal.addEventListener("abort", cancelRequests);
     try {
       const of = plan.parts.length;
@@ -188,6 +190,7 @@ export function bridgeJob(app, { track, revisionId, arrangement, index, plan }) 
         const { generation, developed, repaired } = await askDevelopment(app, job, {
           vibeId: track.vibeId,
           vibeRevisionId: revision.id,
+          queue,
           messages: built.messages,
           ask: { seconds, constraints, recordings, ends },
           progress: { done: i, of },
