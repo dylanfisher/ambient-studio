@@ -12,10 +12,10 @@ import { sectionMorph } from "../../src/domain/section-genome.js";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
 import { requireGenome } from "../../src/engine/validate-genome.js";
 import { getDevelopment, listDevelopments } from "../../src/server/development-store.js";
-import { addCandidate, getGenome, putGenome } from "../../src/server/generation-store.js";
-import { addSketch } from "../../src/server/rating-store.js";
+import { getGenome } from "../../src/server/generation-store.js";
 import { TABLE } from "../../src/server/store.js";
 import { sectionSources } from "../../src/server/track-manifest.js";
+import { SKETCH_SEED, seedSketch } from "../support/seed-sketch.js";
 import { removeStudio, startStudio, VIBE } from "../support/studio.js";
 
 /** @type {Studio[]} */
@@ -24,7 +24,7 @@ afterEach(async () => {
   for (const studio of studios.splice(0)) await removeStudio(studio);
 });
 
-const SEED = 11;
+const SEED = SKETCH_SEED;
 const [drone] = droneGenome.voices;
 const base = { ...droneGenome, fadeIn: 0, fadeOut: 0 };
 /** The outgoing sketch: the drone. */
@@ -39,32 +39,6 @@ const INTO = {
   ],
 };
 const WORDS = "the drone holds while the pad rises under it";
-
-/**
- * A kept sketch of `genome`, written straight to the store, at seed 11.
- * @param {Studio} studio
- * @param {any} vibe as the vibe route returns it
- * @param {object} genome
- */
-function seedSketch({ server }, vibe, genome) {
-  const candidate = addCandidate(server.store, {
-    vibeRevisionId: vibe.revision.id,
-    generationId: null,
-    sessionId: null,
-    genomeId: putGenome(server.store, vibe.id, genome).id,
-    seed: SEED,
-    source: "llm",
-    parentIds: [],
-    locks: [],
-    operator: null,
-    operatorParams: null,
-    intent: null,
-    rejectReason: null,
-    lint: null,
-    rejectedGenome: null,
-  });
-  return addSketch(server.store, { candidateId: candidate.id, notes: "", tags: [] });
-}
 
 /**
  * Two 100 s sections, the outgoing sketch then `into`, joined by an 8 s crossfade with words.
