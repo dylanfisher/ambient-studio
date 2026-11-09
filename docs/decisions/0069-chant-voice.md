@@ -4,7 +4,8 @@
 - **Status:** accepted; provisional: owner to confirm. Amends
   [0013](0013-pad-and-bell-voices.md) (the drone's root snapping is shared) and
   [0014](0014-granular-cloud-noise-bed.md) (a second JS-mixed voice); amended by
-  [0070](0070-chant-singers-and-breath.md) (singers, breaths, cost, `detune`).
+  [0070](0070-chant-singers-and-breath.md) (singers, breaths, cost, `detune`) and by
+  [0088](0088-chant-growl.md) (half-integer harmonics, the level swing, the RMS rule, cost).
 
 ## Context
 

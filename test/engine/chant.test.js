@@ -9,6 +9,7 @@ import { effectiveParams } from "../../src/engine/effective-params.js";
 import { GLOBAL_PARAMS } from "../../src/engine/genome-schema.js";
 import chantGenome from "../../src/engine/genomes/chant.json" with { type: "json" };
 import ensembleGenome from "../../src/engine/genomes/chant-ensemble.json" with { type: "json" };
+import growlGenome from "../../src/engine/genomes/chant-growl.json" with { type: "json" };
 import { requireGenome, validateGenome } from "../../src/engine/validate-genome.js";
 import { voiceTypeIds } from "../../src/engine/voice-registry.js";
 import { renderOffline } from "../../src/server/render-offline.js";
@@ -24,8 +25,19 @@ const RATE = 48000;
 const SEED = 1;
 const golden = requireGenome(chantGenome, "the chant golden genome");
 const ensemble = requireGenome(ensembleGenome, "the six-singer chant golden genome");
+const growling = requireGenome(growlGenome, "the growling chant golden genome");
 /** C2, the A-minor scale note nearest the 65 Hz default root. */
 const C2 = 65.40639;
+/** Growl at 0 until 1.5 s, up to 0.8, back to 0 at 4 s, and up again: it crosses 0 twice. */
+const GROWL_IN_AND_OUT = {
+  points: [
+    [0, 0],
+    [1.5, 0],
+    [3, 0.8],
+    [4, 0],
+    [5, 0.5],
+  ],
+};
 
 /**
  * A genome with one chant voice, A minor, the shortest and quietest reverb.
@@ -338,6 +350,12 @@ describe("the chant voice", () => {
     ["one singer", golden],
     ["six singers", ensemble],
     ["twelve singers", oneChant({ singers: 12, spread: 30, phrase: 3, breath: 1 })],
+    ["one singer, growl moving in and out of 0", oneChant({ growl: GROWL_IN_AND_OUT })],
+    [
+      "six singers, growl moving in and out of 0",
+      oneChant({ singers: 6, growl: GROWL_IN_AND_OUT }),
+    ],
+    ["six singers growling, rough", growling],
   ])(
     "%s: its source is the same whichever window computes it, and from a track started anywhere",
     (_, genome) => {
@@ -372,6 +390,7 @@ describe("the chant voice", () => {
   test.each([
     ["one singer", golden],
     ["six singers", ensemble],
+    ["four singers, growl a trajectory, rough", growling],
   ])(
     "%s: excerpts at several offsets match their window of a full render (0007's tolerance)",
     async (_, genome) => {
@@ -436,10 +455,12 @@ describe("the chant voice", () => {
         "breath",
         "depth",
         "focus",
+        "growl",
         "pan",
         "phrase",
         "pulse",
         "root",
+        "rough",
         "singers",
         "spread",
         "tilt",
@@ -448,6 +469,10 @@ describe("the chant voice", () => {
     );
     expect(errors({ singers: 12 })).toEqual([]);
     expect(errors({ singers: 2.5 })).toEqual(["$.voices[0].singers"]);
+    // Growl may move over the track; rough is fixed for it.
+    expect(errors({ growl: GROWL_IN_AND_OUT, rough: 1 })).toEqual([]);
+    expect(errors({ rough: { points: [[0, 0]] } })).toEqual(["$.voices[0].rough"]);
+    expect(errors({ growl: 1.5, rough: -0.5 })).toEqual(["$.voices[0].growl", "$.voices[0].rough"]);
   });
 
   test("the golden ensemble has six singers who breathe, spread in pitch and place", () => {
@@ -483,6 +508,139 @@ describe("the chant voice", () => {
     const genome = requireGenome(
       { reverbDecay: 16, voices: [{ id: "c", type: "chant", root: 33 }] },
       "a low chant with a long reverb",
+    );
+    expect(cost(genome)).toBeLessThanOrEqual(COST_BUDGET);
+  });
+});
+
+/**
+ * The strongest integer and the strongest half-integer partial of C2 from 200 to 800 Hz, in dB.
+ * @param {ArrayLike<number>} data
+ */
+function bandPartials(data) {
+  /** @type {number[]} */
+  const integers = [];
+  /** @type {number[]} */
+  const halves = [];
+  for (let n = 0.5; n * C2 <= 800; n += 0.5) {
+    if (n * C2 < 200) continue;
+    const db = 20 * Math.log10(amplitudeAt(data, n * C2, RATE));
+    (Number.isInteger(n) ? integers : halves).push(db);
+  }
+  return { integer: Math.max(...integers), half: Math.max(...halves) };
+}
+
+/**
+ * The peak level in dB of each of a one-singer chant's first `count` cycles, at a steady pitch.
+ * Each runs from half a cycle before the fundamental's phase is whole to half a cycle after, so
+ * it holds one whole pulse of the harmonics, which all rise through 0 together.
+ * @param {Genome} genome
+ * @param {number} count
+ */
+function cyclePeaks(genome, count) {
+  const track = chantTrack(genome, /** @type {Voice} */ (genome.voices[0]), RATE, SEED);
+  const hz = track.control(0).hz;
+  const [left] = chantChunk(track, 0, Math.ceil(((count + 1.5) * RATE) / hz));
+  const data = /** @type {Float32Array} */ (left);
+  return Array.from({ length: count }, (_, c) => {
+    let peak = 0;
+    const to = Math.ceil(((c + 1.5) * RATE) / hz);
+    for (let i = Math.ceil(((c + 0.5) * RATE) / hz); i < to; i++)
+      peak = Math.max(peak, Math.abs(/** @type {number} */ (data[i])));
+    return 20 * Math.log10(peak);
+  });
+}
+
+/**
+ * How far each cycle's peak level is from the next one's, in dB.
+ * @param {number[]} peaks
+ */
+const peakSteps = (peaks) =>
+  peaks.slice(1).map((p, c) => Math.abs(p - /** @type {number} */ (peaks[c])));
+
+/**
+ * A genome's chant source for timeline frames `[0, frames)`, from a fresh track.
+ * @param {Genome} genome
+ * @param {number} frames
+ */
+const sourceOf = (genome, frames) =>
+  chantChunk(chantTrack(genome, /** @type {Voice} */ (genome.voices[0]), RATE, SEED), 0, frames);
+
+describe("the chant's growl and rough", () => {
+  test.each([0, 0.2, 1])(
+    "at vowel %s, growl 1 sets the strongest half-integer partial in 200–800 Hz within 6 dB of the strongest integer one",
+    (vowel) => {
+      const partials = (/** @type {number} */ growl) =>
+        bandPartials(mono(oneChant({ root: 65, vowel, depth: 0, growl }), 0, RATE));
+      const on = partials(1);
+      expect(Math.abs(on.half - on.integer)).toBeLessThanOrEqual(6);
+      const off = partials(0);
+      expect(off.half).toBeLessThan(off.integer - 60);
+    },
+  );
+
+  test.each([0, 1])(
+    "at growl %s, rough 1 sets neighboring cycles' peaks 2 dB or more apart",
+    (growl) => {
+      const steps = peakSteps(cyclePeaks(oneChant({ root: 65, depth: 0, growl, rough: 1 }), 100));
+      expect(Math.min(...steps)).toBeGreaterThanOrEqual(2);
+    },
+  );
+
+  test.each([0, 1])(
+    "at growl %s, rough 0 keeps neighboring cycles' peaks under 0.1 dB apart",
+    (growl) => {
+      const steps = peakSteps(cyclePeaks(oneChant({ root: 65, depth: 0, growl, rough: 0 }), 100));
+      expect(Math.max(...steps)).toBeLessThan(0.1);
+    },
+  );
+
+  test.each([
+    ["one singer", golden],
+    ["six singers", ensemble],
+  ])("%s: growl 0 and rough 0 sing the samples the chant sings without them", (_, genome) => {
+    const zeros = requireGenome(
+      { ...genome, voices: genome.voices.map((v) => ({ ...v, growl: 0, rough: 0 })) },
+      "growl and rough at 0",
+    );
+    expect(sourceOf(zeros, 3 * RATE)).toEqual(sourceOf(genome, 3 * RATE));
+  });
+
+  test("six singers sing the samples they sing without growl until it leaves 0, and others after", () => {
+    const plain = sourceOf(oneChant({ singers: 6 }), 3 * RATE);
+    const moving = sourceOf(oneChant({ singers: 6, growl: GROWL_IN_AND_OUT }), 3 * RATE);
+    const until = 1.5 * RATE;
+    for (const c of [0, 1]) {
+      const a = /** @type {Float32Array} */ (plain[c]);
+      const b = /** @type {Float32Array} */ (moving[c]);
+      expect(b.subarray(0, until)).toEqual(a.subarray(0, until));
+      expect(b.subarray(2 * RATE)).not.toEqual(a.subarray(2 * RATE));
+    }
+  });
+
+  test("the growling golden has growl as a trajectory, rough, a chorus and a non-neutral macro", () => {
+    const voice = /** @type {Voice} */ (growling.voices[0]);
+    expect(voice.growl).toHaveProperty("points");
+    expect(voice.rough).toBeGreaterThan(0);
+    expect(voice.singers).toBeGreaterThan(1);
+    expect(growling.macros.brightness).not.toBe(0.5);
+  });
+
+  test("growl prices its partials wherever it rises above 0, and twelve singers with growl and rough at 1 fit beside a 12 s reverb", () => {
+    /** @param {Record<string, unknown>} change */
+    const at = (change) => {
+      const genome = oneChant(change);
+      return chant.cost(/** @type {Voice} */ (genome.voices[0]), genome);
+    };
+    const plain = at({});
+    expect(at({ growl: 0, rough: 0 })).toBe(plain);
+    expect(at({ growl: 1 })).toBeGreaterThan(plain);
+    expect(at({ growl: GROWL_IN_AND_OUT })).toBe(at({ growl: 1 }));
+    expect(at({ rough: 1 })).toBeGreaterThan(plain);
+    expect(at({ growl: 1, rough: 1 })).toBeGreaterThanOrEqual(at({ growl: 1 }));
+    const genome = requireGenome(
+      { reverbDecay: 12, voices: [{ id: "c", type: "chant", singers: 12, growl: 1, rough: 1 }] },
+      "twelve singers growling with a 12 s reverb",
     );
     expect(cost(genome)).toBeLessThanOrEqual(COST_BUDGET);
   });
