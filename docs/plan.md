@@ -2747,6 +2747,9 @@ for these steps.
   is kept unless the owner chooses to develop it again.
   The track page lists every development of the track, placed or not, so one written while the
   page was closed or whose swap was skipped can be placed by hand (the TD.3 review's finding).
+  A bridge's neighbor state at its 270-token cap keeps every value `checkBridge` compares,
+  cutting other detail first, and a skipped bridge names the join it was for (the TD.5
+  re-review's findings; test with 17-digit settings on a dense neighbor).
 - **Tiers:** domain, server, web.
 - **Tests first:** acceptance 6 against the fake omlx; a cancel after the second section keeps
   the first two; the proposal budget.
@@ -4273,3 +4276,13 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   renders (only the half-integer harmonics above 1.5 kHz, −36 dB difference; every other bit
   the same), so it waits on the owner: whether any growl genome was made since CG.1. Schema
   text limit raised to 4,100 (0072 amended); the develop prompt has 77 tokens left (0090).
+- 2026-11-09: TD.5 merged as 5ad5184 (Opus: 414k tokens, 279 calls, 61 min with a main merge and
+  one fix round; reviewers Sonnet: 108k and 87k tokens, 3.8 and 14 min, FAIL then PASS). B on a
+  join inserts a bridge (120 s by default, 60–900 s) developed from the join's text and held to
+  both neighbors' meeting states: voices, fixed settings and join globals must match exactly, and
+  both 16 s weaves must hold, checked with `morphGenome` as the track plays them. A genome has
+  one key, so a bridge across a change of tuning, scale, key, pulse or bpm is two halves with an
+  8 s crossfade on which only noise, recordings and cymbal may sound (0081). The first review
+  found fixed values shown at 3 digits against an exact check; they are now written exactly.
+  `bridgeSwap` also requires both neighbors' developments unchanged. The worst bridge prompt is
+  4,071 of 4,096. Two follow-ups went into TD.6. `./scripts/check` clean: 2,639 tests.
