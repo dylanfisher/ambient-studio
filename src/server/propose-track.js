@@ -39,6 +39,7 @@ import {
 } from "./generate-candidates.js";
 import { getCandidate, getGenome, listRequestGroup } from "./generation-store.js";
 import { JOB_STEP } from "./job-steps.js";
+import { ownedBy } from "./omlx-queue.js";
 import { PRODUCER } from "./producer.js";
 import { addSketch, listSketches } from "./rating-store.js";
 import { findRegionAnalysis } from "./region-analysis-store.js";
@@ -229,8 +230,7 @@ const placed = (arrangement, elites, sketchIds, generationId) => ({
  * repair, or the answer can't be repaired, the job fails, listing every finding, and no track or
  * sketch is made; every request stays stored as a generation. A valid proposal's elite sketches,
  * its check against them and its track are written in one transaction, so a throw there leaves
- * none of them. Cancelling the job cancels the omlx queue: the runner runs one job at a time, so
- * while this one runs the queue holds only its requests.
+ * none of them. Cancelling the job cancels its own omlx requests (decision 0092).
  * @param {App} app
  * @param {ProposeRequest} request
  * @returns {(job: JobContext) => Promise<{ trackId: number, revisionId: number,
@@ -239,7 +239,8 @@ const placed = (arrangement, elites, sketchIds, generationId) => ({
 export function proposeJob(app, { vibeId, name, length, arc, regionId }) {
   return async (job) => {
     const { store, config } = app;
-    const cancelRequests = () => app.queue.cancel();
+    const queue = ownedBy(app.queue, job.signal);
+    const cancelRequests = () => queue.cancel();
     job.signal.addEventListener("abort", cancelRequests);
     try {
       job.progress(0, 1, JOB_STEP.readingMaterial);
@@ -264,7 +265,7 @@ export function proposeJob(app, { vibeId, name, length, arc, regionId }) {
       const sampling = firstSampling(seed);
       const batch = {
         store,
-        queue: app.queue,
+        queue,
         config,
         vibeRevisionId: revision.id,
         sessionId: null,
