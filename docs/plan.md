@@ -4320,5 +4320,5 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   - One reviewer resent its report three times and one builder's report never came; the
     orchestrator stopped the first and read the second's diff. When a builder is quiet, read its
     branch before asking it.
-  - Wall time: TD.3 98 min, CG.2 with its fix about 70, WF.2b about 35, TD.5 61, WF.3 43, WF.4
-    29; reviews 4–21 min.
+  - Wall time: TD.3 98 min, CG.2 57 with two fixes, WF.2b 30, TD.5 61, WF.3 43, WF.4
+    29; reviews 2–21 min.
