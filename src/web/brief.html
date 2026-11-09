@@ -264,6 +264,23 @@
       </div>
     </main>
 
+    <template id="job-progress">
+      <div class="job">
+        <div class="row">
+          <strong data-part="title">job</strong>
+          <span class="badge" data-part="state">state</span>
+          <span class="muted small" data-part="elapsed"></span>
+          <span class="spacer"></span>
+          <button class="button outline small" type="button" data-part="cancel" title="Cancels this job. Anything it already finished is kept.">Cancel</button>
+        </div>
+        <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" data-part="bar"><div class="progress-fill" data-part="fill"></div></div>
+        <p class="small" data-part="step"></p>
+        <p class="small muted" data-part="notEmbedded" hidden></p>
+        <p class="small muted" data-part="notRanked" hidden></p>
+        <p class="small errors" data-part="error" hidden></p>
+      </div>
+    </template>
+
     <template id="choice-field">
       <label class="field">
         <span class="field-name" data-part="label">rule</span>
