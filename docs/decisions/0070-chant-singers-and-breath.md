@@ -2,7 +2,8 @@
 
 - **Date:** 2026-11-08
 - **Status:** accepted; provisional: owner to confirm. Amends [0069](0069-chant-voice.md) (the
-  singers, the cost, the common `detune`).
+  singers, the cost, the common `detune`); amended by [0088](0088-chant-growl.md) (a table of two
+  cycles where the voice growls or is rough, cost).
 
 ## Context
 
