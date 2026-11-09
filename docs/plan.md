@@ -2575,6 +2575,192 @@ point is on the dashboard. Acceptance 1–7 are tests. The 20-minute bench with 
 cymbal and a drum renders at a median of 27.2x, peak 634 MiB. Every existing golden is
 unchanged and the engine version stays 2. The owner's listening checks above are still open.
 
+## Phase TD — Track development
+
+**Goal:** a track develops its sketches instead of only playing them. The owner places sketches
+on the timeline and writes, for each section, what should happen there, and for each join, how
+one part should become the next. The model reads the sketch, where it came from and what sits on
+either side, and writes the section's own genome at the section's length. Joins blend the two
+sides voice by voice, or through a passage written for them, instead of only crossfading.
+
+**Settled by the owner on 2026-11-09:** "the sketches you choose are just that: sketches.
+develop in track mode is where you can put together sketches and describe how you want them to
+develop in the track." So a development belongs to its track: it never becomes a sketch, never
+changes the sketch it came from, and doesn't appear in sessions, ranking, the map or the
+lineage page. It names its sketch as where it came from, so lineage continues through it.
+
+**What the code holds today** (read at `b6af593`):
+
+- A section is a window of one sketch's genome (0061). A section longer than its sketch raises
+  the genome's duration and holds every trajectory at its last value (0062), so the added time
+  repeats how the sketch ends.
+- Transitions are a crossfade or a morph (0064). A morph moves every shared parameter by its
+  curve, splits voices that can't move into two instances, and hands everything over in one 4 s
+  crossfade at the end. Tuning, scale, key, pulse or bpm that differ make it a crossfade.
+- The arrangement holds one `arc` line for the track and nothing written per section. The
+  proposal (0067) reads one line of numbers per sketch and no genome or lineage.
+- Explore (0038) is the nearest operator: a base genome plus a direction in words becomes a
+  variation, through `sendRequest`, the linter and one repair. `conciseGenome` (0072) writes a
+  genome for the prompt without its defaults. Candidates store `parentIds` and `operator`
+  (0039), so a sketch's ancestry can be walked.
+- Limits a development has to fit: `MAX_DURATION` 900 s a genome, `MAX_VOICES` 16, `MAX_POINTS`
+  64 a trajectory, `COST_BUDGET`, omlx's 8 192-token context split between the first prompt
+  and the repair (0024).
+
+**Acceptance, as measurable checks:**
+
+1. **Words on the timeline.** Each section and transition holds the owner's text (empty by
+   default), saved with the arrangement; every stored arrangement migrates to the new shape,
+   tested over the previous one, and renders with the same recipe key.
+2. **A reading of a sketch.** For any sketch, a reading lists its voices, what moves and over
+   what range, its macros and its ranged features, and the chain from its first ancestor with
+   each step's operator, words and the genome paths that changed. Both fit their stated token
+   budgets for the largest stored genome shapes, tested.
+3. **Develop a section.** From the section's text, the reading, the lineage, the track's arc and
+   the neighbors' states where they meet this section, one request (and at most one repair)
+   writes a genome of the section's length that validates, lints under the brief and fits the
+   cost budget, against the fake omlx. It is stored as the track's, the section plays it, and
+   the track renders and re-renders from its manifest to the same hash. The sketch's rows are
+   unchanged.
+4. **Weave.** A `weave` transition hands voices over one at a time across its seconds, in a
+   stated order, instead of all at once; a voice both sides hold with equal fixed numbers plays
+   through unbroken. Checked at each voice's handover time, with the render before the weave
+   equal to the outgoing section's within 0007's tolerance.
+5. **Bridge.** A passage written for a join starts in the outgoing section's end state and ends
+   in the incoming one's start state, so both its joins morph or weave instead of falling back
+   to a crossfade; it can carry a change of key or tuning that a morph can't.
+6. **The whole track.** A proposal writes text for every section and transition, and one
+   owner-started job develops every section in order, each request reading the developed
+   section before it. Every request goes through the queue, one at a time, with a cost confirm.
+
+**Gate:** `./scripts/check`; `./scripts/bench --track` still under 1 GiB with developed
+sections and a weave; omlx only through the queue, with a fake in tests; the owner's listening
+checks.
+
+**Reproducibility.** No step changes what a stored genome and seed render, or what a stored
+arrangement renders: new keys default to no text, no development and today's transitions. The
+engine version stays 2.
+
+### Steps
+
+Order: TD.1, then TD.2 ‖ TD.4, then TD.3, then TD.5, then TD.6. Records 0077–0082 are reserved
+for these steps.
+
+#### TD.1 — Words on sections and transitions
+
+- **Builds:** `text` on every section and transition in the arrangement (at most 300
+  characters, empty string by default, every key present as 0061 says); a migration that adds
+  the keys to every stored revision, tested over the previous shape; the timeline's chosen
+  section and its transition get a text field each, saved with the arrangement; the section
+  block shows the first words. Text never changes the render: the recipe and its key leave it
+  out, tested on a track with and without text.
+- **Tiers:** domain (schema, validator), server (migration), web (timeline).
+- **Tests first:** validation of the new keys with paths; the migration over a stored 0061-shape
+  revision; the recipe key unchanged by text; the page's edits.
+- **Records:** writes 0077. Amends 0061.
+- **Parallel:** none. Review: yes (a stored shape changes).
+
+#### TD.2 — Reading a sketch and its lineage
+
+- **Builds:** pure functions in `src/domain`: `sketchReading(genome, features)` lists the
+  globals (tuning, scale, key, pulse), each voice (type, level, register, which parameters move,
+  from what to what and when), the macros' motion and the ranged features, in short lines;
+  `lineageReading(chain)` walks from the first ancestor to the sketch with each step's operator,
+  intent or direction, and the genome paths that changed against its parent (`genomeChanges`).
+  A route gives both for a sketch (`GET /api/sketches/:id/reading`), and the timeline shows
+  them for the chosen section, so the owner sees what the model will read.
+- **Tiers:** domain, server, web.
+- **Tests first:** readings of scripted genomes and chains; the token budget for a 16-voice
+  genome with every trajectory full and a 12-step chain (the builder sets the budget against
+  TD.3's prompt and records it).
+- **Records:** writes 0078.
+- **Parallel:** with TD.4; TD.2 adds files and one card to `track.js`, TD.4 changes the morph's
+  files and the transition line, so name which lines of `track.js` each owns.
+
+#### TD.3 — Develop a section
+
+- **Builds:**
+  - A `developments` table (irreplaceable, removed by mark): the track, the sketch, the text it
+    was written from, the seconds asked, the genome, the seed (the sketch's, so voices that
+    continue play the sketch's events), the generation, and when.
+  - A section's `developmentId` (null by default, migrated as TD.1's keys are): the section then
+    plays the development's genome from its `offset` instead of the sketch's.
+    `sectionGenome`, `sectionMorph`, the manifest and the cost read it.
+  - The `develop` operator: `buildDevelopPrompt` in `src/domain` with the brief, the arc, the
+    section's text, its seconds, the sketch's `conciseGenome`, TD.2's readings, and the states
+    where the neighbors meet this section (the previous one's end, the next one's start, each
+    the developed genome when there is one). The model writes the whole genome at the section's
+    length, starting from the sketch and changing over time as the text asks, through
+    trajectories and voice starts and ends. It keeps tuning, scale, key, pulse and bpm unless
+    the text asks for a change, since a change makes the joins crossfade. The answer is checked
+    by the validator, the brief's linter and the cost budget, with one repair (0024).
+  - A `develop` job, owner-started from the chosen section (a key and a button), with a cost
+    confirm (`proposeCostText`'s route) and cancel through the queue; when it's done the section
+    takes the development and the track saves a new revision noted "Section N developed", with
+    `steerSwap`'s rules for a timeline that changed meanwhile (0066). The section's player plays
+    the developed window, and the section shows it's developed, with a way back to the plain
+    sketch. Developing again keeps the earlier development's row.
+- **Tiers:** domain, server, web.
+- **Tests first:** acceptance 3 against the fake omlx, with a repair round; the prompt's token
+  budget at its largest; the section player and the track render reading the development; a
+  cancelled job writes nothing; a timeline changed during the run, as 0066's cases.
+- **Records:** writes 0079. Amends 0061, 0062, 0064 (the genome a morph reads), 0066.
+- **Parallel:** none. Review: yes (omlx boundary, a new table), with a performance pass.
+
+#### TD.4 — Weave transitions
+
+- **Builds:** `TRANSITION_KIND.weave`, `{kind, seconds, curve}`, built on `morphGenome`: matched
+  voices move and play through as in a morph; every voice that must split fades out or in on its
+  own stretch of the transition instead of all across it, in a stated order (leaving voices
+  first, highest first, then entering voices, lowest first, or the builder's measured
+  alternative), and the fixed globals still hand over in the last 4 s. A voice both sides hold
+  with equal fixed numbers is never split. The timeline's transition line and M's toggle step
+  through crossfade, morph and weave; the fallbacks are the morph's, said in words.
+- **Tiers:** domain, engine (constants), web.
+- **Tests first:** acceptance 4; a weave of sketches with no split voices equals the morph's
+  genome; the fallbacks; the manifest names the weave and a crossfade- or morph-only track's
+  recipe key is unchanged.
+- **Records:** writes 0080. Amends 0064.
+- **Parallel:** with TD.2. Review: yes, with a performance pass (render path).
+
+#### TD.5 — Bridges
+
+- **Builds:** "Bridge" on a transition inserts a section between its two neighbors, developed by
+  TD.3's operator from the transition's text with both neighbors as fixed ends: its voices,
+  their fixed numbers and its globals where it starts are the outgoing section's at its end, and
+  where it ends the incoming one's at its start, so both its joins weave or morph. The check
+  adds rules for those ends (each a finding the repair quotes). A bridge between sketches in
+  different keys or tunings moves through voices that don't carry pitch, or common tones, as the
+  builder works out and records. Its section is marked a bridge on the timeline.
+- **Tiers:** domain, server, web.
+- **Tests first:** acceptance 5 against the fake omlx; both joins hold as weaves (`sectionMorph`
+  ok); a bridge between two keys.
+- **Records:** writes 0081.
+- **Parallel:** none. Review: yes.
+
+#### TD.6 — Proposing and developing the whole track
+
+- **Builds:** the proposal's answer gains each section's and transition's text, drawn from the
+  arc (0067's budget rechecked); "Develop every section" runs TD.3's request for each section in
+  order, each reading the developed section before it, as one owner-started job with a confirm
+  that counts the requests and cancels between them. A section the owner has already developed
+  is kept unless the owner chooses to develop it again.
+- **Tiers:** domain, server, web.
+- **Tests first:** acceptance 6 against the fake omlx; a cancel after the second section keeps
+  the first two; the proposal budget.
+- **Records:** writes 0082. Amends 0067.
+- **Parallel:** none. Review: yes (omlx boundary).
+
+**Pending owner checks** (after TD.3, TD.4 and TD.6, on mbp2015 or mbp2026):
+
+- Develop one section from a short sketch at three times its length with a line of text; does
+  it change the way the text says, and does it still sound like its sketch?
+- Play a weave and a morph of the same join; which sounds more like one piece?
+- Bridge two sketches in different keys; does the change sound intended?
+- Propose a 10-minute track and develop every section; listen for parts that stall or repeat.
+
+**Result:**
+
 ## Phase 7 — Album builder
 
 **Goal:** tracks ordered into an album with an arc. **Acceptance:** ordering; energy, brightness
@@ -3685,3 +3871,7 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   most for each struck voice. `./scripts/bench --chant` renders 20 minutes (two 605 s sections
   of one genome) at 27.2x, spread 27.2–27.4x, 634 MiB. `./scripts/check` clean: 2,327 tests.
   Phase CV is done; its listening checks wait for the owner.
+- 2026-11-09: phase TD written at the owner's request ("lets do this"): text on each section
+  and transition, a reading of each sketch and its lineage, sections developed by the model into
+  their own genomes, weave and bridge joins, and developing a whole proposed track. Developments
+  belong to the track and never become sketches. Records 0077–0082 are reserved for its steps.
