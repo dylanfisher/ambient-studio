@@ -25,7 +25,9 @@ import { GENOMES, removeStudio, startStudio, VIBE } from "../support/studio.js";
 
 // Every real set the words route serves is a candidate's, so the test adds one the page sends
 // values for with no candidate: a number, a
-// whole number and a choice.
+// whole number and a choice; and a candidate's set too large for the prompt even narrowed, which
+// counts how often it was narrowed.
+const narrowings = vi.hoisted(() => ({ count: 0 }));
 vi.mock("../../src/domain/words-sets.js", async (original) => {
   /** @type {any} */
   const real = await original();
@@ -41,6 +43,25 @@ vi.mock("../../src/domain/words-sets.js", async (original) => {
       subject: "how one voice plays",
       scope: real.WORDS_SCOPE.page,
       fields: () => TEST_FIELDS,
+    },
+    huge: {
+      subject: "everything at once",
+      scope: real.WORDS_SCOPE.candidate,
+      label: "Everything",
+      fields: (/** @type {any} */ context) => ({
+        [context.voicesWithParams === 0 ? "narrow" : "wide"]: number({
+          min: 0,
+          max: 1,
+          default: 0.5,
+          unit: "",
+          description: "x".repeat(40_000),
+        }),
+      }),
+      narrower: (/** @type {any} */ context) => {
+        if (context.voicesWithParams === 0) return null;
+        narrowings.count += 1;
+        return { ...context, voicesWithParams: 0 };
+      },
     },
   };
   return {
@@ -432,4 +453,44 @@ test("the route resolves candidateId, refusing one of another brief, a removed o
     expect(answer.body.toString()).toContain(message);
   }
   expect(studio.omlx.requests).toHaveLength(0);
+});
+
+test("a candidate's set still over the budget once narrowed is a 400 in words, and nothing is asked", async () => {
+  const { studio, candidate, path } = await candidateStudio();
+  const body = {
+    set: "huge",
+    words: "all of it",
+    current: { wide: 0.5 },
+    candidateId: candidate.id,
+  };
+  const answer = await studio.server.api("POST", path, body);
+  expect(answer.status).toBe(400);
+  expect(answer.json().error).toMatch(
+    /^the words' prompt is about \d+ tokens, over its \d+-token budget/,
+  );
+  expect(narrowings.count).toBe(1);
+  expect(studio.omlx.requests).toHaveLength(0);
+});
+
+test("a second words job for a candidate's set is a 409 naming the first", async () => {
+  const { studio, candidate, genome, path } = await candidateStudio();
+  const body = {
+    set: "locks",
+    words: "keep it all",
+    current: allFree(genome),
+    candidateId: candidate.id,
+  };
+  studio.omlx.script({ ...tokens({ changes: {}, said: "Nothing." }), holdAfter: 0 });
+  const first = await studio.ok("POST", path, body);
+  const second = await studio.server.api("POST", path, {
+    ...body,
+    set: "macros",
+    current: Object.fromEntries(Object.keys(MACROS).map((macro) => [macro, "none"])),
+  });
+  expect(second.status).toBe(409);
+  expect(second.json().jobId).toBe(first.id);
+  await studio.omlx.waitForRequests(1);
+  studio.omlx.release();
+  await studio.drive(studio.server.jobs.settled(first.id));
+  expect(studio.omlx.requests).toHaveLength(1);
 });
