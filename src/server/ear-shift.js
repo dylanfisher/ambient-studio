@@ -10,8 +10,8 @@ import { toVector } from "../engine/vector-view.js";
 import { STREAM_SEEDS } from "./candidate-job.js";
 import {
   currentRevision,
+  firstSampling,
   requestGroupName,
-  samplingStream,
   sendRequest,
 } from "./generate-candidates.js";
 import { getGenome, listRequestGroup } from "./generation-store.js";
@@ -47,10 +47,6 @@ export async function readShiftWords(app, session, channel, words) {
   if (listRequestGroup(app.store, requestGroup).length > 0) {
     throw new Error(`request group ${requestGroup} already exists; describe the shift again`);
   }
-  // One draw asked for is one given.
-  const { sampling } = /** @type {ReturnType<typeof samplingStream>[number]} */ (
-    samplingStream(seed, 1)[0]
-  );
   const batch = {
     store: app.store,
     queue: app.queue,
@@ -62,7 +58,14 @@ export async function readShiftWords(app, session, channel, words) {
     attachmentIds: [],
     retrievalMethod: RETRIEVAL_METHOD.none,
   };
-  const sent = await sendRequest(batch, 0, prompt, sampling, null, SHIFT_RESPONSE_FORMAT);
+  const sent = await sendRequest(
+    batch,
+    0,
+    prompt,
+    firstSampling(seed),
+    null,
+    SHIFT_RESPONSE_FORMAT,
+  );
   if (sent.failure !== null) {
     throw new HttpError(502, `The model couldn't be asked: ${sent.failure.message}`);
   }

@@ -169,6 +169,8 @@ test("the routes refuse bad words, a bad form and a second draft while one runs"
   const second = await server.api("POST", "/api/brief-drafts", { words: WORDS, current: null });
   expect(second.status).toBe(409);
   expect(second.json().jobId).toBe(first.id);
+  // release() frees only a request the fake holds, so wait for the job to send it.
+  await studio.omlx.waitForRequests(1);
   studio.omlx.release();
   await studio.drive(server.jobs.settled(first.id));
 });

@@ -206,3 +206,4 @@ literal "cents" | files src/engine/chant.js src/engine/genome-schema.js | the un
 literal "${voice.id}" | files src/engine/chant.js src/engine/granular-cloud.js | quotes a missing voice id in each voice's own error
 literal "wide" | files src/domain/ear-settings.js src/domain/reference-words.js | a search by ear's variation in ear-settings, and a word for a region's sound in reference-words
 literal "shift" | files src/domain/operator.js src/domain/shift-prompt.js | the operator a shift's generation names in its request group, and the key of the model's answer in shift-prompt
+literal "words" | files src/server/draft-brief-routes.js src/server/session-routes.js | each route's own body field for the owner's words: a brief's description to draft from in draft-brief-routes, a search by ear's shift in session-routes
