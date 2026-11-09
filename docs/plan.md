@@ -4322,3 +4322,16 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
     branch before asking it.
   - Wall time: TD.3 98 min, CG.2 57 with two fixes, WF.2b 30, TD.5 61, WF.3 43, WF.4
     29; reviews 2–21 min.
+- 2026-11-09: TD.6 merged as 0c0051f (Opus: 420k tokens, 324 calls, about 5 h with one fix
+  round, most of it waiting on the suite under load; reviewer Sonnet: 97k tokens, 22 calls, 2.1
+  min, FAIL narrowly, the fix read by the orchestrator). A proposal now has a line on every part,
+  and a missing one is a repair finding. "Develop every section" develops each section in turn
+  as one main-lane job, storing each development as it is written so the next prompt meets it
+  as it will play. Bridges and developed sections are kept unless "again" is ticked, and the
+  page saves one version at the end. A Developments card lists every development for placing by
+  hand. A bridge's meeting state keeps every compared setting exactly, so two dense neighbors
+  (16 voices a side of 17-digit settings, about 4,117 tokens) are refused before any request,
+  naming the join. A finished run uses the job's own ids, not rows another tab's job may have
+  written (0082). `./scripts/check` clean: 2,707 tests. Pending owner checks: a 10-minute track
+  proposed then developed throughout, by ear; a cancel mid-run; the Backslash and Backquote
+  labels in Safari 17.6.
