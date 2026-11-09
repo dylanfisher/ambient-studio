@@ -20,6 +20,7 @@ import { SESSION_ROUTES } from "./session-routes.js";
 import { TRACK_RENDER_ROUTES } from "./track-render-routes.js";
 import { TRACK_ROUTES } from "./track-routes.js";
 import { VIBE_ROUTES } from "./vibe-routes.js";
+import { WORDS_ROUTES } from "./words-routes.js";
 
 /** @type {Route[]} */
 export const ROUTES = [
@@ -42,4 +43,5 @@ export const ROUTES = [
   ...DEVELOP_ROUTES,
   ...PROPOSAL_ROUTES,
   ...DRAFT_BRIEF_ROUTES,
+  ...WORDS_ROUTES,
 ];

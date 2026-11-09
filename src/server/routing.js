@@ -79,6 +79,17 @@ export class HttpError extends Error {
 export const duplicateJob = (message, jobId) => new HttpError(409, message, { jobId });
 
 /**
+ * Throws `duplicateJob` when a job of `kind` hasn't finished.
+ * @param {App} app
+ * @param {string} kind
+ * @param {(jobId: number) => string} message the sentence for the owner, naming the job
+ */
+export function refuseUnfinished(app, kind, message) {
+  const unfinished = app.jobs.list().find((job) => job.kind === kind && job.finishedAt === null);
+  if (unfinished) throw duplicateJob(message(unfinished.id), unfinished.id);
+}
+
+/**
  * The request path's segments, each percent-decoded, or undefined when a segment is empty, `.`
  * or `..`, or decodes to one with `/`, `\` or NUL in it. The raw path is used, not one a URL
  * parser normalized, so `/%2e%2e/x` is refused rather than read as `/x`.

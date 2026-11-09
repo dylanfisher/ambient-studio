@@ -7,7 +7,7 @@ import { DEVELOP_LEAST } from "../domain/develop-prompt.js";
 import { JOB_KIND } from "../domain/job-kind.js";
 import { developJob } from "./develop-section.js";
 import { fields, integer, rowId } from "./request-fields.js";
-import { duplicateJob, HttpError } from "./routing.js";
+import { HttpError, refuseUnfinished } from "./routing.js";
 import { checkedArrangement, requireTrack } from "./track-routes.js";
 import { listTrackRevisions } from "./track-store.js";
 
@@ -40,15 +40,12 @@ export const DEVELOP_ROUTES = [
           `Section ${index + 1} plays ${seconds} s; a section must play at least ${DEVELOP_LEAST} s to be developed, since a genome lasts at least that long.`,
         );
       }
-      const unfinished = app.jobs
-        .list()
-        .find((job) => job.kind === DEVELOP_JOB && job.finishedAt === null);
-      if (unfinished) {
-        throw duplicateJob(
-          `A section is already being developed (job ${unfinished.id}). Wait for it to finish, or cancel it.`,
-          unfinished.id,
-        );
-      }
+      refuseUnfinished(
+        app,
+        DEVELOP_JOB,
+        (id) =>
+          `A section is already being developed (job ${id}). Wait for it to finish, or cancel it.`,
+      );
       return app.jobs.add(DEVELOP_JOB, developJob(app, { track, revisionId, arrangement, index }));
     },
   },

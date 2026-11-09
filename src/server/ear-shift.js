@@ -1,32 +1,32 @@
-// Reads the owner's words for a shift as a search by ear's sliders (decision 0075): one model
-// request through the queue, stored as a generation in a request group of its own, its answer
-// checked as the steering route checks the page's. The search isn't told: the page sets its
+// Reads the owner's words for a shift as a search by ear's sliders (decisions 0075, 0084): the
+// words operator's request for the `shift` field set, each path the run moves, with where the
+// best sits on each as the reading. It runs from the search's own route, not as a job, since
+// the search holds the job runner while it runs. The search isn't told: the page sets its
 // sliders from the answer, and the owner sends them.
 /** @import { EarChannel } from "./ear-search-job.js" */
 /** @import { App } from "./routing.js" */
+import { checkSteering, EAR_SHIFT } from "../domain/ear-settings.js";
 import { OPERATOR } from "../domain/operator.js";
-import { buildShiftPrompt, readShift, SHIFT_RESPONSE_FORMAT } from "../domain/shift-prompt.js";
+import { buildWordsPrompt } from "../domain/words-prompt.js";
+import { WORDS_SETS } from "../domain/words-sets.js";
 import { toVector } from "../engine/vector-view.js";
-import { STREAM_SEEDS } from "./candidate-job.js";
-import {
-  currentRevision,
-  firstSampling,
-  requestGroupName,
-  sendRequest,
-} from "./generate-candidates.js";
-import { getGenome, listRequestGroup } from "./generation-store.js";
-import { RETRIEVAL_METHOD } from "./retrieve-examples.js";
+import { askWords } from "./ask-words.js";
+import { FIRST_PROMPT_SHARE } from "./draft-brief-routes.js";
+import { currentRevision } from "./generate-candidates.js";
+import { getGenome } from "./generation-store.js";
 import { HttpError } from "./routing.js";
+
+const SET = WORDS_SETS.shift;
 
 /**
  * @param {App} app
  * @param {{ id: number, vibeId: number }} session open
  * @param {EarChannel} channel the session's search by ear, still running
  * @param {string} words the owner's, one line
- * @returns {Promise<{ shift: Record<string, number>, generationId: number }>}
+ * @returns {Promise<{ shift: Record<string, number>, said: string, generationId: number }>}
  */
 export async function readShiftWords(app, session, channel, words) {
-  const { paths, best } = channel.view();
+  const { paths, best, steering } = channel.view();
   if (paths.length === 0 || best === null) {
     throw new HttpError(
       409,
@@ -35,46 +35,41 @@ export async function readShiftWords(app, session, channel, words) {
   }
   const row = getGenome(app.store, best.genomeId);
   if (!row) throw new Error(`the search's best names genome ${best.genomeId}, which has no row`);
-  const { revision } = currentRevision(app.store, session.vibeId);
-  const prompt = buildShiftPrompt({
-    brief: revision.brief,
-    paths,
-    positions: toVector(row.genome, paths),
-    words,
-  });
-  const seed = Math.floor(app.random() * STREAM_SEEDS);
-  const requestGroup = requestGroupName(session.vibeId, seed, OPERATOR.shift);
-  if (listRequestGroup(app.store, requestGroup).length > 0) {
-    throw new Error(`request group ${requestGroup} already exists; describe the shift again`);
-  }
-  const batch = {
-    store: app.store,
-    queue: app.queue,
-    config: app.config,
-    vibeRevisionId: revision.id,
-    sessionId: session.id,
-    requestGroup,
-    exampleIds: [],
-    attachmentIds: [],
-    retrievalMethod: RETRIEVAL_METHOD.none,
-  };
-  const sent = await sendRequest(
-    batch,
-    0,
-    prompt,
-    firstSampling(seed),
-    null,
-    SHIFT_RESPONSE_FORMAT,
+  const positions = toVector(row.genome, paths);
+  const fields = Object.entries(SET.fields(paths)).map(([name, descriptor]) => ({
+    name,
+    descriptor,
+    current: steering.shift[name] ?? EAR_SHIFT.default,
+  }));
+  const messages = buildWordsPrompt(
+    {
+      words,
+      subject: SET.subject,
+      fields,
+      brief: currentRevision(app.store, session.vibeId).revision.brief,
+      reading: paths.map(
+        (path, i) =>
+          `- ${path}: the best so far sits at ${/** @type {number} */ (positions[i]).toFixed(2)} of 0 to 1`,
+      ),
+    },
+    Math.floor(app.config.queue.contextBudgetTokens * FIRST_PROMPT_SHARE),
   );
-  if (sent.failure !== null) {
-    throw new HttpError(502, `The model couldn't be asked: ${sent.failure.message}`);
+  const answer = await askWords(app, {
+    vibeId: session.vibeId,
+    sessionId: session.id,
+    operator: OPERATOR.shift,
+    messages,
+    fields,
+  });
+  if (!answer.ok) {
+    throw new HttpError(502, `${answer.error}\nDescribe it again, or set the sliders by hand.`);
   }
-  const read = readShift(sent.completion, paths);
-  if (!read.ok) {
-    throw new HttpError(
-      502,
-      `The model's answer couldn't be read as a shift: ${read.error}. Describe it again, or set the sliders by hand.`,
-    );
-  }
-  return { shift: read.shift, generationId: sent.generation.id };
+  // The answer names only what the words change; the rest keep the run's steering.
+  const checked = checkSteering(
+    steering.variation,
+    { ...steering.shift, ...answer.changes },
+    paths,
+  );
+  if (!checked.ok) throw new Error(`a checked shift failed the steering's check: ${checked.error}`);
+  return { shift: checked.steering.shift, said: answer.said, generationId: answer.generationId };
 }

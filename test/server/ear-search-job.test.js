@@ -403,24 +403,36 @@ test("words for a shift go to the model once and come back as sliders, the searc
   const { channel, status } = startJob(made, 1);
   const [first, second] = paths;
   const pair = await waitFor(channel, (v) => v.phase === EAR_PHASE.listening);
-  omlx.script({ tokens: [JSON.stringify({ shift: { [`${first}`]: -0.5, [`${second}`]: 0 } })] });
+  omlx.script({
+    tokens: [
+      JSON.stringify({
+        changes: { [`${first}`]: -0.5, [`${second}`]: 0 },
+        said: "A little less of the first control.",
+      }),
+    ],
+  });
   const read = await call(made, "POST", SHIFT_WORDS, { words: "a bit darker" });
   expect(read.shift).toEqual({ [`${first}`]: -0.5 });
+  expect(read.said).toBe("A little less of the first control.");
   expect(omlx.requests).toHaveLength(1);
   const user = JSON.stringify(omlx.requests[0]);
   expect(user).toContain("a bit darker");
-  expect(user).toContain(`${first}: now ${from[0]?.toFixed(2)}`);
+  expect(user).toContain(`${first}: the best so far sits at ${from[0]?.toFixed(2)} of 0 to 1`);
+  expect(user).toContain(`- ${first}: how far new variations lean on this control; -1..1; now 0`);
   const generation = getGeneration(app.store, read.generationId);
   expect(generation?.requestGroup).toContain(OPERATOR.shift);
   expect(channel.view().steering).toEqual(START_STEERING);
 
   // A second request draws another seed, so it makes a request group of its own.
   app.random = () => 0.75;
-  omlx.script({ tokens: [JSON.stringify({ shift: { nowhere: 1 } })] });
+  // An answer naming a path the search doesn't move gets one repair (0084).
+  const nowhere = { tokens: [JSON.stringify({ changes: { nowhere: 1 }, said: "Brighter." })] };
+  omlx.script(nowhere, nowhere);
   const brighter = call(made, "POST", SHIFT_WORDS, { words: "brighter" });
   await expect(driveGaps(made.clock, app.config.queue.minGapMs, brighter)).rejects.toThrow(
-    /couldn't be read as a shift: the shift names nowhere/,
+    /still invalid after one repair[\s\S]*\$\.changes\.nowhere \(changes\): unknown field/,
   );
+  expect(omlx.requests).toHaveLength(3);
   await expect(call(made, "POST", SHIFT_WORDS, { words: "two\nlines" })).rejects.toThrow(
     /one line/,
   );
