@@ -62,8 +62,8 @@ import { getRevision } from "./vibe-store.js";
  * @property {{ id: number, name: string, revisionId: number }} track
  * @property {ManifestSection[]} sections
  * @property {{ kind: string, seconds: number, morphSeconds?: number, curve?: string }[]} transitions
- *   as the mix renders them (`renderedTransition`): `seconds` is the crossfade, a morph's
- *   handover for a morph
+ *   as the mix renders them (`renderedTransition`): `seconds` is the crossfade, the handover
+ *   for a morph or a weave
  * @property {{ fadeIn: number, fadeOut: number }} fades the track's, in seconds
  * @property {number} chunkSeconds
  * @property {string} crossfadeLaw

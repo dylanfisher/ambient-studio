@@ -16,7 +16,7 @@ import { CROSSFADE_LAW } from "../../src/engine/crossfade.js";
 import { ENGINE_VERSION } from "../../src/engine/engine-version.js";
 import droneGenome from "../../src/engine/genomes/drone.json" with { type: "json" };
 import { LANE_CURVE, LANE_POINTS, LANE_SAMPLE_SECONDS } from "../../src/engine/macro-lane.js";
-import { MORPH_HANDOVER } from "../../src/engine/morph.js";
+import { MORPH_HANDOVER, MORPH_SUFFIX } from "../../src/engine/morph.js";
 import { requireGenome } from "../../src/engine/validate-genome.js";
 import { addCandidate, putGenome } from "../../src/server/generation-store.js";
 import { genomeHash } from "../../src/server/genome-hash.js";
@@ -264,6 +264,61 @@ test("a morph renders as the outgoing genome moving into the next, and one that 
     [0, 16],
   ]);
   expect(manifest.frames).toBe((16 + 16 + 16 - 8 - 8) * 48000);
+  const temp = await mkdtemp(join(server.paths.trackRenders, "rerender-"));
+  try {
+    expect(await rerenderTrack(manifest, { tempDir: temp })).toEqual({
+      pcmSha256: manifest.pcmSha256,
+    });
+  } finally {
+    await rm(temp, { recursive: true });
+  }
+});
+
+test("a weave with split voices renders, and re-renders from its manifest to the same hash", async () => {
+  const studio = await setup();
+  const { ok, server, track, vibe } = studio;
+  const [drone] = droneGenome.voices;
+  // Both voices differ in root between the sketches, so each side hands over two (0080).
+  const [from, into] = seedSketches(studio, vibe, [
+    { ...droneGenome, voices: [drone, { ...drone, id: "high", root: 90 }] },
+    {
+      ...droneGenome,
+      voices: [
+        { ...drone, root: 44 },
+        { ...drone, id: "high", root: 70 },
+      ],
+    },
+  ]);
+  const arrangement = {
+    ...emptyArrangement(),
+    sections: [
+      { sketchId: from?.id, offset: 0, seconds: 16, text: "" },
+      { sketchId: into?.id, offset: 0, seconds: 16, text: "" },
+    ],
+    transitions: [{ kind: "weave", seconds: 8, curve: "smooth", text: "" }],
+  };
+  const revision = await ok("POST", `/api/tracks/${track.id}/revisions`, {
+    arrangement,
+    note: "weave",
+  });
+  const rendered = await runJob(studio, `/api/tracks/${track.id}/render`, {
+    revisionId: revision.id,
+  });
+  const manifest = JSON.parse(
+    await readFile(
+      join(server.paths.trackRenders, String(track.id), rendered.result.key, "manifest.json"),
+      "utf8",
+    ),
+  );
+  expect(manifest.transitions).toEqual([
+    { kind: "weave", seconds: MORPH_HANDOVER, morphSeconds: 8, curve: "smooth" },
+  ]);
+  expect(manifest.sections[0].instances).toEqual([`drone${MORPH_SUFFIX}`, `high${MORPH_SUFFIX}`]);
+  // Each split voice falls or rises on its own stretch: the two on a side end apart.
+  const ends = manifest.sections[0].genome.voices.map(
+    (/** @type {any} */ v) => v.level.points.at(-1)[0],
+  );
+  expect(new Set(ends).size).toBe(2);
   const temp = await mkdtemp(join(server.paths.trackRenders, "rerender-"));
   try {
     expect(await rerenderTrack(manifest, { tempDir: temp })).toEqual({

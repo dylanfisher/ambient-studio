@@ -80,7 +80,7 @@ const PARAMS = Object.freeze({
 /** @typedef {ValuesOf<typeof VOICE_PARAMS> & ValuesOf<typeof PARAMS>} PadVoice */
 
 /** The register chord notes come from, in Hz. */
-const BAND = Object.freeze({ lo: 100, hi: 500 });
+export const BAND = Object.freeze({ lo: 100, hi: 500 });
 /** Harmonics in each note's PeriodicWave. */
 const HARMONICS = 4;
 /** Each note's level after the decay, against its peak. */

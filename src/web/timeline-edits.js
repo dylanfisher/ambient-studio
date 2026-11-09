@@ -7,6 +7,7 @@
 /** @import { Curve } from "../engine/trajectory.js" */
 import {
   MORPH_CURVE,
+  morphs,
   SECTION_FIELDS,
   TRANSITION_KIND,
   TRANSITION_SECONDS,
@@ -217,26 +218,31 @@ export function stepTransition(arrangement, index, steps) {
 }
 
 /**
- * Turns transition `index` from a crossfade into a morph with `MORPH_CURVE`, or back, keeping
- * its seconds and text. A morph shorter than `MORPH_LEAST` shows as an error rather than growing.
+ * Steps transition `index` from a crossfade to a morph with `MORPH_CURVE`, to a weave with the
+ * morph's curve (0080), and back to a crossfade, keeping its seconds and text. A morph or weave
+ * shorter than `MORPH_LEAST` shows as an error rather than growing.
  * @param {Arrangement} arrangement
  * @param {number} index
  * @returns {Arrangement}
  */
-export const toggleMorph = (arrangement, index) => ({
+export const nextTransitionKind = (arrangement, index) => ({
   ...arrangement,
   transitions: arrangement.transitions.map((transition, i) => {
     if (i !== index) return transition;
     const { seconds, text } = transition;
-    return transition.kind === TRANSITION_KIND.morph
+    if (transition.kind === TRANSITION_KIND.morph) {
+      const curve = /** @type {string} */ (transition.curve);
+      return { kind: TRANSITION_KIND.weave, seconds, curve, text };
+    }
+    return transition.kind === TRANSITION_KIND.weave
       ? { kind: TRANSITION_KIND.crossfade, seconds, text }
       : { kind: TRANSITION_KIND.morph, seconds, curve: MORPH_CURVE, text };
   }),
 });
 
 /**
- * Gives morph `index` the next of 0007's curves, in their order; a crossfade has no curve and
- * stays as it is.
+ * Gives morph or weave `index` the next of 0007's curves, in their order; a crossfade has no
+ * curve and stays as it is.
  * @param {Arrangement} arrangement
  * @param {number} index
  * @returns {Arrangement}
@@ -246,7 +252,7 @@ export function nextCurve(arrangement, index) {
   return {
     ...arrangement,
     transitions: arrangement.transitions.map((transition, i) => {
-      if (i !== index || transition.kind !== TRANSITION_KIND.morph) return transition;
+      if (i !== index || !morphs(transition.kind)) return transition;
       const at = names.indexOf(/** @type {Curve} */ (transition.curve));
       return { ...transition, curve: /** @type {Curve} */ (names[(at + 1) % names.length]) };
     }),

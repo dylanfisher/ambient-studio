@@ -33,10 +33,22 @@ export const ARRANGEMENT_KEY = Object.freeze({
 });
 
 /**
- * How one section passes to the next: a crossfade of the two, or a morph of the first into the
- * second (decision 0064), which falls back to a crossfade when the two can't morph.
+ * How one section passes to the next: a crossfade of the two, a morph of the first into the
+ * second (decision 0064), or a weave, a morph whose voices that can't move hand over one at a
+ * time (0080). A morph or a weave falls back to a crossfade when the two can't morph.
  */
-export const TRANSITION_KIND = Object.freeze({ crossfade: "crossfade", morph: "morph" });
+export const TRANSITION_KIND = Object.freeze({
+  crossfade: "crossfade",
+  morph: "morph",
+  weave: "weave",
+});
+
+/**
+ * Whether a transition of `kind` moves its first section's sounds into the next one's: a morph
+ * or a weave, each with a curve and at least `MORPH_LEAST` seconds.
+ * @param {unknown} kind
+ */
+export const morphs = (kind) => kind === TRANSITION_KIND.morph || kind === TRANSITION_KIND.weave;
 
 /**
  * A new morph's curve: no corner where it starts or ends.
@@ -106,12 +118,13 @@ export const TRANSITION_SECONDS = number({
 });
 
 /**
- * A transition's keys by its kind, in the order a stored one lists them: a morph also names the
- * curve its parameters move by.
+ * A transition's keys by its kind, in the order a stored one lists them: a morph and a weave
+ * also name the curve their parameters move by.
  */
 export const TRANSITION_KEYS = Object.freeze({
   [TRANSITION_KIND.crossfade]: Object.freeze(["kind", "seconds", TEXT_KEY]),
   [TRANSITION_KIND.morph]: Object.freeze(["kind", "seconds", "curve", TEXT_KEY]),
+  [TRANSITION_KIND.weave]: Object.freeze(["kind", "seconds", "curve", TEXT_KEY]),
 });
 
 /**
@@ -126,7 +139,7 @@ export const TRANSITION_KEYS = Object.freeze({
  * @typedef {object} Transition
  * @property {string} kind a `TRANSITION_KIND` value
  * @property {number} seconds
- * @property {string} [curve] a morph's: one of 0007's `CURVES`
+ * @property {string} [curve] a morph's or a weave's: one of 0007's `CURVES`
  * @property {string} text the owner's words for how one section becomes the next, or ""
  */
 

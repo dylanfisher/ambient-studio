@@ -2,11 +2,18 @@
 // genome, extended across the transition, with its parameters moving to the incoming section's
 // along their encoded scale (0005) by the transition's curve, so it plays exactly the outgoing
 // section until the morph starts. The track then hands over to the incoming section through a
-// short crossfade at the morph's end (`MORPH_HANDOVER`).
+// short crossfade at the morph's end (`MORPH_HANDOVER`). A weave (0080) is the same morph with
+// each voice that splits handing over on its own stretch of the transition, one after another.
 /** @import { Descriptor, DescriptorTable, NumberDescriptor } from "../engine/descriptor.js" */
 /** @import { Genome, ParamValue, Voice } from "../engine/genome-schema.js" */
 /** @import { Curve, Trajectory } from "../engine/trajectory.js" */
+import { BAND as BELL_BAND, bell } from "../engine/bell.js";
+import { chant } from "../engine/chant.js";
+import { cymbal } from "../engine/cymbal.js";
 import { allowsTrajectory, isNumeric } from "../engine/descriptor.js";
+import { drone } from "../engine/drone.js";
+import { drum } from "../engine/drum.js";
+import { fieldRecording } from "../engine/field-recording.js";
 import {
   GENOME_KEY,
   GLOBAL_PARAMS,
@@ -15,12 +22,16 @@ import {
   VOICE_ID,
   VOICE_PARAMS,
 } from "../engine/genome-schema.js";
+import { granularCloud } from "../engine/granular-cloud.js";
 import { isObject } from "../engine/is-object.js";
 import { MORPH_HANDOVER, MORPH_SUFFIX } from "../engine/morph.js";
+import { noiseBed } from "../engine/noise-bed.js";
+import { BAND as PAD_BAND, pad } from "../engine/pad.js";
 import { MAX_DURATION } from "../engine/timeline.js";
 import { CURVES, DEFAULT_CURVE, MAX_POINTS, valueAt } from "../engine/trajectory.js";
 import { requireGenome } from "../engine/validate-genome.js";
 import { voiceParams } from "../engine/voice-registry.js";
+import { TRANSITION_KIND } from "./arrangement-schema.js";
 import { paramName } from "./param-name.js";
 
 /**
@@ -32,9 +43,20 @@ import { paramName } from "./param-name.js";
  */
 
 /**
+ * One split voice's stretch of a weave, on the morph genome's timeline: a leaving voice's level
+ * falls to the floor from `from` to `to`, an entering one's rises from it.
+ * @typedef {object} Handover
+ * @property {string} id the instance's id in the genome
+ * @property {boolean} leaves whether it is the outgoing section's
+ * @property {number} from
+ * @property {number} to
+ */
+
+/**
  * A morph's genome with the ids of its renamed instances, whose voice is `voiceOfInstance` of
- * the id; or why the transition plays as a crossfade.
- * @typedef {{ ok: true, genome: Genome, instances: string[] } | { ok: false, reason: string }} Morph
+ * the id, and a weave's handovers in their order (none for a morph); or why the transition plays
+ * as a crossfade.
+ * @typedef {{ ok: true, genome: Genome, instances: string[], order: Handover[] } | { ok: false, reason: string }} Morph
  */
 
 /** The globals that decide what a note or a beat is; a morph between two values can't move. */
@@ -52,6 +74,48 @@ const SPLITS = new Set([CURVES.linear, CURVES.late]);
 
 const FLOOR = VOICE_PARAMS.level.min;
 const LEVEL = paramName(VOICE_PARAMS, VOICE_PARAMS.level);
+
+/** The parameter, in Hz, that places the register of each type that has one. */
+const PITCHED = new Set(
+  /** @type {Descriptor[]} */ ([
+    chant.params.root,
+    cymbal.params.center,
+    drone.params.root,
+    drum.params.root,
+    granularCloud.params.root,
+  ]),
+);
+/**
+ * The fundamentals' range of each pitched type whose register no parameter sets.
+ * @type {ReadonlyMap<string, { lo: number, hi: number }>}
+ */
+const BANDS = new Map(
+  /** @type {[string, { lo: number, hi: number }][]} */ ([
+    [pad.type, PAD_BAND],
+    [bell.type, BELL_BAND],
+  ]),
+);
+/** The types with no pitch of their own: a bed, below every pitched voice in a weave's order. */
+const BEDS = new Set([noiseBed.type, fieldRecording.type]);
+
+/**
+ * Where a voice sits in pitch, in Hz, for a weave's order: its root or center at `time`, the
+ * middle of its band on a log scale, or 0 for a bed.
+ * @param {Voice} voice
+ * @param {number} time on the voice's own timeline
+ */
+function register(voice, time) {
+  const pitch = Object.entries(voiceParams(voice.type)).find(([, d]) => PITCHED.has(d));
+  if (pitch) {
+    const [name, descriptor] = pitch;
+    const value = /** @type {ParamValue} */ (voice[name]);
+    return rawAt(/** @type {NumberDescriptor} */ (descriptor), value, time);
+  }
+  const band = BANDS.get(voice.type);
+  if (band) return Math.sqrt(band.lo * band.hi);
+  if (BEDS.has(voice.type)) return 0;
+  throw new Error(`a weave has no register for voice ${voice.id}, of type ${voice.type}`);
+}
 
 /**
  * Moves a value to `target` from `from` to `to` by `curve`. Before `from` it is what it was: a
@@ -135,39 +199,83 @@ function sameVoice(out, into, { from, to, handover }) {
 }
 
 /**
+ * One side's voices of a weave, one after another across the whole move: with `n` voices and a
+ * step of the moving time over `n + 1`, voice `i` moves from step `i` to step `i + 2`, so each
+ * overlaps the next by half, the first starts where the morph does and the last ends where it
+ * ends. A lone voice takes the whole move, as in a morph.
+ * @param {{ voice: Voice, leaves: boolean }[]} side in its order
+ * @param {number} from
+ * @param {number} to
+ */
+function oneAfterAnother(side, from, to) {
+  const step = (to - from) / (side.length + 1);
+  return side.map(({ voice, leaves }, i) => ({
+    voice,
+    leaves,
+    from: i === 0 ? from : from + i * step,
+    to: i === side.length - 1 ? to : from + (i + 2) * step,
+  }));
+}
+
+/**
+ * Each split voice's stretch of a weave: the leaving voices fall one after another, highest
+ * register first, while the entering ones rise one after another, lowest first, both sides
+ * across the whole move (0080); ties keep the genomes' order. Listed leaving voices first.
+ * @param {{ voice: Voice, leaves: boolean, register: number }[]} leaving
+ * @param {{ voice: Voice, leaves: boolean, register: number }[]} entering
+ * @param {number} from
+ * @param {number} to
+ */
+const stretches = (leaving, entering, from, to) => [
+  ...oneAfterAnother(
+    leaving.toSorted((a, b) => b.register - a.register),
+    from,
+    to,
+  ),
+  ...oneAfterAnother(
+    entering.toSorted((a, b) => a.register - b.register),
+    from,
+    to,
+  ),
+];
+
+/**
  * The morph from `outgoing` into `incoming` over `seconds`: moving for `seconds` less
  * `MORPH_HANDOVER`, then holding the incoming values while the track crossfades to the incoming
  * section. Falls back, with the reason, when the two differ in a way a morph can't move
  * (`tuning`, `scale`, `key`, `pulse` and its `bpm`), or when the morph would hold more than
- * `MAX_VOICES` voices or give a trajectory more than `MAX_POINTS` points.
+ * `MAX_VOICES` voices or give a trajectory more than `MAX_POINTS` points. A weave is the same
+ * morph with each split voice's level moving on its own stretch (`stretches`).
  * @param {MorphSide} outgoing
  * @param {MorphSide} incoming
  * @param {number} seconds the transition's
  * @param {Curve} curve
+ * @param {{ weave?: boolean }} [options]
  * @returns {Morph}
  */
-export function morphGenome(outgoing, incoming, seconds, curve) {
+export function morphGenome(outgoing, incoming, seconds, curve, { weave = false } = {}) {
   const out = outgoing.genome;
   const into = incoming.genome;
+  const kind = weave ? TRANSITION_KIND.weave : TRANSITION_KIND.morph;
   for (const name of PITCH) {
     if (out[name] !== into[name]) {
       return {
         ok: false,
-        reason: `the two sketches have different ${name}s (${out[name]}, ${into[name]}), which a morph can't move between`,
+        reason: `the two sketches have different ${name}s (${out[name]}, ${into[name]}), which a ${kind} can't move between`,
       };
     }
   }
   if (out.bpm !== into.bpm) {
     return {
       ok: false,
-      reason: `the two sketches have different tempos (${out.bpm}, ${into.bpm} bpm), which a morph can't move between`,
+      reason: `the two sketches have different tempos (${out.bpm}, ${into.bpm} bpm), which a ${kind} can't move between`,
     };
   }
   const suffixed = [...out.voices, ...into.voices].find(({ id }) => id.endsWith(MORPH_SUFFIX));
   if (suffixed) {
     return {
       ok: false,
-      reason: `voice ${suffixed.id}'s id ends in "${MORPH_SUFFIX}", which a morph adds to a renamed voice`,
+      reason: `voice ${suffixed.id}'s id ends in "${MORPH_SUFFIX}", which a ${kind} adds to a renamed voice`,
     };
   }
   const from = outgoing.at;
@@ -182,10 +290,12 @@ export function morphGenome(outgoing, incoming, seconds, curve) {
    * @param {NumberDescriptor} descriptor
    * @param {ParamValue} value
    * @param {number} target
+   * @param {{ from: number, to: number }} [span] when it moves, the whole morph unless a weave's
+   *   stretch
    * @returns {number | Trajectory}
    */
-  const move = (path, descriptor, value, target) => {
-    const moved = moveTo(descriptor, value, from, to, target, curve);
+  const move = (path, descriptor, value, target, span = { from, to }) => {
+    const moved = moveTo(descriptor, value, span.from, span.to, target, curve);
     const points = isObject(moved) ? /** @type {Trajectory} */ (moved).points.length : 0;
     if (points > MAX_POINTS) crowded.push(`${path} ${points} points`);
     return moved;
@@ -211,26 +321,58 @@ export function morphGenome(outgoing, incoming, seconds, curve) {
     return moved;
   };
 
-  /**
-   * The level of an instance falling to the floor or rising from it.
-   * @param {Voice} voice
-   * @param {number} target
-   */
-  const fade = (voice, target) =>
-    move(`${GENOME_KEY.voices}.${voice.id}.${LEVEL}`, VOICE_PARAMS.level, voice.level, target);
-
   const incomingIds = new Map(into.voices.map((voice) => [voice.id, voice]));
+  /** @param {Voice} voice an outgoing one */
+  const moves = (voice) => {
+    const match = incomingIds.get(voice.id);
+    return match !== undefined && sameVoice(voice, match, { from, to, handover });
+  };
+  const outgoingIds = new Set(out.voices.map(({ id }) => id));
+  const shift = from - incoming.at;
+  // The incoming voices that play as instances, placed on the outgoing timeline. One that would
+  // start after the morph, or end before it, plays only in the incoming section's own render.
+  const rising = [
+    ...out.voices.filter((voice) => !moves(voice)).flatMap(({ id }) => incomingIds.get(id) ?? []),
+    ...into.voices.filter(({ id }) => !outgoingIds.has(id)),
+  ]
+    .map((voice) => ({
+      voice,
+      start: Math.max(from, voice.start + shift),
+      end: Math.min(MAX_DURATION, voice.end + shift),
+    }))
+    .filter(({ start, end }) => start < to && end > from);
+  /** The outgoing voices that fall to the floor in the morph. */
+  const falling = out.voices.filter(
+    (voice) => !moves(voice) && voice.start < to && voice.end > from,
+  );
+  // Only a voice that sounds through the whole move takes a stretch of it; one that starts or
+  // ends inside it falls or rises across the move as in a morph, so a stretch never falls
+  // outside its voice's life and a gap in a side's sequence can't open where a voice ends early.
+  const order = weave
+    ? stretches(
+        falling
+          .filter((voice) => voice.start <= from && voice.end >= to)
+          .map((voice) => ({ voice, leaves: true, register: register(voice, from) })),
+        rising
+          .filter(({ start, end }) => start <= from && end >= to)
+          .map(({ voice }) => ({ voice, leaves: false, register: register(voice, handover) })),
+        from,
+        to,
+      )
+    : [];
+  // By side: two sections of one sketch may hand the same voice object to both.
+  const leavingSpans = new Map(order.filter(({ leaves }) => leaves).map((s) => [s.voice, s]));
+  const enteringSpans = new Map(order.filter(({ leaves }) => !leaves).map((s) => [s.voice, s]));
+
   /** @type {unknown[]} the morph's, checked as its genome is */
   const voices = [];
-  /** @type {Voice[]} */
-  const rising = [];
   /** The outgoing ids the morph's genome holds, which an incoming instance is renamed around. */
   const kept = new Set();
   /** @type {string[]} */
   const instances = [];
   for (const voice of out.voices) {
-    const match = incomingIds.get(voice.id);
-    if (match && sameVoice(voice, match, { from, to, handover })) {
+    if (moves(voice)) {
+      const match = /** @type {Voice} */ (incomingIds.get(voice.id));
       voices.push({
         ...voice,
         ...moveAll(voiceParams(voice.type), voice, match, `${GENOME_KEY.voices}.${voice.id}.`),
@@ -238,25 +380,24 @@ export function morphGenome(outgoing, incoming, seconds, curve) {
       kept.add(voice.id);
       continue;
     }
-    if (match) rising.push(match);
     // An outgoing voice that would start after the morph never sounds in it, so it is left out.
     if (voice.start >= to) continue;
     kept.add(voice.id);
-    voices.push(
-      voice.end <= from
-        ? voice
-        : { ...voice, level: fade(voice, FLOOR), end: Math.min(voice.end, to) },
-    );
+    if (voice.end <= from) {
+      voices.push(voice);
+      continue;
+    }
+    const span = leavingSpans.get(voice) ?? { from, to };
+    const path = `${GENOME_KEY.voices}.${voice.id}.${LEVEL}`;
+    voices.push({
+      ...voice,
+      level: move(path, VOICE_PARAMS.level, voice.level, FLOOR, span),
+      end: Math.min(voice.end, span.to),
+    });
   }
-  const outgoingIds = new Set(out.voices.map(({ id }) => id));
-  rising.push(...into.voices.filter(({ id }) => !outgoingIds.has(id)));
-  const shift = from - incoming.at;
-  for (const voice of rising) {
-    const start = Math.max(from, voice.start + shift);
-    const end = Math.min(MAX_DURATION, voice.end + shift);
-    // An incoming voice that would start after the morph, or end before it, plays only in the
-    // incoming section's own render.
-    if (start >= to || end <= from) continue;
+  /** @type {Map<Voice, string>} each entering voice's id in the genome */
+  const idOf = new Map();
+  for (const { voice, start, end } of rising) {
     // Renamed only beside the outgoing voice whose id it would take.
     const id = kept.has(voice.id) ? `${voice.id}${MORPH_SUFFIX}` : voice.id;
     if (id !== voice.id) instances.push(id);
@@ -266,6 +407,7 @@ export function morphGenome(outgoing, incoming, seconds, curve) {
         reason: `voice ${voice.id} differs between the two sketches, and its id is too long to rename as ${id}`,
       };
     }
+    idOf.set(voice, id);
     /** @type {Record<string, unknown>} */
     const held = {};
     for (const [name, descriptor] of Object.entries(voiceParams(voice.type))) {
@@ -274,25 +416,26 @@ export function morphGenome(outgoing, incoming, seconds, curve) {
       }
     }
     const level = rawAt(VOICE_PARAMS.level, voice.level, handover);
+    const span = enteringSpans.get(voice) ?? { from, to };
     voices.push({
       ...voice,
       ...held,
       id,
-      start,
+      start: Math.max(start, span.from),
       end,
-      level: move(`${GENOME_KEY.voices}.${id}.${LEVEL}`, VOICE_PARAMS.level, FLOOR, level),
+      level: move(`${GENOME_KEY.voices}.${id}.${LEVEL}`, VOICE_PARAMS.level, FLOOR, level, span),
     });
   }
   if (voices.length > MAX_VOICES) {
     return {
       ok: false,
-      reason: `the morph would hold ${voices.length} voices, more than ${MAX_VOICES}`,
+      reason: `the ${kind} would hold ${voices.length} voices, more than ${MAX_VOICES}`,
     };
   }
   if (crowded.length > 0) {
     return {
       ok: false,
-      reason: `the morph would give ${crowded[0]}, more than ${MAX_POINTS}`,
+      reason: `the ${kind} would give ${crowded[0]}, more than ${MAX_POINTS}`,
     };
   }
   const genome = {
@@ -301,5 +444,15 @@ export function morphGenome(outgoing, incoming, seconds, curve) {
     macros: { ...out.macros, ...moveAll(MACROS, out.macros, into.macros, `${GENOME_KEY.macros}.`) },
     voices,
   };
-  return { ok: true, genome: requireGenome(genome, "the morph's genome"), instances };
+  return {
+    ok: true,
+    genome: requireGenome(genome, `the ${kind}'s genome`),
+    instances,
+    order: order.map(({ voice, leaves, from, to }) => ({
+      id: leaves ? voice.id : /** @type {string} */ (idOf.get(voice)),
+      leaves,
+      from,
+      to,
+    })),
+  };
 }

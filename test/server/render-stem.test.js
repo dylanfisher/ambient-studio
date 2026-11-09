@@ -13,6 +13,7 @@ import {
   renderedTransition,
   sectionGenome,
   sectionInstances,
+  sectionMorph,
   sectionWindow,
 } from "../../src/domain/section-genome.js";
 import { ENGINE_VERSION } from "../../src/engine/engine-version.js";
@@ -151,71 +152,99 @@ test("a stem sample past full scale is kept, not clipped or limited", async () =
   }
 });
 
-test("a morph's renamed instance plays in its voice's stem, and the stems still sum to the mix", async () => {
+/** @type {[string, object[], string[]][]} */
+const instanced = [
   // The incoming sketch's drone has another root, so the morph plays it as a second instance.
-  const genomes = new Map([
-    [1, pair],
-    [2, requireGenome({ ...unfaded, voices: [{ ...unfaded.voices[0], root: 44 }] }, "drone 44")],
-  ]);
-  const arrangement = {
-    ...emptyArrangement(),
-    sections: [
-      { sketchId: 1, offset: 6, seconds: 16, text: "" },
-      { sketchId: 2, offset: 20, seconds: 16, text: "" },
+  ["morph", [{ ...unfaded.voices[0], root: 44 }], [`drone${MORPH_SUFFIX}`]],
+  // Both of the weave's voices split, so each side hands over on stretches of the move (0080).
+  [
+    "weave",
+    [
+      { ...unfaded.voices[0], root: 44 },
+      { ...(pair.voices[1] ?? {}), root: 70 },
     ],
-    transitions: [{ kind: "morph", seconds: 8, curve: "smooth", text: "" }],
-  };
-  /** @type {TrackPlan} */
-  const morphed = {
-    sections: arrangement.sections.map((_, index) => ({
-      genome: sectionGenome(arrangement, index, genomes),
-      seed: index + 1,
-      ...sectionWindow(arrangement, index, genomes),
-      instances: sectionInstances(arrangement, index, genomes),
-    })),
-    transitions: [renderedTransition(arrangement, 0, genomes).seconds],
-    fades: { fadeIn: 0, fadeOut: 0 },
-  };
-  expect(morphed.sections[0]?.genome.voices.map(({ id }) => id).sort()).toEqual([
-    "drone",
-    `drone${MORPH_SUFFIX}`,
-    "high",
-  ]);
-  expect(stemIds(morphed.sections)).toEqual(["drone", "high"]);
-  expect(morphed.sections[0]?.instances).toEqual([`drone${MORPH_SUFFIX}`]);
-  const frames = 24 * SAMPLE_RATE;
-  /** @param {AsyncIterable<Float32Array[]>} blocks */
-  const whole = async (blocks) => {
-    const out = [0, 1].map(() => new Float32Array(frames));
-    let at = 0;
-    for await (const block of blocks) {
-      for (const [c, channel] of block.entries()) out[c]?.set(channel, at);
-      at += block[0]?.length ?? 0;
+    [`drone${MORPH_SUFFIX}`, `high${MORPH_SUFFIX}`],
+  ],
+];
+test.each(instanced)(
+  "a %s's renamed instances play in their voices' stems, and the stems still sum to the mix",
+  async (kind, incoming, instances) => {
+    const genomes = new Map([
+      [1, pair],
+      [2, requireGenome({ ...unfaded, voices: incoming }, "incoming")],
+    ]);
+    const arrangement = {
+      ...emptyArrangement(),
+      sections: [
+        { sketchId: 1, offset: 6, seconds: 16, text: "" },
+        { sketchId: 2, offset: 20, seconds: 16, text: "" },
+      ],
+      transitions: [{ kind, seconds: 8, curve: "smooth", text: "" }],
+    };
+    /** @type {TrackPlan} */
+    const morphed = {
+      sections: arrangement.sections.map((_, index) => ({
+        genome: sectionGenome(arrangement, index, genomes),
+        seed: index + 1,
+        ...sectionWindow(arrangement, index, genomes),
+        instances: sectionInstances(arrangement, index, genomes),
+      })),
+      transitions: [renderedTransition(arrangement, 0, genomes).seconds],
+      fades: { fadeIn: 0, fadeOut: 0 },
+    };
+    expect(morphed.sections[0]?.genome.voices.map(({ id }) => id).sort()).toEqual(
+      ["drone", "high", ...instances].sort(),
+    );
+    expect(stemIds(morphed.sections)).toEqual(["drone", "high"]);
+    expect(morphed.sections[0]?.instances).toEqual(instances);
+    const moved = sectionMorph(arrangement, 0, genomes);
+    // A weave hands its four split voices over on two stretches a side; a morph lists none.
+    expect(moved?.ok && moved.order.map(({ id, to }) => [id, to])).toEqual(
+      kind === "weave"
+        ? [
+            // The move runs from 14 to 18 s, in steps of a third of it.
+            // The 55 Hz drone leaves before the 37 Hz one; the 44 Hz one comes in first.
+            ["high", 14 + 2 * ((18 - 14) / 3)],
+            ["drone", 18],
+            [`drone${MORPH_SUFFIX}`, 14 + 2 * ((18 - 14) / 3)],
+            [`high${MORPH_SUFFIX}`, 18],
+          ]
+        : [],
+    );
+    const frames = 24 * SAMPLE_RATE;
+    /** @param {AsyncIterable<Float32Array[]>} blocks */
+    const whole = async (blocks) => {
+      const out = [0, 1].map(() => new Float32Array(frames));
+      let at = 0;
+      for await (const block of blocks) {
+        for (const [c, channel] of block.entries()) out[c]?.set(channel, at);
+        at += block[0]?.length ?? 0;
+      }
+      expect(at).toBe(frames);
+      return out;
+    };
+    /** @type {Awaited<ReturnType<typeof readStem>>[]} */
+    const stems = [];
+    for (const id of ["drone", "high"]) {
+      const path = join(root, `${id}.wav`);
+      await renderStem(morphed, id, { gainDb: 0, path, chunkSeconds: 4 });
+      stems.push(await readStem(path));
     }
-    expect(at).toBe(frames);
-    return out;
-  };
-  /** @type {Awaited<ReturnType<typeof readStem>>[]} */
-  const stems = [];
-  for (const id of ["drone", "high"]) {
-    const path = join(root, `${id}.wav`);
-    await renderStem(morphed, id, { gainDb: 0, path, chunkSeconds: 4 });
-    stems.push(await readStem(path));
-  }
-  const mix = await whole(mixTrack(morphed, { chunkSeconds: 4 }));
-  const sum = [0, 1].map((c) =>
-    Float32Array.from(
-      { length: frames },
-      (_, i) => (stems[0]?.channels[c]?.[i] ?? 0) + (stems[1]?.channels[c]?.[i] ?? 0),
-    ),
-  );
-  const { peak, belowDb } = difference(
-    { channels: sum, sampleRate: SAMPLE_RATE, engineVersion: ENGINE_VERSION },
-    { channels: mix, sampleRate: SAMPLE_RATE, engineVersion: ENGINE_VERSION },
-  );
-  expect(peak).toBeLessThan(EXCERPT_PEAK);
-  expect(belowDb).toBeGreaterThan(EXCERPT_BELOW_DB);
-});
+    const mix = await whole(mixTrack(morphed, { chunkSeconds: 4 }));
+    const sum = [0, 1].map((c) =>
+      Float32Array.from(
+        { length: frames },
+        (_, i) => (stems[0]?.channels[c]?.[i] ?? 0) + (stems[1]?.channels[c]?.[i] ?? 0),
+      ),
+    );
+    const { peak, belowDb } = difference(
+      { channels: sum, sampleRate: SAMPLE_RATE, engineVersion: ENGINE_VERSION },
+      { channels: mix, sampleRate: SAMPLE_RATE, engineVersion: ENGINE_VERSION },
+    );
+    expect(peak).toBeLessThan(EXCERPT_PEAK);
+    expect(belowDb).toBeGreaterThan(EXCERPT_BELOW_DB);
+  },
+);
 
 test("a sketch's own voice whose id ends in the morph's suffix keeps its own stem", () => {
   const plain = requireGenome(

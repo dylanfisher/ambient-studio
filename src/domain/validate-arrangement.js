@@ -15,6 +15,7 @@ import {
   MAX_ARC_CHARS,
   MAX_TEXT_CHARS,
   MAX_TRACK_SECONDS,
+  morphs,
   SECTION_FIELDS,
   SECTION_KEYS,
   TEXT_KEY,
@@ -185,10 +186,12 @@ function checkTransitions(given, sections, passed, errors) {
       const listed = kinds.map((name) => JSON.stringify(name)).join(", ");
       errors.push({ path: `${at}.kind`, message: `must be one of ${listed}, got ${show(kind)}` });
     }
-    const morph = kind === TRANSITION_KIND.morph;
+    const morph = morphs(kind);
     checkShape(
       transition,
-      TRANSITION_KEYS[morph ? TRANSITION_KIND.morph : TRANSITION_KIND.crossfade],
+      TRANSITION_KEYS[
+        morph ? /** @type {keyof typeof TRANSITION_KEYS} */ (kind) : TRANSITION_KIND.crossfade
+      ],
       at,
       errors,
     );
@@ -207,7 +210,7 @@ function checkTransitions(given, sections, passed, errors) {
     if (morph && /** @type {number} */ (transition.seconds) < MORPH_LEAST) {
       errors.push({
         path: `${at}.seconds`,
-        message: `a morph must be at least ${MORPH_LEAST} s: it moves, then hands over to the next section in its last ${MORPH_HANDOVER} s; got ${transition.seconds}`,
+        message: `a ${kind} must be at least ${MORPH_LEAST} s: it moves, then hands over to the next section in its last ${MORPH_HANDOVER} s; got ${transition.seconds}`,
       });
       return;
     }

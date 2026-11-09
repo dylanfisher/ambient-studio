@@ -15,6 +15,7 @@
 import { arrangementLength } from "../domain/arrangement-length.js";
 import {
   MAX_TEXT_CHARS,
+  morphs,
   SECTION_FIELDS,
   SECTION_KEY,
   TRANSITION_KIND,
@@ -41,6 +42,7 @@ import {
   dragEdge,
   moveSection,
   nextCurve,
+  nextTransitionKind,
   removeSection,
   SECTION_STEP,
   setSection,
@@ -50,14 +52,13 @@ import {
   stepSection,
   stepTransition,
   TRANSITION_STEP,
-  toggleMorph,
   transitionOf,
 } from "./timeline-edits.js";
 import { bindTimelineKeys, TIMELINE_KEYS } from "./timeline-keys.js";
 import { blockText, sectionCount, timelineLayout } from "./timeline-layout.js";
 import { drawTimeline } from "./timeline-view.js";
 import { stemsText, trackRenderText } from "./track-render-text.js";
-import { curveWords, transitionText } from "./transition-text.js";
+import { curveWords, kindButtonWords, transitionText } from "./transition-text.js";
 import "./topbar-jobs.js";
 
 const status = statusLine();
@@ -311,9 +312,9 @@ function draw() {
   buttons.fadeLonger.disabled = fade === null;
   buttons.morph.disabled = fade === null;
   const transition = fade === null ? undefined : arrangement.transitions[fade];
-  const morphing = transition?.kind === TRANSITION_KIND.morph;
+  const morphing = transition !== undefined && morphs(transition.kind);
   buttons.curve.disabled = !morphing;
-  label(buttons.morph, morphing ? "Make it a crossfade" : "Make it a morph");
+  label(buttons.morph, kindButtonWords(transition?.kind ?? TRANSITION_KIND.crossfade));
   label(
     buttons.curve,
     morphing ? `Curve: ${curveWords(/** @type {Curve} */ (transition.curve))}` : "Curve",
@@ -732,7 +733,7 @@ const actions = /** @type {Record<TimelineAction, () => void>} */ ({
     onSelected((arrangement, index) => stepSection(arrangement, index, SECTION_KEY.offset, 1)),
   fadeShorter: () => onFade(-1),
   fadeLonger: () => onFade(1),
-  morph: () => onTransition(toggleMorph),
+  morph: () => onTransition(nextTransitionKind),
   curve: () => onTransition(nextCurve),
   add,
   remove: () => onSelected((arrangement, index) => removeSection(arrangement, index)),
