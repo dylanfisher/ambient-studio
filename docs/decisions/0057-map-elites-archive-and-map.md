@@ -6,7 +6,9 @@
   conflict rule and progress steps), [0032](0032-plain-language-pages.md) (the map page, with
   arrow keys) and [0052](0052-references-in-the-prompt.md) (the `axis` kind's details);
   amended by [0066](0066-material-panel-and-arc-target.md) (the timeline lists the elites and
-  places them as sketches) and [0076](0076-parallel-excerpt-renders.md) (the control's nudges render three at a time)
+  places them as sketches), [0076](0076-parallel-excerpt-renders.md) (the control's nudges render three at a time)
+  and [0086](0086-other-pages-in-words.md) (a cell's score, the axes' ends and the fill's
+  settings move behind the numbers toggle; cells and captions are said in words)
 
 ## Context
 
@@ -93,8 +95,8 @@ and the starting one, are in the job's result and in `fill.json` in the run's fo
 
 **The map view** (`map.html`, opened as Map from the brief and session pages) is a table of cell
 buttons, the first axis across and the second up, low to high, a third chosen as a slice with a
-select. Each filled cell shows its elite's intent and score (or misses), and its title says it in
-full. One cell takes Tab; the arrow keys move one cell at a time and stop at the edges
+select. Each filled cell shows its elite's intent, with its score (or misses) behind the numbers
+toggle, and its title says it in full, in words (0086). One cell takes Tab; the arrow keys move one cell at a time and stop at the edges
 (`arrowMove`, `src/web/map-grid.js`, no DOM). Click or Enter opens a cell: it plays the elite
 through 4i's excerpt player and offers the shared explore, nudge and search controls and Keep as
 sketch. Fill the map has its steps, the share in percent and the control switch, asks first, and

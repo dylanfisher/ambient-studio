@@ -72,54 +72,81 @@ export function arrowMove(index, key, shape) {
 const counted = (n, word) => `${n} ${word}${n === 1 ? "" : "es"}`;
 
 /**
- * A cell button's text and title.
+ * A cell's words from `src/domain/map-words.js`: its place on the axes and its verdict.
+ * @typedef {{ place: string, verdict: string }} CellWords
+ */
+
+/**
+ * A cell button's text, its score for the numbers toggle, and its title.
  * @param {MapCell | null} cell
  * @param {boolean} model whether the brief has a taste model, which scores each elite
- * @returns {{ text: string, title: string }}
+ * @param {CellWords} words
+ * @returns {{ text: string, score: string, title: string }}
  */
-export function cellText(cell, model) {
+export function cellText(cell, model, { place, verdict }) {
   if (cell === null) {
     return {
       text: "",
-      title: "Empty: no candidate lands here yet. Filling the map aims at cells like this one.",
+      score: "",
+      title: `Empty: ${place} No candidate lands here yet. Filling the map aims at cells like this one.`,
     };
   }
-  const { said, rated, about } = described(cell, model);
+  const { said, about } = described(cell);
   return {
-    text: `${cell.ownIntent ? "" : "from: "}${said} · ${rated}`,
-    title: `Plays ${about}. Opens it below, with explore, nudge and keep as sketch.`,
+    text: `${cell.ownIntent ? "" : "from: "}${said}`,
+    score: ` · ${model && cell.score !== null ? cell.score.toFixed(2) : counted(cell.misses, "miss")}`,
+    title: `Plays ${about}. ${place} ${verdict} Opens it below, with explore, nudge and keep as sketch.`,
   };
 }
 
 /**
- * A filled cell's intent, its short score, and a clause on what it holds.
+ * A filled cell's intent, and a clause on what it holds.
  * @param {MapCell} cell
- * @param {boolean} model
  */
-function described({ intent, ownIntent, score, misses, count }, model) {
+function described({ intent, ownIntent, count }) {
   const said = intent ?? "no intent given";
-  const scored = model && score !== null;
   const which = count === 1 ? "the candidate here" : `the best of the ${count} candidates here`;
   const meant = ownIntent ? `“${said}”` : `a nudge of one meant as “${said}”`;
-  const how = scored
-    ? `search score ${score.toFixed(2)} by your taste model`
-    : `missing ${misses} of the brief's ranges`;
-  return {
-    said,
-    rated: scored ? score.toFixed(2) : counted(misses, "miss"),
-    about: `${which}: ${meant}, ${how}`,
-  };
+  return { said, about: `${which}: ${meant}` };
 }
 
 /**
- * The open cell's line: what it holds, as its button's title says.
+ * The open cell's line in words: what it holds, where it sits and its verdict, as its button's
+ * title says.
+ * @param {MapCell} cell
+ * @param {CellWords} words
+ * @returns {string}
+ */
+export function openWords(cell, { place, verdict }) {
+  const { about } = described(cell);
+  return `${about.charAt(0).toUpperCase()}${about.slice(1)}. ${place} ${verdict}`;
+}
+
+/**
+ * A cell's line with its score, as the track page's material panel lists the map's elites.
  * @param {MapCell} cell
  * @param {boolean} model
  * @returns {string}
  */
 export function openText(cell, model) {
-  const { about } = described(cell, model);
-  return `${about.charAt(0).toUpperCase()}${about.slice(1)}.`;
+  const { about } = described(cell);
+  const how =
+    model && cell.score !== null
+      ? `search score ${cell.score.toFixed(2)} by your taste model`
+      : `missing ${cell.misses} of the brief's ranges`;
+  return `${about.charAt(0).toUpperCase()}${about.slice(1)}, ${how}.`;
+}
+
+/**
+ * The open cell's score, or the ranges it misses, for the numbers toggle.
+ * @param {MapCell} cell
+ * @param {boolean} model
+ * @returns {string}
+ */
+export function openScore({ score, misses }, model) {
+  return model && score !== null
+    ? `Search score ${score.toFixed(2)} by your taste model.`
+    : `Missing ${misses} of the brief's ranges.`;
 }
 
 /**

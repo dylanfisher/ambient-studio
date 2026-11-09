@@ -37,10 +37,12 @@
         <h1 id="pageTitle">Map</h1>
         <p class="help muted">
           Every candidate of this brief placed by how it sounds, on the two or three axes chosen
-          on the brief page. Each cell shows the best candidate that lands there. Click a cell,
-          or press Enter on it, to play that candidate; the arrow keys move between cells. Fill
-          the map to make candidates aimed at the empty cells, and explore, nudge or keep a
-          sketch from the cell you opened.
+          on the brief page. Each cell shows the best candidate that lands there, and says where
+          it sits and how it compares with the other cells. Click a cell, or press Enter on it,
+          to play that candidate; the arrow keys move between cells. Fill the map to make
+          candidates aimed at the empty cells, and explore, nudge or keep a sketch from the cell
+          you opened. Show the numbers gives each cell's score, the axes' ends and the fill's
+          settings.
         </p>
         <p><button id="numbersToggle" class="button outline small" type="button" aria-expanded="false" title="Shows or hides the numbers on this page: the fields that set values directly, the measurements and the scores. The page remembers your choice in this browser.">Show the numbers</button></p>
         <p id="status" class="status" role="status" aria-live="polite">Loading…</p>
@@ -50,6 +52,7 @@
         <h2 id="fill-heading">Fill the map</h2>
         <p id="coverageLine" class="small" data-numbers></p>
         <p id="sessionLine" class="small muted"></p>
+        <p id="fillTime" class="small"></p>
         <div class="row">
           <label class="field small" data-numbers
             >Steps
@@ -71,10 +74,10 @@
 
       <section class="card stack" aria-labelledby="map-heading">
         <h2 id="map-heading">The map</h2>
-        <p id="axisAcross" class="small"></p>
-        <p id="axisUp" class="small"></p>
+        <p class="small"><span id="axisAcross"></span> <span id="axisAcrossEnds" class="muted" data-numbers></span></p>
+        <p class="small"><span id="axisUp"></span> <span id="axisUpEnds" class="muted" data-numbers></span></p>
         <label id="layerField" class="field small" hidden
-          ><span id="layerName">Third axis</span>
+          ><span><span id="layerName">Third axis</span> <span id="axisLayerEnds" class="muted" data-numbers></span></span>
           <select id="layerSelect" title="Chooses which slice of the third axis the table shows, from its low end to its high end."></select>
         </label>
         <p id="noMap" class="muted small" hidden></p>
@@ -86,6 +89,7 @@
       <section id="openBox" class="card stack" aria-labelledby="open-heading" hidden>
         <h2 id="open-heading">The open cell</h2>
         <p id="openLine" class="small"></p>
+        <p id="openScore" class="small muted" data-numbers></p>
         <!-- biome-ignore lint/a11y/useMediaCaption: instrumental excerpts have no speech to caption -->
         <audio id="openAudio" preload="none" title="Plays the open cell's best candidate's 25-second excerpt."></audio>
         <div class="row">

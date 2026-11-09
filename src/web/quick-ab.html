@@ -88,7 +88,7 @@
             >
           </div>
         </div>
-        <p id="progressLine" class="small muted"></p>
+        <p class="small muted"><span id="progressLine"></span> <span id="progressCount" data-numbers></span></p>
         <div class="row">
           <p id="saveLine" class="small" role="status" aria-live="polite"></p>
           <button id="retry" class="button outline small" type="button" hidden title="Sends the choices that weren't saved again, and draws the next pair again if that failed.">Retry</button>
@@ -100,7 +100,7 @@
             <p class="muted small" id="leftName"></p>
             <!-- biome-ignore lint/a11y/useMediaCaption: instrumental excerpts have no speech to caption -->
             <audio id="leftAudio" preload="auto" title="Plays the left excerpt. Starting it pauses the right one."></audio>
-            <p class="small" id="leftPlayed"></p>
+            <p class="small"><span id="leftPlayed"></span> <span class="muted" id="leftShare" data-numbers></span></p>
             <div class="row">
               <button id="playLeft" class="button outline" type="button" title="Plays the left excerpt from the point the other one is at, and pauses the other.">Play left</button>
             </div>
@@ -110,7 +110,7 @@
             <p class="muted small" id="rightName"></p>
             <!-- biome-ignore lint/a11y/useMediaCaption: instrumental excerpts have no speech to caption -->
             <audio id="rightAudio" preload="auto" title="Plays the right excerpt. Starting it pauses the left one."></audio>
-            <p class="small" id="rightPlayed"></p>
+            <p class="small"><span id="rightPlayed"></span> <span class="muted" id="rightShare" data-numbers></span></p>
             <div class="row">
               <button id="playRight" class="button outline" type="button" title="Plays the right excerpt from the point the other one is at, and pauses the other.">Play right</button>
             </div>
@@ -131,23 +131,25 @@
       <section id="earSteering" class="card stack" aria-labelledby="steer-heading" hidden>
         <h2 id="steer-heading">Steer the search</h2>
         <p class="small muted">
-          Choose how different each new variation may be from the best so far, and move a
-          slider to lean every new variation toward less or more of it. Press Use from the next
+          Describe how every new variation should lean, such as darker and more spacious, and
+          the model sets the leanings from your words; the line below says what they are. Choose
+          how different each new variation may be from the best so far. Press Use from the next
           pair: the pair on screen stays as it is, and the next one is drawn this way. Your
-          earlier choices still count.
+          earlier choices still count. Show the numbers gives the sliders, to set the leanings
+          by hand.
         </p>
-        <label class="field"
-          >How different each new variation is
-          <select id="earVariation" title="Chooses how far each new variation may sit from the best so far: Subtle is a small step, Very wide a large one. Used from the next pair once you press Use from the next pair."></select>
-        </label>
         <div class="row">
           <label class="field"
-            >Or describe a shift
+            >Describe a shift
             <input id="earShiftWords" type="text" size="40" maxlength="300" placeholder="darker and more spacious, a little less busy" title="Your words for how new variations should lean. Set the sliders from these words asks the model to read them as the sliders below." />
           </label>
           <button id="earShiftRead" class="button outline" type="button" title="Asks the model to read your words as the sliders below, and sets them. The search isn't told until you press Use from the next pair. One short model request.">Set the sliders from these words</button>
         </div>
         <div id="earShiftBox"></div>
+        <label class="field"
+          >How different each new variation is
+          <select id="earVariation" title="Chooses how far each new variation may sit from the best so far: Subtle is a small step, Very wide a large one. Used from the next pair once you press Use from the next pair."></select>
+        </label>
         <div id="earShifts" class="constraints" data-numbers></div>
         <div class="row">
           <button id="earSteer" class="button secondary" type="button" title="Draws every pair from the next one on with the variation and leanings above. The pair on screen stays, and no model is asked.">Use from the next pair</button>

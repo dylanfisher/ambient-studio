@@ -9,7 +9,9 @@ import {
   cellText,
   coverageText,
   mapRows,
+  openScore,
   openText,
+  openWords,
 } from "../../src/web/map-grid.js";
 
 /** @param {number[]} index @param {Record<string, unknown>} [rest] */
@@ -64,27 +66,44 @@ test("arrow keys move one cell at a time and stop at the edges; other keys don't
   expect(arrowMove([3, 3], "a", shape)).toBeNull();
 });
 
-test("a filled cell shows its elite's intent and score, an empty one says so", () => {
-  expect(cellText(cell([0, 0], { score: 0.4567, count: 3 }), true)).toEqual({
-    text: "low and still · 0.46",
+const words = {
+  place: "A lower spectral centroid; midway on “dry” to “wet”.",
+  verdict: "The best cell on the map by your taste model.",
+};
+
+test("a filled cell shows its elite's intent, says its place and verdict, and keeps its score apart", () => {
+  expect(cellText(cell([0, 0], { score: 0.4567, count: 3 }), true, words)).toEqual({
+    text: "low and still",
+    score: " · 0.46",
     title:
-      "Plays the best of the 3 candidates here: “low and still”, search score 0.46 by your taste model. Opens it below, with explore, nudge and keep as sketch.",
+      "Plays the best of the 3 candidates here: “low and still”. A lower spectral centroid; midway on “dry” to “wet”. The best cell on the map by your taste model. Opens it below, with explore, nudge and keep as sketch.",
   });
-  expect(cellText(cell([0, 0], { misses: 2, ownIntent: false }), false)).toEqual({
-    text: "from: low and still · 2 misses",
-    title:
-      "Plays the candidate here: a nudge of one meant as “low and still”, missing 2 of the brief's ranges. Opens it below, with explore, nudge and keep as sketch.",
-  });
-  expect(cellText(null, false)).toEqual({
+  expect(cellText(cell([0, 0], { misses: 2, ownIntent: false }), false, words).text).toBe(
+    "from: low and still",
+  );
+  expect(cellText(cell([0, 0], { misses: 2 }), false, words).score).toBe(" · 2 misses");
+  expect(cellText(null, false, { place: words.place, verdict: "" })).toEqual({
     text: "",
-    title: "Empty: no candidate lands here yet. Filling the map aims at cells like this one.",
+    score: "",
+    title:
+      "Empty: A lower spectral centroid; midway on “dry” to “wet”. No candidate lands here yet. Filling the map aims at cells like this one.",
   });
 });
 
-test("a cell plays its elite's excerpt, and the open cell says what it holds", () => {
+test("a cell plays its elite's excerpt, and the open cell says what it holds in words", () => {
   expect(cellAudio(cell([1, 1], { url: "/audio/42" }))).toBe("/audio/42");
+  expect(openWords(cell([1, 1], { score: 1.5 }), words)).toBe(
+    "The candidate here: “low and still”. A lower spectral centroid; midway on “dry” to “wet”. The best cell on the map by your taste model.",
+  );
+  // The track page's material panel lists the elites with their score, as before (0066).
   expect(openText(cell([1, 1], { score: 1.5 }), true)).toBe(
     "The candidate here: “low and still”, search score 1.50 by your taste model.",
+  );
+  expect(openScore(cell([1, 1], { score: 1.5 }), true)).toBe(
+    "Search score 1.50 by your taste model.",
+  );
+  expect(openScore(cell([1, 1], { misses: 1, ownIntent: false }), false)).toBe(
+    "Missing 1 of the brief's ranges.",
   );
 });
 

@@ -4,9 +4,11 @@ import { expect, test } from "vitest";
 import {
   BENCH_SECONDS,
   fillCostText,
+  fillTimeText,
   medianTimings,
   optimizerTestCostText,
   searchCostText,
+  searchMinutes,
   searchSeconds,
   steerCostText,
   wallShares,
@@ -70,6 +72,19 @@ test("the map's fill confirm gives both arms' time, and states the model request
   expect(fillCostText(20, 5, seconds, { measured: false, control: false })).toBe(
     "Fill the map with 20 steps? Each nudges a candidate beside an empty cell, renders the excerpt and places it on the map. 5 steps of them ask the language model for a variation, 5 requests to it, which wait their turn and add their own time. That is about 1 minute, at 2 s to render and 0.5 s to analyze each, from the bench, since no search has run yet.",
   );
+});
+
+test("the map's fill is said as time on the page, the same minutes its confirm gives", () => {
+  const seconds = { render: 2, embed: 0.5 };
+  // 200 steps and 200 control nudges at 2.5 s: 1000 s, about 17 minutes.
+  expect(fillTimeText(200, 0, seconds, { control: true })).toBe(
+    "A fill with the settings now takes about 17 minutes.",
+  );
+  expect(fillTimeText(20, 5, seconds, { control: false })).toBe(
+    "A fill with the settings now takes about 1 minute, and longer for the steps that ask the language model, which wait their turn.",
+  );
+  expect(searchMinutes(0, seconds)).toBe(1);
+  expect(searchMinutes(144, seconds)).toBe(6);
 });
 
 test("the optimizer test's confirm counts every brief's runs and both arms of each", () => {

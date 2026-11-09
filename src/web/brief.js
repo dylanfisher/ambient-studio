@@ -17,6 +17,7 @@ import { breedCostText } from "../domain/breed-cost.js";
 import { DEFAULT_BREEDS } from "../domain/breed-settings.js";
 import { FORM } from "../domain/constraint-schema.js";
 import { constraintsText } from "../domain/constraints-text.js";
+import { playedWords } from "../domain/listening-words.js";
 import { rangesFromRegion } from "../domain/ranges-from-region.js";
 import { MACRO_DIRECTIONS } from "../domain/rating-values.js";
 import { RANGE_ENDS, RANGES_KEY } from "../domain/target-schema.js";
@@ -329,10 +330,16 @@ function readDraft() {
 /**
  * @param {string} text
  * @param {number} at
+ * @param {string} numbers what was heard, in numbers, for the toggle
  */
-function lineItem(text, at) {
-  const item = cloneTemplate("line-item", { line: HTMLElement, time: HTMLElement });
+function lineItem(text, at, numbers) {
+  const item = cloneTemplate("line-item", {
+    line: HTMLElement,
+    heard: HTMLElement,
+    time: HTMLElement,
+  });
   item.line.textContent = text;
+  item.heard.textContent = numbers;
   item.time.textContent = ` · ${formatTime(at)}`;
   return item.root;
 }
@@ -401,23 +408,31 @@ function showRatings({ ratings, feedback, sketches }) {
       const what =
         row.macro === null
           ? `Thumbs ${row.direction}${row.note ? `: “${row.note}”` : ""}`
-          : `${row.direction === MORE ? "More" : "Less"} ${row.macro} (heard ${row.macroValue.mean.toFixed(2)})`;
-      const how = `played ${percent(row.playedFraction)} in ${(row.timeTakenMs / 1000).toFixed(1)} s`;
-      return { at: row.createdAt, text: `${what}, ${heard(row)}, ${how}` };
+          : `${row.direction === MORE ? "More" : "Less"} ${row.macro}`;
+      const value = row.macro === null ? "" : `heard ${row.macroValue.mean.toFixed(2)}, `;
+      return {
+        at: row.createdAt,
+        text: `${what}, ${playedWords(row.playedFraction)}`,
+        numbers: `(${value}${heard(row)}, played ${percent(row.playedFraction)} in ${(row.timeTakenMs / 1000).toFixed(1)} s)`,
+      };
     }),
     ...ratings.map((row) => {
       const [left, right] = row.leftSide === "a" ? [row.a, row.b] : [row.b, row.a];
       return {
         at: row.createdAt,
-        text: `Compared ${heard(left)} (left) with ${heard(right)} (right): ${outcomeText(row)}`,
+        text: `Compared two excerpts: ${outcomeText(row)}`,
+        numbers: `(left ${heard(left)}, right ${heard(right)})`,
       };
     }),
     ...sketches.map((row) => ({
       at: row.createdAt,
       text: `Sketch of candidate ${row.candidateId}${sketchWords(row)}`,
+      numbers: "",
     })),
   ].sort((x, y) => y.at - x.at);
-  page.ratingList.replaceChildren(...items.map(({ at, text }) => lineItem(text, at)));
+  page.ratingList.replaceChildren(
+    ...items.map(({ at, text, numbers }) => lineItem(text, at, numbers)),
+  );
   page.noRatings.hidden = items.length > 0;
 }
 

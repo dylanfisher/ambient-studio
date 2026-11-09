@@ -12,6 +12,7 @@
 /** @import { QuickAbAction } from "./quick-ab-keys.js" */
 /** @import { Playable } from "./quick-ab-session.js" */
 import { EAR_IDLE_MS, EAR_PHASE } from "../domain/ear-settings.js";
+import { pairsLeftWords, playedWords } from "../domain/listening-words.js";
 import { OUTCOMES } from "../domain/rating-values.js";
 import { chosenOutcome, SCREEN_SIDES } from "./ab-rating.js";
 import { ACTIVE_SIDE } from "./ab-view.js";
@@ -52,6 +53,7 @@ const page = elementsById({
   spotHelp: HTMLElement,
   stopEar: HTMLButtonElement,
   progressLine: HTMLElement,
+  progressCount: HTMLElement,
   saveLine: HTMLElement,
   retry: HTMLButtonElement,
   failedList: HTMLUListElement,
@@ -60,10 +62,12 @@ const page = elementsById({
   leftName: HTMLElement,
   leftAudio: HTMLAudioElement,
   leftPlayed: HTMLElement,
+  leftShare: HTMLElement,
   rightBox: HTMLElement,
   rightName: HTMLElement,
   rightAudio: HTMLAudioElement,
   rightPlayed: HTMLElement,
+  rightShare: HTMLElement,
   doneLine: HTMLElement,
 });
 /** @type {[HTMLInputElement, (typeof ORDER_MODES)[number]][]} each order's switch */
@@ -92,6 +96,7 @@ const choiceButtons = [buttons.chooseLeft, buttons.same, buttons.chooseRight, bu
  * @property {HTMLElement} box
  * @property {HTMLElement} name
  * @property {HTMLElement} played
+ * @property {HTMLElement} share the played share as a number, behind the toggle
  * @property {PlayedTracker | null} tracker
  */
 
@@ -102,6 +107,7 @@ const sides = {
     box: page.leftBox,
     name: page.leftName,
     played: page.leftPlayed,
+    share: page.leftShare,
     tracker: null,
   },
   right: {
@@ -109,6 +115,7 @@ const sides = {
     box: page.rightBox,
     name: page.rightName,
     played: page.rightPlayed,
+    share: page.rightShare,
     tracker: null,
   },
 };
@@ -162,7 +169,10 @@ if (spotMode) {
 
 /** @param {Side} side */
 const showPlayed = (side) => {
-  side.played.textContent = `Played ${Math.round((side.tracker?.fraction() ?? 0) * 100)}%.`;
+  const fraction = side.tracker?.fraction() ?? 0;
+  const words = playedWords(fraction);
+  side.played.textContent = `${words.charAt(0).toUpperCase()}${words.slice(1)}.`;
+  side.share.textContent = `(${Math.round(fraction * 100)}%)`;
 };
 
 /** @param {ScreenSide} which */
@@ -232,20 +242,28 @@ function render() {
   const spot = /** @type {{ spot?: SpotState | null }} */ (view).spot ?? null;
   page.stopEar.disabled = ear === null || ear.phase === EAR_PHASE.finished || ear.stopped;
   steering?.show(ear);
-  page.progressLine.textContent =
-    view.phase === PHASE.done
-      ? ""
-      : spot
-        ? `Pair ${spot.rated + 1} of ${spot.total}.`
-        : ear
-          ? `Pair ${ear.query + 1} of ${ear.budget}.` +
-            (view.champion === null
-              ? ""
-              : ` The one that stays is the best so far: ${nameOf(view.champion)}.`)
-          : view.mode === RANDOM || view.mode === BEST
-            ? `${left} pair${left === 1 ? "" : "s"} not yet rated, this one included.`
-            : `${left} challenger${left === 1 ? "" : "s"} still to come, this one included.` +
-              (view.champion === null ? "" : ` The one that stays: ${nameOf(view.champion)}.`);
+  const champion = view.champion === null ? "" : nameOf(view.champion);
+  /** @type {[number, number | null, string, string]} pairs left, in all, the count, who stays */
+  const [pairsLeft, inAll, count, stays] = spot
+    ? [spot.total - spot.rated, spot.total, `Pair ${spot.rated + 1} of ${spot.total}.`, ""]
+    : ear
+      ? [
+          ear.budget - ear.query,
+          ear.budget,
+          `Pair ${ear.query + 1} of ${ear.budget}.`,
+          champion && ` The one that stays is the best so far: ${champion}.`,
+        ]
+      : view.mode === RANDOM || view.mode === BEST
+        ? [left, null, `${left} pair${left === 1 ? "" : "s"} not yet rated, this one included.`, ""]
+        : [
+            left,
+            null,
+            `${left} challenger${left === 1 ? "" : "s"} still to come, this one included.`,
+            champion && ` The one that stays: ${champion}.`,
+          ];
+  const counting = view.phase !== PHASE.done && pairsLeft >= 1;
+  page.progressLine.textContent = counting ? `${pairsLeftWords(pairsLeft, inAll)}${stays}` : "";
+  page.progressCount.textContent = counting ? count : "";
 
   page.doneLine.hidden = view.phase !== PHASE.done;
   const best = view.champion === null ? "" : ` The last one chosen is ${nameOf(view.champion)}.`;

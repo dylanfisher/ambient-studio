@@ -6,9 +6,16 @@
 // one open session of the brief: the one the page was opened from, or the newest.
 /** @import { MapCell } from "./map-grid.js" */
 /** @import { SteerControls } from "./steer-controls.js" */
-import { DEFAULT_FILL_BUDGET, exploreSteps, MAX_FILL_BUDGET } from "../domain/fill-settings.js";
 /** @import { StepSeconds } from "../domain/search-cost.js" */
-import { fillCostText } from "../domain/search-cost.js";
+import { axisName } from "../domain/axis-words.js";
+import { DEFAULT_FILL_BUDGET, exploreSteps, MAX_FILL_BUDGET } from "../domain/fill-settings.js";
+import {
+  axisPlaceWords,
+  axisSpanWords,
+  cellPlaceWords,
+  cellVerdictWords,
+} from "../domain/map-words.js";
+import { fillCostText, fillTimeText } from "../domain/search-cost.js";
 import { getJson, postJson, SEARCH_ESTIMATE_PATH, sessionPath, VIBES_PATH } from "./api.js";
 import { briefJobs, briefQuery, NO_OPEN_SESSION, targetSession } from "./brief-jobs.js";
 import { elementsById } from "./element-by-id.js";
@@ -23,7 +30,8 @@ import {
   cellText,
   coverageText,
   mapRows,
-  openText,
+  openScore,
+  openWords,
 } from "./map-grid.js";
 import { pageNumbers } from "./numbers-toggle.js";
 import { statusLine } from "./status-line.js";
@@ -37,6 +45,7 @@ const page = elementsById({
   briefLink: HTMLAnchorElement,
   coverageLine: HTMLElement,
   sessionLine: HTMLElement,
+  fillTime: HTMLElement,
   sessionLink: HTMLAnchorElement,
   budgetInput: HTMLInputElement,
   shareInput: HTMLInputElement,
@@ -44,7 +53,10 @@ const page = elementsById({
   fillButton: HTMLButtonElement,
   jobBox: HTMLElement,
   axisAcross: HTMLElement,
+  axisAcrossEnds: HTMLElement,
   axisUp: HTMLElement,
+  axisUpEnds: HTMLElement,
+  axisLayerEnds: HTMLElement,
   layerField: HTMLElement,
   layerName: HTMLElement,
   layerSelect: HTMLSelectElement,
@@ -52,6 +64,7 @@ const page = elementsById({
   grid: HTMLTableElement,
   openBox: HTMLElement,
   openLine: HTMLElement,
+  openScore: HTMLElement,
   openAudio: HTMLAudioElement,
   sketchButton: HTMLButtonElement,
   openSteer: HTMLElement,
@@ -96,8 +109,67 @@ page.budgetInput.value = String(DEFAULT_FILL_BUDGET);
 page.shareInput.value = "0";
 mountPlayer(page.openAudio, status.fail);
 
+/** @type {StepSeconds | null} a step's seconds, from the last search or the bench; null until read */
+let stepSeconds = null;
+
+/** Says how long a fill with the settings now takes, the settings being behind the toggle. */
+function showFillTime() {
+  if (stepSeconds === null) return;
+  const budget = Number(page.budgetInput.value);
+  const share = Number(page.shareInput.value) / 100;
+  if (
+    !(
+      Number.isInteger(budget) &&
+      budget >= 1 &&
+      budget <= MAX_FILL_BUDGET &&
+      share >= 0 &&
+      share <= 1
+    )
+  ) {
+    page.fillTime.textContent =
+      "The fill's steps, under Show the numbers, aren't set to something it can run, so its time can't be said.";
+    return;
+  }
+  page.fillTime.textContent = fillTimeText(budget, exploreSteps(budget, share), stepSeconds, {
+    control: page.controlSwitch.checked,
+  });
+}
+page.budgetInput.oninput = showFillTime;
+page.shareInput.oninput = showFillTime;
+page.controlSwitch.onchange = showFillTime;
+
 /** The layer of the third axis the table shows, or 0 with two axes. */
 const layer = () => Number(page.layerSelect.value || 0);
+
+/**
+ * A cell's place on the axes and its verdict against the map's other cells, in words.
+ * @param {readonly number[]} index
+ * @param {MapCell | null} cell
+ */
+function cellWords(index, cell) {
+  const { shape, axes, cells, model } = /** @type {MapView} */ (map);
+  const key = cellKey(index);
+  const others = cells.filter((other) => cellKey(other.index) !== key).map(({ score }) => score);
+  return {
+    place: cellPlaceWords(index, shape, axes),
+    verdict: cell === null ? "" : cellVerdictWords(cell, others, model),
+  };
+}
+
+/**
+ * An axis caption in words, or why it can't be read.
+ * @param {any} axis as the archive route gives it
+ * @param {string} low where its low end is drawn
+ * @param {string} high
+ */
+const axisCaption = (axis, low, high) =>
+  axis.reason !== null || axis.low === null ? axisLine(axis) : axisSpanWords(axis, low, high);
+
+/**
+ * An axis's ends, for the numbers toggle, or "" when it has none.
+ * @param {any} axis
+ */
+const axisEnds = (axis) => (axis.reason !== null || axis.low === null ? "" : `(${axisLine(axis)})`);
 
 /** Draws the table from `map`, keeping the keyboard's cell. */
 function drawGrid() {
@@ -117,14 +189,17 @@ function drawGrid() {
         const button = document.createElement("button");
         button.type = "button";
         button.className = cell === null ? "map-cell empty" : "map-cell";
-        const { text, title } = cellText(cell, model);
+        const { text, score, title } = cellText(cell, model, cellWords(index, cell));
         button.textContent = text;
+        if (score !== "") {
+          const numbers = document.createElement("span");
+          numbers.dataset.numbers = "";
+          numbers.textContent = score;
+          button.append(numbers);
+        }
         button.title = title;
         button.dataset.cell = cellKey(index);
-        button.setAttribute(
-          "aria-label",
-          `Cell ${index.map((bin) => bin + 1).join(", ")}: ${title}`,
-        );
+        button.setAttribute("aria-label", title);
         // One cell takes the Tab key; the arrows move from it.
         button.tabIndex = cellKey(index) === at ? 0 : -1;
         if (opened !== null && cell?.candidateId === opened.candidateId) {
@@ -167,16 +242,15 @@ page.grid.addEventListener("keydown", (event) => {
  * @param {readonly number[]} index
  */
 function openCell(cell, index) {
+  const words = cellWords(index, cell);
   if (cell === null) {
-    status.say(
-      `Cell ${index.map((bin) => bin + 1).join(", ")} is empty: no candidate lands there yet.`,
-    );
+    status.say(`An empty cell: ${words.place} No candidate lands there yet.`);
     return;
   }
   opened = cell;
   page.openBox.hidden = false;
-  const where = index.map((bin) => bin + 1).join(", ");
-  page.openLine.textContent = `Candidate #${cell.candidateId}, cell ${where}. ${openText(cell, map?.model ?? false)}`;
+  page.openLine.textContent = `Candidate #${cell.candidateId}. ${openWords(cell, words)}`;
+  page.openScore.textContent = openScore(cell, map?.model ?? false);
   const url = new URL(cellAudio(cell), location.href).href;
   if (page.openAudio.src !== url) page.openAudio.src = cellAudio(cell);
   playAudio(page.openAudio, status.fail);
@@ -211,15 +285,27 @@ async function readMap() {
   const read = await getJson(`${VIBES_PATH}/${vibeId}/archive`);
   map = read;
   const [across, up, third] = read.axes;
-  page.axisAcross.textContent = across ? `Across, low to high: ${axisLine(across)}.` : "";
-  page.axisUp.textContent = up ? `Up, low to high: ${axisLine(up)}.` : "";
+  page.axisAcross.textContent = across
+    ? `Across: ${axisCaption(across, "the left", "the right")}.`
+    : "";
+  page.axisAcrossEnds.textContent = across ? axisEnds(across) : "";
+  page.axisUp.textContent = up ? `Up: ${axisCaption(up, "the bottom", "the top")}.` : "";
+  page.axisUpEnds.textContent = up ? axisEnds(up) : "";
   page.layerField.hidden = third === undefined || read.reason !== null;
   if (third !== undefined && read.reason === null) {
-    page.layerName.textContent = `Slice of the third axis: ${axisLine(third)}`;
+    page.layerName.textContent = `Slice of the third axis, ${axisName(third)}`;
+    page.axisLayerEnds.textContent = axisEnds(third);
     const chosen = page.layerSelect.value;
     const bins = /** @type {number} */ (read.shape[2]);
     page.layerSelect.replaceChildren(
-      ...Array.from({ length: bins }, (_, bin) => new Option(`${bin + 1} of ${bins}`, String(bin))),
+      ...Array.from(
+        { length: bins },
+        (_, bin) =>
+          new Option(
+            `${axisPlaceWords(third, bin, bins)}, slice ${bin + 1} of ${bins}`,
+            String(bin),
+          ),
+      ),
     );
     if (chosen !== "" && Number(chosen) < bins) page.layerSelect.value = chosen;
   }
@@ -264,6 +350,8 @@ page.fillButton.onclick = () =>
     const control = page.controlSwitch.checked;
     /** @type {{ seconds: StepSeconds, measured: boolean }} */
     const { seconds, measured } = await getJson(SEARCH_ESTIMATE_PATH);
+    stepSeconds = seconds;
+    showFillTime();
     const asked = fillCostText(budget, exploreSteps(budget, exploreShare), seconds, {
       measured,
       control,
@@ -297,6 +385,10 @@ status.run(async () => {
     target === null
       ? "Every session of this brief is stopped, so filling, explore and nudge are off. Start a session from the brief page."
       : `The fill and the open cell's explores and nudges go to session ${target}.`;
+  /** @type {{ seconds: StepSeconds }} */
+  const estimate = await getJson(SEARCH_ESTIMATE_PATH);
+  stepSeconds = estimate.seconds;
+  showFillTime();
   await loadMap();
   await resume(target);
   status.say(

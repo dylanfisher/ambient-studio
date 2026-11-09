@@ -119,7 +119,7 @@ export function meaningText({ valid, schemaValid, truncated }) {
       "Many answers stay in the wrong format even after a fix, so the model is struggling with the format itself.";
   }
   if (truncated > 0) {
-    meaning += ` ${truncated} answer${truncated === 1 ? " was" : "s were"} cut off before finishing, which usually means the model spent its length limit before writing the answer.`;
+    meaning += ` ${truncated === 1 ? "One answer was" : "Some answers were"} cut off before finishing, which usually means the model spent its length limit before writing the answer.`;
   }
   return meaning;
 }
@@ -172,6 +172,30 @@ export function revisionVerdictText(tally) {
     return `The gain comes from asking again: the revision told its measurements fixed ${fixed} first tries, but not clearly more than the revision that wasn't told them (${test}). The measurements don't earn their place yet; decide whether to keep the revision step.`;
   }
   return `The revision step didn't help: the revision told its measurements fixed none of ${revised} first tries (${test}).`;
+}
+
+/** Each revision verdict in words alone (decision 0086): the counts and p are behind the toggle. */
+const REVISION_WORDS = Object.freeze({
+  [REVISION_VERDICT.inconclusive]:
+    "Inconclusive: too few first tries missed a range to tell. Run it again with more candidates per brief.",
+  [REVISION_VERDICT.passes]:
+    "The measurements help: the revision that was told its measurements landed inside every range more often than the one that wasn't.",
+  [REVISION_VERDICT.askingAgain]:
+    "The gain comes from asking again: the revision told its measurements fixed some first tries, but not clearly more than the revision that wasn't told them. The measurements don't earn their place yet; decide whether to keep the revision step.",
+  [REVISION_VERDICT.fails]:
+    "The revision step didn't help: the revision told its measurements fixed none of the first tries.",
+});
+
+/**
+ * The revision test's verdict in words, the line under its heading, or null without one.
+ * @param {Partial<RevisionModeTally>} tally
+ */
+export function revisionVerdictWords(tally) {
+  const revision = revisionOf(tally);
+  if (revision === null) return null;
+  const words = REVISION_WORDS[/** @type {keyof typeof REVISION_WORDS} */ (revision.verdict)];
+  if (words === undefined) throw new Error(`there is no revision verdict ${revision.verdict}`);
+  return words;
 }
 
 /**

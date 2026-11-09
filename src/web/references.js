@@ -18,7 +18,7 @@ import { cloneTemplate } from "./clone-template.js";
 import { elementsById } from "./element-by-id.js";
 import { mountPlayer, playAudio } from "./excerpt-player.js";
 import { pageNumbers } from "./numbers-toggle.js";
-import { analysisText, runAnalysis } from "./region-analysis.js";
+import { analysisText, analysisWords, runAnalysis } from "./region-analysis.js";
 import {
   dragRegion,
   formatSeconds,
@@ -165,14 +165,17 @@ function startEditing(region) {
   draw();
 }
 
-/** @param {{ startSeconds: number, endSeconds: number }} span */
-function play({ startSeconds, endSeconds }) {
+/**
+ * @param {{ startSeconds: number, endSeconds: number }} span
+ * @param {string} what the status line's name for it, since its times are behind the toggle
+ */
+function play({ startSeconds, endSeconds }, what) {
   if (!open) return;
   const problem = regionProblem(startSeconds, endSeconds, open.reference.durationSeconds);
   if (problem) throw new Error(problem);
   const query = spanQuery({ startSeconds, endSeconds });
   page.regionAudio.src = `${referencePath(open.reference.id)}/audio?${query}`;
-  status.say(`Playing ${timesText({ startSeconds, endSeconds, label: "", note: "" })}.`);
+  status.say(`Playing ${what}.`);
   playAudio(page.regionAudio, status.fail);
 }
 
@@ -200,12 +203,13 @@ function showRegions() {
         remove: HTMLButtonElement,
         analyze: HTMLButtonElement,
         analysis: HTMLElement,
+        analysisWords: HTMLElement,
       });
       item.label.textContent = region.label;
       item.times.textContent = timesText(region);
       item.note.textContent = region.note;
       item.note.hidden = region.note === "";
-      item.play.onclick = () => status.run(() => play(region));
+      item.play.onclick = () => status.run(() => play(region, `“${region.label}”`));
       item.edit.onclick = () => startEditing(region);
       item.remove.onclick = () =>
         status.run(async () => {
@@ -220,6 +224,8 @@ function showRegions() {
           item.analyze.disabled = true;
           try {
             const result = await runAnalysis(region.id, null, (step) => status.say(step));
+            item.analysisWords.textContent = analysisWords(result);
+            item.analysisWords.hidden = false;
             item.analysis.textContent = analysisText(result);
             item.analysis.hidden = false;
             status.say(`Analyzed “${region.label}”.`);
@@ -299,8 +305,12 @@ page.removeReferenceButton.onclick = () =>
 page.playFormButton.onclick = () =>
   status.run(() => {
     const span = typedSpan();
-    if (!span) throw new Error("Type a start, and an end after it, to play.");
-    play(span);
+    if (!span) {
+      throw new Error(
+        "Drag across the strip to choose a part, or type a start and an end after it under Show the numbers.",
+      );
+    }
+    play(span, "the part chosen on the strip");
   });
 
 page.cancelEditButton.onclick = () => startEditing(null);
@@ -317,7 +327,7 @@ page.regionForm.onsubmit = (event) => {
     const { region } = await postJson(path, { ...read.region });
     startEditing(null);
     await loadRegions();
-    status.say(`Saved “${region.label}”, ${timesText(region)}.`);
+    status.say(`Saved “${region.label}”.`);
   });
 };
 

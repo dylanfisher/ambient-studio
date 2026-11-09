@@ -13,7 +13,7 @@ import { jobControl } from "./job-control.js";
 import { endedText, JOB_STATE } from "./job-progress.js";
 import { jobBox } from "./job-view.js";
 import { oneAtATime } from "./one-at-a-time.js";
-import { tasteFacts, tasteSummary } from "./taste-test-text.js";
+import { tasteFacts, tasteSummary, tasteVerdict } from "./taste-test-text.js";
 
 /**
  * Wires the section and shows the last report.
@@ -41,10 +41,12 @@ export function tasteTestView(status) {
       ...(report?.vibes ?? []).map((/** @type {any} */ vibe) => {
         const card = cloneTemplate("taste-card", {
           title: HTMLElement,
+          verdict: HTMLElement,
           summary: HTMLElement,
           facts: HTMLElement,
         });
         card.title.textContent = vibe.name;
+        card.verdict.textContent = tasteVerdict(vibe);
         card.summary.textContent = tasteSummary(vibe);
         card.facts.replaceChildren(...factRows(tasteFacts(vibe)));
         card.facts.hidden = vibe.test === null;

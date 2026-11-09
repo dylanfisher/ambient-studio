@@ -43,25 +43,35 @@ export function axisName({ source, name, near, far, label }) {
 }
 
 /**
+ * The axis's high end (`sign` 1) or its low end (−1) in words: a lower spectral centroid,
+ * more space, a sound more like the far end.
+ * @param {AxisSource} axis
+ * @param {-1 | 1} sign
+ * @returns {string}
+ */
+export function endWords(axis, sign) {
+  const up = sign > 0;
+  const { source, name, near, far, label } = axis;
+  if (source === AXIS_SOURCE.feature) {
+    const entry = TARGET_FEATURES[/** @type {string} */ (name)];
+    return `${up ? "a higher" : "a lower"} ${entry?.feature.label ?? name}`;
+  }
+  if (source === AXIS_SOURCE.macro) return `${up ? MORE : LESS} ${name}`;
+  if (source === AXIS_SOURCE.direction) {
+    return `a sound more like ${up ? `“${far}”` : nearText(near)}`;
+  }
+  if (source === AXIS_SOURCE.region) {
+    return `a sound ${up ? "nearer to" : "further from"} the region “${label}”`;
+  }
+  throw new Error(`there is no axis source ${JSON.stringify(source)}`);
+}
+
+/**
  * The way toward the axis's high end (`sign` 1) or its low end (−1), one line of at most
  * `DIRECTION_CHARS` characters, as an explore's direction.
  * @param {AxisSource} axis
  * @param {-1 | 1} sign
  * @returns {string}
  */
-export function towardText(axis, sign) {
-  const up = sign > 0;
-  const { source, name, near, far, label } = axis;
-  /** @type {string} */
-  let words;
-  if (source === AXIS_SOURCE.feature) {
-    const entry = TARGET_FEATURES[/** @type {string} */ (name)];
-    words = `${up ? "a higher" : "a lower"} ${entry?.feature.label ?? name}`;
-  } else if (source === AXIS_SOURCE.macro) words = `${up ? MORE : LESS} ${name}`;
-  else if (source === AXIS_SOURCE.direction) {
-    words = `a sound more like ${up ? `“${far}”` : nearText(near)}`;
-  } else if (source === AXIS_SOURCE.region) {
-    words = `a sound ${up ? "nearer to" : "further from"} the region “${label}”`;
-  } else throw new Error(`there is no axis source ${JSON.stringify(source)}`);
-  return `Toward ${words}`.slice(0, DIRECTION_CHARS);
-}
+export const towardText = (axis, sign) =>
+  `Toward ${endWords(axis, sign)}`.slice(0, DIRECTION_CHARS);
