@@ -4263,3 +4263,13 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   page's top bar shows one entry per lane (0092). The orchestrator corrected 0092's shutdown
   sentence. Pending owner check on Safari 17.6: a search by ear with shift words shows two
   top-bar entries, each Cancel stopping only its own job. `./scripts/check` clean: 2,608 tests.
+- 2026-11-09: CG.3 built on branch `cg-3` (edb64e0, 36ea99d; Opus: 411k tokens, 229 calls, 59
+  min; reviewer Sonnet: PASS) and held unmerged for the owner. `aspiration` (vowel-shaped noise
+  from seeded tables read by timeline frame, pulsing at f0, −10 dB under the voice at 1) and
+  `breathiness` (a 2.5 dB, 12-cent sag over a phrase's last second, a 50-cent scoop over 120
+  ms, a 180 ms onset, an inhale 26 dB under), with the breath schedule unchanged. To fit the
+  budget, edb64e0 stops growl's half-integer harmonics at 1.5 kHz: twelve singers with all six
+  settings cost 551.2 of 560 beside a 15 s reverb. That changes what a genome with growl
+  renders (only the half-integer harmonics above 1.5 kHz, −36 dB difference; every other bit
+  the same), so it waits on the owner: whether any growl genome was made since CG.1. Schema
+  text limit raised to 4,100 (0072 amended); the develop prompt has 77 tokens left (0090).
