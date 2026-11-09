@@ -4254,3 +4254,12 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   upper bound. Twelve singers at 65 Hz with all four of CG.1's and CG.2's settings cost 164.3,
   4.7 under the budget beside a 15 s reverb. Schema text trimmed to 3,997 of 4,000; CG.3 and
   CG.4 have no room left (0089). `./scripts/check` and a fresh second run agree: 2,598 tests.
+- 2026-11-09: WF.2b merged as 06ac2f4 (Opus: 250k tokens, 171 calls, 30 min; reviewer Sonnet: 92k
+  tokens, 18 calls, 2.4 min, PASS). The omlx queue's requests carry an owner, the job's abort
+  signal, and `ownedBy(app.queue, job.signal)` cancels only that job's requests; all six jobs
+  that cancel use it, and nothing in `src/server` calls the bare cancel. The runner has a words
+  lane beside the main one, one job each; omlx still sees one request in flight, which every
+  new test asserts. The shift words are a words job with a top-bar entry and a cancel, and every
+  page's top bar shows one entry per lane (0092). The orchestrator corrected 0092's shutdown
+  sentence. Pending owner check on Safari 17.6: a search by ear with shift words shows two
+  top-bar entries, each Cancel stopping only its own job. `./scripts/check` clean: 2,608 tests.

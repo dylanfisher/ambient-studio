@@ -34,7 +34,7 @@ is the one thing each job already holds alone. The queue's order, its one reques
 its gap and its back-off are unchanged: owners only decide what a cancel reaches.
 
 **The bare `cancel()` stays**, cancelling every request, for shutting the queue down: the test
-app's teardown uses it, and so would a server shutdown. No job calls it.
+app's teardown uses it. Server shutdown cancels each job, and each job cancels its own requests, so nothing in `src/server` calls it.
 
 **A words lane.** The runner keeps one lane per name from `jobLane(kind)` in
 `src/domain/job-kind.js`: `words` jobs run in the words lane, every other kind in the main lane.
