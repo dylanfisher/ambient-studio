@@ -4,6 +4,7 @@ import { lintGenome } from "../../src/domain/lint-genome.js";
 import { SEED_VIBES } from "../../src/domain/seed-vibes.js";
 import { validateConstraints } from "../../src/domain/validate-constraints.js";
 import { validateTargets } from "../../src/domain/validate-targets.js";
+import { COST_BUDGET, cost } from "../../src/engine/cost.js";
 import { requireGenome } from "../../src/engine/validate-genome.js";
 import { SEED_GENOMES } from "../support/seed-genomes.js";
 
@@ -80,5 +81,37 @@ describe("the seed vibes", () => {
       cymbalHits: expect.any(Number),
       drumHits: expect.any(Number),
     });
+  });
+
+  // Phase CG's acceptance 7: the starting point allows the chant's growl and breath.
+  test("low-chant can be met with every phase CG chant parameter at its most", () => {
+    const seed = /** @type {Record<string, any>} */ (SEED_GENOMES["low-chant"]);
+    const [singing, ...rest] = seed.voices;
+    const every = {
+      growl: 1,
+      rough: 1,
+      flutter: 1,
+      shimmer: 1,
+      aspiration: 1,
+      breathiness: 1,
+      focus: 12,
+      narrow: 1,
+      breath: 0.6,
+    };
+    const genome = requireGenome(
+      { ...seed, voices: [{ ...singing, ...every }, ...rest] },
+      "the low chant with growl and breath",
+    );
+    const { constraints } = /** @type {import("../../src/domain/seed-vibes.js").SeedVibe} */ (
+      SEED_VIBES["low-chant"]
+    );
+    expect(lintGenome(genome, constraints)).toEqual({ ok: true, findings: [] });
+    expect(cost(genome)).toBeLessThanOrEqual(COST_BUDGET);
+  });
+
+  test("low-chant's brief asks for the growl and the breaths' sound", () => {
+    const brief = SEED_VIBES["low-chant"]?.brief ?? "";
+    expect(brief).toMatch(/growl/);
+    expect(brief).toMatch(/breath is heard/);
   });
 });

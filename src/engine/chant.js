@@ -7,7 +7,8 @@
 // 0088). `flutter` and `shimmer` give each singer its own seeded wander in pitch and level
 // (decision 0089). `aspiration` adds noise shaped by the vowel and pulsing at f0, and
 // `breathiness` gives each breath an inhale, a scoop into the next phrase and a sag before it
-// (decision 0090).
+// (decision 0090). `narrow` narrows the upper resonance, so focus picks out one partial more
+// sharply (decision 0091).
 /** @import { ValuesOf } from "./descriptor.js" */
 /** @import { Resolved } from "./effective-params.js" */
 /** @import { Genome, Voice, VOICE_PARAMS } from "./genome-schema.js" */
@@ -55,6 +56,13 @@ const PARAMS = Object.freeze({
     trajectory: true,
     safe: [0, 12],
     description: "upper formant boost",
+  }),
+  narrow: number({
+    min: 0,
+    max: 1,
+    default: 0,
+    unit: "",
+    description: "sharper focus",
   }),
   tilt: number({
     min: 0,
@@ -198,6 +206,11 @@ const VOWELS = Object.freeze([
 /** The upper resonance's peak against the lower one's. */
 const UPPER_DB = -10;
 /**
+ * The upper resonance's width at narrow 1, Hz. Between, the width moves geometrically from the
+ * vowel's (decision 0091).
+ */
+const NARROW_HZ = 40;
+/**
  * A third, broad and weak resonance at the bottom of the register, fixed for every vowel. It sets
  * the fundamental at about 19 dB under the strongest partial at the default tilt.
  */
@@ -280,14 +293,23 @@ function swingPower(out, half, side) {
  * `growl`, so at growl 1 it sits on the integer harmonics' spectral envelope. With `aspiration`
  * above 0 the partials give up the power its noise takes, so the voice's RMS stays the same. With
  * growl, rough and aspiration at 0 the integer amplitudes are computed as they were before any
- * of them existed, bit for bit.
+ * of them existed, bit for bit. `narrow` takes the upper resonance's width toward `NARROW_HZ`
+ * and raises its peak by as much as it narrows, so its area, and so the power it passes, stays
+ * the same; at 0 it leaves the resonance as it is.
  * @param {Float64Array} out
  * @param {Float64Array} half
- * @param {{ hz: number; vowel: number; focus: number; tilt: number; growl: number; swing: number; aspiration: number }} at
+ * @param {{ hz: number; vowel: number; focus: number; narrow: number; tilt: number; growl: number; swing: number; aspiration: number }} at
  */
-function partialAmplitudes(out, half, { hz, vowel, focus, tilt, growl, swing, aspiration }) {
-  const { lower, upper } = vowelResonances(vowel);
-  const upperGain = dbToGain(UPPER_DB);
+function partialAmplitudes(
+  out,
+  half,
+  { hz, vowel, focus, narrow, tilt, growl, swing, aspiration },
+) {
+  const { lower, upper: open } = vowelResonances(vowel);
+  // At narrow 0 the power is exactly 1, so the width and the gain are exactly as before.
+  const width = open.width * (NARROW_HZ / open.width) ** narrow;
+  const upper = { hz: open.hz, width };
+  const upperGain = dbToGain(UPPER_DB) * (open.width / width);
   const chestGain = dbToGain(CHEST.db);
   /** @param {number} f */
   const shape = (f) =>
@@ -351,6 +373,7 @@ function partialAmplitudes(out, half, { hz, vowel, focus, tilt, growl, swing, as
  * @property {number} count harmonics a singer sings
  * @property {number} halves half-integer harmonics a singer sings when it growls
  * @property {number} tilt
+ * @property {number} narrow
  * @property {number} swing the level's swing from cycle to cycle, from `rough`
  * @property {number} pulse
  * @property {readonly Singer[]} singers the lead first
@@ -927,6 +950,7 @@ export function chantTrack(genome, voice, sampleRate, seed) {
     count: Math.floor(TOP_HZ / fundamental),
     halves: halfHarmonics(fundamental),
     tilt: self.tilt,
+    narrow: self.narrow,
     swing: ROUGH_SWING * self.rough,
     pulse: self.pulse,
     singers,
@@ -1356,7 +1380,7 @@ function tableAt(near, far, cycles, u) {
  * @returns {Float32Array<ArrayBuffer>[]} left and right
  */
 export function chantChunk(track, first, frames) {
-  const { sampleRate, count, halves, tilt, swing, pulse, singers } = track;
+  const { sampleRate, count, halves, tilt, narrow, swing, pulse, singers } = track;
   const step = sampleRate / CONTROL_RATE;
   const end = first + frames;
   const scale = 1 / Math.sqrt(singers.length);
@@ -1410,6 +1434,7 @@ export function chantChunk(track, first, frames) {
       hz: c.hz,
       vowel: c.vowel,
       focus: c.focus,
+      narrow,
       tilt,
       growl: c.growl,
       swing,

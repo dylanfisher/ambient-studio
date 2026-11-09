@@ -12,8 +12,9 @@
 //                                   with four transitions, the first a weave, and two macro lanes
 //                                   (decisions 0062, 0064, 0065, 0080), each rendered alone and
 //                                   rendered and exported, against phase 6's 1 GiB ceiling
-//   ./scripts/bench --chant         20 minutes of a 12-singer chant that breathes, a cymbal and
-//                                   a drum (phase CV's acceptance 6), rendered alone
+//   ./scripts/bench --chant         20 minutes of a 12-singer chant that breathes, with every
+//                                   phase CG parameter on, a cymbal and a drum (phase CV's and
+//                                   phase CG's acceptance 6), rendered alone
 /** @import { Lane } from "../src/domain/lane-schema.js" */
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -76,13 +77,29 @@ const TRACK = Object.freeze({
   spread: 0.1,
 });
 /**
- * Phase CV's acceptance 6: the chant golden with twelve singers, which breathe, beside the
- * cymbal's and the drum's golden voices at their default density, on a 900 s timeline. A genome
- * is at most 900 s, so its 20 minutes are a track of two sections of it from `offset`, crossfaded
- * over `transition` seconds, mixed as the track job mixes. `runs` timed runs in one child with
+ * Phase CV's and phase CG's acceptance 6: the chant golden with twelve singers, which breathe,
+ * with `every` parameter phase CG adds at 1, beside the cymbal's and the drum's golden voices at
+ * `density`, on a 900 s timeline. A genome is at most 900 s, so its 20 minutes are a track of
+ * two sections of it from `offset`, crossfaded over `transition` seconds, mixed as the track job
+ * mixes. `runs` timed runs in one child with
  * no warm-up keep the case under 5 minutes (agent rule 9).
  */
-const CHANT = Object.freeze({ length: 1200, offset: 30, transition: 10, runs: 3, density: 4 });
+const CHANT = Object.freeze({
+  length: 1200,
+  offset: 30,
+  transition: 10,
+  runs: 3,
+  density: 4,
+  every: Object.freeze({
+    growl: 1,
+    rough: 1,
+    flutter: 1,
+    shimmer: 1,
+    aspiration: 1,
+    breathiness: 1,
+    narrow: 1,
+  }),
+});
 /** What a track child's per-chunk memory lines start with, on stderr. */
 const MEMORY_LINE = "memory";
 const TRACK_MODES = Object.freeze({ "track-render": "render", "track-export": "render+export" });
@@ -231,7 +248,7 @@ function chantTrack() {
       ...chant,
       duration: 900,
       voices: [
-        { ...chant.voices[0], singers: 12 },
+        { ...chant.voices[0], singers: 12, ...CHANT.every },
         { ...golden("cymbal").voices[0], density: CHANT.density },
         { ...golden("drum").voices[0], density: CHANT.density },
       ],
@@ -283,7 +300,7 @@ function benchChant() {
   const { length, runs } = CHANT;
   const [chant] = genome.voices;
   console.log(
-    `${length} s track of chant-ensemble with ${chant && "singers" in chant ? chant.singers : "?"} singers, a cymbal and a drum at ${CHANT.density}/min, seed ${SEED}; peak cost ${found.peak.toFixed(1)}; ${runs} timed runs, no warm-up`,
+    `${length} s track of chant-ensemble with ${chant && "singers" in chant ? chant.singers : "?"} singers and ${Object.keys(CHANT.every).join(", ")} at 1, a cymbal and a drum at ${CHANT.density}/min, seed ${SEED}; peak cost ${found.peak.toFixed(1)}; ${runs} timed runs, no warm-up`,
   );
   console.log(`  ${load()}`);
   const { seconds, rss } = measure("chant", length, runs);
