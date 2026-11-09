@@ -1,6 +1,6 @@
 // Most checks read the voice's JS source directly, which is cheap; renders are short (3–9 s) to
 // keep the gate light on a machine that also serves omlx.
-/** @import { Singer } from "../../src/engine/chant.js" */
+/** @import { Breath, Singer } from "../../src/engine/chant.js" */
 /** @import { Genome, Voice } from "../../src/engine/genome-schema.js" */
 import { describe, expect, test } from "vitest";
 import { spectralCentroid } from "../../src/domain/spectral-centroid.js";
@@ -9,6 +9,7 @@ import { COST_BUDGET, cost } from "../../src/engine/cost.js";
 import { effectiveParams } from "../../src/engine/effective-params.js";
 import { GLOBAL_PARAMS } from "../../src/engine/genome-schema.js";
 import chantGenome from "../../src/engine/genomes/chant.json" with { type: "json" };
+import breathGenome from "../../src/engine/genomes/chant-breath.json" with { type: "json" };
 import ensembleGenome from "../../src/engine/genomes/chant-ensemble.json" with { type: "json" };
 import flutterGenome from "../../src/engine/genomes/chant-flutter.json" with { type: "json" };
 import growlGenome from "../../src/engine/genomes/chant-growl.json" with { type: "json" };
@@ -29,6 +30,7 @@ const golden = requireGenome(chantGenome, "the chant golden genome");
 const ensemble = requireGenome(ensembleGenome, "the six-singer chant golden genome");
 const growling = requireGenome(growlGenome, "the growling chant golden genome");
 const unsteady = requireGenome(flutterGenome, "the fluttering chant golden genome");
+const breathing = requireGenome(breathGenome, "the breathing chant golden genome");
 /** C2, the A-minor scale note nearest the 65 Hz default root. */
 const C2 = 65.40639;
 /** Growl at 0 until 1.5 s, up to 0.8, back to 0 at 4 s, and up again: it crosses 0 twice. */
@@ -368,6 +370,11 @@ describe("the chant voice", () => {
       oneChant({ singers: 6, breath: 0.6, phrase: 3, flutter: 1, shimmer: 1 }),
     ],
     ["five singers growling, rough, flutter and shimmer", unsteady],
+    [
+      "one singer breathing, aspiration and breathiness",
+      oneChant({ phrase: 3, breath: 0.8, aspiration: 0.7, breathiness: 1 }),
+    ],
+    ["four singers breathing, aspiration moving, breathiness, growl and flutter", breathing],
   ])(
     "%s: its source is the same whichever window computes it, and from a track started anywhere",
     (_, genome) => {
@@ -404,6 +411,7 @@ describe("the chant voice", () => {
     ["six singers", ensemble],
     ["four singers, growl a trajectory, rough", growling],
     ["five singers, flutter and shimmer", unsteady],
+    ["four singers, aspiration and breathiness", breathing],
   ])(
     "%s: excerpts at several offsets match their window of a full render (0007's tolerance)",
     async (_, genome) => {
@@ -464,8 +472,10 @@ describe("the chant voice", () => {
     }
     expect(Object.keys(chant.params).sort()).toEqual(
       [
+        "aspiration",
         "bend",
         "breath",
+        "breathiness",
         "depth",
         "flutter",
         "focus",
@@ -492,6 +502,23 @@ describe("the chant voice", () => {
     expect(errors({ flutter: 1, shimmer: 1 })).toEqual([]);
     expect(errors({ flutter: { points: [[0, 1]] } })).toEqual(["$.voices[0].flutter"]);
     expect(errors({ shimmer: { points: [[0, 1]] } })).toEqual(["$.voices[0].shimmer"]);
+    // Aspiration may move over the track; breathiness is fixed for it.
+    expect(
+      errors({
+        aspiration: {
+          points: [
+            [0, 0],
+            [5, 1],
+          ],
+        },
+        breathiness: 1,
+      }),
+    ).toEqual([]);
+    expect(errors({ breathiness: { points: [[0, 1]] } })).toEqual(["$.voices[0].breathiness"]);
+    expect(errors({ aspiration: 1.5, breathiness: -0.5 })).toEqual([
+      "$.voices[0].aspiration",
+      "$.voices[0].breathiness",
+    ]);
   });
 
   test("the golden ensemble has six singers who breathe, spread in pitch and place", () => {
@@ -999,5 +1026,475 @@ describe("the chant's flutter and shimmer", () => {
       "twelve unsteady singers growling with a 12 s reverb",
     );
     expect(cost(genome)).toBeLessThanOrEqual(COST_BUDGET);
+  });
+});
+
+/**
+ * The power of `data` between the harmonics of `f0` from 200 to 800 Hz: at each midpoint between
+ * two harmonics, by `amplitudeAt`.
+ * @param {ArrayLike<number>} data
+ * @param {number} f0
+ */
+function betweenHarmonics(data, f0) {
+  let power = 0;
+  for (let n = 1.5; n * f0 <= 800; n++)
+    if (n * f0 >= 200) power += amplitudeAt(data, n * f0, RATE) ** 2;
+  return power;
+}
+
+/** @param {ArrayLike<number>} data */
+const rmsOf = (data) => {
+  let sum = 0;
+  for (let i = 0; i < data.length; i++) sum += /** @type {number} */ (data[i]) ** 2;
+  return Math.sqrt(sum / data.length);
+};
+
+/** @param {number} ratio */
+const db = (ratio) => 20 * Math.log10(ratio);
+
+/**
+ * A source's noise alone: the source with aspiration on, less the one without, whose partials
+ * aspiration a scales by √(1 − 0.1 a²) to make room for its noise.
+ * @param {Float64Array} on
+ * @param {Float64Array} off
+ * @param {number} aspiration
+ */
+const noiseOf = (on, off, aspiration) =>
+  on.map((v, i) => v - /** @type {number} */ (off[i]) * Math.sqrt(1 - 0.1 * aspiration ** 2));
+
+/**
+ * The frequency from 20 to 300 Hz where the envelope of `noise`, its square, is strongest.
+ * @param {Float64Array} noise
+ */
+function modulationPeak(noise) {
+  const envelope = noise.map((v) => v * v);
+  const mean = envelope.reduce((a, v) => a + v, 0) / envelope.length;
+  return peakFrequency(
+    envelope.map((v) => v - mean),
+    RATE,
+    { lo: 20, hi: 300, step: 0.1 },
+  );
+}
+
+/**
+ * The share of `data`'s power from `lo` to `hi` Hz, from its amplitudes every 10 Hz to 4 kHz.
+ * @param {ArrayLike<number>} data
+ * @param {number} lo
+ * @param {number} hi
+ */
+function spectrumShare(data, lo, hi) {
+  let band = 0;
+  let total = 0;
+  for (let hz = 20; hz <= 4000; hz += 10) {
+    const power = amplitudeAt(data, hz, RATE) ** 2;
+    total += power;
+    if (hz >= lo && hz <= hi) band += power;
+  }
+  return band / total;
+}
+
+/**
+ * The breath schedule of four singers, phrase 5 s and breath 0.8 s, seed 1, up to 12 s, as the
+ * commit before aspiration and breathiness computed it.
+ */
+const CV2_SCHEDULE = [
+  [
+    [1.1821828816237734, 2.04095210844305],
+    [9.764936076732496, 10.68472018807582],
+  ],
+  [
+    [0.2497959487145803, 0.9520244425168298],
+    [7.572524356405284, 8.52958887576222],
+  ],
+  [
+    [2.453556011399678, 3.2403271271534777],
+    [9.941651046409515, 10.72303630210763],
+  ],
+  [
+    [3.785236532376165, 4.737979641784931],
+    [8.911815120998721, 9.907265413433265],
+  ],
+];
+
+/**
+ * The mean of `values`, sampled at `rate` from timeline 0, from `from` to `to` seconds.
+ * @param {number[]} values
+ * @param {number} rate
+ * @param {number} from
+ * @param {number} to
+ */
+const meanOver = (values, rate, from, to) => {
+  const part = values.slice(Math.round(from * rate), Math.round(to * rate));
+  return part.reduce((a, v) => a + v, 0) / part.length;
+};
+
+/**
+ * The mean of the cycle levels from `from` to `to` seconds, in dB.
+ * @param {{ t: number; db: number }[]} levels
+ * @param {number} from
+ * @param {number} to
+ */
+const levelOver = (levels, from, to) => {
+  const part = levels.filter((l) => l.t >= from && l.t < to).map((l) => l.db);
+  return part.reduce((a, v) => a + v, 0) / part.length;
+};
+
+describe("the chant's aspiration", () => {
+  const plain = { root: 65, depth: 0 };
+
+  test("aspiration 1 raises the energy between the harmonics in 200–800 Hz by 10 dB or more, with noise 10 dB under the voice", () => {
+    const off = mono(oneChant(plain), 0, 2 * RATE);
+    const on = mono(oneChant({ ...plain, aspiration: 1 }), 0, 2 * RATE);
+    const f0 = source(oneChant(plain), 0).track.control(0).hz;
+    const rise = 10 * Math.log10(betweenHarmonics(on, f0) / betweenHarmonics(off, f0));
+    // Without aspiration nothing sits between the harmonics but the window's leakage.
+    expect(rise).toBeGreaterThanOrEqual(10);
+    expect(rise).toBeGreaterThan(60);
+    // The noise takes 10% of the voice's power, and the voice's level stays where it was.
+    const noise = noiseOf(on, off, 1);
+    expect(Math.abs(db(rmsOf(noise) / rmsOf(on)) + 10)).toBeLessThan(0.4);
+    expect(Math.abs(db(rmsOf(on) / rmsOf(off)))).toBeLessThan(0.15);
+    // Half the aspiration is half the noise's level.
+    const half = noiseOf(mono(oneChant({ ...plain, aspiration: 0.5 }), 0, 2 * RATE), off, 0.5);
+    expect(Math.abs(db(rmsOf(half) / rmsOf(noise)) + 6.02)).toBeLessThan(0.4);
+  });
+
+  test("its noise's envelope pulses at f0: the modulation spectrum peaks within 0.3% of it", () => {
+    for (const root of [50, 65, 100]) {
+      const change = { root, depth: 0 };
+      const off = mono(oneChant(change), 0, RATE);
+      const on = mono(oneChant({ ...change, aspiration: 1 }), 0, RATE);
+      const f0 = source(oneChant(change), 0).track.control(0).hz;
+      const peak = modulationPeak(noiseOf(on, off, 1));
+      expect(Math.abs(peak - f0) / f0, `root ${root}`).toBeLessThan(0.003);
+    }
+  });
+
+  test("its noise is shaped by the vowel's resonances, and moves up with the vowel", () => {
+    /** @param {number} vowel */
+    const noise = (vowel) => {
+      const change = { ...plain, vowel };
+      return noiseOf(
+        mono(oneChant({ ...change, aspiration: 1 }), 0, RATE),
+        mono(oneChant(change), 0, RATE),
+        1,
+      );
+    };
+    const dark = noise(0);
+    const open = noise(1);
+    // An "oo" puts its noise around 300 and 650 Hz, an "ah" around 650 Hz and 1 kHz.
+    expect(spectrumShare(dark, 200, 800)).toBeGreaterThan(0.8);
+    expect(spectrumShare(open, 500, 1300)).toBeGreaterThan(0.8);
+    expect(spectrumShare(open, 20, 450)).toBeLessThan(0.1);
+  });
+
+  test("a chorus's noise is 10 dB under the voice, which keeps its level, and differs in the two channels", () => {
+    const change = { ...plain, singers: 6, spread: 15 };
+    const off = sourceOf(oneChant(change), 2 * RATE);
+    const on = sourceOf(oneChant({ ...change, aspiration: 1 }), 2 * RATE);
+    const [left, right] = [0, 1].map((c) =>
+      noiseOf(
+        Float64Array.from(/** @type {Float32Array} */ (on[c])),
+        Float64Array.from(/** @type {Float32Array} */ (off[c])),
+        1,
+      ),
+    );
+    const l = /** @type {Float64Array} */ (left);
+    const r = /** @type {Float64Array} */ (right);
+    const total = summed(on);
+    const noise = l.map((v, i) => v + /** @type {number} */ (r[i]));
+    expect(Math.abs(db(rmsOf(noise) / rmsOf(total)) + 10)).toBeLessThan(0.5);
+    expect(Math.abs(db(rmsOf(total) / rmsOf(summed(off))))).toBeLessThan(0.1);
+    // The lead's stream is in both channels, and the chorus's two streams one each.
+    const shared = correlation(Array.from(l), Array.from(r));
+    expect(shared).toBeGreaterThan(0.1);
+    expect(shared).toBeLessThan(0.3);
+  });
+
+  test("aspiration at 0 for the first seconds sings those seconds as the chant without it", () => {
+    const later = {
+      points: [
+        [0, 0],
+        [1.5, 0],
+        [3, 0.8],
+      ],
+    };
+    const without = sourceOf(oneChant({ singers: 3 }), 3 * RATE);
+    const moving = sourceOf(oneChant({ singers: 3, aspiration: later }), 3 * RATE);
+    for (const c of [0, 1]) {
+      const a = /** @type {Float32Array} */ (without[c]);
+      const b = /** @type {Float32Array} */ (moving[c]);
+      expect(b.subarray(0, 1.4 * RATE)).toEqual(a.subarray(0, 1.4 * RATE));
+      expect(b.subarray(2 * RATE)).not.toEqual(a.subarray(2 * RATE));
+    }
+  });
+});
+
+describe("the chant's breathiness", () => {
+  // One singer, phrases of about 5 s and breaths of about 0.8 s, no swell.
+  const breathy = { root: 65, depth: 0, phrase: 5, breath: 0.8 };
+  const seconds = 30;
+  /** @param {number} breathiness */
+  const breathingSource = (breathiness) => {
+    const { track, channels } = source(oneChant({ ...breathy, breathiness }), seconds);
+    const f0 = track.control(0).hz;
+    const breaths = track.breaths(0, seconds).filter((b) => b.end < seconds - 1);
+    return { data: summed(channels), channels, f0, breaths };
+  };
+
+  test("leaves every singer's breaths where they fall without it, and where the commit before it put them", () => {
+    for (const breathiness of [0, 1]) {
+      const { track } = source(
+        oneChant({ singers: 4, phrase: 5, breath: 0.8, breathiness, aspiration: breathiness }),
+        0,
+      );
+      const schedule = [0, 1, 2, 3].map((s) =>
+        track.breaths(s, 12).map(({ start, end }) => [start, end]),
+      );
+      expect(schedule).toEqual(CV2_SCHEDULE);
+    }
+    const at = (/** @type {number} */ breathiness) =>
+      source(oneChant({ singers: 12, phrase: 3, breath: 1, breathiness }), 0).track;
+    const plainTrack = at(0);
+    const breathingTrack = at(1);
+    for (let s = 0; s < 12; s++)
+      expect(breathingTrack.breaths(s, 120)).toEqual(plainTrack.breaths(s, 120));
+  });
+
+  test("breathiness 1 puts an inhale in each breath 26 dB under the phrase's level, 0.5 one 32 dB under", () => {
+    const steady = rmsOf(
+      summed(sourceOf(oneChant({ root: 65, depth: 0, phrase: 5 }), seconds * RATE)),
+    );
+    // Over a breath's middle 40%, where the singer is silent, the inhale's 16x²(1 − x)² has a
+    // mean square of 0.82 of its peak's.
+    let hump = 0;
+    for (let x = 0.3; x < 0.7; x += 1e-4) hump += (4 * x * (1 - x)) ** 4;
+    const middle = 10 * Math.log10(hump / 4000);
+    for (const [breathiness, expected] of [
+      [1, -26],
+      [0.5, -32.02],
+    ]) {
+      const { data, breaths } = breathingSource(/** @type {number} */ (breathiness));
+      expect(breaths.length).toBeGreaterThanOrEqual(4);
+      const unders = breaths.map(({ start, end }) => {
+        const span = end - start;
+        const part = data.subarray(
+          Math.round((start + 0.3 * span) * RATE),
+          Math.round((start + 0.7 * span) * RATE),
+        );
+        return db(rmsOf(part) / steady) - middle;
+      });
+      const who = `breathiness ${breathiness}: ${unders.map((u) => u.toFixed(2)).join(", ")} dB`;
+      const mean = unders.reduce((a, u) => a + u, 0) / unders.length;
+      expect(Math.abs(mean - /** @type {number} */ (expected)), who).toBeLessThan(0.7);
+      for (const under of unders)
+        expect(Math.abs(under - /** @type {number} */ (expected)), who).toBeLessThan(1.5);
+    }
+  });
+
+  test("toward each phrase's end the level sags 2.5 dB and the pitch 12 cents over its last second", () => {
+    const { data, f0, breaths } = breathingSource(1);
+    const pitch = pitchTrace(data, f0, 5);
+    const levels = cycleLevels(data, f0);
+    let checked = 0;
+    for (let j = 1; j < breaths.length; j++) {
+      const { start } = /** @type {Breath} */ (breaths[j]);
+      const before = /** @type {Breath} */ (breaths[j - 1]);
+      if (start - before.end < 2) continue;
+      checked++;
+      const who = `phrase ending at ${start} s`;
+      // Over the last second the sag runs along x² to 2.5 dB and 12 cents. Over the last 50 ms,
+      // where the level is measured, x² is about 0.95, so 2.36 dB; from 60 to 20 ms before the
+      // breath, where the pitch is, about 0.92, so 11 cents.
+      const drop =
+        levelOver(levels, start - 1.15, start - 1.05) - levelOver(levels, start - 0.05, start);
+      expect(drop, who).toBeGreaterThan(2.2);
+      expect(drop, who).toBeLessThan(2.5);
+      const sag =
+        meanOver(pitch, TRACE_RATE, start - 1.15, start - 1.05) -
+        meanOver(pitch, TRACE_RATE, start - 0.06, start - 0.02);
+      expect(sag, who).toBeGreaterThan(10.5);
+      expect(sag, who).toBeLessThan(11.6);
+      // Halfway through the last second it has fallen a quarter of the way: x² at 0.5.
+      const halfway =
+        meanOver(pitch, TRACE_RATE, start - 1.15, start - 1.05) -
+        meanOver(pitch, TRACE_RATE, start - 0.52, start - 0.48);
+      expect(halfway, who).toBeGreaterThan(2.7);
+      expect(halfway, who).toBeLessThan(3.3);
+    }
+    expect(checked).toBeGreaterThanOrEqual(3);
+  });
+
+  test("each phrase scoops up 50 cents into its note, reaching it within 150 ms, with a soft onset", () => {
+    const { data, f0, breaths } = breathingSource(1);
+    const pitch = pitchTrace(data, f0, 5);
+    const levels = cycleLevels(data, f0);
+    const plainLevels = cycleLevels(breathingSource(0).data, f0);
+    const steady = median(levels.map((l) => l.db));
+    expect(breaths.length).toBeGreaterThanOrEqual(4);
+    for (const { end } of breaths) {
+      const who = `phrase starting at ${end} s`;
+      // The fade in starts 80 ms before the breath's end, and the scoop rises from there along
+      // the smooth curve over 120 ms: 42 cents under at 30 ms, 25 at 60 ms, there at 120 ms. The
+      // trace smooths over two cycles of f0, which pulls the first value up a little.
+      const sigma = end - 0.08;
+      const low = meanOver(pitch, TRACE_RATE, sigma + 0.02, sigma + 0.04);
+      expect(low, who).toBeLessThan(-35);
+      expect(low, who).toBeGreaterThan(-45);
+      const midway = meanOver(pitch, TRACE_RATE, sigma + 0.05, sigma + 0.07);
+      expect(midway, who).toBeGreaterThan(-28);
+      expect(midway, who).toBeLessThan(-21);
+      const reached = meanOver(pitch, TRACE_RATE, sigma + 0.15, sigma + 0.25);
+      expect(Math.abs(reached), who).toBeLessThan(0.5);
+      // The fade in lasts 180 ms, not 80: at the breath's end the voice is 7.7 dB under its
+      // level, where without breathiness it is already there.
+      const onset = levelOver(levels, end - 0.01, end + 0.01) - steady;
+      expect(onset, who).toBeLessThan(-6.5);
+      expect(onset, who).toBeGreaterThan(-8.7);
+      expect(levelOver(plainLevels, end - 0.01, end + 0.01) - steady, who).toBeGreaterThan(-0.3);
+      expect(levelOver(levels, end + 0.11, end + 0.13) - steady, who).toBeGreaterThan(-0.2);
+    }
+  });
+
+  test("breathiness at 0, or with no breaths, and aspiration at 0 sing the samples the chant sings without them", () => {
+    for (const genome of [golden, ensemble, growling, unsteady]) {
+      const zeros = requireGenome(
+        {
+          ...genome,
+          voices: genome.voices.map((v) => ({ ...v, aspiration: 0, breathiness: 0 })),
+        },
+        "aspiration and breathiness at 0",
+      );
+      expect(sourceOf(zeros, 3 * RATE)).toEqual(sourceOf(genome, 3 * RATE));
+    }
+    // Breathiness shapes breaths, so with none it does nothing.
+    const still = { singers: 3, breath: 0 };
+    expect(sourceOf(oneChant({ ...still, breathiness: 1 }), 3 * RATE)).toEqual(
+      sourceOf(oneChant(still), 3 * RATE),
+    );
+  });
+
+  test("six singers each breathing their own way: windows split across a breath match, at 800 s too", () => {
+    const genome = requireGenome(
+      {
+        duration: 900,
+        fadeIn: 0,
+        voices: [
+          {
+            id: "chant",
+            type: "chant",
+            singers: 6,
+            phrase: 3,
+            breath: 0.6,
+            aspiration: 0.8,
+            breathiness: 1,
+            flutter: 1,
+            growl: 0.4,
+          },
+        ],
+      },
+      "six singers breathing late",
+    );
+    const voice = /** @type {Voice} */ (genome.voices[0]);
+    for (const at of [3, 800]) {
+      const from = at * RATE;
+      const length = 4 * RATE;
+      const whole = chantChunk(chantTrack(genome, voice, RATE, SEED), from, length);
+      const track = chantTrack(genome, voice, RATE, SEED);
+      const breaths = track
+        .breaths(1, at + 4)
+        .filter((b) => b.start > at + 0.5 && b.end < at + 3.5);
+      expect(breaths.length, `breaths after ${at} s`).toBeGreaterThan(0);
+      const breath = /** @type {Breath} */ (breaths[0]);
+      // Splits in the sag, the breath's fade out, its middle, and the onset after it.
+      const splits = [
+        breath.start - 0.4,
+        breath.start + 0.03,
+        (breath.start + breath.end) / 2,
+        breath.end + 0.05,
+      ].map((t) => Math.round(t * RATE) + 17);
+      const bounds = [from, ...splits, from + length];
+      const parts = bounds.slice(1).map((to, p) => {
+        const lo = /** @type {number} */ (bounds[p]);
+        return { lo, chunk: chantChunk(track, lo, to - lo) };
+      });
+      for (const c of [0, 1]) {
+        const joined = new Float32Array(length);
+        for (const { lo, chunk } of parts)
+          joined.set(/** @type {Float32Array} */ (chunk[c]), lo - from);
+        expect(joined, `${at} s, channel ${c}`).toEqual(whole[c]);
+      }
+    }
+    // A track that rendered other windows first, out of order, gives the same late samples.
+    const visited = chantTrack(genome, voice, RATE, SEED);
+    for (const t of [500, 0, 799.9, 250]) chantChunk(visited, t * RATE, RATE / 2);
+    expect(chantChunk(visited, 800 * RATE + 333, RATE)).toEqual(
+      chantChunk(chantTrack(genome, voice, RATE, SEED), 800 * RATE + 333, RATE),
+    );
+  });
+
+  test("a window split where the noise changes period matches the whole", () => {
+    const genome = oneChant({ singers: 3, aspiration: 1, breath: 0.6, phrase: 3, breathiness: 1 });
+    const voice = /** @type {Voice} */ (genome.voices[0]);
+    // The noise's period is 2^17 frames, and each period's first 512 frames fade from the last.
+    const boundary = 2 ** 17;
+    const whole = chantChunk(chantTrack(genome, voice, RATE, SEED), boundary - RATE, 2 * RATE);
+    const track = chantTrack(genome, voice, RATE, SEED);
+    const a = chantChunk(track, boundary - RATE, RATE + 200);
+    const b = chantChunk(track, boundary + 200, RATE - 200);
+    for (const c of [0, 1]) {
+      const joined = new Float32Array(2 * RATE);
+      joined.set(/** @type {Float32Array} */ (a[c]), 0);
+      joined.set(/** @type {Float32Array} */ (b[c]), RATE + 200);
+      expect(joined).toEqual(whole[c]);
+    }
+  });
+
+  test("the breathing golden has aspiration as a trajectory, breathiness, a chorus that breathes and a non-neutral macro", () => {
+    const voice = /** @type {Voice} */ (breathing.voices[0]);
+    expect(voice.aspiration).toHaveProperty("points");
+    expect(voice.breathiness).toBeGreaterThan(0);
+    expect(voice.singers).toBeGreaterThan(1);
+    expect(voice.breath).toBeGreaterThan(0);
+    expect(breathing.macros.brightness).not.toBe(0.5);
+    // Some singer breathes inside the golden's first 2 s.
+    const { track } = source(breathing, 0);
+    expect([0, 1, 2, 3].flatMap((s) => track.breaths(s, 2)).length).toBeGreaterThan(0);
+  });
+
+  test("aspiration and breathiness price their work, and twelve singers with every setting at 1 fit beside a 15 s reverb", () => {
+    /** @param {Record<string, unknown>} change */
+    const at = (change) => {
+      const genome = oneChant({ singers: 12, phrase: 5, breath: 0.6, ...change });
+      return chant.cost(/** @type {Voice} */ (genome.voices[0]), genome);
+    };
+    const plainCost = at({});
+    expect(at({ aspiration: 0, breathiness: 0 })).toBe(plainCost);
+    expect(at({ aspiration: 1 })).toBeGreaterThan(plainCost);
+    expect(
+      at({
+        aspiration: {
+          points: [
+            [0, 0],
+            [100, 0.1],
+          ],
+        },
+      }),
+    ).toBe(at({ aspiration: 1 }));
+    expect(at({ breathiness: 1 })).toBeGreaterThan(plainCost);
+    expect(at({ breathiness: 1, breath: 0 })).toBe(at({ breath: 0 }));
+    // Longer breaths between shorter phrases spend more of the time in an inhale.
+    expect(at({ breathiness: 1, breath: 2, phrase: 3 })).toBeGreaterThan(
+      at({ breathiness: 1 }) - at({}) + at({ breath: 2, phrase: 3 }),
+    );
+    const every = { growl: 1, rough: 1, flutter: 1, shimmer: 1, aspiration: 1, breathiness: 1 };
+    const bench = requireGenome(
+      {
+        reverbDecay: 15,
+        voices: [{ id: "c", type: "chant", singers: 12, phrase: 5, breath: 0.6, ...every }],
+      },
+      "twelve singers with every setting, breathing as the bench's do, beside a 15 s reverb",
+    );
+    expect(cost(bench)).toBeLessThanOrEqual(COST_BUDGET);
   });
 });

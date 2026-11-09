@@ -3,7 +3,8 @@
 - **Date:** 2026-11-09
 - **Status:** accepted; provisional: owner to confirm. Amends [0069](0069-chant-voice.md) (the
   source's partials, its RMS rule, the cost) and [0070](0070-chant-singers-and-breath.md) (the
-  chorus table's span, the cost).
+  chorus table's span, the cost); amended by [0090](0090-chant-aspiration-and-breath.md) (the
+  half-integer harmonics stop at 1.5 kHz, the cost).
 
 ## Context
 
@@ -151,3 +152,14 @@ weights add. Compare speeds only within one run (0069).
   growl a trajectory from 0.3 to 0.9 to 0.5, rough 0.5, brightness at 0.35.
 - Changing the level law, the phase, the swing, the level rule or the span rule changes renders
   of a genome with growl or rough and bumps `ENGINE_VERSION` (0009).
+
+## Amendments
+
+- 2026-11-09: from step CG.3 ([0090](0090-chant-aspiration-and-breath.md)), provisional: owner
+  to confirm. The half-integer harmonics stop at 1.5 kHz (`HALF_TOP_HZ`), not `TOP_HZ`: 23 at the
+  65 Hz default root, 45 at 33 Hz. At growl 1 those above 1.5 kHz held 29 to 37 dB less power than
+  those below, across the vowels. Twelve singers at the default root with growl and rough cost
+  134.9, not 161.9. This is the saving the Consequences name; it changes the samples of every
+  genome with growl, so `chant-growl.json` and `chant-flutter.json` have new hashes at v2, both
+  unpushed and made on this day. Their summaries moved by 0.04 dB or less below 2 kHz and 0.3 to
+  1.0 dB in 2–4 kHz.

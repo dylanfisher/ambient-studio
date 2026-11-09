@@ -7,10 +7,10 @@ import { selfContainedVoiceTypeIds, voiceTypeIds } from "../../src/engine/voice-
 describe("schemaText", () => {
   // The token checks in build-prompt.test.js guard the prompt's room; this limit makes the next
   // voice that grows the text say why (decision 0072).
-  test("stays under 4,000 characters for the full schema", () => {
+  test("stays under 4,100 characters for the full schema", () => {
     // Another test file's fixture voice would make this measure more than production holds.
     expect(voiceTypeIds()).not.toContain("fixture");
-    expect(schemaText().length).toBeLessThan(4000);
+    expect(schemaText().length).toBeLessThan(4100);
   });
 
   test("says what the chant, cymbal and drum are for", () => {
@@ -81,7 +81,7 @@ describe("schemaText", () => {
     expect(text).toMatch(/^ type "recording": /);
     expect(text).toMatch(/^ {2}recording sha256 required /m);
     expect(text).toMatch(/^ {2}cutoff 100\.\.20000 Hz =20000 \(T\) /m);
-    // The prompt adds these lines and the list to the base text's 4,000.
+    // The prompt adds these lines and the list to the base text's 4,100.
     expect(text.length).toBeLessThan(600);
   });
 });
