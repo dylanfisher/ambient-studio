@@ -4157,3 +4157,14 @@ prompts. **Gate:** `./scripts/check`; the A/B result. **Result:**
   dynamics, and a narrower focus, each defaulting off so the engine version stays 2. Records
   0088–0091 are reserved for its steps. It runs one step at a time, in a free builder slot
   beside TD and WF.
+- 2026-11-09: TD.2 merged as 66f5dcf (Opus: 371k tokens, 212 calls, 56 min; the orchestrator read
+  the route and page diff). `sketchReading`, `genomeChanges` and `lineageReading` in
+  `src/domain`, `GET /api/sketches/:id/reading` (stored rows only: no render, sidecar or omlx),
+  and a "What the model reads about this sketch" card on the timeline. Caps of 800 and 500
+  tokens leave 459 of the develop prompt's 4,096 for its headings; a 16-voice genome with every
+  trajectory full reads at 795, a 12-step chain at 494 (0078). `operatorLabel` moved to domain
+  (778381c). `./scripts/check` clean: 2,471 tests. The builder saw one timeout in
+  `nudge-job.test.js` while two builders ran tests; it passed alone and in the merged check.
+- 2026-11-09: TD.4's first review failed (Sonnet: 83k tokens, 24 calls, 2.6 min): a weave threw
+  instead of falling back when a voice starts or ends inside its stretch. Sent back to the
+  builder with the reviewer's two repros.
