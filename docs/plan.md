@@ -2745,6 +2745,8 @@ for these steps.
   order, each reading the developed section before it, as one owner-started job with a confirm
   that counts the requests and cancels between them. A section the owner has already developed
   is kept unless the owner chooses to develop it again.
+  The track page lists every development of the track, placed or not, so one written while the
+  page was closed or whose swap was skipped can be placed by hand (the TD.3 review's finding).
 - **Tiers:** domain, server, web.
 - **Tests first:** acceptance 6 against the fake omlx; a cancel after the second section keeps
   the first two; the proposal budget.
