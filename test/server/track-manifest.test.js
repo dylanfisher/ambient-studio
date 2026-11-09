@@ -18,7 +18,11 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
 });
 
-test("text on sections and transitions changes neither the recipe nor its key", async () => {
+/**
+ * A store with a vibe and two drone sketches in keys 2 and 5.
+ * @returns {Promise<{ store: import("../../src/server/store.js").Store, vibe: ReturnType<typeof createVibe>, first: number, second: number }>}
+ */
+async function twoSketches() {
   const made = await tempStore();
   cleanups.push(made.remove);
   const { store } = made;
@@ -51,6 +55,11 @@ test("text on sections and transitions changes neither the recipe nor its key", 
     }),
   );
   const [first, second] = /** @type {[number, number]} */ (sketches.map(({ id }) => id));
+  return { store, vibe, first, second };
+}
+
+test("text on sections and transitions changes neither the recipe nor its key", async () => {
+  const { store, vibe, first, second } = await twoSketches();
   // A morph between two windows of one sketch, which morphs, and a crossfade into another.
   const before = {
     ...emptyArrangement(),
@@ -94,4 +103,66 @@ test("text on sections and transitions changes neither the recipe nor its key", 
   const withoutTrack = recipes.map(({ track: _, ...rest }) => rest);
   expect(withoutTrack[1]).toEqual(withoutTrack[0]);
   expect(withoutTrack[2]).toEqual(withoutTrack[0]);
+});
+
+/**
+ * Three sections, the first two windows of one sketch, joined by `kind` and then a crossfade.
+ * @param {number} first
+ * @param {number} second
+ * @param {string} kind
+ * @returns {Arrangement}
+ */
+const threeSections = (first, second, kind) => ({
+  ...emptyArrangement(),
+  sections: [
+    { sketchId: first, offset: 0, seconds: 20, text: "" },
+    { sketchId: first, offset: 30, seconds: 20, text: "" },
+    { sketchId: second, offset: 0, seconds: 20, text: "" },
+  ],
+  transitions: [
+    kind === "crossfade"
+      ? { kind, seconds: 8, text: "" }
+      : { kind, seconds: 8, curve: "smooth", text: "" },
+    { kind: "crossfade", seconds: 4, text: "" },
+  ],
+});
+
+test("the recipe names a weave, which with no voice to split renders the morph's sections", async () => {
+  const { store, vibe, first, second } = await twoSketches();
+  const { track, revision: morphed } = createTrack(store, {
+    vibeId: vibe.id,
+    name: "t",
+    arrangement: threeSections(first, second, "morph"),
+  });
+  const woven = reviseTrack(store, track.id, {
+    arrangement: threeSections(first, second, "weave"),
+    note: "",
+  });
+  const [morph, weave] = [morphed, woven].map(
+    (revision) => trackRecipe(store, { track, revision, constraints: {} }).recipe,
+  );
+  expect(weave?.transitions).toEqual([
+    { kind: "weave", seconds: 4, morphSeconds: 8, curve: "smooth" },
+    { kind: "crossfade", seconds: 4 },
+  ]);
+  expect(weave?.sections).toEqual(morph?.sections);
+});
+
+test("a crossfade-only or morph track keeps the recipe key it had before weaves", async () => {
+  const { store, vibe, first, second } = await twoSketches();
+  const keys = ["crossfade", "morph"].map((kind) => {
+    const { track, revision } = createTrack(store, {
+      vibeId: vibe.id,
+      name: kind,
+      arrangement: threeSections(first, second, kind),
+    });
+    const { recipe } = trackRecipe(store, { track, revision, constraints: {} });
+    // Fixed versions, so the key reads only what this repo decides.
+    return recipeKey({ ...recipe, node: "26.12.1", nodeWebAudioApi: "1.0.0" });
+  });
+  // Both keys as computed at 07a0460, before the weave.
+  expect(keys).toEqual([
+    "10493d6a6a756d67f0d7d57ec637408622783d2e859b4e48fe284f3ed1fb86fc",
+    "9cc6d01dbe1730fe427ceb2cf2b6be9bafdb7124e556aedb5d33bbf58c1e3e13",
+  ]);
 });

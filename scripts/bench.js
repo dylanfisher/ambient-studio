@@ -9,8 +9,8 @@
 //   ./scripts/bench --duration S    one case, 300 or 720, which takes under 5 minutes
 //   ./scripts/bench --features      the features case alone, which takes seconds
 //   ./scripts/bench --track         a 20-minute and a 10-minute track of five golden genomes
-//                                   with four transitions, the first a morph, and two macro lanes
-//                                   (decisions 0062, 0064, 0065), each rendered alone and
+//                                   with four transitions, the first a weave, and two macro lanes
+//                                   (decisions 0062, 0064, 0065, 0080), each rendered alone and
 //                                   rendered and exported, against phase 6's 1 GiB ceiling
 //   ./scripts/bench --chant         20 minutes of a 12-singer chant that breathes, a cymbal and
 //                                   a drum (phase CV's acceptance 6), rendered alone
@@ -21,7 +21,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { loadavg, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { emptyArrangement, MORPH_CURVE } from "../src/domain/arrangement-schema.js";
+import {
+  emptyArrangement,
+  MORPH_CURVE,
+  TRANSITION_KIND,
+} from "../src/domain/arrangement-schema.js";
 import { extractFeatures } from "../src/domain/extract-features.js";
 import { normalize } from "../src/domain/normalize.js";
 import { renderChecks } from "../src/domain/render-checks.js";
@@ -157,7 +161,7 @@ async function featuresChild(genome, duration, runs) {
 
 /**
  * The track case's arrangement and plan: five sections of the golden genomes, each extended to
- * its length as `sectionGenome` does, with equal transitions between them, the first a morph,
+ * its length as `sectionGenome` does, with equal transitions between them, the first a weave,
  * and two macro lanes, `length` seconds in all.
  * @param {number} length
  */
@@ -169,12 +173,12 @@ function benchTrack(length) {
   const arrangement = {
     ...emptyArrangement(),
     sections: names.map((_, i) => ({ sketchId: i + 1, offset: TRACK.offset, seconds, text: "" })),
-    // The first transition, example into drone, is a morph: the two share their pitch globals.
+    // The first transition, example into drone, is a weave: the two share their pitch globals.
     transitions: names
       .slice(1)
       .map((_, i) =>
         i === 0
-          ? { kind: "morph", seconds: transition, curve: MORPH_CURVE, text: "" }
+          ? { kind: TRANSITION_KIND.weave, seconds: transition, curve: MORPH_CURVE, text: "" }
           : { kind: "crossfade", seconds: transition, text: "" },
       ),
     // Acceptance 4's two macro lanes (0065), each moving across every section.
@@ -198,7 +202,7 @@ function benchTrack(length) {
     ]),
   };
   const morph = sectionMorph(arrangement, 0, genomes);
-  if (!morph?.ok) throw new Error(`the bench's morph falls back: ${morph?.reason}`);
+  if (!morph?.ok) throw new Error(`the bench's weave falls back: ${morph?.reason}`);
   const plan = {
     sections: arrangement.sections.map((_, index) => ({
       genome: sectionGenome(arrangement, index, genomes),
@@ -336,7 +340,7 @@ function benchTracks() {
   for (const length of TRACK.lengths) {
     const { cost: found } = benchTrack(length);
     console.log(
-      `${length} s track of ${TRACK.genomes.join(", ")} from ${TRACK.offset} s, ${TRACK.transition} s transitions (the first a morph), seed ${SEED}; peak cost ${found.peak.toFixed(1)}, ${(found.work / 1e3).toFixed(0)}k node-seconds; 1 timed run`,
+      `${length} s track of ${TRACK.genomes.join(", ")} from ${TRACK.offset} s, ${TRACK.transition} s transitions (the first a weave), seed ${SEED}; peak cost ${found.peak.toFixed(1)}, ${(found.work / 1e3).toFixed(0)}k node-seconds; 1 timed run`,
     );
     for (const mode of /** @type {TrackMode[]} */ (Object.keys(TRACK_MODES))) {
       console.log(`  ${load()}`);

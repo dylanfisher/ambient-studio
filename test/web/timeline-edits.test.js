@@ -8,6 +8,7 @@ import {
   dragEdge,
   moveSection,
   nextCurve,
+  nextTransitionKind,
   removeSection,
   SECTION_STEP,
   setSection,
@@ -16,7 +17,6 @@ import {
   setTransitionText,
   stepSection,
   stepTransition,
-  toggleMorph,
   transitionOf,
 } from "../../src/web/timeline-edits.js";
 
@@ -125,13 +125,21 @@ test("the selected section's crossfade is the one after it, or before the last",
   });
 });
 
-test("a transition turns into a morph with the default curve and back, keeping its seconds and text", () => {
-  const morphed = toggleMorph(THREE, 1);
+test("a transition steps from a crossfade to a morph to a weave and back, keeping its seconds and text", () => {
+  const morphed = nextTransitionKind(THREE, 1);
   expect(morphed.transitions).toEqual([
     { kind: "crossfade", seconds: 8, text: "" },
     { kind: "morph", seconds: 5, curve: MORPH_CURVE, text: "hold the hiss through the join" },
   ]);
-  expect(toggleMorph(morphed, 1)).toEqual(THREE);
+  const woven = nextTransitionKind(nextCurve(morphed, 1), 1);
+  expect(woven.transitions[1]).toEqual({
+    kind: "weave",
+    seconds: 5,
+    curve: "early",
+    text: "hold the hiss through the join",
+  });
+  expect(woven.transitions[0]).toBe(THREE.transitions[0]);
+  expect(nextTransitionKind(woven, 1)).toEqual(THREE);
   expect(setTransition(morphed, 1, 9).transitions[1]).toEqual({
     kind: "morph",
     seconds: 9,
@@ -140,18 +148,23 @@ test("a transition turns into a morph with the default curve and back, keeping i
   });
 });
 
-test("a morph's curve steps through 0007's curves in order, and a crossfade has none", () => {
-  const names = Object.keys(CURVES);
-  let arrangement = toggleMorph(THREE, 0);
-  const seen = [];
-  for (const _ of names) {
-    arrangement = nextCurve(arrangement, 0);
-    seen.push(arrangement.transitions[0]?.curve);
-  }
-  const from = names.indexOf(MORPH_CURVE);
-  expect(seen).toEqual(names.map((_, i) => names[(from + 1 + i) % names.length]));
-  expect(nextCurve(THREE, 0)).toEqual(THREE);
-});
+test.each([1, 2])(
+  "a morph's or weave's curve steps through 0007's curves in order, and a crossfade has none",
+  (steps) => {
+    const names = Object.keys(CURVES);
+    /** @type {import("../../src/domain/arrangement-schema.js").Arrangement} */
+    let arrangement = THREE;
+    for (let i = 0; i < steps; i++) arrangement = nextTransitionKind(arrangement, 0);
+    const seen = [];
+    for (const _ of names) {
+      arrangement = nextCurve(arrangement, 0);
+      seen.push(arrangement.transitions[0]?.curve);
+    }
+    const from = names.indexOf(MORPH_CURVE);
+    expect(seen).toEqual(names.map((_, i) => names[(from + 1 + i) % names.length]));
+    expect(nextCurve(THREE, 0)).toEqual(THREE);
+  },
+);
 
 test("a section's text and its transition's text are set as typed, and change nothing else", () => {
   const written = setSectionText(THREE, 0, "only the low drone, very quiet");

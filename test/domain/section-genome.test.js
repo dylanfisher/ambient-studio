@@ -8,6 +8,7 @@ import { morphGenome } from "../../src/domain/morph-genome.js";
 import {
   renderedTransition,
   sectionGenome,
+  sectionInstances,
   sectionMorph,
   sectionWindow,
 } from "../../src/domain/section-genome.js";
@@ -132,6 +133,75 @@ describe("a morph between two sections", () => {
     expect(sectionMorph(track, 0, apart)).toEqual({
       ok: false,
       reason: expect.stringMatching(/different scales/),
+    });
+    expect(sectionGenome(track, 0, apart)).toEqual(fitted(first));
+    expect(sectionWindow(track, 1, apart)).toEqual({ offset: 10, duration: 30 });
+    expect(renderedTransition(track, 0, apart)).toEqual({ kind: "crossfade", seconds: 12 });
+  });
+});
+
+describe("a weave between two sections", () => {
+  // The first sketch's drone and pad; the second's drone, a bell where the first has its pad,
+  // and a bell only it has.
+  const first = requireGenome(
+    { ...droneGenome, voices: [...droneGenome.voices, { id: "pad", type: "pad", level: -14 }] },
+    "first",
+  );
+  const second = requireGenome(
+    {
+      ...droneGenome,
+      voices: [
+        { ...droneGenome.voices[0], level: -20 },
+        { id: "pad", type: "bell", level: -16 },
+        { id: "chime", type: "bell", level: -18 },
+      ],
+    },
+    "second",
+  );
+  const genomes = new Map([
+    [1, first],
+    [2, second],
+  ]);
+  const track = {
+    ...emptyArrangement(),
+    sections: [
+      { sketchId: 1, offset: 0, seconds: 30, text: "" },
+      { sketchId: 2, offset: 10, seconds: 30, text: "" },
+    ],
+    transitions: [{ kind: "weave", seconds: 12, curve: "late", text: "the bell comes in first" }],
+  };
+  const fitted = (/** @type {Genome} */ genome) => ({ ...genome, fadeIn: 0, fadeOut: 0 });
+
+  test("the outgoing section plays the weave, and the incoming one starts at its handover", () => {
+    const weave = morphGenome(
+      { genome: fitted(first), at: 18 },
+      { genome: fitted(second), at: 10 },
+      12,
+      "late",
+      { weave: true },
+    );
+    expect(weave.ok && weave.order.map(({ id }) => id)).toEqual(["pad", "pad--in", "chime"]);
+    expect(sectionMorph(track, 0, genomes)).toEqual(weave);
+    expect(sectionGenome(track, 0, genomes)).toEqual(weave.ok && weave.genome);
+    expect(sectionInstances(track, 0, genomes)).toEqual(["pad--in"]);
+    const moves = 12 - MORPH_HANDOVER;
+    expect(sectionWindow(track, 1, genomes)).toEqual({ offset: 10 + moves, duration: 30 - moves });
+    expect(renderedTransition(track, 0, genomes)).toEqual({
+      kind: "weave",
+      seconds: MORPH_HANDOVER,
+      morphSeconds: 12,
+      curve: "late",
+    });
+  });
+
+  test("a weave that falls back plays as a crossfade of its seconds, and says why", () => {
+    const apart = new Map([
+      [1, first],
+      [2, requireGenome({ ...second, key: 9 }, "key 9")],
+    ]);
+    expect(sectionMorph(track, 0, apart)).toEqual({
+      ok: false,
+      reason: expect.stringMatching(/different keys \(\d+, 9\), which a weave can't/),
     });
     expect(sectionGenome(track, 0, apart)).toEqual(fitted(first));
     expect(sectionWindow(track, 1, apart)).toEqual({ offset: 10, duration: 30 });

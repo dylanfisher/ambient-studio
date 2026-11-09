@@ -1,6 +1,6 @@
 // A sketch's genome fitted to its section of a track (decision 0062). Every audio path of a
-// track goes through here: the render, the seam preview, the cost, stems (0063), morphs
-// (`morphGenome`, 0064) and macro lanes (`applyLanes`, 0065).
+// track goes through here: the render, the seam preview, the cost, stems (0063), morphs and
+// weaves (`morphGenome`, 0064 and 0080) and macro lanes (`applyLanes`, 0065).
 /** @import { Arrangement } from "./arrangement-schema.js" */
 /** @import { Morph } from "./morph-genome.js" */
 /** @import { Genome } from "../engine/genome-schema.js" */
@@ -9,7 +9,7 @@ import { MORPH_HANDOVER } from "../engine/morph.js";
 import { requireGenome } from "../engine/validate-genome.js";
 import { applyLanes, thinnedMacros } from "./apply-lanes.js";
 import { sectionStarts } from "./arrangement-length.js";
-import { TRANSITION_KIND } from "./arrangement-schema.js";
+import { morphs, TRANSITION_KIND } from "./arrangement-schema.js";
 import { morphGenome } from "./morph-genome.js";
 
 /**
@@ -51,8 +51,8 @@ function fittedGenome(arrangement, index, genomes) {
 }
 
 /**
- * The morph from section `index` into the next, or null when their transition is a crossfade
- * or there is none. A morph that can't hold says why, and plays as a crossfade.
+ * The morph or weave from section `index` into the next, or null when their transition is a
+ * crossfade or there is none. One that can't hold says why, and plays as a crossfade.
  * @param {Arrangement} arrangement a valid one
  * @param {number} index the outgoing section's
  * @param {ReadonlyMap<number, unknown>} genomes
@@ -60,7 +60,7 @@ function fittedGenome(arrangement, index, genomes) {
  */
 export function sectionMorph(arrangement, index, genomes) {
   const transition = arrangement.transitions[index];
-  if (transition?.kind !== TRANSITION_KIND.morph) return null;
+  if (!transition || !morphs(transition.kind)) return null;
   const out = /** @type {import("./arrangement-schema.js").Section} */ (
     arrangement.sections[index]
   );
@@ -75,6 +75,7 @@ export function sectionMorph(arrangement, index, genomes) {
     { genome: fittedGenome(arrangement, index + 1, genomes), at: into.offset },
     transition.seconds,
     /** @type {Curve} */ (transition.curve),
+    { weave: transition.kind === TRANSITION_KIND.weave },
   );
 }
 
@@ -142,8 +143,8 @@ export function sectionWindow(arrangement, index, genomes) {
 }
 
 /**
- * Transition `index` as the mix renders it: a crossfade of its seconds, or a morph's handover,
- * a crossfade of `MORPH_HANDOVER` at the morph's end, with the morph's seconds and curve.
+ * Transition `index` as the mix renders it: a crossfade of its seconds, or a morph's or a
+ * weave's handover, a crossfade of `MORPH_HANDOVER` at its end, with its kind, seconds and curve.
  * @param {Arrangement} arrangement a valid one
  * @param {number} index
  * @param {ReadonlyMap<number, unknown>} genomes
@@ -156,7 +157,7 @@ export function renderedTransition(arrangement, index, genomes) {
     return { kind: TRANSITION_KIND.crossfade, seconds: transition.seconds };
   }
   return {
-    kind: TRANSITION_KIND.morph,
+    kind: transition.kind,
     seconds: MORPH_HANDOVER,
     morphSeconds: transition.seconds,
     curve: /** @type {Curve} */ (transition.curve),

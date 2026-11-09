@@ -410,3 +410,166 @@ describe("a morph that can't hold falls back to a crossfade", () => {
     expect(reason(morph(outgoing, incoming))).toMatch(why);
   });
 });
+
+// A weave (decision 0080, acceptance 4): the morph, with each voice that splits handing over on
+// its own stretch of the transition, in a stated order.
+describe("a weave", () => {
+  /**
+   * @param {Genome} outgoing
+   * @param {Genome} incoming
+   * @param {import("../../src/engine/trajectory.js").Curve} [curve]
+   */
+  const weave = (outgoing, incoming, curve = CURVE) =>
+    morphGenome({ genome: outgoing, at: OUT_AT }, { genome: incoming, at: IN_AT }, SECONDS, curve, {
+      weave: true,
+    });
+  const start = OUT_AT;
+  const end = OUT_AT + MOVES;
+  const level = VOICE_PARAMS.level;
+  const result = held(weave(OUT, IN));
+  const { genome } = result;
+
+  test("leaving voices hand over highest first, and entering voices lowest first", () => {
+    // The outgoing bell (150 to 1100 Hz) sits over its pad (100 to 500 Hz); the incoming pad is a
+    // drone at 44 Hz, under the cloud's 220 Hz root and the bell.
+    expect(result.order.map(({ id, leaves }) => [id, leaves])).toEqual([
+      ["bell", true],
+      ["pad", true],
+      ["pad--in", false],
+      ["cloud", false],
+      ["bell--in", false],
+    ]);
+    expect(result.instances.sort()).toEqual(["bell--in", "pad--in"]);
+  });
+
+  test("each side's voices move one after another across the whole move, each overlapping the next by half", () => {
+    for (const leaves of [true, false]) {
+      const side = result.order.filter((handover) => handover.leaves === leaves);
+      const step = MOVES / (side.length + 1);
+      side.forEach(({ from, to }, i) => {
+        expect(from).toBeCloseTo(start + i * step, 12);
+        expect(to).toBeCloseTo(start + (i + 2) * step, 12);
+      });
+      expect(side[0]?.from).toBe(start);
+      // The last entering voice is at its level by the handover.
+      expect(side.at(-1)?.to).toBe(end);
+    }
+  });
+
+  test.each(/** @type {import("../../src/engine/trajectory.js").Curve[]} */ (Object.keys(CURVES)))(
+    "each split voice's level moves by the %s curve across its own stretch, in the encoded space",
+    (curve) => {
+      const { genome, order } = held(weave(OUT, IN, curve));
+      for (const { id, leaves, from, to } of order) {
+        const voice = voiceOf(genome, id);
+        const own = /** @type {number} */ (
+          leaves ? voiceOf(OUT, id).level : voiceOf(IN, voiceOfInstance(id)).level
+        );
+        const a = encode(level, leaves ? own : FLOOR);
+        const b = encode(level, leaves ? FLOOR : own);
+        for (const x of [0, 0.25, 0.5, 1]) {
+          const at = encode(level, rawAt(level, voice.level, from + x * (to - from)));
+          expect(at, `${id} at ${x}`).toBeCloseTo(a + (b - a) * CURVES[curve](x), 12);
+        }
+        if (leaves) {
+          // At its own level until its stretch, and gone once it reaches the floor.
+          expect(rawAt(level, voice.level, start)).toBe(own);
+          expect(voice.end).toBe(to);
+        } else {
+          expect(voice.start).toBe(from);
+        }
+      }
+    },
+  );
+
+  test("a voice both sides hold with equal fixed numbers plays through as in the morph", () => {
+    const morphed = held(morph(OUT, IN)).genome;
+    expect(voiceOf(genome, "drone")).toEqual(voiceOf(morphed, "drone"));
+    expect(result.order.map(({ id }) => id)).not.toContain("drone");
+  });
+
+  test.each(/** @type {import("../../src/engine/trajectory.js").Curve[]} */ (Object.keys(CURVES)))(
+    "with no voice moving through, the %s weave's quietest moment is louder than the morph's",
+    (curve) => {
+      const out = requireGenome(
+        { ...OUT, voices: OUT.voices.filter(({ id }) => id !== "drone") },
+        "out",
+      );
+      const into = requireGenome(
+        { ...IN, voices: IN.voices.filter(({ id }) => id !== "drone") },
+        "in",
+      );
+      /** The quietest power sum of the voices' levels across the move, in dB. */
+      const quietest = (/** @type {Genome} */ genome) => {
+        let least = Infinity;
+        for (let t = start; t < end; t += 0.02) {
+          const power = genome.voices
+            .filter((voice) => voice.start <= t && t < voice.end)
+            .reduce((sum, voice) => sum + 10 ** (rawAt(level, voice.level, t) / 10), 0);
+          least = Math.min(least, 10 * Math.log10(power));
+        }
+        return least;
+      };
+      const woven = quietest(held(weave(out, into, curve)).genome);
+      expect(woven).toBeGreaterThan(quietest(held(morph(out, into, curve)).genome));
+      // Two leaving voices at −12 and −14 dB, three entering at −9, −18 and −15 dB.
+      expect(woven).toBeGreaterThan(-20);
+    },
+  );
+
+  test("a weave with no voice to split, or one a side, gives the morph's genome", () => {
+    const out = requireGenome({ ...OUT, voices: [voiceOf(OUT, "drone")] }, "drone out");
+    const into = requireGenome({ ...IN, voices: [voiceOf(IN, "drone")] }, "drone in");
+    expect(weave(out, into)).toEqual(morph(out, into));
+    expect(held(weave(out, into)).order).toEqual([]);
+    const outPad = requireGenome(
+      { ...OUT, voices: [voiceOf(OUT, "drone"), voiceOf(OUT, "pad")] },
+      "drone and pad",
+    );
+    const intoPad = requireGenome(
+      { ...IN, voices: [voiceOf(IN, "drone"), voiceOf(IN, "pad")] },
+      "drone and a second drone",
+    );
+    const one = held(weave(outPad, intoPad));
+    expect(one.genome).toEqual(held(morph(outPad, intoPad)).genome);
+    expect(one.order).toEqual([
+      { id: "pad", leaves: true, from: start, to: end },
+      { id: "pad--in", leaves: false, from: start, to: end },
+    ]);
+  });
+
+  test("the render before the weave starts equals the outgoing section's", async () => {
+    const window = { seed: 7, offset: start - 6, duration: 6 };
+    const woven = await renderOffline(genome, window);
+    const outgoing = await renderOffline(OUT, window);
+    const { peak, belowDb } = difference(woven, outgoing);
+    expect(peak).toBeLessThan(EXCERPT_PEAK);
+    expect(belowDb).toBeGreaterThan(EXCERPT_BELOW_DB);
+  });
+
+  test("the weave's genome validates", () => {
+    expect(requireGenome(genome, "weave")).toEqual(genome);
+  });
+
+  test("a weave that can't hold falls back as a morph does, and names itself", () => {
+    const drone = voiceOf(OUT, "drone");
+    expect(reason(weave(OUT, requireGenome({ ...IN, key: 9 }, "key 9")))).toBe(
+      "the two sketches have different keys (2, 9), which a weave can't move between",
+    );
+    const ten = requireGenome(
+      { ...OUT, voices: Array.from({ length: 10 }, (_, i) => ({ ...drone, id: `o${i}` })) },
+      "ten",
+    );
+    const seven = requireGenome(
+      { ...IN, voices: Array.from({ length: 7 }, (_, i) => ({ ...drone, id: `i${i}` })) },
+      "seven",
+    );
+    expect(reason(weave(ten, seven))).toBe(
+      `the weave would hold 17 voices, more than ${MAX_VOICES}`,
+    );
+    const suffixed = requireGenome({ ...OUT, voices: [{ ...drone, id: "pad--in" }] }, "suffixed");
+    expect(reason(weave(suffixed, IN))).toBe(
+      'voice pad--in\'s id ends in "--in", which a weave adds to a renamed voice',
+    );
+  });
+});

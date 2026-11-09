@@ -63,6 +63,18 @@ test("a morph counts both sections, and the incoming one only from the handover"
   expect(found.length).toBe(278);
 });
 
+test("a weave counts as a morph does, the incoming section from the handover", () => {
+  const woven = {
+    ...arrangement,
+    transitions: [{ kind: "weave", seconds: 12, curve: "smooth", text: "" }],
+  };
+  const weave = sectionGenome(woven, 0, genomes);
+  expect(weave.voices.map(({ id }) => id).sort()).toEqual(["b", "drone"]);
+  const found = trackCost(woven, genomes);
+  expect(found.peak).toBe(cost(weave) + cost(sectionGenome(woven, 1, genomes)));
+  expect(found.audio).toBe(40 + 250 - (12 - MORPH_HANDOVER));
+});
+
 test("one section's peak is its own cost, and an empty track costs nothing", () => {
   const alone = {
     ...emptyArrangement(),

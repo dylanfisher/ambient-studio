@@ -4,7 +4,9 @@
 - **Status:** accepted; provisional: owner to confirm the 4 s handover, the `smooth` default
   curve, the 8 s shortest morph, splitting a voice whose fixed numbers differ, and the instance
   suffix. Amends [0062](0062-track-render-and-export.md) (section windows, the manifest's
-  transitions, the cost) and [0063](0063-stems-by-voice-id.md) (stems by section)
+  transitions, the cost) and [0063](0063-stems-by-voice-id.md) (stems by section); amended by
+  [0080](0080-weave-transitions.md) (a weave is this morph with each split voice on its own
+  stretch; a fallback's reason names its kind; the result lists a weave's order)
 
 ## Context
 

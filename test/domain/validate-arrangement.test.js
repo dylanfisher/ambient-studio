@@ -119,6 +119,15 @@ describe("validateArrangement", () => {
     expect(arrangementLength(morphed)).toBe(arrangementLength(VALID));
   });
 
+  test("a weave holds a morph's keys, and its length counts as a crossfade's", () => {
+    const woven = changed(
+      (a) => (a.transitions[1] = { kind: "weave", seconds: 10, curve: "early", text: "" }),
+    );
+    expect(TRANSITION_KIND.weave).toBe("weave");
+    expect(validateArrangement(woven, context)).toEqual({ ok: true, arrangement: woven });
+    expect(arrangementLength(woven)).toBe(arrangementLength(VALID));
+  });
+
   /** @type {[string, (copy: any) => void, string, RegExp][]} */
   const refused = [
     [
@@ -219,6 +228,18 @@ describe("validateArrangement", () => {
       (a) => (a.transitions[1] = { kind: "morph", seconds: 7, curve: "linear", text: "" }),
       "$.transitions[1].seconds",
       /a morph must be at least 8 s/,
+    ],
+    [
+      "a weave with no curve",
+      (a) => (a.transitions[1] = { kind: "weave", seconds: 10, text: "" }),
+      "$.transitions[1].curve",
+      /missing/,
+    ],
+    [
+      "a weave too short to move before it hands over",
+      (a) => (a.transitions[1] = { kind: "weave", seconds: 7, curve: "linear", text: "" }),
+      "$.transitions[1].seconds",
+      /a weave must be at least 8 s/,
     ],
     ["a section with no text", (a) => delete a.sections[1].text, "$.sections[1].text", /missing/],
     [

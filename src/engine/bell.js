@@ -62,7 +62,7 @@ const PARAMS = Object.freeze({
  */
 const GRID = Object.freeze({ step: 0.25, jitter: 1, most: 8 });
 /** The register fundamentals come from, in Hz. */
-const BAND = Object.freeze({ lo: 150, hi: 1100 });
+export const BAND = Object.freeze({ lo: 150, hi: 1100 });
 /** No partial goes above this, in Hz. */
 const TOP = 3000;
 /** The highest partial's ring as a share of the lowest's; those between fall in geometric steps. */
