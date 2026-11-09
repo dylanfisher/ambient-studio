@@ -118,7 +118,39 @@
           <button id="stopEar" class="button outline" type="button" hidden title="Ends the search by ear now. Every choice so far is kept, and its best is shown first on the session page.">Stop the search</button>
         </div>
       </section>
+
+      <section id="earSteering" class="card stack" aria-labelledby="steer-heading" hidden>
+        <h2 id="steer-heading">Steer the search</h2>
+        <p class="small muted">
+          Choose how different each new variation may be from the best so far, and move a
+          slider to lean every new variation toward less or more of it. Press Use from the next
+          pair: the pair on screen stays as it is, and the next one is drawn this way. Your
+          earlier choices still count.
+        </p>
+        <label class="field"
+          >How different each new variation is
+          <select id="earVariation" title="Chooses how far each new variation may sit from the best so far: Subtle is a small step, Very wide a large one. Used from the next pair once you press Use from the next pair."></select>
+        </label>
+        <div id="earShifts" class="constraints"></div>
+        <div class="row">
+          <button id="earSteer" class="button secondary" type="button" title="Draws every pair from the next one on with the variation and leanings above. The pair on screen stays, and no model is asked.">Use from the next pair</button>
+          <button id="earUnshift" class="button outline" type="button" title="Sets every slider back to the middle, so new variations lean no way. Press Use from the next pair to send it.">Center the sliders</button>
+        </div>
+        <p id="earSteerLine" class="small muted" role="status" aria-live="polite"></p>
+      </section>
     </main>
+
+    <template id="shift-slider">
+      <div class="stack">
+        <span data-part="name">macro</span>
+        <label class="row">
+          <span class="muted">less</span>
+          <input data-part="input" type="range" min="-1" max="1" step="0.25" value="0" title="Leans each new variation toward less of this, to the left, or more, to the right. The middle leans neither way." />
+          <span class="muted">more</span>
+        </label>
+        <span class="muted small" data-part="value"></span>
+      </div>
+    </template>
 
     <template id="failed-save">
       <li class="item row errors">

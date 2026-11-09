@@ -1,11 +1,39 @@
 // A search by ear's settings and what it tells its optimizer (decision 0055): preferential BO in
-// the sidecar, one new point a query against the run's best, drawn at the medium nudge's step.
+// the sidecar, one new point a query against the run's best, drawn at the owner's variation and
+// leaning toward the owner's shift (0075).
+import { isObject } from "../engine/is-object.js";
+import { STEP_SIZE } from "./nudge.js";
 import { OUTCOMES } from "./rating-values.js";
 
 const [A, B, TIE, SKIP] = OUTCOMES;
 
 /** The sidecar's name for the optimizer, in its `OPTIMIZERS`. */
 export const EAR_OPTIMIZER = "preferential-bo";
+
+/**
+ * How far each new point may sit from the best, by the name the page shows: the step in
+ * vector-view positions, a nudge's for the first three (decision 0075).
+ */
+export const EAR_VARIATION = Object.freeze({
+  subtle: STEP_SIZE.small,
+  medium: STEP_SIZE.medium,
+  wide: STEP_SIZE.large,
+  wider: 0.4,
+});
+
+/** @typedef {keyof typeof EAR_VARIATION} EarVariation */
+
+/** The variation a search starts at: wider than the medium step, which sounded too alike. */
+const DEFAULT_EAR_VARIATION = /** @type {const} */ ("wide");
+
+/**
+ * How a search by ear leans each new point: a variation, and for each searched path a shift
+ * from -1 (less) to 1 (more), the paths it doesn't name at 0.
+ * @typedef {{ variation: EarVariation, shift: Record<string, number> }} EarSteering
+ */
+
+/** The steering a search starts with: the default variation and no shift. */
+export const START_STEERING = Object.freeze({ variation: DEFAULT_EAR_VARIATION, shift: {} });
 
 /** Points drawn near the best for each query, of which expected improvement picks one. */
 export const EAR_DRAWS = 1000;
@@ -56,4 +84,55 @@ export function earScore(outcome, side) {
   if (outcome === TIE) return EAR_SCORE.tie;
   if (outcome !== A && outcome !== B) throw new Error(`a rating has no outcome ${outcome}`);
   return outcome === side ? EAR_SCORE.win : EAR_SCORE.loss;
+}
+
+/**
+ * The optimizer's settings for `steering` over `paths`: the reach, and each path's drift,
+ * 0 where the shift names none (decision 0075).
+ * @param {EarSteering} steering
+ * @param {readonly string[]} paths the run's, in its vector's order
+ * @returns {{ reach: number, drift: number[] }}
+ */
+export const earSettings = ({ variation, shift }, paths) => ({
+  reach: EAR_VARIATION[variation],
+  drift: paths.map((path) => shift[path] ?? 0),
+});
+
+/**
+ * The steering a body asks for, checked against the run's paths, or the reason it can't be:
+ * a variation `EAR_VARIATION` names, and a shift that names only searched paths, each from -1
+ * to 1. A shift of 0 is dropped, so a shift equals another that leans the same way.
+ * @param {unknown} variation
+ * @param {unknown} shift
+ * @param {readonly string[]} paths
+ * @returns {{ ok: true, steering: EarSteering } | { ok: false, error: string }}
+ */
+export function checkSteering(variation, shift, paths) {
+  const variations = Object.keys(EAR_VARIATION);
+  if (!variations.includes(/** @type {any} */ (variation))) {
+    const got = JSON.stringify(variation);
+    return { ok: false, error: `variation must be one of ${variations.join(", ")}, got ${got}` };
+  }
+  if (!isObject(shift)) {
+    const error = "shift must be an object of searched paths, each a number from -1 to 1";
+    return { ok: false, error };
+  }
+  /** @type {Record<string, number>} */
+  const kept = {};
+  for (const [path, given] of Object.entries(shift)) {
+    // Number.isFinite is false for anything but a finite number.
+    const value = /** @type {number} */ (given);
+    if (!paths.includes(path)) {
+      return { ok: false, error: `the shift names ${path}, which this search doesn't move` };
+    }
+    if (!Number.isFinite(value) || !(value >= -1 && value <= 1)) {
+      const got = JSON.stringify(value);
+      return { ok: false, error: `the shift of ${path} must be a number from -1 to 1, got ${got}` };
+    }
+    if (value !== 0) kept[path] = value;
+  }
+  return {
+    ok: true,
+    steering: { variation: /** @type {EarVariation} */ (variation), shift: kept },
+  };
 }

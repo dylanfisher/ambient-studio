@@ -16,11 +16,13 @@ import { applyLocks } from "../domain/apply-locks.js";
 import { ATTACHMENT_KIND, MAX_DIRECTIONS, MAX_REFERENCES } from "../domain/attachment-kind.js";
 import { DEFAULT_BREEDS, PARENT_NAME } from "../domain/breed-settings.js";
 import {
+  checkSteering,
   DEFAULT_EAR_QUERIES,
   EAR_PHASE,
   earScore,
   MAX_EAR_DIMENSIONS,
   MAX_EAR_QUERIES,
+  START_STEERING,
 } from "../domain/ear-settings.js";
 import { DEFAULT_EXPLORES, NOT_ONE_LINE } from "../domain/explore-direction.js";
 import { DEFAULT_FILL_BUDGET, MAX_FILL_BUDGET } from "../domain/fill-settings.js";
@@ -922,6 +924,29 @@ export const SESSION_ROUTES = [
       else fields(await body(), []);
       const channel = requireEarChannel(app, session);
       channel.stop();
+      return channel.view();
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/sessions/:sessionId/ear-search/steering",
+    handle: async ({ app, params, body }) => {
+      const session = requireOpenSession(app, params);
+      const given = fields(await body(), Object.keys(START_STEERING));
+      const channel = requireEarChannel(app, session);
+      const view = channel.view();
+      if (view.phase === EAR_PHASE.finished) {
+        throw new HttpError(409, "This search by ear has ended, so it takes no more steering.");
+      }
+      if (view.paths.length === 0) {
+        throw new HttpError(
+          409,
+          "The search by ear is still starting; steer it once its first pair shows.",
+        );
+      }
+      const checked = checkSteering(given.variation, given.shift, view.paths);
+      if (!checked.ok) throw new HttpError(400, checked.error);
+      channel.steer(checked.steering);
       return channel.view();
     },
   },

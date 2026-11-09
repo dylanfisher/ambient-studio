@@ -46,13 +46,17 @@ export const keyLabel = (code) => SHOWN.get(code) ?? code.replace(/^Key/, "");
 /** Input types that take no typing, so the keys still act while one has the focus. */
 const KEYLESS_INPUTS = new Set(["button", "checkbox", "radio", "range", "reset", "submit"]);
 
+/** Marks an element that keeps the page's keys for itself, as a slider moved by the arrows. */
+export const OWN_KEYS = "data-own-keys";
+
 /**
- * Whether the focused element takes typed keys: a text field, a textarea, a select or
- * editable content.
+ * Whether the focused element takes typed keys: a text field, a textarea, a select, editable
+ * content, or an element marked `OWN_KEYS`.
  * @param {Element | null} element
  */
 function takesTyping(element) {
   if (!element) return false;
+  if (element.hasAttribute?.(OWN_KEYS)) return true;
   const { tagName } = element;
   if (tagName === "TEXTAREA" || tagName === "SELECT") return true;
   if (tagName !== "INPUT") return /** @type {HTMLElement} */ (element).isContentEditable === true;

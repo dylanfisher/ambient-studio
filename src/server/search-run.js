@@ -9,7 +9,7 @@
 /** @import { CandidateOrigin } from "./generate-candidates.js" */
 /** @import { Candidate } from "./generation-store.js" */
 /** @import { App } from "./routing.js" */
-import { copyFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { applyLocks } from "../domain/apply-locks.js";
 import { lockRefusal } from "../domain/nudge.js";
@@ -223,6 +223,24 @@ export async function forkSearch(folder, name, generation) {
     await copyFile(join(folder, file), join(fork, file));
   }
   return fork;
+}
+
+/**
+ * Rewrites the run's spec settings with `settings` merged in, by a rename, so a run read mid-write
+ * keeps the last spec whole. Only preferential BO reads settings a run may change between asks,
+ * its reach and drift (decision 0075); the sidecar reads the spec at every call.
+ * @param {string} folder the run's
+ * @param {Record<string, unknown>} settings
+ */
+export async function reviseSearchSettings(folder, settings) {
+  const specPath = join(folder, SPEC);
+  const spec = JSON.parse(await readFile(specPath, "utf8"));
+  const partial = `${specPath}.partial`;
+  await writeFile(
+    partial,
+    JSON.stringify({ ...spec, settings: { ...spec.settings, ...settings } }),
+  );
+  await rename(partial, specPath);
 }
 
 /**

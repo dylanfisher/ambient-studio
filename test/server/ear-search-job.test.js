@@ -10,15 +10,19 @@ import { setImmediate as tick } from "node:timers/promises";
 import { afterEach, expect, test } from "vitest";
 import { applyLocks } from "../../src/domain/apply-locks.js";
 import {
+  EAR_DRAWS,
   EAR_IDLE_MS,
   EAR_OPTIMIZER,
   EAR_PHASE,
+  EAR_VARIATION,
   MAX_EAR_DIMENSIONS,
+  START_STEERING,
 } from "../../src/domain/ear-settings.js";
 import { parseLockPath, readLockTarget } from "../../src/domain/lock-path.js";
 import { OPERATOR } from "../../src/domain/operator.js";
 import { REJECT_REASON } from "../../src/domain/reject-reason.js";
 import { searchPaths } from "../../src/domain/search-paths.js";
+import { SEARCH_SIGMA } from "../../src/domain/search-settings.js";
 import { searchSpace } from "../../src/domain/search-space.js";
 import { SEED_VIBES } from "../../src/domain/seed-vibes.js";
 import { validateConstraints } from "../../src/domain/validate-constraints.js";
@@ -268,6 +272,7 @@ async function call(made, method, path, body = {}, request = JSON_REQUEST) {
 
 const ANSWERS = "/api/sessions/:sessionId/ear-search/answers";
 const STOP = "/api/sessions/:sessionId/ear-search/stop";
+const STEERING = "/api/sessions/:sessionId/ear-search/steering";
 
 /**
  * The scores each `optimizer_tell` of the real run was given, in order.
@@ -324,6 +329,66 @@ test("an answer is a rating told to the optimizer, and the next pair was rendere
   expect(await toldScores(sidecar, result.run)).toEqual([[1], [0.5]]);
   const spec = JSON.parse(readFileSync(`${app.paths.search}/${result.run}/spec.json`, "utf8"));
   expect(spec).toMatchObject({ optimizer: EAR_OPTIMIZER, start: from });
+});
+
+test("steering sent while a pair plays reaches the spec before the next draw, and each point records it (0075)", async () => {
+  const made = await earApp();
+  const { app, sidecar, start, paths } = made;
+  const from = toVector(start, paths);
+  sidecar.script({ do: "answer", result: { dimension: paths.length } });
+  const ahead = {
+    loss: near(from, 2),
+    win: near(from, 3),
+    tie: near(from, 4),
+    skip: near(from, 5),
+  };
+  scriptQuery(sidecar, [near(from, 1)], ahead);
+  scriptTell(sidecar);
+  scriptQuery(sidecar, [near(from, 6)]);
+  scriptTell(sidecar);
+  const { channel, status } = startJob(made, 2);
+  const [first, second] = paths;
+  const readSpec = (/** @type {string} */ run) =>
+    JSON.parse(readFileSync(`${app.paths.search}/${run}/spec.json`, "utf8"));
+
+  const pair = await waitFor(channel, (v) => v.phase === EAR_PHASE.listening && v.ready === 4);
+  expect(pair).toMatchObject({ paths, steering: START_STEERING });
+  const run = /** @type {any} */ (listSessionCandidates(app.store, made.session.id).at(-1))
+    .operatorParams.run;
+  expect(readSpec(run).settings).toEqual({
+    sigma: SEARCH_SIGMA,
+    draws: EAR_DRAWS,
+    reach: EAR_VARIATION.wide,
+    drift: paths.map(() => 0),
+  });
+  const shift = { [`${first}`]: -0.5, [`${second}`]: 1 };
+  const steered = await call(made, "POST", STEERING, { variation: "wider", shift });
+  expect(steered.steering).toEqual({ variation: "wider", shift });
+  await call(made, "POST", ANSWERS, { query: 0, ratingId: rate(made, pair, "skip").id });
+  const next = await waitFor(channel, (v) => v.query === 1 && v.phase === EAR_PHASE.listening);
+  expect(readSpec(run).settings).toMatchObject({
+    reach: EAR_VARIATION.wider,
+    drift: paths.map((path) => shift[path] ?? 0),
+  });
+  const stored = listSessionCandidates(app.store, made.session.id).filter(
+    (c) => c.operator === OPERATOR.optimizeEar,
+  );
+  expect(stored.map((c) => /** @type {any} */ (c.operatorParams).steering)).toEqual([
+    START_STEERING,
+    { variation: "wider", shift },
+  ]);
+  await expect(call(made, "POST", STEERING, { variation: "huge", shift: {} })).rejects.toThrow(
+    /variation must be one of/,
+  );
+  await expect(
+    call(made, "POST", STEERING, { variation: "wide", shift: { nowhere: 1 } }),
+  ).rejects.toThrow(/names nowhere, which this search doesn't move/);
+  await call(made, "POST", ANSWERS, { query: 1, ratingId: rate(made, next, "skip").id });
+  await app.jobs.settled(status.id);
+  expect(app.jobs.get(status.id).error).toBeNull();
+  await expect(call(made, "POST", STEERING, { variation: "wide", shift: {} })).rejects.toThrow(
+    /has ended/,
+  );
 });
 
 test("a skip tells the optimizer nothing, and a loss keeps the best", async () => {

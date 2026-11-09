@@ -1,11 +1,13 @@
 // The search by ear (decision 0055): preferential BO in the sidecar from a base candidate. Each
 // query is the run's best against one new point, which the owner answers on the Quick A/B page
 // with an ordinary A/B rating; the answer is told to the optimizer, and a win makes the new point
-// the best. While the owner listens, the job copies the run once for each answer the owner could
+// the best. Each new point is drawn at the owner's variation and leans toward the owner's shift,
+// which the page may change between pairs (decision 0075). While the owner listens, the job copies the run once for each answer the owner could
 // give, tells each copy that answer, and renders the point it would ask next, so the next
 // excerpt is in the render cache before it is asked for. A rejected point is stored, told as a
 // loss and never shown. Nothing is sent to the language model, and nothing runs once the job
 // ends: the job is the owner's, from Search by ear until the budget, Stop or a cancel.
+/** @import { EarSteering } from "../domain/ear-settings.js" */
 /** @import { Genome } from "../engine/genome-schema.js" */
 /** @import { Candidate } from "./generation-store.js" */
 /** @import { JobContext } from "./job-runner.js" */
@@ -24,7 +26,9 @@ import {
   EAR_PHASE,
   EAR_REJECTS,
   EAR_SCORE,
+  earSettings,
   MAX_EAR_DIMENSIONS,
+  START_STEERING,
 } from "../domain/ear-settings.js";
 import { OPERATOR } from "../domain/operator.js";
 import { proposeGenome } from "../domain/propose-genome.js";
@@ -44,6 +48,7 @@ import {
   askPoints,
   forkSearch,
   nextRun,
+  reviseSearchSettings,
   searchStart,
   startSearch,
   tellScores,
@@ -91,6 +96,8 @@ const STOP = Symbol("the owner pressed Stop");
  * @property {boolean} stopped whether the owner pressed Stop, or a pair waited `EAR_IDLE_MS`
  * @property {boolean} idle whether it stopped because a pair waited `EAR_IDLE_MS` for a choice
  * @property {string | null} error why the job ended without finishing, once it has
+ * @property {readonly string[]} paths what the search moves, once it has started; empty before
+ * @property {EarSteering} steering how the next pair drawn leans (decision 0075)
  */
 
 /**
@@ -107,6 +114,7 @@ const STOP = Symbol("the owner pressed Stop");
  * @property {(query: number) => Promise<EarView>} after resolves with the view once the job
  *   asks a later query than `query`, or ends, so an answer's reply carries the next pair
  * @property {() => void} stop
+ * @property {(steering: EarSteering) => void} steer sets how every pair drawn from now leans
  */
 
 /**
@@ -128,6 +136,8 @@ export function createEarChannel(budget, clock) {
     stopped: false,
     idle: false,
     error: null,
+    paths: [],
+    steering: START_STEERING,
   };
   /** @type {{ query: number, resolve: (value: number | null | typeof STOP) => void } | null} */
   let waiting = null;
@@ -198,6 +208,9 @@ export function createEarChannel(budget, clock) {
     stop() {
       publish({ stopped: true });
       waiting?.resolve(STOP);
+    },
+    steer(steering) {
+      publish({ steering });
     },
   };
 }
@@ -301,11 +314,14 @@ async function searchByEar(app, request, channel, prepare, job) {
   const dimension = paths.length;
   const seed = Math.floor(app.random() * STREAM_SEEDS);
   const run = await nextRun(app.paths.search);
+  channel.publish({ paths });
+  // The steering the run's spec holds; the owner's newer one is written before the next draw.
+  let written = channel.view().steering;
   const spec = {
     optimizer: EAR_OPTIMIZER,
     start: toVector(start, paths),
     seed,
-    settings: { sigma: SEARCH_SIGMA, draws: EAR_DRAWS },
+    settings: { sigma: SEARCH_SIGMA, draws: EAR_DRAWS, ...earSettings(written, paths) },
   };
   const folder = await startSearch(app, run, spec, { signal });
   const batch = { store: app.store, vibeId, vibeRevisionId: revision.id, sessionId, locks };
@@ -344,7 +360,7 @@ async function searchByEar(app, request, channel, prepare, job) {
         seen: known,
       });
       if (query !== null) {
-        const operatorParams = { ...origin.operatorParams, query, generation };
+        const operatorParams = { ...origin.operatorParams, query, generation, steering: written };
         stored.push(keep(batch, null, verdictOf(proposal), { ...origin, operatorParams }));
       }
       if (proposal.genome) return { generation, genome: proposal.genome, stored };
@@ -437,6 +453,12 @@ async function searchByEar(app, request, channel, prepare, job) {
     for (let query = 0; query < budget && !channel.view().stopped; query++) {
       job.progress(answered, budget, JOB_STEP.earDrawing(query + 1, budget));
       channel.publish({ phase: EAR_PHASE.drawing, query, challenger: null, ready: 0 });
+      const { steering } = channel.view();
+      if (steering !== written) {
+        // The copies rendered ahead read the older spec, so this pair renders after its draw.
+        await reviseSearchSettings(folder, earSettings(steering, paths));
+        written = steering;
+      }
       const drawn = await draw(folder, generation, seen, query);
       generation = drawn.generation;
       const challenger = /** @type {Candidate} */ (drawn.stored.at(-1));

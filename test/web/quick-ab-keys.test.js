@@ -2,7 +2,7 @@
 // while a field you type in has the focus. Checked on a fake document: an EventTarget and the
 // element said to have the focus.
 import { expect, test } from "vitest";
-import { bindQuickAbKeys, keyLabel, QUICK_AB_KEYS } from "../../src/web/quick-ab-keys.js";
+import { bindQuickAbKeys, keyLabel, OWN_KEYS, QUICK_AB_KEYS } from "../../src/web/quick-ab-keys.js";
 
 /** Every action and the key the owner chose for it. */
 const CHOSEN = {
@@ -16,7 +16,7 @@ const CHOSEN = {
   undo: "KeyZ",
 };
 
-/** @param {{ tagName: string, type?: string, isContentEditable?: boolean } | null} focused */
+/** @param {{ tagName: string, type?: string, isContentEditable?: boolean, hasAttribute?: (name: string) => boolean } | null} focused */
 function page(focused = null) {
   const target = new EventTarget();
   /** @type {string[]} */
@@ -108,6 +108,16 @@ test("keys still fire on a focused button, switch or seek bar", () => {
     press("ArrowRight");
     expect(ran, focused.type ?? focused.tagName).toEqual(["playPause", "playRight"]);
   }
+});
+
+test("keys do nothing on an element that keeps them, such as a steering slider", () => {
+  const { ran, press } = page({
+    tagName: "INPUT",
+    type: "range",
+    hasAttribute: (/** @type {string} */ name) => name === OWN_KEYS,
+  });
+  expect(press("ArrowRight").defaultPrevented).toBe(false);
+  expect(ran).toEqual([]);
 });
 
 test("other keys pass through", () => {

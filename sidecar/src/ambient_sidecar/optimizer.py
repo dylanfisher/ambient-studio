@@ -259,22 +259,39 @@ class PreferentialOptimizer:
     nothing and the point is forgotten.
 
     An ask fits the pairwise GP to every choice told, draws `settings.draws` points uniformly
-    in the ball around the best of radius `settings.sigma` * sqrt(d), clipped to [0, 1], and
-    answers the draw with the most expected improvement over the best. The draws come from a
-    generator seeded by the spec's seed and the count of asks before, so one seed gives one run,
-    and a state read back asks what an unbroken run would. The state is the points told, the
-    choices and the best, as JSON.
+    in a ball of radius `settings.reach` * sqrt(d), clipped to [0, 1], and answers the draw
+    with the most expected improvement over the best. The ball's center is the best moved
+    `settings.reach` * `settings.drift[i]` in each dimension i, each drift from -1 to 1, so a
+    drift leans every new point toward a shift the owner asked for (decision 0075).
+    `settings.sigma` sets the GP's length scale alone, so the owner may change the reach and the
+    drift between asks, which the server does by rewriting the spec, without changing what
+    earlier choices mean. The draws come from a generator seeded by the spec's seed and the
+    count of asks before, so one seed and one spec give one run, and a state read back asks
+    what an unbroken run would. The state is the points told, the choices and the best, as
+    JSON.
     """
 
     def __init__(self, spec: Spec, state: dict[str, Any] | None) -> None:
-        _settings(spec, ("sigma", "draws"))
+        _settings(spec, ("sigma", "draws", "reach", "drift"))
         sigma = spec.settings.get("sigma")
         if not _is_position(sigma) or sigma == 0:
             raise ValueError(f"settings.sigma must be a number above 0, at most 1, got {sigma!r}")
+        reach = spec.settings.get("reach")
+        if not _is_position(reach) or reach == 0:
+            raise ValueError(f"settings.reach must be a number above 0, at most 1, got {reach!r}")
+        drift = _list(spec.settings.get("drift"), "settings.drift")
+        if len(drift) != spec.dimension or not all(
+            isinstance(u, int | float) and not isinstance(u, bool) and -1 <= u <= 1 for u in drift
+        ):
+            raise ValueError(
+                f"settings.drift must be {spec.dimension} numbers from -1 to 1, got {drift!r}"
+            )
         draws = spec.settings.get("draws")
         if not isinstance(draws, int) or isinstance(draws, bool) or draws < 1:
             raise ValueError(f"settings.draws must be a whole number from 1, got {draws!r}")
         self.sigma = float(sigma)  # pyright: ignore[reportArgumentType]  # checked above
+        self.reach = float(reach)  # pyright: ignore[reportArgumentType]  # checked above
+        self.drift = numpy.array(drift, dtype=float)
         self.draws = draws
         self.seed = spec.seed
         self.dimension = spec.dimension
@@ -302,15 +319,15 @@ class PreferentialOptimizer:
             raise ValueError(f"{PREFERENTIAL_BO} asks one point at a time, not {count}")
         generator = numpy.random.default_rng([self.seed, self.asks])
         self.asks += 1
-        best = numpy.array(self.points[self.best])
-        # Uniform in the ball of radius sigma * sqrt(d), a medium nudge's typical distance. With
-        # few choices told, expected improvement favors the draw farthest from the best, which
-        # among normal draws would sit about 4.7 steps out in 6 dimensions.
+        center = numpy.array(self.points[self.best]) + self.reach * self.drift
+        # Uniform in the ball of radius reach * sqrt(d), a nudge's typical distance at that step.
+        # With few choices told, expected improvement favors the draw farthest from the best,
+        # which among normal draws would sit about 4.7 steps out in 6 dimensions.
         directions = generator.standard_normal((self.draws, self.dimension))
         directions /= numpy.linalg.norm(directions, axis=1, keepdims=True)
         radii = generator.random(self.draws) ** (1 / self.dimension)
-        reach = self.sigma * math.sqrt(self.dimension)
-        draws = numpy.clip(best + reach * radii[:, None] * directions, 0.0, 1.0)
+        reach = self.reach * math.sqrt(self.dimension)
+        draws = numpy.clip(center + reach * radii[:, None] * directions, 0.0, 1.0)
         improvement = expected_improvement(self.posterior(), draws, self.best)
         # argmax takes the first of a tie, so one state gives one point.
         return [[float(u) for u in draws[int(numpy.argmax(improvement))]]]

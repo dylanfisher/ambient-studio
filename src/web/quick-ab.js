@@ -18,6 +18,7 @@ import { ACTIVE_SIDE } from "./ab-view.js";
 import { getJson, VIBES_PATH } from "./api.js";
 import { trackAudio } from "./audio-player.js";
 import { cloneTemplate } from "./clone-template.js";
+import { earSteeringPanel } from "./ear-steering.js";
 import { elementsById } from "./element-by-id.js";
 import { mountPlayer, playAudio, switchPlayback } from "./excerpt-player.js";
 import { keyButtons } from "./key-buttons.js";
@@ -120,6 +121,7 @@ let said = "";
 /** The pair whose excerpts are on the elements, so a render that keeps it doesn't reload them. */
 let wiredPair = /** @type {object | null} */ (null);
 
+const steering = earMode ? earSteeringPanel(sessionId, status) : null;
 const earSession = earMode
   ? createEarSession({
       sessionId,
@@ -227,6 +229,7 @@ function render() {
   const ear = /** @type {{ ear?: EarState | null }} */ (view).ear ?? null;
   const spot = /** @type {{ spot?: SpotState | null }} */ (view).spot ?? null;
   page.stopEar.disabled = ear === null || ear.phase === EAR_PHASE.finished || ear.stopped;
+  steering?.show(ear);
   page.progressLine.textContent =
     view.phase === PHASE.done
       ? ""

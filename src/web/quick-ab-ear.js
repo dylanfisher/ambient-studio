@@ -37,6 +37,8 @@ export const NO_UNDO =
  * @property {boolean} stopped
  * @property {boolean} idle whether it stopped because a pair waited too long for a choice
  * @property {string | null} error
+ * @property {readonly string[]} paths what the search moves; empty until it has started
+ * @property {import("../domain/ear-settings.js").EarSteering} steering how the next pair leans
  */
 
 /**

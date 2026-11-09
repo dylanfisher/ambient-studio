@@ -285,10 +285,22 @@ def test_a_cma_es_state_for_another_run_is_refused_with_a_reason(
         ask(run, 0, 2)
 
 
-def bo_run(root: Path, name: str, seed: int, start: list[float]) -> Path:
+def bo_run(
+    root: Path,
+    name: str,
+    seed: int,
+    start: list[float],
+    reach: float = 0.12,
+    drift: list[float] | None = None,
+) -> Path:
     run = root / "search" / name
     run.mkdir(parents=True)
-    settings = {"sigma": 0.12, "draws": 1000}
+    settings = {
+        "sigma": 0.12,
+        "draws": 1000,
+        "reach": reach,
+        "drift": [0.0] * len(start) if drift is None else drift,
+    }
     spec = {"optimizer": "preferential-bo", "start": start, "seed": seed, "settings": settings}
     (run / "spec.json").write_text(json.dumps(spec), encoding="utf-8")
     assert METHODS["optimizer_start"]({"spec": str(run / "spec.json")}) == {"dimension": len(start)}
@@ -403,6 +415,58 @@ def test_preferential_bo_draws_within_a_medium_nudge_s_distance_of_the_best(
         tell(run, query, [outcome])
         if outcome == 1.0:
             best = point
+
+
+def test_preferential_bo_draws_within_its_reach_of_the_best(tmp_path: Path) -> None:
+    run = bo_run(tmp_path, "run-1", 4, BO_START, reach=0.3)
+    [point] = ask(run, 0, 1)
+    assert 0.12 * math.sqrt(len(BO_START)) < math.dist(point, BO_START)
+    assert math.dist(point, BO_START) <= 0.3 * math.sqrt(len(BO_START)) + 1e-12
+
+
+def test_a_drift_leans_every_draw_its_way(tmp_path: Path) -> None:
+    """With the first dimension's drift at 1 and the second's at -1, the ball's center sits a
+    reach up the first and down the second, so draws from the middle of the cube lean so."""
+    start = [0.5, 0.5, 0.5, 0.5]
+    run = bo_run(tmp_path, "run-1", 4, start, reach=0.2, drift=[1.0, -1.0, 0.0, 0.0])
+    for query in range(6):
+        [point] = ask(run, query, 1)
+        assert math.dist(point, [0.7, 0.3, 0.5, 0.5]) <= 0.2 * 2 + 1e-12
+        tell(run, query, [0.0])
+
+
+def test_a_rewritten_reach_and_drift_reach_the_next_ask(tmp_path: Path) -> None:
+    """The server rewrites the spec when the owner changes the variation or the shift; the GP's
+    length scale stays the spec's sigma."""
+    run = bo_run(tmp_path, "run-1", 4, BO_START)
+    ask(run, 0, 1)
+    tell(run, 0, [0.0])
+    spec = json.loads((run / "spec.json").read_text(encoding="utf-8"))
+    spec["settings"] |= {"reach": 0.05, "drift": [1.0, 1.0, 1.0, 1.0]}
+    (run / "spec.json").write_text(json.dumps(spec), encoding="utf-8")
+    [point] = ask(run, 1, 1)
+    assert math.dist(point, [0.25, 0.25, 0.25, 0.25]) <= 0.05 * 2 + 1e-12
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ({"reach": 0}, "reach"),
+        ({"reach": 1.5}, "reach"),
+        ({"drift": [0.0, 0.0]}, "drift"),
+        ({"drift": [2.0, 0.0, 0.0, 0.0]}, "drift"),
+        ({"drift": None}, "drift"),
+    ],
+)
+def test_preferential_bo_refuses_a_bad_reach_or_drift(
+    tmp_path: Path, change: dict[str, Any], message: str
+) -> None:
+    run = bo_run(tmp_path, "run-1", 4, BO_START)
+    spec = json.loads((run / "spec.json").read_text(encoding="utf-8"))
+    spec["settings"] |= change
+    (run / "spec.json").write_text(json.dumps(spec), encoding="utf-8")
+    with pytest.raises(ValueError, match=message):
+        ask(run, 0, 1)
 
 
 @pytest.mark.parametrize("outcome", [1.0, 0.5, 0.0, None])
