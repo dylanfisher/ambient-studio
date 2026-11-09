@@ -37,6 +37,7 @@
           well the studio has learned your own A/B choices, and the optimizer test checks
           whether a search scored by that model finds better candidates than plain nudges.
         </p>
+        <p><button id="numbersToggle" class="button outline small" type="button" aria-expanded="false" title="Shows or hides the numbers on this page: the fields that set values directly, the measurements and the scores. The page remembers your choice in this browser.">Show the numbers</button></p>
         <p id="status" class="status" role="status" aria-live="polite">Loading…</p>
       </div>
 
@@ -56,7 +57,7 @@
           Also test the revision step</label
         >
         <div class="row">
-          <label class="small"
+          <label class="small" data-numbers
             >Candidates per brief
             <input id="countInput" type="number" min="1" step="1" size="4" title="How many candidates to ask the model for, for each ticked brief. More gives a surer result but takes longer; the confirm says how long." />
           </label>
@@ -123,7 +124,7 @@
           <div id="optimizerChoices" class="stack"></div>
         </fieldset>
         <div class="row">
-          <label class="small"
+          <label class="small" data-numbers
             >Evaluations per search
             <input id="optimizerBudget" type="number" min="1" step="1" size="4" title="How many points each search renders and scores, and how many nudges its control makes. More finds better points but takes longer; the confirm says how long." />
           </label>
@@ -145,7 +146,7 @@
 
         <section id="reportView" class="card stack" aria-labelledby="reportHeading" hidden>
           <h2 id="reportHeading">Result</h2>
-          <p id="reportParams" class="small muted"></p>
+          <p id="reportParams" class="small muted" data-numbers></p>
           <p id="reportStopped" class="errors small" hidden></p>
           <div class="callout">
             <h3>What this means</h3>
@@ -166,19 +167,21 @@
             </p>
           </div>
           <div class="grid" id="reportTallies"></div>
-          <h3>Time per request</h3>
-          <p class="small muted">From sending the request to the end of the answer.</p>
-          <p id="latencyFirst" class="small"></p>
-          <p id="latencyRepair" class="small"></p>
-          <p id="latencyTreatment" class="small" hidden></p>
-          <p id="latencyControl" class="small" hidden></p>
-          <h3>Time until the model starts answering</h3>
-          <p class="small muted">Most of a request's time goes here when the model thinks before it writes.</p>
-          <p id="firstTokenFirst" class="small"></p>
-          <p id="firstTokenRepair" class="small"></p>
-          <p id="firstTokenTreatment" class="small" hidden></p>
-          <p id="firstTokenControl" class="small" hidden></p>
-          <p id="responseFormat" class="small"></p>
+          <div class="stack" data-numbers>
+            <h3>Time per request</h3>
+            <p class="small muted">From sending the request to the end of the answer.</p>
+            <p id="latencyFirst" class="small"></p>
+            <p id="latencyRepair" class="small"></p>
+            <p id="latencyTreatment" class="small" hidden></p>
+            <p id="latencyControl" class="small" hidden></p>
+            <h3>Time until the model starts answering</h3>
+            <p class="small muted">Most of a request's time goes here when the model thinks before it writes.</p>
+            <p id="firstTokenFirst" class="small"></p>
+            <p id="firstTokenRepair" class="small"></p>
+            <p id="firstTokenTreatment" class="small" hidden></p>
+            <p id="firstTokenControl" class="small" hidden></p>
+            <p id="responseFormat" class="small"></p>
+          </div>
         </section>
       </div>
     </main>
@@ -210,13 +213,13 @@
       <div class="card stack">
         <h3 data-part="title">brief</h3>
         <p class="small" data-part="summary"></p>
-        <dl class="facts small" data-part="facts"></dl>
+        <dl class="facts small" data-part="facts" data-numbers></dl>
       </div>
     </template>
     <template id="optimizer-choice">
       <div class="row small">
         <label class="check"><input data-part="input" type="checkbox" title="Includes this brief in the next optimizer test." /> <span data-part="name">brief</span></label>
-        <label
+        <label data-numbers
           >Start from
           <input data-part="bases" type="text" size="14" placeholder="its best-ranked" title="Up to 3 candidate numbers to start the searches from, such as 12, 15, in sessions still open. Left empty, the searches start from the brief's best-ranked candidates." />
         </label>
@@ -226,7 +229,7 @@
       <div class="card stack">
         <h3 data-part="title">brief</h3>
         <p class="small" data-part="summary"></p>
-        <dl class="facts small" data-part="facts"></dl>
+        <dl class="facts small" data-part="facts" data-numbers></dl>
         <div class="row" data-part="links"></div>
       </div>
     </template>
@@ -237,7 +240,7 @@
       <div class="card stack">
         <h3 data-part="title">brief</h3>
         <p class="small" data-part="meaning"></p>
-        <dl class="facts small">
+        <dl class="facts small" data-numbers>
           <dt>Worked first time</dt>
           <dd><span data-part="validBefore"></span> <span class="muted" data-part="validBeforeRange"></span></dd>
           <dt>Worked after one fix</dt>
@@ -255,7 +258,7 @@
           <dt>Why answers still failed after the fix</dt>
           <dd data-part="rejectsAfter"></dd>
         </dl>
-        <div class="stack" data-part="revision" hidden>
+        <div class="stack" data-part="revision" data-numbers hidden>
           <h4>Revision test</h4>
           <dl class="facts small" data-part="revisionFacts"></dl>
         </div>

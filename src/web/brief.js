@@ -58,6 +58,7 @@ import { elementsById } from "./element-by-id.js";
 import { clockTime } from "./excerpt-player.js";
 import { formatTime } from "./format-time.js";
 import { jobControl } from "./job-control.js";
+import { pageNumbers } from "./numbers-toggle.js";
 import { oneAtATime } from "./one-at-a-time.js";
 import { outcomeText } from "./outcome-text.js";
 import { proposalShareText, proposeCostText } from "./proposal-text.js";
@@ -81,6 +82,7 @@ const [MORE] = MACRO_DIRECTIONS;
 const CONTROLS = "input, select";
 
 const status = statusLine();
+pageNumbers("brief.html");
 const page = elementsById({
   pageTitle: HTMLElement,
   draft: HTMLFormElement,

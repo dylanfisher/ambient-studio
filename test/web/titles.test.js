@@ -13,6 +13,7 @@ import { MACROS } from "../../src/engine/genome-schema.js";
 import { constraintFields, fieldTitle } from "../../src/web/constraint-fields.js";
 import { PLAYER_TITLES } from "../../src/web/excerpt-player.js";
 import { jobControl } from "../../src/web/job-control.js";
+import { NUMBERS_TITLE } from "../../src/web/numbers-toggle.js";
 import { steerTitles } from "../../src/web/steer-controls.js";
 import { targetFields, targetTitle } from "../../src/web/target-fields.js";
 
@@ -89,6 +90,11 @@ describe("titles the modules set", () => {
         expect(isSentence(title), macro).toBe(true);
       }
     }
+  });
+
+  test("the numbers toggle's title says what it shows and that the page remembers it", () => {
+    expect(isSentence(NUMBERS_TITLE)).toBe(true);
+    expect(NUMBERS_TITLE).toMatch(/remembers/);
   });
 
   test("the excerpt player's button and seek bar have a title", () => {

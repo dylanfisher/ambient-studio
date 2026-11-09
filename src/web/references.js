@@ -17,6 +17,7 @@ import {
 import { cloneTemplate } from "./clone-template.js";
 import { elementsById } from "./element-by-id.js";
 import { mountPlayer, playAudio } from "./excerpt-player.js";
+import { pageNumbers } from "./numbers-toggle.js";
 import { analysisText, runAnalysis } from "./region-analysis.js";
 import {
   dragRegion,
@@ -47,6 +48,7 @@ import "./topbar-jobs.js";
 const DRAG_PIXELS = 3;
 
 const status = statusLine();
+pageNumbers("references.html");
 const page = elementsById({
   fileInput: HTMLInputElement,
   uploadButton: HTMLButtonElement,

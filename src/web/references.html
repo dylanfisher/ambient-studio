@@ -29,6 +29,7 @@
           brief's ranges and to guide the model. A reference is only ever measured and listened
           to here: its audio never plays in a candidate, a track or an export.
         </p>
+        <p><button id="numbersToggle" class="button outline small" type="button" aria-expanded="false" title="Shows or hides the numbers on this page: the fields that set values directly, the measurements and the scores. The page remembers your choice in this browser.">Show the numbers</button></p>
         <p id="status" class="status" role="status" aria-live="polite">Loading the recordings…</p>
       </div>
 
@@ -65,11 +66,11 @@
         <form id="regionForm" class="stack" novalidate>
           <h3 id="regionFormHeading">New region</h3>
           <div class="row">
-            <label class="field"
+            <label class="field" data-numbers
               >Start
               <input id="regionStart" name="regionStart" inputmode="decimal" size="10" placeholder="1:15.5" title="Where the region starts: seconds, such as 75.5, or minutes and seconds, such as 1:15.5." />
             </label>
-            <label class="field"
+            <label class="field" data-numbers
               >End
               <input id="regionEnd" name="regionEnd" inputmode="decimal" size="10" placeholder="1:45" title="Where the region ends, after the start: seconds, or minutes and seconds." />
             </label>
@@ -102,7 +103,7 @@
       <li class="card stack">
         <div class="section-head">
           <strong data-part="label">region</strong>
-          <span class="small muted" data-part="times"></span>
+          <span class="small muted" data-part="times" data-numbers></span>
         </div>
         <p class="small" data-part="note"></p>
         <p class="row">
@@ -111,7 +112,7 @@
           <button class="button secondary small" type="button" data-part="remove" title="Asks you to confirm, then takes this region off the list. The studio keeps it in the history.">Remove</button>
           <button class="button outline small" type="button" data-part="analyze" title="Measures this region the way the studio measures an excerpt, at -16 LUFS, and analyzes its sound, so a brief can take ranges from it. A region measured before is not measured again.">Analyze</button>
         </p>
-        <p class="small muted" data-part="analysis" hidden></p>
+        <p class="small muted" data-part="analysis" data-numbers hidden></p>
       </li>
     </template>
   </body>

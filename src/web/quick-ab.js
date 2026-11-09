@@ -22,6 +22,7 @@ import { earSteeringPanel } from "./ear-steering.js";
 import { elementsById } from "./element-by-id.js";
 import { mountPlayer, playAudio, switchPlayback } from "./excerpt-player.js";
 import { keyButtons } from "./key-buttons.js";
+import { pageNumbers } from "./numbers-toggle.js";
 import { createPlayedTracker } from "./played-tracker.js";
 import { POLL_MS } from "./poll-ms.js";
 import { createEarSession, NO_UNDO } from "./quick-ab-ear.js";
@@ -38,6 +39,7 @@ const [LEFT, RIGHT] = SCREEN_SIDES;
 /** @typedef {(typeof SCREEN_SIDES)[number]} ScreenSide */
 
 const status = statusLine();
+pageNumbers("quick-ab.html");
 const page = elementsById({
   briefLink: HTMLAnchorElement,
   sessionLink: HTMLAnchorElement,

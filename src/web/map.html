@@ -34,23 +34,24 @@
           the map to make candidates aimed at the empty cells, and explore, nudge or keep a
           sketch from the cell you opened.
         </p>
+        <p><button id="numbersToggle" class="button outline small" type="button" aria-expanded="false" title="Shows or hides the numbers on this page: the fields that set values directly, the measurements and the scores. The page remembers your choice in this browser.">Show the numbers</button></p>
         <p id="status" class="status" role="status" aria-live="polite">Loading…</p>
       </div>
 
       <section class="card stack" aria-labelledby="fill-heading">
         <h2 id="fill-heading">Fill the map</h2>
-        <p id="coverageLine" class="small"></p>
+        <p id="coverageLine" class="small" data-numbers></p>
         <p id="sessionLine" class="small muted"></p>
         <div class="row">
-          <label class="field small"
+          <label class="field small" data-numbers
             >Steps
             <input id="budgetInput" type="number" step="1" size="5" title="How many steps the fill takes, from 1 to 400. Each nudges a candidate beside an empty cell and renders the excerpt." />
           </label>
-          <label class="field small"
+          <label class="field small" data-numbers
             >Steps that ask the model, in percent
             <input id="shareInput" type="number" step="5" min="0" max="100" size="4" title="The share of steps that ask the language model for a variation toward the empty cell instead of nudging, from 0 to 100 percent. Each such step waits its turn for the model." />
           </label>
-          <label class="check small"
+          <label class="check small" data-numbers
             ><input id="controlSwitch" type="checkbox" checked title="Also makes as many medium nudges from the candidates beside an empty cell at the start, never shown, to compare how much of the map each fills." />
             With a control</label
           >
@@ -114,12 +115,12 @@
           <button class="button outline small" type="button" data-part="nudge" title="Makes children of this candidate by moving its numbers a step, with no model request, and renders an excerpt of each. Takes a few seconds per child.">Nudge from here</button>
         </div>
         <div class="row">
-          <input data-part="budget" type="number" step="1" size="5" title="How many points Search from here tries, from 1 to 400. Each one renders an excerpt and is scored by your taste model." />
-          <label class="row small"><input data-part="control" type="checkbox" title="Also makes as many medium nudges of this candidate after the search, scored the same way and never shown, to test whether the search beats nudging." /> With a control</label>
+          <input data-part="budget" type="number" step="1" size="5" data-numbers title="How many points Search from here tries, from 1 to 400. Each one renders an excerpt and is scored by your taste model." />
+          <label class="row small" data-numbers><input data-part="control" type="checkbox" title="Also makes as many medium nudges of this candidate after the search, scored the same way and never shown, to test whether the search beats nudging." /> With a control</label>
           <button class="button outline small" type="button" data-part="search" title="Searches near this candidate, scoring each point by your taste model with no model request. Asks first, with the time it takes.">Search from here</button>
         </div>
         <div class="row">
-          <input data-part="queries" type="number" step="1" size="5" title="How many pairs Search by ear asks you, from 1 to 60." />
+          <input data-part="queries" type="number" step="1" size="5" data-numbers title="How many pairs Search by ear asks you, from 1 to 60." />
           <button class="button outline small" type="button" data-part="ear" title="Searches near this candidate by your ear, on the Quick A/B page.">Search by ear</button>
         </div>
       </div>

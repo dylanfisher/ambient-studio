@@ -4,7 +4,9 @@
 - **Status:** accepted; provisional: owner to confirm. Amends
   [0028](0028-session-ui-pages-and-keys.md) (the session page lists candidates as a table) and
   [0042](0042-clap-embeddings.md) (the session page shows `notEmbedded`). Amended by
-  [0046](0046-ranking-wildcards-pair-picker.md) (the roots' order in a ranked session)
+  [0046](0046-ranking-wildcards-pair-picker.md) (the roots' order in a ranked session) and
+  [0083](0083-numbers-toggle.md) (the second row is always shown, its numbers behind the
+  page's numbers toggle, and More controls is gone)
 
 ## Context
 

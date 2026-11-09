@@ -28,6 +28,7 @@ import { formatTime } from "./format-time.js";
 import { jobControl } from "./job-control.js";
 import { JOB_STATE } from "./job-progress.js";
 import { jobBox } from "./job-view.js";
+import { pageNumbers } from "./numbers-toggle.js";
 import { oneAtATime } from "./one-at-a-time.js";
 import { optimizerTestView } from "./optimizer-test-view.js";
 import { NOT_STARTED, ownerJob } from "./owner-job.js";
@@ -48,6 +49,7 @@ import { costText } from "./test-cost.js";
 import "./topbar-jobs.js";
 
 const status = statusLine();
+pageNumbers("evaluation.html");
 const page = elementsById({
   briefChoices: HTMLElement,
   reviseInput: HTMLInputElement,
