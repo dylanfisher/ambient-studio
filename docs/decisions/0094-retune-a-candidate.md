@@ -1,8 +1,8 @@
 # 0094. Retune: a candidate's child in another tuning, scale or key, with no model request
 
 - **Date:** 2026-11-09
-- **Status:** accepted; provisional: owner to confirm the nearest-root key, that a retune makes
-  one child, and that the control sits on session cards only. Amends
+- **Status:** accepted; provisional: owner to confirm that the control sits on session cards
+  only. Amends
   [0053](0053-search-space-ask-tell.md) (`proposeWritten` beside `proposeGenome`)
 
 ## Context
@@ -67,3 +67,9 @@ C. An absolute tuning's "root" is its scale's first note.
   only those sounds the same after a retune. The drone keeps its `root` in Hz and plays the
   scale note nearest it, so its fundamental moves only as far as the new scale's nearest note.
 - The lineage page labels a retune child "retuned", and the lineage reading names its pitch.
+
+## Amendments
+
+- 2026-11-09: the owner settled two of the open points. One press makes one child: "one press
+  one child sounds ok". The key was left to the builder ("you choose about key"), and stays the
+  nearest root, for the reason under Alternatives: keeping the degree number moves the root.
